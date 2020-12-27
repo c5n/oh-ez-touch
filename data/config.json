@@ -1,0 +1,47 @@
+{
+    "general":
+    {
+        "hostname": "oheztouch-new"
+    },
+    "wlan":
+    {
+        "ssid":     "myssid",
+        "password": "secretpassword"
+    },
+    "ntp":
+    {
+        "hostname":         "pool.ntp.org",
+        "gmt_offset":       1,
+        "daylightsaving":   0
+    },
+    "backlight":
+    {
+        "activity_timeout":     60,
+        "normal_brightness":    100,
+        "dim_brightness":       40
+    },
+    "beeper":
+    {
+        "enabled":  1
+    },
+    "openhab":
+    {
+        "hostname": "openhabian",
+        "port":     8080,
+        "sitemap":  "oheztouch",
+        "sensors":
+        {
+            "bme280":
+            {
+                "use":      0,
+                "interval": 180,
+                "items":
+                {
+                    "temperature":  "",
+                    "humidity":     "",
+                    "pressure":     ""
+                }
+            }
+        }
+    }
+}
