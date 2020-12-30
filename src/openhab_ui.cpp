@@ -1045,7 +1045,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
     lv_obj_move_foreground(label);
     lv_obj_set_width(label, lv_obj_get_width(cont) - LV_DPI / 20);
     lv_obj_set_protect(label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-    lv_obj_align(label, NULL, LV_ALIGN_IN_TOP_MID, 0, 0);
+    lv_obj_align(label, NULL, LV_ALIGN_IN_TOP_MID, 0, 3);
 
     if (wctx->img_dsc.data_size > 0)
     {
@@ -1091,7 +1091,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
     }
@@ -1107,7 +1107,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
     }
@@ -1124,7 +1124,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
+        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
     }
@@ -1144,7 +1144,6 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 
         wctx->state_widget = state_obj;
     }
-
 
     lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &wctx->container_style);
     lv_obj_set_user_data(cont, (lv_obj_user_data_t)wctx);
