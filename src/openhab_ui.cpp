@@ -973,7 +973,7 @@ static void header_create(void)
     lv_obj_align(header.item.wifi, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 10, 0);
 
     header.item.title = lv_label_create(header.container, NULL);
-    lv_label_set_text(header.item.title, "Welcome to openabardui");
+    lv_label_set_text(header.item.title, "Welcome to OhEzTouch");
     lv_label_set_long_mode(header.item.title, LV_LABEL_LONG_SROLL);
     lv_label_set_align(header.item.title, LV_LABEL_ALIGN_CENTER);
     lv_obj_align(header.item.title, NULL, LV_ALIGN_CENTER, 0, 0);
