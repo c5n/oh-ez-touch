@@ -1050,7 +1050,20 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_img_set_src(img_obj, &wctx->img_dsc);
         lv_obj_move_background(img_obj);
         lv_obj_set_opa_scale_enable(img_obj, true);
-        lv_obj_set_opa_scale(img_obj, 50);
+        lv_obj_set_opa_scale(img_obj, LV_OPA_30);
+        lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
+
+        wctx->img_obj = img_obj;
+    }
+    else if (wctx->widget_type == WidgetType::parent_page)
+    {
+        lv_obj_t *img_obj = lv_img_create(cont, NULL);
+        lv_img_set_style(img_obj, LV_IMG_STYLE_MAIN, &custom_style_label_state_large);
+        lv_img_set_src(img_obj, LV_SYMBOL_NEW_LINE);
+        lv_obj_move_background(img_obj);
+        lv_obj_set_opa_scale_enable(img_obj, true);
+        lv_obj_set_opa_scale(img_obj, LV_OPA_60);
         lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
 
@@ -1139,7 +1152,7 @@ void show(lv_obj_t *parent)
     {
         widget_context[widget].widget_type = WidgetType::parent_page;
         widget_context[widget].link = sitemap.getParentLink();
-        widget_context[widget].label = "BACK";
+        widget_context[widget].label = "";
         widget_context[widget].active = true;
 
         create_widget(parent, &widget_context[widget]);
