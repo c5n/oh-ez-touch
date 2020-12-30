@@ -114,6 +114,7 @@ struct widget_context_s
     lv_obj_t *img_obj = NULL;
     lv_img_dsc_t img_dsc;
     lv_obj_t *state_widget = NULL;
+    lv_style_t state_widget_style;
     lv_obj_t *state_window_widget = NULL;
     enum WidgetType widget_type = unknown;
     String link = {};
@@ -820,8 +821,10 @@ void update_state_widget(struct widget_context_s *ctx)
     }
     else if (ctx->widget_type == WidgetType::item_colorpicker)
     {
-        // ToDo: show color
-        lv_label_set_text(ctx->state_widget, ctx->item.getStateText().c_str());
+        lv_color_hsv_t color_hsv = hsvCStringToLVColor(ctx->item.getStateText().c_str());
+        ctx->state_widget_style.body.main_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
+        ctx->state_widget_style.body.grad_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
+        lv_obj_invalidate(ctx->state_widget);
     }
     else
     {
@@ -1083,7 +1086,8 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_t *state_label = lv_label_create(cont, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
-        lv_obj_set_style(state_label, &custom_style_label_state);
+        lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
+        lv_obj_set_style(state_label, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
@@ -1098,7 +1102,8 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_t *state_label = lv_label_create(cont, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
-        lv_obj_set_style(state_label, &custom_style_label_state);
+        lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
+        lv_obj_set_style(state_label, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
@@ -1106,7 +1111,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 
         wctx->state_widget = state_label;
     }
-    else if (wctx->widget_type == WidgetType::item_setpoint || wctx->widget_type == WidgetType::item_slider || wctx->widget_type == WidgetType::item_selection || wctx->widget_type == WidgetType::item_colorpicker)
+    else if (wctx->widget_type == WidgetType::item_setpoint || wctx->widget_type == WidgetType::item_slider || wctx->widget_type == WidgetType::item_selection)
     {
         wctx->container_style.body.border.width *= 2;
         //wctx->container_style.body.border.color = LV_COLOR_BLACK;
@@ -1114,7 +1119,8 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_t *state_label = lv_label_create(cont, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
-        lv_obj_set_style(state_label, &custom_style_label_state);
+        lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
+        lv_obj_set_style(state_label, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
         lv_obj_set_width(state_label, lv_obj_get_width(cont));
         lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
@@ -1122,6 +1128,23 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 
         wctx->state_widget = state_label;
     }
+    else if (wctx->widget_type == WidgetType::item_colorpicker)
+    {
+        wctx->container_style.body.border.width *= 2;
+        //wctx->container_style.body.border.color = LV_COLOR_BLACK;
+
+        lv_obj_t *state_obj = lv_obj_create(cont, NULL);
+        lv_style_copy(&wctx->state_widget_style, &lv_style_pretty_color);
+        lv_obj_set_style(state_obj, &wctx->state_widget_style);
+        lv_obj_move_foreground(state_obj);
+        lv_obj_set_width(state_obj, lv_obj_get_width(cont) / 3);
+        lv_obj_set_height(state_obj, 22);
+        lv_obj_set_protect(state_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_align(state_obj, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -6);
+
+        wctx->state_widget = state_obj;
+    }
+
 
     lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &wctx->container_style);
     lv_obj_set_user_data(cont, (lv_obj_user_data_t)wctx);
