@@ -8,14 +8,15 @@ function print_help {
     cat <<EOF
 Usage:
     $0 [-p] -t <target> <hostname1> <hostname2> ...
-    $0 [-p] -t <target> -l <listfile>
+    $0 [-p] -l <listfile>
 
     -p              Parallel multi process update
 
     -t <target>     Target should be one of the available build targets.
                     e.g. ArduiTouchMOD
 
-    -l <listfile>   Text file with list of hostnames. One hostname per line.
+    -l <listfile>   Text file with list of target and hostnames.
+                    Each line has target hostname, separated by tabs or spaces.
 EOF
 }
 
@@ -52,9 +53,9 @@ for HOSTNAME in "$@"; do
 done
 
 if [[ -f "$OPT_LISTFILE" ]]; then
-    while IFS= read -r HOSTNAME
+    while read -r -a TH_ARRAY
     do
-        update_process $OPT_TARGET $HOSTNAME &
+        update_process ${TH_ARRAY[0]} ${TH_ARRAY[1]} &
         if [ "$OPT_FLAG_PARALLEL" -eq 0 ]; then
             # wait until child process is done
             wait
