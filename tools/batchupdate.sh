@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 
 function print_help {
-    echo "Usage:" >&2 ;
-    echo "$0 -t target hostname1 hostname2 ..." >&2 ;
-    echo "$0 -t target -l listfile" >&2 ;
+    cat <<EOF
+Usage:
+    $0 -t <target> <hostname1> <hostname2> ...
+    $0 -t <target> -l <listfile>
+
+    <target>    should be one of the available build targets.
+                e.g. ArduiTouchMOD
+
+    <listfile>  generic text file with list of hostnames. One hostname per line.
+EOF
 }
 
 while getopts ":t:l:" opt; do
