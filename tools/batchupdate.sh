@@ -1,36 +1,66 @@
 #!/usr/bin/env bash
 
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+NC='\033[0m' # No Color
+
 function print_help {
     cat <<EOF
 Usage:
-    $0 -t <target> <hostname1> <hostname2> ...
-    $0 -t <target> -l <listfile>
+    $0 [-p] -t <target> <hostname1> <hostname2> ...
+    $0 [-p] -t <target> -l <listfile>
 
-    <target>    should be one of the available build targets.
-                e.g. ArduiTouchMOD
+    -p              Parallel multi process update
 
-    <listfile>  generic text file with list of hostnames. One hostname per line.
+    -t <target>     Target should be one of the available build targets.
+                    e.g. ArduiTouchMOD
+
+    -l <listfile>   Text file with list of hostnames. One hostname per line.
 EOF
 }
 
-while getopts ":t:l:" opt; do
+function update_process() {
+    echo "Updating ${2}..."
+    curl --silent -F "name=@.pio/build/${1}/firmware.bin" http://${2}/update -o /dev/null
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed${NC} to update ${2}"
+    else
+        echo -e "${GREEN}Sucessfully${NC} updated ${2}"
+    fi
+}
+
+OPT_FLAG_PARALLEL=0
+unset OPT_TARGET
+unset OPT_LISTFILE
+
+while getopts ":t:l:p" opt; do
     case "$opt" in
-        t) target=$OPTARG ;;
-        l) listfile=$OPTARG ;;
+        t) OPT_TARGET=$OPTARG ;;
+        l) OPT_LISTFILE=$OPTARG ;;
+        p) OPT_FLAG_PARALLEL=1 ;;
         ?) print_help; exit 2;;
     esac
 done
 shift $(( OPTIND - 1 ))
 
-for hostname in "$@"; do
-    echo "Updating $hostname..."
-    curl --progress-bar -F "name=@.pio/build/$target/firmware.bin" http://$hostname/update -o /dev/null
+for HOSTNAME in "$@"; do
+    update_process $OPT_TARGET $HOSTNAME &
+    if [ "$OPT_FLAG_PARALLEL" -eq 0 ]; then
+        # wait until child process is done
+        wait
+    fi
 done
 
-if [[ -f "$listfile" ]]; then
-    while IFS= read -r hostname
+if [[ -f "$OPT_LISTFILE" ]]; then
+    while IFS= read -r HOSTNAME
     do
-        echo "Updating $hostname..."
-        curl --progress-bar -F "name=@.pio/build/$target/firmware.bin" http://$hostname/update -o /dev/null
-    done <"$listfile"
+        update_process $OPT_TARGET $HOSTNAME &
+        if [ "$OPT_FLAG_PARALLEL" -eq 0 ]; then
+            # wait until child process is done
+            wait
+        fi
+    done <"$OPT_LISTFILE"
 fi
+
+# wait until all child processes are done
+wait
