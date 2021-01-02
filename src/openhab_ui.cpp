@@ -680,6 +680,7 @@ void window_item_setpoint(struct widget_context_s *ctx)
     lv_obj_t *state_label = lv_label_create(win, NULL);
     lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
     lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
+    lv_obj_set_width(state_label, lv_obj_get_width(win) - LV_DPI / 20);
 
     if (ctx->item.getNumberPattern().startsWith("%d"))
         lv_label_set_text_fmt(state_label, ctx->item.getNumberPattern().c_str(), (uint16_t)ctx->item.getStateNumber());
