@@ -585,6 +585,7 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_obj_set_style(state_label, &custom_style_label_state_large);
     lv_obj_set_auto_realign(state_label, true);
     lv_obj_align(state_label, slider, LV_ALIGN_OUT_TOP_MID, 0, 0 - LV_DPI / 10);
+    lv_obj_set_width(state_label, lv_obj_get_width(win) - LV_DPI / 20);
 
     // Add minimum value label left below
     lv_obj_t *min_value_label = lv_label_create(win, NULL);
@@ -597,8 +598,9 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_obj_set_style(min_value_label, &custom_style_label_state);
     lv_obj_set_auto_realign(min_value_label, true);
     lv_obj_align(min_value_label, slider, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
+    lv_obj_set_width(state_label, lv_obj_get_width(win) / 2 - LV_DPI / 20);
 
-    // Add maximum value label left below
+    // Add maximum value label right below
     lv_obj_t *max_value_label = lv_label_create(win, NULL);
 
     if (ctx->item.getNumberPattern().startsWith("%d"))
@@ -609,6 +611,7 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_obj_set_style(max_value_label, &custom_style_label_state);
     lv_obj_set_auto_realign(max_value_label, true);
     lv_obj_align(max_value_label, slider, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 0);
+    lv_obj_set_width(state_label, lv_obj_get_width(win) / 2 - LV_DPI / 20);
 
     ctx->state_window_widget = state_label;
 }
