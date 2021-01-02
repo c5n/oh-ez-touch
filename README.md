@@ -72,6 +72,48 @@ For the new version with SMD parts:
 pio run -t upload -e ArduiTouchMOD --upload-port /dev/ttyUSB0
 ```
 
+### Update tool
+To update one or more devices over the air, a simple script is provided in the tools folder.
+
+```
+Usage:
+    ./tools/batchupdate.sh [-p] -t <target> <hostname1> <hostname2> ...
+    ./tools/batchupdate.sh [-p] -l <listfile>
+
+    -p              Parallel multi process update
+
+    -t <target>     Target should be one of the available build targets.
+                    e.g. ArduiTouchMOD
+
+    -l <listfile>   Text file with list of target and hostnames.
+                    Each line has target hostname, separated by tabs or spaces.
+```
+
+If you have more than one ArduiTouch device, it makes sense to create a ```listfile``` with all of your devices.
+
+Example ```myOhEzTouchDevices.txt```:
+```
+Arduitouch      oheztouch-01
+ArduitouchMOD   oheztouch-02
+Arduitouch      oheztouch-03
+```
+
+It is possible to update all devices in parallel by using the ```-p``` option.
+
+#### Update project folder
+```
+git pull
+```
+#### Rebuild targets
+```
+pio run
+```
+#### Roll out update
+Example for update of all of your devices by using the listfile:
+```
+./tools/batchupdate.sh -p -l myOhEzTouchDevices.txt
+```
+
 ## Usage
 
 ### OpenHAB Sitemap
