@@ -14,6 +14,10 @@
 #include "driver/backlight_control.hpp"
 #include "driver/beeper_control.hpp"
 
+#ifndef DEBUG_OUTPUT_BAUDRATE
+#define DEBUG_OUTPUT_BAUDRATE 115200
+#endif
+
 #ifndef DEBUG_WLAN_STATES
 #define DEBUG_WLAN_STATES 0
 #endif
@@ -161,7 +165,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 void setup()
 {
     // Prepare for possible serial debug
-    Serial.begin(115200);
+    Serial.begin(DEBUG_OUTPUT_BAUDRATE);
 
     config.setup();
     config.loadConfig("/config.json");

@@ -30,7 +30,7 @@ sudo pip install -U platformio
 
 ### Get code
 ```
-git clone
+git clone https://github.com/c5n/oh-ez-touch.git
 ```
 
 ### Configuration
@@ -45,7 +45,7 @@ pio run
 ```
 
 ### Upload
-Connect the ESP32 board to your computer. A ttyUSB device should appear. I will likely be /dev/ttyUSB0 if no other USB-serial adapters are connected.
+Connect the ESP32 board to your computer. A ttyUSB device should appear. It will likely be /dev/ttyUSB0 if no other USB-serial adapters are connected.
 
 2 files have to be uploaded: The filesystem image and the firmware.
 
@@ -70,6 +70,48 @@ pio run -t upload -e ArduiTouch --upload-port /dev/ttyUSB0
 For the new version with SMD parts:
 ```
 pio run -t upload -e ArduiTouchMOD --upload-port /dev/ttyUSB0
+```
+
+### Update tool
+To update one or more devices over the air, a simple script is provided in the tools folder.
+
+```
+Usage:
+    ./tools/batchupdate.sh [-p] -t <target> <hostname1> <hostname2> ...
+    ./tools/batchupdate.sh [-p] -l <listfile>
+
+    -p              Parallel multi process update
+
+    -t <target>     Target should be one of the available build targets.
+                    e.g. ArduiTouchMOD
+
+    -l <listfile>   Text file with list of target and hostnames.
+                    Each line has target hostname, separated by tabs or spaces.
+```
+
+If you have more than one ArduiTouch device, it makes sense to create a ```listfile``` with all of your devices.
+
+Example ```myOhEzTouchDevices.txt```:
+```
+Arduitouch      oheztouch-01
+ArduitouchMOD   oheztouch-02
+Arduitouch      oheztouch-03
+```
+
+It is possible to update all devices in parallel by using the ```-p``` option.
+
+#### Update project folder
+```
+git pull
+```
+#### Rebuild targets
+```
+pio run
+```
+#### Roll out update
+Example for update of all of your devices by using the listfile:
+```
+./tools/batchupdate.sh -p -l myOhEzTouchDevices.txt
 ```
 
 ## Usage
@@ -130,7 +172,7 @@ Connect the ArduiTouch to an appropriate power suppy (e.g. 12 V, 300 mA).
 If you have configured your WLAN and other things in the data/config.json file, the ArdioTouch should connect and try to load the sitemap right away. Great, you can skip the following steps.
 
 #### Configure new AP
-On prestine devices, no WLAN is configured. The ArduiTouch will start an AccessPoint called oheztouch-new after about 30 seconds.
+On pristine devices, no WLAN is configured. The ArduiTouch will start an AccessPoint called oheztouch-new after about 30 seconds.
 
 Connect your smartphone to this unsecured WLAN. A notification should appear: "Sign in to a Wi-Fi network". This is the portal page of the ArduiTouch. Click on that.
 
@@ -138,7 +180,7 @@ In the upper right is the menu. Select "Configure new AP".
 
 ![browser_wlanconfig](doc/img/browser_wlanconfig.png)
 
-Fill in your WLAN credentials and click Apply. The ArduiTouch will try to connect. If everything went well, the received IP from your DHCP server will be shown on the display.
+Fill in your WLAN credentials and click Apply. The ArduiTouch will try to connect. If everything went well, the IP received from your DHCP server will be shown on the display.
 
 #### OpenHAB Settings
 ![browser_openhabconfig](doc/img/browser_openhabconfig.png)
@@ -155,7 +197,7 @@ Hostname        | oheztouch-new | Set the hostname of this device according to y
 Setting         | Default       | Description
 --------------- | ------------- | -------------
 Host            | pool.ntp.org  | Host which serves the time. e.g. pool.ntp.org or your router.
-GMT Offset      | 1             | Offset of your timezone from Greenwhich Mean Time
+GMT Offset      | 1             | Offset of your timezone from Greenwich Mean Time
 Daylight Saving | 0             | Daylight saving +1 hour
 
 ##### LCD Backlight Dimming
@@ -182,7 +224,7 @@ Sitemap         | oheztouch     | Name of the sitemap you've setup for this Ardu
 
 ### Fix icons
 
-Some of the original openhab-webui icons are exceptionally large for no reason. Since the ESP32 has limited RAM ressorces, we have to take file sizes into account. Re-encoding of the PNG graphic files using '''convert''' is the solution for now.
+Some of the original openhab-webui icons are exceptionally large for no reason. Since the ESP32 has limited RAM resources, we have to take file sizes into account. Re-encoding of the PNG graphic files using '''convert''' is the solution for now.
 
 ```
 sudo apt install imagemagick
@@ -207,7 +249,7 @@ Contact: c5n AT posteo DOT de
 ## ToDo list
 
 - [ ] openhab_ui: Fix icon loading. Some of the original icon file sizes are too large and have to be reencoded.
-- [ ] openhab_ui: Auto close intem manipulation window after timeout
+- [ ] openhab_ui: Auto close item manipulation window after timeout
 - [ ] openhab_ui: Auto back to homescreen after timeout
 - [ ] openhab_ui: Prefer widget label text instead of item label text
 - [ ] openhab_ui: Add secured sections with PIN protection
