@@ -253,8 +253,8 @@ Contact: c5n AT posteo DOT de
 - [ ] openhab_ui: Auto back to homescreen after timeout
 - [ ] openhab_ui: Prefer widget label text instead of item label text
 - [ ] openhab_ui: Add secured sections with PIN protection
-- [ ] openhab_ui: Improve selection, setpoint and slider elements
-- [ ] ac: Improve OTA firmware update
+- [x] openhab_ui: Improve selection, setpoint and slider elements
+- [x] ac: Improve OTA firmware update --> batchupdate.sh
 - [ ] main: Show portal active icon
 - [ ] openhab_ui: Add theme support
 - [ ] main: Add screen calibration
@@ -264,3 +264,13 @@ Contact: c5n AT posteo DOT de
 
 ## License
 [GNU General Public License v3.0](LICENSE.md)
+
+## Greetings to 3rd party projects and libraries
+This project was created using the following projects and libraries. A big thank you to all of them and the ones I missed:
+
+- https://platformio.org/
+- https://lvgl.io/
+- https://arduinojson.org/
+- https://github.com/Hieromon/AutoConnect
+- https://github.com/Bodmer/TFT_eSPI
+- https://github.com/YiannisBourkelis/Uptime-Library
