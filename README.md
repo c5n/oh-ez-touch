@@ -61,15 +61,15 @@ pio run -t uploadfs --upload-port /dev/ttyUSB0
 ```
 
 #### ArduiTouch
-For the old version with through hole parts for self soldering:
+For the version with the 2.4" display.
 ```
 pio run -t upload -e ArduiTouch --upload-port /dev/ttyUSB0
 ```
 
-#### ArduiTouch MOD
-For the new version with SMD parts:
+#### ArduiTouch 2.8"
+For the version with the 2.8" display.
 ```
-pio run -t upload -e ArduiTouchMOD --upload-port /dev/ttyUSB0
+pio run -t upload -e ArduiTouch28 --upload-port /dev/ttyUSB0
 ```
 
 ### Update tool
@@ -83,7 +83,7 @@ Usage:
     -p              Parallel multi process update
 
     -t <target>     Target should be one of the available build targets.
-                    e.g. ArduiTouchMOD
+                    e.g. ArduiTouch28
 
     -l <listfile>   Text file with list of target and hostnames.
                     Each line has target hostname, separated by tabs or spaces.
@@ -93,9 +93,9 @@ If you have more than one ArduiTouch device, it makes sense to create a ```listf
 
 Example ```myOhEzTouchDevices.txt```:
 ```
-Arduitouch      oheztouch-01
-ArduitouchMOD   oheztouch-02
-Arduitouch      oheztouch-03
+ArduiTouch      oheztouch-01
+ArduiTouch28    oheztouch-02
+ArduiTouch      oheztouch-03
 ```
 
 It is possible to update all devices in parallel by using the ```-p``` option.
