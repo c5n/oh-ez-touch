@@ -76,6 +76,7 @@ int Item::publish(String link)
 
     HTTPClient http;
     http.begin(url);
+    http.addHeader("Content-Type", "text/plain");
 
     String message = {};
 
