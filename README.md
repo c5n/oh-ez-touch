@@ -126,44 +126,34 @@ Sitemaps for the OhEzTouch can contain the following elements:
 - Switch
 - Text
 
-Example Sitemap from my own installation:
+Example sitemap (```oheztouch.sitemap```):
 ```
-sitemap openhabardui_ke_ws2 label="ArduiTouch KE WS2"
+sitemap oheztouch label="OhEzTouch Test"
 {
-    Switch item=UG_WS2_Heizung_PC
-    Switch item=UG_WS2_Licht_Spezial
-    Switch item=UG_WS2_Licht_Decke
-
-    Text label="Ambilight Konfig" icon="colorlight"
+    Switch      item=OHEZTOUCH_Switch
+    Selection   item=OHEZTOUCH_Select mappings=["SEL1"="Selection 1", "SEL2"="Selection 2", "SEL3"="Selection 3", "SEL4"="Selection 4", "SEL5"="Selection 5", "SEL6"="Selection 6"]
+    Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=5 maxValue=180 step=5
+    Slider      item=OHEZTOUCH_Number label="Slider"    minValue=5 maxValue=180 step=5
+    Colorpicker item=OHEZTOUCH_Color
+    Text label="Submenu" icon="settings"
     {
-        Switch item=UG_WS2_Licht_Spezial
-        Selection icon="colorlight" item=UG_WS2_Licht_Spezial_Mode mappings=["AUS"="Off", "ÜBERBLENDEN"="Blend", "ROTER_ALARM"="RED ALERT", "FARBWAHL_1"="Preset 1", "FARBWAHL_2"="Preset 2", "FARBWAHL_3"="Preset 3"]
-        Colorpicker item=UG_WS2_Licht_Spezial_PC_ColorHSB label="Farbe"
-        Slider item=UG_WS2_Licht_Spezial_PC_Speed label="Geschwindigkeit" minValue=1.5 maxValue=20 step=2
-    }
-
-    Selection item=UG_WG2_Ampel_Zustand label="Ampel" mappings=["ROT"="rot", "GELB"="gelb", "GRUEN"="grün", "AUS"="aus"] icon="trafficlight"
-
-    Text label="Lüftung" icon="fan"
-    {
-        Selection item=UG_Belueftung_AutoMode mappings=["AUS"="Aus", "AUTO"="Automatik"]  icon="fan"
-        Selection item=UG_Belueftung_ManuMode mappings=["AUS"="Aus", "LUEFTEN"="Lüften", "ENTFEUCHTEN"="Entfeuchten"]  icon="fan"
-        Text label="Einstellungen" icon="settings"
-        {
-            Setpoint item=UG_Belueftung_ManuLueftenDauer minValue=5 maxValue=180 step=5
-            Setpoint item=UG_Belueftung_ManuEntfeuchtenDauer minValue=1 maxValue=8 step=1
-            Setpoint item=UG_Belueftung_FanOnTime minValue=60 maxValue=3600 step=60
-            Setpoint item=UG_Belueftung_FanOffTime minValue=60 maxValue=3600 step=60
-            Setpoint item=UG_Belueftung_MaxLuftfeuchte minValue=55 maxValue=70 step=1
-        }
-        Text item=KE_Sensor_Luftfeuchtigkeit
-        Text item=KE_Sensor_AbsLuftfeuchtigkeit
+        Switch      item=OHEZTOUCH_Switch
+        Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=5 maxValue=180 step=5
+        Slider      item=OHEZTOUCH_Number label="Slider"    minValue=5 maxValue=180 step=5
+        Text        item=OHEZTOUCH_Number label="Text"
+        Colorpicker item=OHEZTOUCH_Color
     }
 }
+
 ```
-
-The example sitemap will look like the UI of the picture in the [Introduction](#introduction).
-
+Items for example sitemap:
+```
+String OHEZTOUCH_Select     "Selection"         <fan>
+String OHEZTOUCH_String     "String"            <text>
+Switch OHEZTOUCH_Switch     "Switch"            <switch>
+Number OHEZTOUCH_Number     "Number [%d sec]"   <time>
+Color  OHEZTOUCH_Color      "Color [%s]"        <colorlight>
+```
 
 ### Power up
 Connect the ArduiTouch to an appropriate power suppy (e.g. 12 V, 300 mA).
