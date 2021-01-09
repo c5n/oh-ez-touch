@@ -5,6 +5,7 @@
 #include <TFT_eSPI.h>
 #include "WiFi.h"
 #include "esp_wifi.h"
+#include "version.h"
 #include "ac_main.hpp"
 #include "config.hpp"
 #include "ota/basic_ota.hpp"
@@ -167,6 +168,14 @@ void setup()
     // Prepare for possible serial debug
     Serial.begin(DEBUG_OUTPUT_BAUDRATE);
 
+    Serial.printf("\r\n\n");
+    Serial.printf("***********************************************************\r\n");
+    Serial.printf("*                        OhEzTouch                        *\r\n");
+    Serial.printf("***********************************************************\r\n");
+    Serial.printf("\r\nTarget:     %s\r\n", TARGET_NAME);
+    Serial.printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
+    Serial.printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
+    Serial.printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
     config.setup();
     config.loadConfig("/config.json");
 
