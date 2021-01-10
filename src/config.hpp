@@ -3,6 +3,7 @@
 
 #include <ArduinoJson.h>
 #include "SPIFFS.h"
+#include "debug.h"
 
 #ifndef DEBUG_CONFIG
 #define DEBUG_CONFIG 0
@@ -62,7 +63,7 @@ public:
     {
         if (!SPIFFS.begin())
         {
-            Serial.println("Failed to mount file system");
+            debug_printf("Failed to mount file system\n");
             return false;
         }
         return true;
@@ -72,12 +73,12 @@ public:
     {
         config_filename = filename;
 
-        Serial.printf("loadConfig file: %s\n", filename.c_str());
+        debug_printf("loadConfig file: %s\n", filename.c_str());
 
         File configFile = SPIFFS.open(filename, "r");
         if (!configFile)
         {
-            Serial.printf("Failed to open config file");
+            debug_printf("Failed to open config file\n");
             return false;
         }
 
@@ -85,7 +86,7 @@ public:
         if (size > 1024)
         {
             configFile.close();
-            Serial.println("Config file size is too large");
+            debug_printf("Config file size is too large\n");
             return false;
         }
 
@@ -99,7 +100,7 @@ public:
         auto error = deserializeJson(doc, buf.get());
         if (error)
         {
-            Serial.println("Failed to parse config file");
+            debug_printf("Failed to parse config file\n");
             return false;
         }
 
@@ -120,23 +121,23 @@ public:
         strlcpy(item.openhab.sensors.bme280.items.humidity, doc["openhab"]["sensors"]["bme280"]["items"]["humidity"] | "", sizeof(item.openhab.sensors.bme280.items.humidity));
         strlcpy(item.openhab.sensors.bme280.items.pressure, doc["openhab"]["sensors"]["bme280"]["items"]["pressure"] | "", sizeof(item.openhab.sensors.bme280.items.pressure));
 #if DEBUG_CONFIG
-        Serial.println("Config::loadConfig: Loaded Values");
-        Serial.printf("  item.general.hostname: %s\n", item.general.hostname);
-        Serial.printf("  item.ntp.hostname: %s\n", item.ntp.hostname);
-        Serial.printf("  item.ntp.gmt_offset: %d\n", item.ntp.gmt_offset);
-        Serial.printf("  item.ntp.daylightsaving: %d\n", item.ntp.daylightsaving);
-        Serial.printf("  item.backlight.activity_timeout: %s\n", item.backlight.activity_timeout);
-        Serial.printf("  item.backlight.normal_brightness: %s\n", item.backlight.normal_brightness);
-        Serial.printf("  item.backlight.dim_brightness: %s\n", item.backlight.dim_brightness);
-        Serial.printf("  item.beeper.enabled: %d\n", item.beeper.enabled);
-        Serial.printf("  item.openhab.hostname: %s\n", item.openhab.hostname);
-        Serial.printf("  item.openhab.port: %d\n", item.openhab.port);
-        Serial.printf("  item.openhab.sitemap: %s\n", item.openhab.sitemap);
-        Serial.printf("  item.openhab.sensors.bme280.use: %d\n", item.openhab.sensors.bme280.use);
-        Serial.printf("  item.openhab.sensors.bme280.interval: %d\n", item.openhab.sensors.bme280.interval);
-        Serial.printf("  item.openhab.sensors.bme280.items.temperature: %s\n", item.openhab.sensors.bme280.items.temperature);
-        Serial.printf("  item.openhab.sensors.bme280.items.humidity: %s\n", item.openhab.sensors.bme280.items.humidity);
-        Serial.printf("  item.openhab.sensors.bme280.items.pressure: %s\n", item.openhab.sensors.bme280.items.pressure);
+        debug_printf("Config::loadConfig: Loaded Values\n");
+        debug_printf("  item.general.hostname: %s\n", item.general.hostname);
+        debug_printf("  item.ntp.hostname: %s\n", item.ntp.hostname);
+        debug_printf("  item.ntp.gmt_offset: %d\n", item.ntp.gmt_offset);
+        debug_printf("  item.ntp.daylightsaving: %d\n", item.ntp.daylightsaving);
+        debug_printf("  item.backlight.activity_timeout: %lu\n", item.backlight.activity_timeout);
+        debug_printf("  item.backlight.normal_brightness: %u\n", item.backlight.normal_brightness);
+        debug_printf("  item.backlight.dim_brightness: %u\n", item.backlight.dim_brightness);
+        debug_printf("  item.beeper.enabled: %d\n", item.beeper.enabled);
+        debug_printf("  item.openhab.hostname: %s\n", item.openhab.hostname);
+        debug_printf("  item.openhab.port: %d\n", item.openhab.port);
+        debug_printf("  item.openhab.sitemap: %s\n", item.openhab.sitemap);
+        debug_printf("  item.openhab.sensors.bme280.use: %d\n", item.openhab.sensors.bme280.use);
+        debug_printf("  item.openhab.sensors.bme280.interval: %d\n", item.openhab.sensors.bme280.interval);
+        debug_printf("  item.openhab.sensors.bme280.items.temperature: %s\n", item.openhab.sensors.bme280.items.temperature);
+        debug_printf("  item.openhab.sensors.bme280.items.humidity: %s\n", item.openhab.sensors.bme280.items.humidity);
+        debug_printf("  item.openhab.sensors.bme280.items.pressure: %s\n", item.openhab.sensors.bme280.items.pressure);
 #endif
         return true;
     }
@@ -146,12 +147,12 @@ public:
         if (config_filename.isEmpty())
             return false;
 
-        Serial.printf("saveConfig file: %s\n", config_filename.c_str());
+        debug_printf("saveConfig file: %s\n", config_filename.c_str());
 
         File configFile = SPIFFS.open(config_filename, "w");
         if (!configFile)
         {
-            Serial.println("Failed to open config file for writing");
+            debug_printf("Failed to open config file for writing\n");
             return false;
         }
 

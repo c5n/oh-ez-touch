@@ -14,8 +14,7 @@ void openhab_sensor_connector_publish(Config &cfg, String item, String value)
     url += "/rest/items/" + item;
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
-    Serial.print("openhab_sensor_connector_publish: Requesting URL: ");
-    Serial.println(url);
+    debug_printf("openhab_sensor_connector_publish: Requesting URL: %s\n", url.c_str());
 #endif
 
     HTTPClient http;
@@ -29,10 +28,8 @@ void openhab_sensor_connector_publish(Config &cfg, String item, String value)
 
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.print("openhab_sensor_connector_publish: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        debug_printf("openhab_sensor_connector_publish: URL: %s\n", url.c_str());
+        debug_printf("Error on HTTP request. httpCode: %d\n", httpCode);
     }
 
     http.end();

@@ -70,7 +70,7 @@ Infolabel infolabel;
 void my_print(lv_log_level_t level, const char *file, uint32_t line, const char *dsc)
 {
 
-    Serial.printf("%s@%d->%s\r\n", file, line, dsc);
+    debug_printf("%s@%d->%s\r\n", file, line, dsc);
     delay(100);
 }
 #endif
@@ -148,15 +148,15 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         data->point.x = last_x;
         data->point.y = last_y;
 #if DEBUG_DISPLAY_TOUCH
-        if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH x: %u y %u\n", touchX, touchY);
+        if (data->state == LV_INDEV_STATE_PR)
+            debug_printf("DISPLAY_TOUCH x: %u y %u\n", touchX, touchY);
 #endif
     }
 #if DEBUG_DISPLAY_TOUCH
     else
     {
-        if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\n", touchX, touchY);
+        if (data->state == touched)
+            debug_printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\n", touchX, touchY);
     }
 #endif
 
@@ -168,14 +168,14 @@ void setup()
     // Prepare for possible serial debug
     Serial.begin(DEBUG_OUTPUT_BAUDRATE);
 
-    Serial.printf("\r\n\n");
-    Serial.printf("***********************************************************\r\n");
-    Serial.printf("*                        OhEzTouch                        *\r\n");
-    Serial.printf("***********************************************************\r\n");
-    Serial.printf("\r\nTarget:     %s\r\n", TARGET_NAME);
-    Serial.printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
-    Serial.printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
-    Serial.printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
+    debug_printf("\r\n\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("*                        OhEzTouch                        *\r\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("\r\nTarget:     %s\r\n", TARGET_NAME);
+    debug_printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
+    debug_printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
+    debug_printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
     config.setup();
     config.loadConfig("/config.json");
 
@@ -254,14 +254,14 @@ void loop()
     if (WiFi.status() != wlan_status)
     {
 #if DEBUG_WLAN_STATES
-        Serial.printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
+        debug_printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
 #endif
         wlan_status = WiFi.status();
 
         if (wlan_status == WL_CONNECTED)
         {
 #if DEBUG_WLAN_STATES
-            Serial.println("WiFi: WL_CONNECTED");
+            debug_printf("WiFi: WL_CONNECTED\n");
 #endif
             infolabel.destroy();
             openhab_ui_set_wifi_state(true);
@@ -273,7 +273,7 @@ void loop()
         {
             // required by AutoConnect
 #if DEBUG_WLAN_STATES
-            Serial.println("WiFi: WL_IDLE_STATUS");
+            debug_printf("WiFi: WL_IDLE_STATUS\n");
 #endif
             infolabel.create(infolabel.WARNING, "WLAN IDLE", 0);
             lv_task_handler();
@@ -285,7 +285,7 @@ void loop()
         else
         {
 #if DEBUG_WLAN_STATES
-            Serial.println("WiFi: WLAN NOT CONNECTED");
+            debug_printf("WiFi: WLAN NOT CONNECTED\n");
 #endif
             openhab_ui_set_wifi_state(false);
             infolabel.create(infolabel.WARNING, "WLAN NOT CONNECTED", 0);
@@ -307,7 +307,7 @@ void loop()
     {
         offline_timestamp = millis();
 #if DEBUG_WLAN_STATES
-        Serial.println("WiFi: Offline Timeout. Reconnecting...");
+        debug_printf("WiFi: Offline Timeout. Reconnecting...\n");
 #endif
         infolabel.create(infolabel.INFO, " Reconnecting to WiFi AP...", 0);
         lv_task_handler();

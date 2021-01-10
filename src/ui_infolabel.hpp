@@ -1,7 +1,6 @@
 #ifndef UI_INFOLABEL_HPP
 #define UI_INFOLABEL_HPP
 
-#include "Arduino.h"
 #include <lvgl.h>
 
 #ifndef DEBUG_UI_INFOLABEL
@@ -28,8 +27,7 @@ public:
         if (il == NULL)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.print("Infolabel::create: Creating new label Text: ");
-            Serial.println(text);
+            debug_printf("Infolabel::create: Creating new label Text: %s", text.c_str());
 #endif
             lv_style_copy(&label_style, &lv_style_plain);
             label_style.body.border.width = 4;
@@ -67,7 +65,7 @@ public:
         if (il != NULL)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.println("Infolabel::destroy: Destroying label");
+            debug_printf("Infolabel::destroy: Destroying label\n");
 #endif
             lv_obj_del(il);
             il = NULL;
@@ -80,7 +78,7 @@ public:
         if (timeout_timestamp > 0 && millis() >= timeout_timestamp)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.println("Infolabel::loop: infolabel timeout reached");
+            debug_printf("Infolabel::loop: infolabel timeout reached\n");
 #endif
             destroy();
             timeout_timestamp = 0;

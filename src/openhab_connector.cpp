@@ -1,5 +1,6 @@
 #include "openhab_connector.hpp"
 #include <HTTPClient.h>
+#include "debug.h"
 
 #ifndef DEBUG_OPENHAB_CONNECTOR
 #define DEBUG_OPENHAB_CONNECTOR 0
@@ -17,8 +18,7 @@ int Item::update(String link)
     url += "/state";
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::update: Requesting URL: ");
-    Serial.println(url);
+    debug_printf("Item::update: Requesting URL: %s\n", url.c_str());
 #endif
 
     HTTPClient http;
@@ -50,10 +50,8 @@ int Item::update(String link)
     }
     else
     {
-        Serial.print("Item::update: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        debug_printf("Item::update: URL: %s ", url.c_str());
+        debug_printf("Error on HTTP request. httpCode: %d\n", httpCode);
 
         retval = -1;
     }
@@ -70,8 +68,7 @@ int Item::publish(String link)
     String url = link;
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::publish: Requesting URL: ");
-    Serial.println(url);
+    debug_printf("Item::publish: Requesting URL: %s", url.c_str());
 #endif
 
     HTTPClient http;
@@ -97,10 +94,8 @@ int Item::publish(String link)
 
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.print("Item::publish: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        debug_printf("Item::publish: URL: %s ", url.c_str());
+        debug_printf("Error on HTTP request. httpCode: %d", httpCode);
 
         retval = -1;
     }
@@ -117,8 +112,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
     String url = website + "/icon/" + name + "?state=" + state + "&format=png";
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::getIcon: Requesting URL: ");
-    Serial.println(url);
+    debug_printf("Item::getIcon: Requesting URL: %s", url.c_str());
 #endif
 
     HTTPClient http;
@@ -139,7 +133,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
         size_t dst_avail = buffer_size;
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.printf("Item::getIcon: Stream size %u\r\n", stream->available());
+        debug_printf("Item::getIcon: Stream size %u\r\n", stream->available());
 #endif
         stream->setTimeout(2);
 
@@ -163,7 +157,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
             int c = stream->readBytes(p_dst, ((size > dst_avail) ? dst_avail : size));
 
 #if DEBUG_OPENHAB_CONNECTOR
-            Serial.printf("get_icon: %u bytes read\r\n", c);
+            debug_printf("get_icon: %u bytes read\r\n", c);
 #if DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
             for (int i = 0; i < c; i++)
                 printf("%02x ", p_dst[i]);
@@ -189,10 +183,8 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
     }
     else // httpCode != HTTP_CODE_OK
     {
-        Serial.print("Item::getIcon: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        debug_printf("Item::getIcon: URL: %s ", url.c_str());
+        debug_printf("Error on HTTP request. httpCode: %i\n", httpCode);
     }
 
     http.end(); //Free the resources
@@ -210,8 +202,7 @@ int Sitemap::openlink(String url)
     int retval = 0;
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Sitemap::openlink: Requesting URL: ");
-    Serial.println(url);
+    debug_printf("Sitemap::openlink: Requesting URL: %s \n", url.c_str());
 #endif
 
     HTTPClient http;
@@ -224,8 +215,8 @@ int Sitemap::openlink(String url)
         String payload = http.getString();
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.println(httpCode);
-        Serial.println(payload);
+        debug_printf("httpCode: %i\n", httpCode);
+        debug_printf(payload.c_str());
 #endif
 
         // Parse JSON object
@@ -235,30 +226,25 @@ int Sitemap::openlink(String url)
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::NestingLimit(15));
         if (error)
         {
-            Serial.print(F("Sitemap::openlink: deserializeJson() failed: "));
-            Serial.println(error.c_str());
+            debug_printf("Sitemap::openlink: deserializeJson() failed: %s\n", error.c_str());
             return false;
         }
 
         if (doc.containsKey("error"))
         {
-            Serial.print("Sitemap::openlink: json error message: ");
-            Serial.println(doc["error"]["message"].as<String>());
+            debug_printf("Sitemap::openlink: json error message: %s\n", doc["error"]["message"].as<char *>());
             return false;
         }
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.print("Doc memory usage: ");
-        Serial.println(doc.memoryUsage());
-        Serial.println(doc["title"].as<char *>());
+        debug_printf("Doc memory usage: %u\n", doc.memoryUsage());
+        debug_printf("%s\n", doc["title"].as<char *>());
 #endif
     }
     else // httpCode != HTTP_CODE_OK
     {
-        Serial.print("Sitemap::openlink: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        debug_printf("Sitemap::openlink: URL: %s\n", url.c_str());
+        debug_printf("Error on HTTP request. httpCode: %i\n", httpCode);
 
         retval = -1;
     }

@@ -108,7 +108,7 @@ String ac_settings_handler(AutoConnectAux &aux, PageArgument &args)
 String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
 {
 #if DEBUG_AC_SETTINGS
-    Serial.println("openhab_settings_save_handler");
+    debug_printf("openhab_settings_save_handler\n");
 #endif
 
     args.arg("config_general_hostname").toCharArray(current_config->item.general.hostname, sizeof(current_config->item.general.hostname));
@@ -159,7 +159,7 @@ String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
     echo.value += "BME280 pressure item: " + String(current_config->item.openhab.sensors.bme280.items.pressure) + "<br>\r\n";
 
 #if DEBUG_AC_SETTINGS
-    Serial.println(echo.value);
+    debug_printf("%s\n", echo.value.c_str());
 #endif
 
     current_config->saveConfig();

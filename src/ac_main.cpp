@@ -1,6 +1,7 @@
 #include "ac_main.hpp"
 #include "ac_settings.hpp"
 #include "config.hpp"
+#include "debug.h"
 
 #include <WebServer.h>
 #include "ota/HTTPUpdateServer.h"
@@ -34,7 +35,7 @@ HTTPUpdateServer httpUpdater;
 static void page_not_found_handler()
 {
 #if DEBUG_AC_MAIN
-    Serial.println("page_not_found_handler");
+    debug_printf("page_not_found_handler\n");
 #endif
 
     httpServer.sendHeader("Location", "/_ac", true);
@@ -44,7 +45,7 @@ static void page_not_found_handler()
 bool startCP(IPAddress ip)
 {
 #if DEBUG_AC_MAIN
-    Serial.println("ac_main: Captive Portal started, IP:" + WiFi.localIP().toString());
+    debug_printf("ac_main: Captive Portal started, IP: %s\n", WiFi.localIP().toString().c_str());
 #endif
     return true;
 }
@@ -62,8 +63,7 @@ void ac_main_setup(Config *config)
 
     ACConfig.hostName = String(config->item.general.hostname);
 
-    Serial.print("Hostname: ");
-    Serial.println(ACConfig.hostName);
+    debug_printf("Hostname: %s\n", ACConfig.hostName.c_str());
 
     httpUpdater.setup(&httpServer, UPDATER_USERNAME, UPDATER_PASSWORD);
 

@@ -1,6 +1,7 @@
 #include "beeper_control.hpp"
 
 #include "Arduino.h"
+#include "debug.h"
 
 #ifndef DEBUG_BEEPER_CONTROL
 #define DEBUG_BEEPER_CONTROL 0
@@ -27,7 +28,7 @@ static void beeper_task(void *parameter);
 void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause)
 {
 #if DEBUG_BEEPER_CONTROL
-    Serial.printf("beeper_playNote: freq=%u Hz, duration=%u ms\n", note, duration);
+    debug_printf("beeper_playNote: freq=%u Hz, duration=%u ms\n", note, duration);
 #endif
     if (xRequestQueue != 0)
     {
@@ -52,7 +53,7 @@ void beeper_enable(void)
 {
     xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH, sizeof(struct request_s));
     if (xRequestQueue == 0)
-        Serial.println("beeper_setup: Failed to create the queue");
+        debug_printf("beeper_setup: Failed to create the queue\n");
 
     xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL, 1, NULL);
 }
@@ -70,17 +71,5 @@ static void beeper_task(void *parameter)
             ledcWrite(BEEPER_CONTROL_PWM_CHANNEL, 0);
             vTaskDelay(beep_request.pause / portTICK_PERIOD_MS);
         }
-
-#if DEBUG_BEEPER_CONTROL
-        static UBaseType_t stack_free = -1;
-        UBaseType_t stack_free_new = uxTaskGetStackHighWaterMark(NULL);
-
-        if (stack_free_new != stack_free)
-        {
-            stack_free = stack_free_new;
-            Serial.print("beeper_task: stack_free=");
-            Serial.println(stack_free);
-        }
-#endif
     }
 }
