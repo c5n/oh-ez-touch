@@ -70,7 +70,7 @@ Infolabel infolabel;
 void my_print(lv_log_level_t level, const char *file, uint32_t line, const char *dsc)
 {
 
-    debug_printf("%s@%d->%s\r\n", file, line, dsc);
+    debug_printf("%s@%d->%s\n", file, line, dsc);
     delay(100);
 }
 #endif
@@ -168,14 +168,14 @@ void setup()
     // Prepare for possible serial debug
     Serial.begin(DEBUG_OUTPUT_BAUDRATE);
 
-    debug_printf("\r\n\n");
-    debug_printf("***********************************************************\r\n");
-    debug_printf("*                        OhEzTouch                        *\r\n");
-    debug_printf("***********************************************************\r\n");
-    debug_printf("\r\nTarget:     %s\r\n", TARGET_NAME);
-    debug_printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
-    debug_printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
-    debug_printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
+    debug_printf("\n\n");
+    debug_printf("***********************************************************\n");
+    debug_printf("*                        OhEzTouch                        *\n");
+    debug_printf("***********************************************************\n");
+    debug_printf("\nTarget:     %s\n", TARGET_NAME);
+    debug_printf("Version:    %u.%02u\n", VERSION_MAJOR, VERSION_MINOR);
+    debug_printf("GIT Hash:   %s\n", VERSION_GIT_HASH);
+    debug_printf("Build Time: %s %s\n\n",  __DATE__, __TIME__);
     config.setup();
     config.loadConfig("/config.json");
 
@@ -254,7 +254,7 @@ void loop()
     if (WiFi.status() != wlan_status)
     {
 #if DEBUG_WLAN_STATES
-        debug_printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
+        debug_printf("WiFi: state change: %u -> %u\n", wlan_status, WiFi.status());
 #endif
         wlan_status = WiFi.status();
 

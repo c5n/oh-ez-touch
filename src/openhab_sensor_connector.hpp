@@ -21,7 +21,7 @@ void openhab_sensor_connector_publish(Config &cfg, String item, String value)
     http.begin(url);
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
-    printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value.c_str());
+    printf("openhab_sensor_connector_publish: POST Message: %s\n", value.c_str());
 #endif
 
     int httpCode = http.POST(value);

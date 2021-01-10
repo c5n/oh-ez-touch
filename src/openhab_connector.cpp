@@ -87,7 +87,7 @@ int Item::publish(String link)
     }
 
 #if DEBUG_OPENHAB_CONNECTOR
-    printf("Item::publish: POST Message: %s\r\n", message.c_str());
+    printf("Item::publish: POST Message: %s\n", message.c_str());
 #endif
 
     int httpCode = http.POST(message);
@@ -133,7 +133,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
         size_t dst_avail = buffer_size;
 
 #if DEBUG_OPENHAB_CONNECTOR
-        debug_printf("Item::getIcon: Stream size %u\r\n", stream->available());
+        debug_printf("Item::getIcon: Stream size %u\n", stream->available());
 #endif
         stream->setTimeout(2);
 
@@ -157,11 +157,11 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
             int c = stream->readBytes(p_dst, ((size > dst_avail) ? dst_avail : size));
 
 #if DEBUG_OPENHAB_CONNECTOR
-            debug_printf("get_icon: %u bytes read\r\n", c);
+            debug_printf("get_icon: %u bytes read\n", c);
 #if DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
             for (int i = 0; i < c; i++)
                 printf("%02x ", p_dst[i]);
-            printf("\r\n");
+            printf("\n");
 #endif
 #endif
             icon_size += c;

@@ -135,28 +135,28 @@ String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
 
     // Echo back saved parameters to AutoConnectAux page.
     AutoConnectText &echo = aux["parameters"].as<AutoConnectText>();
-    echo.value = "<b>General</b><br>\r\n";
-    echo.value += "Hostname: " + String(current_config->item.general.hostname) + "<br>\r\n";
-    echo.value += "<b>NTP</b><br>\r\n";
-    echo.value += "Server: " + String(current_config->item.ntp.hostname) + "<br>\r\n";
-    echo.value += "GMT Offset: " + String(current_config->item.ntp.gmt_offset) + "<br>\r\n";
-    echo.value += "Daylightsaving: " + String(current_config->item.ntp.daylightsaving) + "<br>\r\n";
-    echo.value += "<b>Backlight</b><br>\r\n";
-    echo.value += "Activity Timeout: " + String(current_config->item.backlight.activity_timeout) + "<br>\r\n";
-    echo.value += "Normal Brightness: " + String(current_config->item.backlight.normal_brightness) + "<br>\r\n";
-    echo.value += "Dim Brightness: " + String(current_config->item.backlight.dim_brightness) + "<br>\r\n";
-    echo.value += "<b>Beeper</b><br>\r\n";
-    echo.value += "Enable Beeper: " + String(current_config->item.beeper.enabled) + "<br>\r\n";
-    echo.value += "<b>Openhab</b><br>\r\n";
-    echo.value += "Server: " + String(current_config->item.openhab.hostname) + "<br>\r\n";
-    echo.value += "Port: " + String(current_config->item.openhab.port) + "<br>\r\n";
-    echo.value += "Sitemap: " + String(current_config->item.openhab.sitemap) + "<br>\r\n";
-    echo.value += "<b>Sensors</b><br>\r\n";
-    echo.value += "BME280 use: " + String(current_config->item.openhab.sensors.bme280.use) + "<br>\r\n";
-    echo.value += "BME280 interval: " + String(current_config->item.openhab.sensors.bme280.interval) + "<br>\r\n";
-    echo.value += "BME280 temperature item: " + String(current_config->item.openhab.sensors.bme280.items.temperature) + "<br>\r\n";
-    echo.value += "BME280 humidity item: " + String(current_config->item.openhab.sensors.bme280.items.humidity) + "<br>\r\n";
-    echo.value += "BME280 pressure item: " + String(current_config->item.openhab.sensors.bme280.items.pressure) + "<br>\r\n";
+    echo.value = "<b>General</b><br>\n";
+    echo.value += "Hostname: " + String(current_config->item.general.hostname) + "<br>\n";
+    echo.value += "<b>NTP</b><br>\n";
+    echo.value += "Server: " + String(current_config->item.ntp.hostname) + "<br>\n";
+    echo.value += "GMT Offset: " + String(current_config->item.ntp.gmt_offset) + "<br>\n";
+    echo.value += "Daylightsaving: " + String(current_config->item.ntp.daylightsaving) + "<br>\n";
+    echo.value += "<b>Backlight</b><br>\n";
+    echo.value += "Activity Timeout: " + String(current_config->item.backlight.activity_timeout) + "<br>\n";
+    echo.value += "Normal Brightness: " + String(current_config->item.backlight.normal_brightness) + "<br>\n";
+    echo.value += "Dim Brightness: " + String(current_config->item.backlight.dim_brightness) + "<br>\n";
+    echo.value += "<b>Beeper</b><br>\n";
+    echo.value += "Enable Beeper: " + String(current_config->item.beeper.enabled) + "<br>\n";
+    echo.value += "<b>Openhab</b><br>\n";
+    echo.value += "Server: " + String(current_config->item.openhab.hostname) + "<br>\n";
+    echo.value += "Port: " + String(current_config->item.openhab.port) + "<br>\n";
+    echo.value += "Sitemap: " + String(current_config->item.openhab.sitemap) + "<br>\n";
+    echo.value += "<b>Sensors</b><br>\n";
+    echo.value += "BME280 use: " + String(current_config->item.openhab.sensors.bme280.use) + "<br>\n";
+    echo.value += "BME280 interval: " + String(current_config->item.openhab.sensors.bme280.interval) + "<br>\n";
+    echo.value += "BME280 temperature item: " + String(current_config->item.openhab.sensors.bme280.items.temperature) + "<br>\n";
+    echo.value += "BME280 humidity item: " + String(current_config->item.openhab.sensors.bme280.items.humidity) + "<br>\n";
+    echo.value += "BME280 pressure item: " + String(current_config->item.openhab.sensors.bme280.items.pressure) + "<br>\n";
 
 #if DEBUG_AC_SETTINGS
     debug_printf("%s\n", echo.value.c_str());
