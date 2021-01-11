@@ -210,7 +210,12 @@ void setup()
     lv_disp_drv_register(&disp_drv);
 
     // Initialize the screen
+    static lv_style_t style_screen;
     lv_obj_t *scr = lv_cont_create(NULL, NULL);
+    lv_style_copy(&style_screen, &lv_style_scr);
+    style_screen.body.main_color = LV_COLOR_BLACK;
+    style_screen.body.grad_color = LV_COLOR_BLACK;
+    lv_obj_set_style(scr, &style_screen);
     lv_disp_load_scr(scr);
 
     // Initialize input device touch
