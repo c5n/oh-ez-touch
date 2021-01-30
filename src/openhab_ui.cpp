@@ -279,7 +279,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        Serial.printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -290,7 +290,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
             hsv += String(lv_cpicker_get_saturation(ctx->state_window_widget)) + ",";
             hsv += String(lv_cpicker_get_value(ctx->state_window_widget));
 #if DEBUG_OPENHAB_UI
-            Serial.printf("hsv string: %s\n", hsv.c_str());
+            Serial.printf("hsv string: %s\r\n", hsv.c_str());
 #endif
             ctx->item.setStateText(hsv);
             ctx->item.publish(ctx->link);
@@ -305,14 +305,14 @@ static void window_item_colorpicker_saturation_event_handler(lv_obj_t *obj, lv_e
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        Serial.printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr && ctx->active == true)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("saturation: %u\n", lv_slider_get_value(obj));
+            Serial.printf("saturation: %u\r\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_saturation(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -326,14 +326,14 @@ static void window_item_colorpicker_value_event_handler(lv_obj_t *obj, lv_event_
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        Serial.printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr && ctx->active == true)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("value: %u\n", lv_slider_get_value(obj));
+            Serial.printf("value: %u\r\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_value(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -456,7 +456,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
     if (event == LV_EVENT_CLICKED)
     {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_selection_event_handler: LV_EVENT_CLICKED\n");
+        printf("window_item_selection_event_handler: LV_EVENT_CLICKED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -480,7 +480,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Label: %s, Command: %s\n", lv_label_get_text(label), command);
+            Serial.printf("button pressed Label: %s, Command: %s\r\n", lv_label_get_text(label), command);
 #endif
             ctx->item.setStateText(command);
             ctx->item.publish(ctx->link);
@@ -493,7 +493,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
 void window_item_selection(struct widget_context_s *ctx)
 {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_selection()\n");
+        printf("window_item_selection()\r\n");
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
@@ -527,12 +527,12 @@ void window_item_selection(struct widget_context_s *ctx)
         lv_obj_set_user_data(label, (lv_obj_user_data_t)ctx->item.getSelectionCommand(index));
 
 #if DEBUG_OPENHAB_UI
-        printf("Label: \"%s\", State: \"%s\"\n", ctx->item.getSelectionLabel(index), ctx->item.getStateText().c_str());
+        printf("Label: \"%s\", State: \"%s\"\r\n", ctx->item.getSelectionLabel(index), ctx->item.getStateText().c_str());
 #endif
         if (strcmp(ctx->item.getSelectionCommand(index), ctx->item.getStateText().c_str()) == 0)
         {
 #if DEBUG_OPENHAB_UI
-        printf("Button pressed!\n");
+        printf("Button pressed!\r\n");
 #endif
             lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
         }
@@ -550,7 +550,7 @@ static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_slider_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        printf("window_item_slider_event_handler: LV_EVENT_VALUE_CHANGED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -638,7 +638,7 @@ static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
     if (event == LV_EVENT_CLICKED)
     {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_setpoint_event_handler: LV_EVENT_CLICKED\n");
+        printf("window_item_setpoint_event_handler: LV_EVENT_CLICKED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -953,7 +953,7 @@ void load_icon(struct widget_context_s *wctx)
 
     if (error)
     {
-        printf("PNG decode error %u: %s\n", error, lodepng_error_text(error));
+        printf("PNG decode error %u: %s\r\n", error, lodepng_error_text(error));
         return;
     }
 
@@ -966,7 +966,7 @@ void load_icon(struct widget_context_s *wctx)
     wctx->img_dsc.data = png_decoded;
 
 #if DEBUG_OPENHAB_UI
-    printf("size: %u x %u, data_size %u\n", png_width, png_height, wctx->img_dsc.data_size);
+    printf("size: %u x %u, data_size %u\r\n", png_width, png_height, wctx->img_dsc.data_size);
 #endif
 }
 
@@ -1297,7 +1297,7 @@ void show(lv_obj_t *parent)
             widget_context[widget].item.setSelectionCount(sitemap.getSelectionCount(widget_index));
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("WidgetType::item_selection MappingCount = %u\n", widget_context[widget].item.getSelectionCount());
+            Serial.printf("WidgetType::item_selection MappingCount = %u\r\n", widget_context[widget].item.getSelectionCount());
 #endif
             for (size_t index = 0; index < widget_context[widget].item.getSelectionCount(); index++)
             {
@@ -1421,7 +1421,7 @@ void openhab_ui_loop(void)
             Serial.print("openhab_ui_loop: openlink failed: ");
             Serial.println(current_page);
 #endif
-            openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED\n" + current_page, 0);
+            openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED\r\n" + current_page, 0);
             refresh_retry_timeout = millis() + GET_SITEMAP_RETRY_INTERVAL;
 
             statistics.sitemap_fail_cnt++;
@@ -1471,7 +1471,7 @@ void openhab_ui_loop(void)
         update_ntp_next_timestamp = millis() + NTP_TIME_UPDATE_INTERVAL;
 
 #if DEBUG_OPENHAB_UI
-        Serial.print("openhab_ui_loop: update time using ntp");
+        Serial.println("openhab_ui_loop: update time using ntp");
 #endif
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
@@ -1502,7 +1502,7 @@ void openhab_ui_loop(void)
 
         uptime::calculateUptime();
 
-        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\n",
+        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
                       uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds(),
                       statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }

@@ -89,7 +89,7 @@ void* lodepng_malloc(size_t size)
 
 #if DEBUG_LODEPNG_MALLOC
     add_ptr(ptr, size);
-    printf("lodepng_malloc: Size: %u Sum: %u Chunks: %u\n", size, get_memsize(), get_chunk_count());
+    printf("lodepng_malloc: Size: %u Sum: %u Chunks: %u\r\n", size, get_memsize(), get_chunk_count());
 #endif
 
   return ptr;
@@ -98,7 +98,7 @@ void* lodepng_malloc(size_t size)
 void* lodepng_realloc(void* ptr, size_t new_size)
 {
  #if DEBUG_LODEPNG_MALLOC
-    printf("lodepng_realloc: Old: %u New: %u Sum: %u\n", get_size(ptr), new_size, get_memsize());
+    printf("lodepng_realloc: Old: %u New: %u Sum: %u\r\n", get_size(ptr), new_size, get_memsize());
     del_ptr(ptr);
 #endif
 
@@ -114,7 +114,7 @@ void* lodepng_realloc(void* ptr, size_t new_size)
 void lodepng_free(void* ptr)
 {
 #if DEBUG_LODEPNG_MALLOC
-    printf("lodepng_free: Size: %u Sum: %u\n", get_size(ptr), get_memsize());
+    printf("lodepng_free: Size: %u Sum: %u\r\n", get_size(ptr), get_memsize());
     del_ptr(ptr);
 #endif
 
