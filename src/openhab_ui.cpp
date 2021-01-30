@@ -77,6 +77,9 @@
         beeper_playNote(NOTE_C2, BEEPER_VOLUME, 800, 0); \
     }
 
+extern void lodepng_free(void* ptr);
+
+
 HTTPClient http;
 Infolabel openhab_ui_infolabel;
 
@@ -902,7 +905,7 @@ void free_icon(lv_img_dsc_t *pdsc)
         return;
     const uint8_t *pref = pdsc->data;
 
-    free((void *)pdsc->data);
+    lodepng_free((void *)pdsc->data);
 
     // clear all cache references
     for (size_t ref = 0; ref < WIDGET_COUNT_MAX; ref++)
@@ -919,7 +922,7 @@ void load_icon(struct widget_context_s *wctx)
 {
     // free old image data
     if (wctx->img_dsc.data != NULL)
-        free((void *)wctx->img_dsc.data);
+        lodepng_free((void *)wctx->img_dsc.data);
 
     // reset image descriptor
     wctx->img_dsc.header.w = 0;
@@ -1410,8 +1413,7 @@ void openhab_ui_loop(void)
             openhab_ui_infolabel.destroy();
             show(content);
 #if DEBUG_OPENHAB_UI
-            Serial.print("Free Heap: ");
-            Serial.println(ESP.getFreeHeap());
+            Serial.printf("FreeHeap: %u MaxAllocHeap: %u\r\n", ESP.getFreeHeap(), ESP.getFreeHeap());
 #endif
             statistics.sitemap_success_cnt++;
         }
