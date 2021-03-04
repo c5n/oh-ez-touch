@@ -77,6 +77,8 @@
         beeper_playNote(NOTE_C2, BEEPER_VOLUME, 800, 0); \
     }
 
+#define IMAGE_DATA_SIZE (64*64*4)
+
 extern void lodepng_free(void* ptr);
 
 
@@ -119,6 +121,7 @@ struct widget_context_s
     lv_style_t container_style;
     lv_obj_t *img_obj = NULL;
     lv_img_dsc_t img_dsc;
+    //uint8_t img_data[IMAGE_DATA_SIZE];
     lv_obj_t *state_widget = NULL;
     lv_style_t state_widget_style;
     lv_obj_t *state_window_widget = NULL;
@@ -892,9 +895,9 @@ void convert_color_depth(uint8_t *img, uint32_t px_cnt)
     uint32_t i;
     for (i = 0; i < px_cnt; i++)
     {
-        c = LV_COLOR_MAKE(img_argb[i].red, img_argb[i].green, img_argb[i].blue);
-        img[i * 3 + 1] = img_argb[i].alpha;
-        img[i * 3 + 0] = c.full
+        c = LV_COLOR_MAKE(img_argb[i].ch.red, img_argb[i].ch.green, img_argb[i].ch.blue);
+        img[i * 3 + 1] = img_argb[i].ch.alpha;
+        img[i * 3 + 0] = c.full;
     }
 #endif
 }

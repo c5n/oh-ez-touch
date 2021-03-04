@@ -91,8 +91,15 @@ void* lodepng_malloc(size_t size)
     void* ptr = malloc(size);
 
 #if DEBUG_LODEPNG_MALLOC
-    add_ptr(ptr, size);
-    printf("lodepng_malloc: Size: %u Sum: %u Chunks: %u Free: %u\r\n", size, get_memsize(), get_chunk_count(), ESP.getFreeHeap());
+    if (ptr != NULL)
+    {
+        add_ptr(ptr, size);
+        printf("lodepng_malloc: Size: %u Sum: %u Chunks: %u Free: %u MaxBlk: %u\r\n", size, get_memsize(), get_chunk_count(), ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT));
+    }
+    else
+    {
+        printf("lodepng_malloc failed: Size: %u Sum: %u Chunks: %u Free: %u MaxBlk: %u\r\n", size, get_memsize(), get_chunk_count(), ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT));
+    }
 #endif
 
   return ptr;
@@ -102,13 +109,24 @@ void* lodepng_realloc(void* ptr, size_t new_size)
 {
  #if DEBUG_LODEPNG_MALLOC
     printf("lodepng_realloc: Old: %u New: %u Sum: %u\r\n", get_size(ptr), new_size, get_memsize() - get_size(ptr) + new_size);
-    del_ptr(ptr);
+
+    if (ptr != NULL)
+    {
+        del_ptr(ptr);
+    }
 #endif
 
     void* new_ptr = realloc(ptr, new_size);
 
 #if DEBUG_LODEPNG_MALLOC
-    add_ptr(new_ptr, new_size);
+    if (new_ptr != NULL)
+    {
+        add_ptr(new_ptr, new_size);
+    }
+    else
+    {
+        printf("lodepng_realloc failed\r\n");
+    }
 #endif
 
     return new_ptr;
