@@ -36,6 +36,8 @@
 #define CONNECTION_ERROR_TIMEOUT_S 180
 #endif
 
+#define HEADER_SIGNAL_UPDATE_INTERVAL 5000
+
 #define ICON_PNG_BUFFER_SIZE 5000
 
 #ifndef BEEPER_VOLUME
@@ -95,6 +97,7 @@ struct header_s
         lv_obj_t *clock = nullptr;
         lv_obj_t *title = nullptr;
         lv_obj_t *wifi = nullptr;
+        lv_obj_t *signal = nullptr;
     } item;
 };
 
@@ -142,6 +145,16 @@ bool refresh_page;
 String current_page;
 String current_website;
 
+uint8_t get_signal_quality(int8_t rssi)
+{
+    if (rssi < -100)
+        return 0;
+    else if (rssi > -50)
+        return 100;
+    else
+        return 2 * (rssi + 100);
+}
+
 void window_close_event_handler(lv_obj_t *btn, lv_event_t event)
 {
     if (event == LV_EVENT_RELEASED)
@@ -185,7 +198,7 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         lv_table_set_style(table, LV_TABLE_STYLE_CELL1, &style_cell1);
         lv_table_set_style(table, LV_TABLE_STYLE_BG, &lv_style_transp_tight);
         lv_table_set_col_cnt(table, 2);
-        lv_table_set_row_cnt(table, 8);
+        lv_table_set_row_cnt(table, 11);
         lv_coord_t table_width = lv_disp_get_hor_res(NULL) - 10;
         lv_table_set_col_width(table, 0, table_width * 30 / 100);
         lv_table_set_col_width(table, 1, table_width * 70 / 100);
@@ -210,23 +223,27 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         lv_table_set_cell_value(table, ++row, 0, "SSID");
         lv_table_set_cell_value(table, row, 1, WiFi.SSID().c_str());
 
+        lv_table_set_cell_value(table, ++row, 0, "BSSID");
+        lv_table_set_cell_value(table, row, 1, WiFi.BSSIDstr().c_str());
+
         lv_table_set_cell_value(table, ++row, 0, "RSSI");
-        uint8_t signal_quality = 100;
+
         int8_t signal_rssi = WiFi.RSSI();
 
-        if (signal_rssi < -100)
-            signal_quality = 0;
-        else if (signal_rssi > -50)
-            signal_quality = 100;
-        else
-            signal_quality = 2 * (signal_rssi + 100);
-
-        sprintf(temp_buffer, "%i dBm (%u %%)", signal_rssi, signal_quality);
+        sprintf(temp_buffer, "%i dBm (%u %%)", signal_rssi, get_signal_quality(signal_rssi));
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
-        lv_table_set_cell_value(table, ++row, 0, "IP");
+        lv_table_set_cell_value(table, ++row, 0, "MAC");
+        lv_table_set_cell_value(table, row, 1, WiFi.macAddress().c_str());
+
+        lv_table_set_cell_value(table, ++row, 0, "IP Addr.");
         IPAddress ip = WiFi.localIP();
         sprintf(temp_buffer, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+        lv_table_set_cell_value(table, row, 1, temp_buffer);
+
+        lv_table_set_cell_value(table, ++row, 0, "Mask");
+        IPAddress mask = WiFi.subnetMask();
+        sprintf(temp_buffer, "%u.%u.%u.%u", mask[0], mask[1], mask[2], mask[3]);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
         lv_table_set_cell_value(table, ++row, 0, "Gateway");
@@ -974,7 +991,11 @@ static void header_create(void)
 
     header.item.wifi = lv_label_create(header.container, NULL);
     lv_label_set_text(header.item.wifi, LV_SYMBOL_POWER);
-    lv_obj_align(header.item.wifi, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 10, 0);
+    lv_obj_align(header.item.wifi, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 2, 0);
+
+    header.item.signal = lv_label_create(header.container, NULL);
+    lv_label_set_text(header.item.signal, "  %");
+    lv_obj_align(header.item.signal, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 5, 0);
 
     header.item.title = lv_label_create(header.container, NULL);
     lv_label_set_text(header.item.title, "Welcome to OhEzTouch");
@@ -991,22 +1012,30 @@ static void header_set_title(String text)
     lv_label_set_text(header.item.title, text.c_str());
 }
 
-static void header_update_clock()
+static void header_update()
 {
     static int last_second;
     struct tm timeinfo;
 
-    if (!getLocalTime(&timeinfo, 0))
-        return;
-
-    if (timeinfo.tm_sec != last_second)
+    if (getLocalTime(&timeinfo, 0))
     {
-        last_second = timeinfo.tm_sec;
+        if (timeinfo.tm_sec != last_second)
+        {
+            last_second = timeinfo.tm_sec;
 
-        if (timeinfo.tm_sec % 2 == 0)
-            lv_label_set_text_fmt(header.item.clock, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-        else
-            lv_label_set_text_fmt(header.item.clock, "%02d %02d", timeinfo.tm_hour, timeinfo.tm_min);
+            if (timeinfo.tm_sec % 2 == 0)
+                lv_label_set_text_fmt(header.item.clock, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
+            else
+                lv_label_set_text_fmt(header.item.clock, "%02d %02d", timeinfo.tm_hour, timeinfo.tm_min);
+        }
+    }
+
+    static unsigned long signal_last_update;
+
+    if (millis() > signal_last_update + HEADER_SIGNAL_UPDATE_INTERVAL)
+    {
+        signal_last_update = millis();
+        lv_label_set_text_fmt(header.item.signal, "%02d%%", get_signal_quality(WiFi.RSSI()));
     }
 }
 
@@ -1447,7 +1476,7 @@ void openhab_ui_loop(void)
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
 
-    header_update_clock();
+    header_update();
 
     if (millis() > connection_error_handling_timestamp + (CONNECTION_ERROR_TIMEOUT_S * 1000))
     {

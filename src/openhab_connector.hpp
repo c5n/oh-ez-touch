@@ -195,7 +195,7 @@ public:
     {
         JsonVariant v = getWidget(index);
 
-        float retval = 0.0f;
+        float retval = 100.0f;
 
         if (v["maxValue"])
             retval = v["maxValue"].as<float>();
