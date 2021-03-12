@@ -198,7 +198,7 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         lv_table_set_style(table, LV_TABLE_STYLE_CELL1, &style_cell1);
         lv_table_set_style(table, LV_TABLE_STYLE_BG, &lv_style_transp_tight);
         lv_table_set_col_cnt(table, 2);
-        lv_table_set_row_cnt(table, 8);
+        lv_table_set_row_cnt(table, 11);
         lv_coord_t table_width = lv_disp_get_hor_res(NULL) - 10;
         lv_table_set_col_width(table, 0, table_width * 30 / 100);
         lv_table_set_col_width(table, 1, table_width * 70 / 100);
@@ -223,6 +223,9 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         lv_table_set_cell_value(table, ++row, 0, "SSID");
         lv_table_set_cell_value(table, row, 1, WiFi.SSID().c_str());
 
+        lv_table_set_cell_value(table, ++row, 0, "BSSID");
+        lv_table_set_cell_value(table, row, 1, WiFi.BSSIDstr().c_str());
+
         lv_table_set_cell_value(table, ++row, 0, "RSSI");
 
         int8_t signal_rssi = WiFi.RSSI();
@@ -230,9 +233,17 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         sprintf(temp_buffer, "%i dBm (%u %%)", signal_rssi, get_signal_quality(signal_rssi));
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
-        lv_table_set_cell_value(table, ++row, 0, "IP");
+        lv_table_set_cell_value(table, ++row, 0, "MAC");
+        lv_table_set_cell_value(table, row, 1, WiFi.macAddress().c_str());
+
+        lv_table_set_cell_value(table, ++row, 0, "IP Addr.");
         IPAddress ip = WiFi.localIP();
         sprintf(temp_buffer, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
+        lv_table_set_cell_value(table, row, 1, temp_buffer);
+
+        lv_table_set_cell_value(table, ++row, 0, "Mask");
+        IPAddress mask = WiFi.subnetMask();
+        sprintf(temp_buffer, "%u.%u.%u.%u", mask[0], mask[1], mask[2], mask[3]);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
         lv_table_set_cell_value(table, ++row, 0, "Gateway");
