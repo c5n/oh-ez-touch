@@ -20,6 +20,7 @@ void openhab_sensor_connector_publish(Config &cfg, String item, String value)
 
     HTTPClient http;
     http.begin(url);
+    http.addHeader("Content-Type", "text/plain");
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
     printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value.c_str());
