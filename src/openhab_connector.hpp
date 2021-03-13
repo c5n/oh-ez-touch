@@ -23,15 +23,25 @@ enum WidgetType
 
 enum ItemType
 {
+    type_parent_link,
+    type_link,
     type_number,
-    type_text,
+    type_string,
+    type_setpoint,
+    type_slider,
     type_selection,
+    type_colorpicker,
+    type_switch,
+    type_rollershutter,
+    type_player,
     type_unknown
 };
 
 class Item
 {
 private:
+    String label = {};
+    String icon_name = {};
     enum ItemType type = type_unknown;
     String state_text = {};
     float state_number = 0.0f;
@@ -43,6 +53,7 @@ private:
     char selection_command[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_COMMAND_LEN_MAX] = {};
     char selection_label[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_LABEL_LEN_MAX] = {};
     size_t mapping_count = 0;
+    String link = {};
 
 public:
     int update(String link);
@@ -50,6 +61,12 @@ public:
 
     size_t getIcon(String website, String name, String state, unsigned char *buffer, size_t buffer_size);
 
+    void setLabel(String newlabel) { label = newlabel; }
+    String getLabel() { return label; }
+    void setIconName(String newiconname) { icon_name = newiconname; }
+    String getIconName() { return icon_name; }
+    void setLink(String newlink) { link = newlink; }
+    String getLink() { return link; }
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
     String getStateText() { return state_text; }
@@ -82,219 +99,14 @@ class Sitemap
 {
 private:
     StaticJsonDocument<12000> doc;
-
-    JsonVariant getWidget(size_t index)
-    {
-        JsonArray array = doc["widgets"].as<JsonArray>();
-        return array.getElement(index);
-    }
+    String title;
+    Item item_array[6];
 
 public:
     int openlink(String url);
 
-    String getPageName()
-    {
-        return (doc["title"]);
-    }
-
-    bool hasParent()
-    {
-        if (doc["parent"]["link"])
-            return true;
-
-        return false;
-    }
-
-    String getParentLink()
-    {
-        return (doc["parent"]["link"]);
-    }
-
-    bool hasChild(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        if (v["linkedPage"]["link"])
-            return true;
-
-        return false;
-    }
-
-    String getChildLink(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        return v["linkedPage"]["link"];
-    }
-
-    size_t getWidgetcount()
-    {
-        JsonArray array = doc["widgets"].as<JsonArray>();
-        return array.size();
-    }
-
-    String getWidgetIconName(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        return v["icon"];
-    }
-
-    String getWidgetLabel(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-
-        if (v["linkedPage"])
-            return v["linkedPage"]["title"];
-        else if (v["item"])
-            return v["item"]["label"];
-
-        return "NO_LABEL";
-    }
-
-    WidgetType getWidgetType(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        if (v["type"] == "Text")
-            return WidgetType::item_text;
-        else if (v["type"] == "Switch")
-            return WidgetType::item_switch;
-        else if (v["type"] == "Setpoint")
-            return WidgetType::item_setpoint;
-        else if (v["type"] == "Slider")
-            return WidgetType::item_slider;
-        else if (v["type"] == "Selection")
-            return WidgetType::item_selection;
-        else if (v["type"] == "Colorpicker")
-            return WidgetType::item_colorpicker;
-
-        return WidgetType::unknown;
-    }
-
-    ItemType getWidgetItemType(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        if (v["item"]["type"].as<String>() >= "Number")
-            return ItemType::type_number;
-
-        return ItemType::type_text;
-    }
-
-    float getWidgetItemMinVal(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-
-        float retval = 0.0f;
-
-        if (v["minValue"])
-            retval = v["minValue"].as<float>();
-        else if (v["item"]["stateDescription"]["minimum"])
-            retval = v["item"]["stateDescription"]["minimum"].as<float>();
-
-        return retval;
-    }
-
-    float getWidgetItemMaxVal(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-
-        float retval = 100.0f;
-
-        if (v["maxValue"])
-            retval = v["maxValue"].as<float>();
-        else if (v["item"]["stateDescription"]["maximum"])
-            retval = v["item"]["stateDescription"]["maximum"].as<float>();
-
-        return retval;
-    }
-
-    float getWidgetItemStep(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-
-        float retval = 1.0f;
-
-        if (v["step"])
-            retval = v["step"].as<float>();
-        else if (v["item"]["stateDescription"]["step"])
-            retval = v["item"]["stateDescription"]["step"].as<float>();
-
-        return retval;
-    }
-
-    String getWidgetItemState(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        return v["item"]["state"];
-    }
-
-    String getWidgetItemPattern(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        if (v["item"]["stateDescription"]["pattern"])
-            return v["item"]["stateDescription"]["pattern"];
-        else
-            return "%d";
-    }
-
-    String getWidgetItemLink(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        return v["item"]["link"];
-    }
-
-    size_t getSelectionCount(size_t index)
-    {
-        JsonVariant v = getWidget(index);
-        if (v["mappings"] && v["mappings"].as<JsonArray>().size() > 0)
-        {
-            JsonArray array = v["mappings"].as<JsonArray>();
-            return array.size();
-        }
-        else if (v["item"]["commandDescription"]["commandOptions"])
-        {
-            JsonArray array = v["item"]["commandDescription"]["commandOptions"].as<JsonArray>();
-            return array.size();
-        }
-        return 0;
-    }
-
-    String getSelectionCommand(size_t wid_index, size_t sel_index)
-    {
-        JsonVariant v = getWidget(wid_index);
-        JsonArray array;
-        if (v["mappings"] && v["mappings"].as<JsonArray>().size() > 0)
-        {
-            array = v["mappings"].as<JsonArray>();
-        }
-        else if (v["item"]["commandDescription"]["commandOptions"])
-        {
-            array = v["item"]["commandDescription"]["commandOptions"].as<JsonArray>();
-        }
-        else
-        {
-            return "";
-        }
-        JsonVariant w = array.getElement(sel_index);
-        return w["command"];
-    }
-
-    String getSelectionLabel(size_t wid_index, size_t sel_index)
-    {
-        JsonVariant v = getWidget(wid_index);
-        JsonArray array;
-        if (v["mappings"] && v["mappings"].as<JsonArray>().size() > 0)
-        {
-            array = v["mappings"].as<JsonArray>();
-        }
-        else if (v["item"]["commandDescription"]["commandOptions"])
-        {
-            array = v["item"]["commandDescription"]["commandOptions"].as<JsonArray>();
-        }
-        else
-        {
-            return "";
-        }
-        JsonVariant w = array.getElement(sel_index);
-        return w["label"];
-    }
+    String getPageName() { return title; }
+    Item* getItem(size_t index) { return &item_array[index]; }
 };
 
 #endif
