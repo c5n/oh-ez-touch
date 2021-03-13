@@ -149,14 +149,14 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         data->point.y = last_y;
 #if DEBUG_DISPLAY_TOUCH
         if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH x: %u y %u\n", touchX, touchY);
+            Serial.printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
 #endif
     }
 #if DEBUG_DISPLAY_TOUCH
     else
     {
         if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\n", touchX, touchY);
+            Serial.printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\r\n", touchX, touchY);
     }
 #endif
 
