@@ -30,24 +30,24 @@ int Item::update(String link)
 
     if (httpCode == HTTP_CODE_OK)
     {
-        String state = http.getString();
+        String remote_state = http.getString();
 
-        if (type == ItemType::type_number)
+        // State
+        if (   Item::type == ItemType::type_number
+            || Item::type == ItemType::type_setpoint
+            || Item::type == ItemType::type_slider)
         {
-            float new_state = state.toFloat();
-            if (state_number != new_state)
-            {
-                retval = 1;
-                state_number = new_state;
-            }
+            // convert number to get rid of unit
+            remote_state = String(remote_state.toFloat());
         }
-        else
+
+        if (state_text != remote_state)
         {
-            if (state_text != state)
-            {
-                retval = 1;
-                state_text = state;
-            }
+            retval = 1;
+            Item::state_text = remote_state;
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  update statetext to \"%s\"\r\n", Item::state_text.c_str());
+#endif
         }
     }
     else
@@ -82,14 +82,7 @@ int Item::publish(String link)
 
     String message = {};
 
-    if (type == ItemType::type_number)
-    {
-        message = String(state_number);
-    }
-    else
-    {
-        message = String(state_text);
-    }
+    message = String(state_text);
 
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::publish: POST Message: %s\r\n", message.c_str());
@@ -252,101 +245,169 @@ int Sitemap::openlink(String url)
 #if DEBUG_OPENHAB_CONNECTOR
         Serial.print("Doc memory usage: ");
         Serial.println(doc.memoryUsage());
-        Serial.println(doc["title"].as<char *>());
 #endif
 
         title = doc["title"].as<String>();
 
+#if DEBUG_OPENHAB_CONNECTOR
+        printf("Sitemap::openlink(\"%s\")\r\n", url.c_str());
+        printf("  title=\"%s\"", title.c_str());
+#endif
+
+        // Cleanup Items
+        for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+        {
+            item_array[i].cleanItem();
+        }
+
         // Update Items
         size_t array_index = 0;
 
-        // check if current location is a child of the sitemap
+        // if current location is a child of the sitemap then set first item
         if (doc["parent"]["link"])
         {
-            item_array[array_index].setLink(doc["parent"]["link"]);
             item_array[array_index].setType(ItemType::type_parent_link);
+            item_array[array_index].setLink(doc["parent"]["link"]);
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  type=parent_link   link=\"%s\"", item_array[array_index].getLink().c_str());
+#endif
+
+            ++array_index;
+
         }
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
 
-        for (int widget_index = 0; widget_index < widget_array.size(); widget_index++)
+        for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array.getElement(widget_index);
+            Item* item = &item_array[array_index];
 
             // Label
             if (widget["linkedPage"])
-                item_array[array_index].setLabel(widget["linkedPage"]["title"]);
+                item->setLabel(widget["linkedPage"]["title"]);
             else if (widget["item"])
-                item_array[array_index].setLabel(widget["item"]["label"]);
+                item->setLabel(widget["item"]["label"]);
             else
-                item_array[array_index].setLabel("NO LABEL");
+                item->setLabel("NO LABEL");
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  label=\"%s\"", item->getLabel().c_str());
+#endif
 
             // Icon
             if (widget["icon"])
-                item_array[array_index].setIconName(widget["icon"]);
+            {
+                item->setIconName(widget["icon"]);
+#if DEBUG_OPENHAB_CONNECTOR
+                printf("  icon=\"%s\"", item->getIconName().c_str());
+#endif
+            }
 
             // Type
             if (widget["linkedPage"]["link"])
-                item_array[array_index].setType(ItemType::type_link);
+                item->setType(ItemType::type_link);
             else if (widget["type"] == "Text")
-                item_array[array_index].setType(ItemType::type_string);
+            {
+                if (widget["item"]["type"] && widget["item"]["type"].as<String>() >= "Number")
+                    item->setType(ItemType::type_number);
+                else
+                    item->setType(ItemType::type_string);
+            }
             else if (widget["type"] == "Switch")
             {
                 if (widget["item"]["type"].as<String>() == "Switch")
-                    item_array[array_index].setType(ItemType::type_switch);
+                    item->setType(ItemType::type_switch);
                 else if (widget["item"]["type"].as<String>() == "Rollershutter")
-                    item_array[array_index].setType(ItemType::type_rollershutter);
+                    item->setType(ItemType::type_rollershutter);
                 else if (widget["item"]["type"].as<String>() == "Player")
-                    item_array[array_index].setType(ItemType::type_player);
+                    item->setType(ItemType::type_player);
             }
             else if (widget["type"] == "Setpoint")
-                item_array[array_index].setType(ItemType::type_setpoint);
+                item->setType(ItemType::type_setpoint);
             else if (widget["type"] == "Slider")
-                item_array[array_index].setType(ItemType::type_slider);
+                item->setType(ItemType::type_slider);
             else if (widget["type"] == "Selection")
-                item_array[array_index].setType(ItemType::type_selection);
+                item->setType(ItemType::type_selection);
             else if (widget["type"] == "Colorpicker")
-                item_array[array_index].setType(ItemType::type_colorpicker);
+                item->setType(ItemType::type_colorpicker);
+
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  type=%u", item->getType());
+#endif
 
             // MinVal
             if (widget["minValue"])
-                item_array[array_index].setMinVal(widget["minValue"].as<float>());
+                item->setMinVal(widget["minValue"].as<float>());
             else if (widget["item"]["stateDescription"]["minimum"])
-                item_array[array_index].setMinVal(widget["item"]["stateDescription"]["minimum"].as<float>());
+                item->setMinVal(widget["item"]["stateDescription"]["minimum"].as<float>());
             else
-                item_array[array_index].setMinVal(0.0f);
+                item->setMinVal(0.0f);
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  minVal=%.2f", item->getMinVal());
+#endif
 
             // MaxVal
             if (widget["maxValue"])
-                item_array[array_index].setMaxVal(widget["maxValue"].as<float>());
+                item->setMaxVal(widget["maxValue"].as<float>());
             else if (widget["item"]["stateDescription"]["maximum"])
-                item_array[array_index].setMaxVal(widget["item"]["stateDescription"]["maximum"].as<float>());
+                item->setMaxVal(widget["item"]["stateDescription"]["maximum"].as<float>());
             else
-                item_array[array_index].setMaxVal(100.0f);
+                item->setMaxVal(100.0f);
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  maxVal=%.2f", item->getMaxVal());
+#endif
 
             // Step
             if (widget["step"])
-                item_array[array_index].setStep(widget["step"].as<float>());
+                item->setStep(widget["step"].as<float>());
             else if (widget["item"]["stateDescription"]["step"])
-                item_array[array_index].setStep(widget["item"]["stateDescription"]["step"].as<float>());
+                item->setStep(widget["item"]["stateDescription"]["step"].as<float>());
             else
-                item_array[array_index].setStep(1.0f);
-
-            if (widget["item"]["state"])
-                item_array[array_index].setStateText(widget["item"]["state"]);
-                // ToDo Numbers!
+                item->setStep(1.0f);
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  step=%.2f", item->getStep());
+#endif
 
             // Number format string
             if (widget["item"]["stateDescription"]["pattern"])
-                item_array[array_index].setNumberPattern(widget["item"]["stateDescription"]["pattern"]);
+                item->setNumberPattern(widget["item"]["stateDescription"]["pattern"]);
             else
-                item_array[array_index].setNumberPattern("%d");
+                item->setNumberPattern("%d");
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  numpat=\"%s\"", item->getNumberPattern().c_str());
+#endif
+
+            // State
+            if (widget["item"]["state"])
+            {
+                if (   item->getType() == ItemType::type_number
+                    || item->getType() == ItemType::type_setpoint
+                    || item->getType() == ItemType::type_slider)
+                {
+                    // convert number to get rid of unit
+                    item->setStateNumber(widget["item"]["state"].as<String>().toFloat());
+#if DEBUG_OPENHAB_CONNECTOR
+                    printf("  num-statetext=\"%s\"", item->getStateText().c_str());
+#endif
+                }
+                else
+                {
+                    item->setStateText(widget["item"]["state"]);
+#if DEBUG_OPENHAB_CONNECTOR
+                    printf("  statetext=\"%s\"", item->getStateText().c_str());
+#endif
+                }
+            }
 
             // Link
-            if (item_array[array_index].getType() == ItemType::type_link)
-                item_array[array_index].setLink(widget["linkedPage"]["link"]);
+            if (item->getType() == ItemType::type_link)
+                item->setLink(widget["linkedPage"]["link"]);
             else
-                item_array[array_index].setLink(widget["item"]["link"]);
+                item->setLink(widget["item"]["link"]);
+
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  link=\"%s\"", item->getLink().c_str());
+#endif
 
             // Mappings
             if (widget["mappings"])
@@ -355,10 +416,10 @@ int Sitemap::openlink(String url)
                 for (size_t i = 0; i < map_array.size(); ++i)
                 {
                     JsonVariant map_elem = map_array.getElement(i);
-                    item_array[array_index].setSelectionLabel(i, map_elem["label"]);
-                    item_array[array_index].setSelectionCommand(i, map_elem["command"]);
+                    item->setSelectionLabel(i, map_elem["label"]);
+                    item->setSelectionCommand(i, map_elem["command"]);
                 }
-                item_array[array_index].setSelectionCount(map_array.size());
+                item->setSelectionCount(map_array.size());
             }
             else if (widget["item"]["commandDescription"]["commandOptions"])
             {
@@ -366,11 +427,15 @@ int Sitemap::openlink(String url)
                 for (size_t i = 0; i < map_array.size(); ++i)
                 {
                     JsonVariant map_elem = map_array.getElement(i);
-                    item_array[array_index].setSelectionLabel(i, map_elem["label"]);
-                    item_array[array_index].setSelectionCommand(i, map_elem["command"]);
+                    item->setSelectionLabel(i, map_elem["label"]);
+                    item->setSelectionCommand(i, map_elem["command"]);
                 }
-                item_array[array_index].setSelectionCount(map_array.size());
+                item->setSelectionCount(map_array.size());
             }
+
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("\r\n");
+#endif
 
             ++array_index;
 

@@ -44,8 +44,6 @@ private:
     String icon_name = {};
     enum ItemType type = type_unknown;
     String state_text = {};
-    float state_number = 0.0f;
-    int state_decimal = 0;
     String pattern = {};
     float min_val = 0.0f;
     float max_val = 0.0f;
@@ -59,28 +57,46 @@ public:
     int update(String link);
     int publish(String link);
 
+    void cleanItem()
+    {
+        label = "";
+        icon_name = "";
+        type = type_unknown;
+        state_text = "";
+        link = "";
+    }
+
     size_t getIcon(String website, String name, String state, unsigned char *buffer, size_t buffer_size);
 
     void setLabel(String newlabel) { label = newlabel; }
     String getLabel() { return label; }
+
     void setIconName(String newiconname) { icon_name = newiconname; }
     String getIconName() { return icon_name; }
+
     void setLink(String newlink) { link = newlink; }
     String getLink() { return link; }
+
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
+
     String getStateText() { return state_text; }
     void setStateText(String newtext) { state_text = newtext; }
-    float getStateNumber() { return state_number; }
-    void setStateNumber(float newnumber) { state_number = newnumber; }
+    float getStateNumber() { return state_text.toFloat(); }
+    void setStateNumber(float newnumber) { state_text = String(newnumber); }
+
     String getNumberPattern() { return pattern; }
     void setNumberPattern(String newpattern) { pattern = newpattern; }
+
     float getMinVal() { return min_val; }
     void setMinVal(float newval) { min_val = newval; }
+
     float getMaxVal() { return max_val; }
     void setMaxVal(float newval) { max_val = newval; }
+
     float getStep() { return step_val; }
     void setStep(float newval) { step_val = newval; }
+
     char *getSelectionCommand(size_t index) { return selection_command[index]; }
     void setSelectionCommand(size_t index, const char *command)
     {

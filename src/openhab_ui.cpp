@@ -73,14 +73,11 @@
     }
 #define BEEPER_EVENT_ERROR()                 \
     {                                        \
-        beeper_playNote(NOTE_C3, BEEPER_VOLUME, 400, 0); \
-        beeper_playNote(NOTE_C2, BEEPER_VOLUME, 800, 0); \
+        beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
+        beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
     }
 
-#define IMAGE_DATA_SIZE (64*64*4)
-
 extern void lodepng_free(void* ptr);
-
 
 HTTPClient http;
 Infolabel openhab_ui_infolabel;
@@ -112,21 +109,15 @@ static lv_obj_t *content = nullptr;
 
 struct widget_context_s
 {
-    bool active = false;
     unsigned long update_timestamp = 0;
     bool refresh_request = false;
-    String label;
-    String iconname;
     lv_obj_t *container = NULL;
     lv_style_t container_style;
     lv_obj_t *img_obj = NULL;
     lv_img_dsc_t img_dsc;
-    //uint8_t img_data[IMAGE_DATA_SIZE];
     lv_obj_t *state_widget = NULL;
     lv_style_t state_widget_style;
     lv_obj_t *state_window_widget = NULL;
-    size_t sitemap_widget_index;
-    String link = {};
     Item *item = NULL;
 };
 
@@ -144,7 +135,6 @@ struct widget_context_s widget_context[WIDGET_COUNT_MAX];
 
 struct statistics_s statistics;
 
-void set_item_state(const char *link, struct item_context_s *item_ctx);
 void update_state_widget(struct widget_context_s *ctx);
 
 bool refresh_page;
@@ -289,7 +279,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
             String hsv = {};
             hsv += String(lv_cpicker_get_hue(ctx->state_window_widget)) + ",";
@@ -299,7 +289,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
             Serial.printf("hsv string: %s\n", hsv.c_str());
 #endif
             ctx->item->setStateText(hsv);
-            ctx->item->publish(ctx->link);
+            ctx->item->publish(ctx->item->getLink());
             ctx->refresh_request = true;
             BEEPER_EVENT_CHANGE();
         }
@@ -315,7 +305,7 @@ static void window_item_colorpicker_saturation_event_handler(lv_obj_t *obj, lv_e
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
             Serial.printf("saturation: %u\n", lv_slider_get_value(obj));
@@ -336,7 +326,7 @@ static void window_item_colorpicker_value_event_handler(lv_obj_t *obj, lv_event_
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
             Serial.printf("value: %u\n", lv_slider_get_value(obj));
@@ -354,7 +344,7 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
     lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
     lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
-    lv_win_set_title(win, ctx->label.c_str());
+    lv_win_set_title(win, ctx->item->getLabel().c_str());
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE); // Add close button and use built-in close action
@@ -466,7 +456,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
             // deactivate all buttons
             lv_obj_t *btn = NULL;
@@ -489,7 +479,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
             Serial.printf("button pressed Label: %s, Command: %s\n", lv_label_get_text(label), command);
 #endif
             ctx->item->setStateText(command);
-            ctx->item->publish(ctx->link);
+            ctx->item->publish(ctx->item->getLink());
             ctx->refresh_request = true;
             BEEPER_EVENT_CHANGE();
         }
@@ -505,7 +495,7 @@ void window_item_selection(struct widget_context_s *ctx)
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
     lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
     lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
-    lv_win_set_title(win, ctx->label.c_str());
+    lv_win_set_title(win, ctx->item->getLabel().c_str());
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
@@ -560,7 +550,7 @@ static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
             ctx->item->setStateNumber(lv_slider_get_value(obj));
 
@@ -569,7 +559,7 @@ static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
             else
                 lv_label_set_text_fmt(ctx->state_window_widget, ctx->item->getNumberPattern().c_str(), ctx->item->getStateNumber());
 
-            ctx->item->publish(ctx->link);
+            ctx->item->publish(ctx->item->getLink());
             ctx->refresh_request = true;
             BEEPER_EVENT_CHANGE();
         }
@@ -582,7 +572,7 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
     lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
     lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
-    lv_win_set_title(win, ctx->label.c_str());
+    lv_win_set_title(win, ctx->item->getLabel().c_str());
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
@@ -648,7 +638,7 @@ static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
             const char *txt = lv_btnm_get_active_btn_text(obj);
 
@@ -674,7 +664,7 @@ static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
             else
                 lv_label_set_text_fmt(ctx->state_window_widget, ctx->item->getNumberPattern().c_str(), ctx->item->getStateNumber());
 
-            ctx->item->publish(ctx->link);
+            ctx->item->publish(ctx->item->getLink());
             ctx->refresh_request = true;
             BEEPER_EVENT_CHANGE();
         }
@@ -687,7 +677,7 @@ void window_item_setpoint(struct widget_context_s *ctx)
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
     lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
     lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
-    lv_win_set_title(win, ctx->label.c_str());
+    lv_win_set_title(win, ctx->item->getLabel().c_str());
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
@@ -728,7 +718,7 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
-        if (ctx != nullptr && ctx->active == true)
+        if (ctx != nullptr)
         {
             if (ctx->item->getType() == ItemType::type_string)
             {
@@ -743,15 +733,15 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
                     printf("Item State Text: %s ", ctx->item->getStateText().c_str());
                 }
 
-                printf("Item Link: %s", ctx->link.c_str());
+                printf("Item Link: %s", ctx->item->getLink().c_str());
 #endif
             }
             else if (ctx->item->getType() == ItemType::type_link || ctx->item->getType() == ItemType::type_parent_link)
             {
 #if DEBUG_OPENHAB_UI
-                printf("LinkedPage Link: %s", ctx->link.c_str());
+                printf("LinkedPage Link: %s", ctx->item->getLink().c_str());
 #endif
-                current_page = ctx->link;
+                current_page = ctx->item->getLink();
                 refresh_page = true;
                 if (ctx->item->getType() == ItemType::type_parent_link)
                     BEEPER_EVENT_LINK_BACK()
@@ -761,7 +751,7 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
             else if (ctx->item->getType() == ItemType::type_switch)
             {
 #if DEBUG_OPENHAB_UI
-                printf("LinkedPage Link: %s", ctx->link.c_str());
+                printf("LinkedPage Link: %s", ctx->item->getLink().c_str());
                 printf(" ... Posting update");
 #endif
 
@@ -770,7 +760,7 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
                 else
                     ctx->item->setStateText("OFF");
 
-                ctx->item->publish(ctx->link);
+                ctx->item->publish(ctx->item->getLink());
                 ctx->refresh_request = true;
                 BEEPER_EVENT_CHANGE();
             }
@@ -815,17 +805,14 @@ void update_state_widget(struct widget_context_s *ctx)
 
     if (ctx->item->getType() == ItemType::type_string)
     {
-        if (ctx->item->getType() == ItemType::type_number)
-        {
-            if (ctx->item->getNumberPattern().startsWith("%d"))
-                lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern().c_str(), (uint16_t)ctx->item->getStateNumber());
-            else
-                lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern().c_str(), ctx->item->getStateNumber());
-        }
+        lv_label_set_text(ctx->state_widget, ctx->item->getStateText().c_str());
+    }
+    else if (ctx->item->getType() == ItemType::type_number)
+    {
+        if (ctx->item->getNumberPattern().startsWith("%d"))
+            lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern().c_str(), (uint16_t)ctx->item->getStateNumber());
         else
-        {
-            lv_label_set_text(ctx->state_widget, ctx->item->getStateText().c_str());
-        }
+            lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern().c_str(), ctx->item->getStateNumber());
     }
     else if (ctx->item->getType() == ItemType::type_switch)
     {
@@ -947,14 +934,14 @@ void load_icon(struct widget_context_s *wctx)
     else
         state = wctx->item->getStateText();
 
-    size_t iconsize = wctx->item->getIcon(current_website, wctx->iconname, state, iconbuffer, sizeof(iconbuffer));
+    size_t iconsize = wctx->item->getIcon(current_website, wctx->item->getIconName(), state, iconbuffer, sizeof(iconbuffer));
 
     // Decode the PNG image
     unsigned char *png_decoded;
     uint32_t png_width, png_height;
 
 #if DEBUG_OPENHAB_UI
-    printf("load_icon: %s ", wctx->iconname.c_str());
+    printf("load_icon: %s ", wctx->item->getIconName().c_str());
 #endif
 
     // Decode the loaded image in ARGB8888
@@ -982,7 +969,7 @@ void load_icon(struct widget_context_s *wctx)
 void update_icon(struct widget_context_s *wctx)
 {
     load_icon(wctx);
-    if (wctx->img_dsc.data_size > 0)
+    if (wctx->img_dsc.data_size > 0 && wctx->img_obj != NULL)
         lv_img_set_src(wctx->img_obj, &wctx->img_dsc);
 }
 
@@ -1065,6 +1052,7 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 {
     lv_obj_t *cont;
 
+    // Create widget button
     cont = lv_cont_create(parent, NULL);
     lv_obj_set_click(cont, true);
     lv_obj_set_event_cb(cont, event_handler);
@@ -1079,43 +1067,47 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
     wctx->container_style.body.padding.left = 0;
     wctx->container_style.body.padding.right = 0;
 
-    lv_obj_t *label = lv_label_create(cont, NULL);
+    // Create top label object
+     lv_obj_t *label = lv_label_create(cont, NULL);
     lv_obj_set_style(label, &custom_style_label);
     lv_label_set_align(label, LV_LABEL_ALIGN_CENTER);
     lv_label_set_long_mode(label, LV_LABEL_LONG_BREAK);
-    lv_label_set_text(label, wctx->label.c_str());
+    lv_label_set_text(label, wctx->item->getLabel().c_str());
     lv_obj_move_foreground(label);
     lv_obj_set_width(label, lv_obj_get_width(cont) - LV_DPI / 20);
     lv_obj_set_protect(label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
     lv_obj_align(label, NULL, LV_ALIGN_IN_TOP_MID, 0, 3);
 
+    // Create center image object
+    lv_obj_t *img_obj = lv_img_create(cont, NULL);
+    wctx->img_obj = img_obj;
+    lv_obj_set_opa_scale_enable(img_obj, true);
+
     if (wctx->img_dsc.data_size > 0)
     {
-        lv_obj_t *img_obj = lv_img_create(cont, NULL);
         lv_img_set_src(img_obj, &wctx->img_dsc);
-        lv_obj_move_background(img_obj);
-        lv_obj_set_opa_scale_enable(img_obj, true);
         lv_obj_set_opa_scale(img_obj, LV_OPA_30);
-        lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
-
-        wctx->img_obj = img_obj;
     }
     else if (wctx->item->getType() == ItemType::type_parent_link)
     {
-        lv_obj_t *img_obj = lv_img_create(cont, NULL);
         lv_img_set_style(img_obj, LV_IMG_STYLE_MAIN, &custom_style_label_state_large);
         lv_img_set_src(img_obj, LV_SYMBOL_NEW_LINE);
-        lv_obj_move_background(img_obj);
-        lv_obj_set_opa_scale_enable(img_obj, true);
         lv_obj_set_opa_scale(img_obj, LV_OPA_60);
-        lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
-
-        wctx->img_obj = img_obj;
+    }
+    else
+    {
+        lv_img_set_style(img_obj, LV_IMG_STYLE_MAIN, &custom_style_label_state_large);
+        lv_img_set_src(img_obj, LV_SYMBOL_EYE_OPEN);
+        lv_obj_set_opa_scale(img_obj, LV_OPA_20);
     }
 
-    if (wctx->item->getType() == ItemType::type_parent_link ||wctx->item->getType() == ItemType::type_link)
+    lv_obj_move_background(img_obj);
+    lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+    lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
+
+    // Define bottom label and button boarder style
+    if (   wctx->item->getType() == ItemType::type_parent_link
+        || wctx->item->getType() == ItemType::type_link)
     {
         wctx->container_style.body.border.width *= 2;
         wctx->container_style.body.border.color = LV_COLOR_BLUE;
@@ -1123,7 +1115,8 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
         lv_obj_set_style(label, &custom_style_label_state);
         lv_obj_align(label, NULL, LV_ALIGN_CENTER, 0, 0);
     }
-    else if (wctx->item->getType() == ItemType::type_string)
+    else if (   wctx->item->getType() == ItemType::type_string
+             || wctx->item->getType() == ItemType::type_number)
     {
         lv_obj_t *state_label = lv_label_create(cont, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
@@ -1137,28 +1130,13 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 
         wctx->state_widget = state_label;
     }
-    else if (wctx->item->getType() == ItemType::type_switch)
-    {
-        wctx->container_style.body.border.width *= 2;
 
-        lv_obj_t *state_label = lv_label_create(cont, NULL);
-        lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
-        lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
-        lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
-        lv_obj_set_style(state_label, &wctx->state_widget_style);
-        lv_obj_move_foreground(state_label);
-        lv_obj_set_width(state_label, lv_obj_get_width(cont));
-        lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
-
-        wctx->state_widget = state_label;
-    }
-    else if (   wctx->item->getType() == ItemType::type_setpoint
+    else if (   wctx->item->getType() == ItemType::type_switch
+             || wctx->item->getType() == ItemType::type_setpoint
              || wctx->item->getType() == ItemType::type_slider
              || wctx->item->getType() == ItemType::type_selection)
     {
         wctx->container_style.body.border.width *= 2;
-        //wctx->container_style.body.border.color = LV_COLOR_BLACK;
 
         lv_obj_t *state_label = lv_label_create(cont, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
@@ -1175,7 +1153,6 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
     else if (wctx->item->getType() == ItemType::type_colorpicker)
     {
         wctx->container_style.body.border.width *= 2;
-        //wctx->container_style.body.border.color = LV_COLOR_BLACK;
 
         lv_obj_t *state_obj = lv_obj_create(cont, NULL);
         lv_style_copy(&wctx->state_widget_style, &lv_style_pretty_color);
@@ -1198,8 +1175,6 @@ void show(lv_obj_t *parent)
     // cleanup page
     for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
     {
-        widget_context[i].active = false;
-
         free_icon(&widget_context[i].img_dsc);
 
         // remove button
@@ -1212,10 +1187,18 @@ void show(lv_obj_t *parent)
 
     header_set_title(sitemap.getPageName());
 
-    for (size_t widget_index = 0; widget_index < WIDGET_COUNT_MAX; widget_index++)
+    for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
     {
-        widget_context[widget_index].item = sitemap.getItem(widget_index);
-        create_widget(parent, &widget_context[widget_index]);
+        widget_context[i].item = sitemap.getItem(i);
+
+        if (widget_context[i].item->getType() != ItemType::type_unknown)
+        {
+            if (widget_context[i].item->getType() != ItemType::type_parent_link)
+                load_icon(&widget_context[i]);
+
+            create_widget(parent, &widget_context[i]);
+            update_state_widget(&widget_context[i]);
+        }
     }
 }
 
@@ -1310,7 +1293,7 @@ void openhab_ui_loop(void)
 
     for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
     {
-        if (   (widget_context[i].active == true)
+        if (   (widget_context[i].item->getType() != ItemType::type_unknown)
             && (widget_context[i].item->getType() != ItemType::type_link)
             && (widget_context[i].item->getType() != ItemType::type_parent_link))
         {
@@ -1328,7 +1311,7 @@ void openhab_ui_loop(void)
                 // update widget from current remote openhab state
                 widget_context[i].update_timestamp = millis();
                 widget_context[i].refresh_request = false;
-                int result = widget_context[i].item->update(widget_context[i].link);
+                int result = widget_context[i].item->update(widget_context[i].item->getLink());
                 if (result > 0)
                 {
                     // item value changed
