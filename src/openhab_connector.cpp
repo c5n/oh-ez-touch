@@ -185,6 +185,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
 int Sitemap::openlink(const char* url)
 {
     int retval = 0;
+    DynamicJsonDocument doc(12000);
 
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::openlink: Requesting URL: %s\r\n", url);
@@ -212,12 +213,14 @@ int Sitemap::openlink(const char* url)
         if (error)
         {
             printf("Sitemap::openlink: deserializeJson() failed: %s", error.c_str());
+            doc.clear();
             return false;
         }
 
         if (doc.containsKey("error"))
         {
             printf("Sitemap::openlink: json error message: %s", doc["error"]["message"].as<char*>());
+            doc.clear();
             return false;
         }
 
@@ -426,6 +429,8 @@ int Sitemap::openlink(const char* url)
         printf("Item::getIcon: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
+
+    doc.clear();
 
     http.end();
 

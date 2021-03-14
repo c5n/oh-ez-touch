@@ -121,7 +121,6 @@ public:
 class Sitemap
 {
 private:
-    StaticJsonDocument<12000> doc;
     char title[STR_TITLE_LEN];
     Item item_array[6];
 
