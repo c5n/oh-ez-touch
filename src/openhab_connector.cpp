@@ -11,16 +11,15 @@
 
 #define WIDGET_COUNT_MAX 6
 
-int Item::update(String link)
+int Item::update(const char* link)
 {
     int retval = 0;
 
-    String url = link;
-    url += "/state";
+    char url[STR_LINK_LEN];
+    snprintf(url, sizeof(url), "%s/state", link);
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::update: Requesting URL: ");
-    Serial.println(url);
+    printf("Item::update: Requesting URL: %s\r\n", url);
 #endif
 
     HTTPClient http;
@@ -30,7 +29,8 @@ int Item::update(String link)
 
     if (httpCode == HTTP_CODE_OK)
     {
-        String remote_state = http.getString();
+        char remote_state[STR_STATE_TEXT_LEN];
+        strncpy(remote_state, http.getString().c_str(), sizeof(remote_state));
 
         // State
         if (   Item::type == ItemType::type_number
@@ -38,25 +38,21 @@ int Item::update(String link)
             || Item::type == ItemType::type_slider)
         {
             // convert number to get rid of unit
-            remote_state = String(remote_state.toFloat());
+            snprintf(remote_state, sizeof(remote_state), "%e", strtof(remote_state, NULL));
         }
 
-        if (state_text != remote_state)
+        if (strcmp (Item::state_text, remote_state) != 0)
         {
             retval = 1;
-            Item::state_text = remote_state;
+            strncpy(Item::state_text, remote_state, sizeof(Item::state_text));
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  update statetext to \"%s\"\r\n", Item::state_text.c_str());
+            printf("  update statetext to \"%s\"\r\n", Item::state_text);
 #endif
         }
     }
     else
     {
-        Serial.print("Item::update: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
-
+        printf("Item::update: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
 
@@ -65,38 +61,27 @@ int Item::update(String link)
     return retval;
 }
 
-int Item::publish(String link)
+int Item::publish(const char* url)
 {
     int retval = 0;
 
-    String url = link;
-
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::publish: Requesting URL: ");
-    Serial.println(url);
+    printf("Item::publish: Requesting URL: %s\r\n", url);
 #endif
 
     HTTPClient http;
     http.begin(url);
     http.addHeader("Content-Type", "text/plain");
 
-    String message = {};
-
-    message = String(state_text);
-
 #if DEBUG_OPENHAB_CONNECTOR
-    printf("Item::publish: POST Message: %s\r\n", message.c_str());
+    printf("Item::publish: POST Message: %s\r\n", state_text);
 #endif
 
-    int httpCode = http.POST(message);
+    int httpCode = http.POST(state_text);
 
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.print("Item::publish: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
-
+        printf("Item::publish ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
 
@@ -105,15 +90,15 @@ int Item::publish(String link)
     return retval;
 }
 
-size_t Item::getIcon(String website, String name, String state, unsigned char *buffer, size_t buffer_size)
+size_t Item::getIcon(const char* website, const char* name, const char* state, unsigned char *buffer, size_t buffer_size)
 {
     size_t icon_size = 0;
+    char url[STR_LINK_LEN];
 
-    String url = website + "/icon/" + name + "?state=" + state + "&format=png";
+    snprintf(url, sizeof(url), "%s/icon/%s?state=%s&format=png", website, name, state);
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Item::getIcon: Requesting URL: ");
-    Serial.println(url);
+    printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
     HTTPClient http;
@@ -134,7 +119,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
         size_t dst_avail = buffer_size;
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.printf("Item::getIcon: Stream size %u\r\n", stream->available());
+        printf("Item::getIcon: Stream size %u\r\n", stream->available());
 #endif
         stream->setTimeout(2);
 
@@ -184,10 +169,7 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
     }
     else // httpCode != HTTP_CODE_OK
     {
-        Serial.print("Item::getIcon: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        printf("Item::getIcon: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
     }
 
     http.end(); //Free the resources
@@ -200,13 +182,12 @@ size_t Item::getIcon(String website, String name, String state, unsigned char *b
     return icon_size;
 }
 
-int Sitemap::openlink(String url)
+int Sitemap::openlink(const char* url)
 {
     int retval = 0;
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.print("Sitemap::openlink: Requesting URL: ");
-    Serial.println(url);
+    printf("Item::openlink: Requesting URL: %s\r\n", url);
 #endif
 
     HTTPClient http;
@@ -230,15 +211,13 @@ int Sitemap::openlink(String url)
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::NestingLimit(15));
         if (error)
         {
-            Serial.print(F("Sitemap::openlink: deserializeJson() failed: "));
-            Serial.println(error.c_str());
+            printf("Sitemap::openlink: deserializeJson() failed: %s", error.c_str());
             return false;
         }
 
         if (doc.containsKey("error"))
         {
-            Serial.print("Sitemap::openlink: json error message: ");
-            Serial.println(doc["error"]["message"].as<String>());
+            printf("Sitemap::openlink: json error message: %s", doc["error"]["message"].as<char*>());
             return false;
         }
 
@@ -247,11 +226,11 @@ int Sitemap::openlink(String url)
         Serial.println(doc.memoryUsage());
 #endif
 
-        title = doc["title"].as<String>();
+        strncpy(title, doc["title"].as<char*>(), sizeof(title));
 
 #if DEBUG_OPENHAB_CONNECTOR
-        printf("Sitemap::openlink(\"%s\")\r\n", url.c_str());
-        printf("  title=\"%s\"", title.c_str());
+        printf("Sitemap::openlink(\"%s\")\r\n", url);
+        printf("  title=\"%s\"", title);
 #endif
 
         // Cleanup Items
@@ -269,11 +248,10 @@ int Sitemap::openlink(String url)
             item_array[array_index].setType(ItemType::type_parent_link);
             item_array[array_index].setLink(doc["parent"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  type=parent_link   link=\"%s\"", item_array[array_index].getLink().c_str());
+            printf("  type=parent_link   link=\"%s\"", item_array[array_index].getLink());
 #endif
 
             ++array_index;
-
         }
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
@@ -291,7 +269,7 @@ int Sitemap::openlink(String url)
             else
                 item->setLabel("NO LABEL");
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  label=\"%s\"", item->getLabel().c_str());
+            printf("  label=\"%s\"", item->getLabel());
 #endif
 
             // Icon
@@ -299,7 +277,7 @@ int Sitemap::openlink(String url)
             {
                 item->setIconName(widget["icon"]);
 #if DEBUG_OPENHAB_CONNECTOR
-                printf("  icon=\"%s\"", item->getIconName().c_str());
+                printf("  icon=\"%s\"", item->getIconName());
 #endif
             }
 
@@ -374,7 +352,7 @@ int Sitemap::openlink(String url)
             else
                 item->setNumberPattern("%d");
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  numpat=\"%s\"", item->getNumberPattern().c_str());
+            printf("  numpat=\"%s\"", item->getNumberPattern());
 #endif
 
             // State
@@ -387,14 +365,14 @@ int Sitemap::openlink(String url)
                     // convert number to get rid of unit
                     item->setStateNumber(widget["item"]["state"].as<String>().toFloat());
 #if DEBUG_OPENHAB_CONNECTOR
-                    printf("  num-statetext=\"%s\"", item->getStateText().c_str());
+                    printf("  num-statetext=\"%s\"", item->getStateText());
 #endif
                 }
                 else
                 {
                     item->setStateText(widget["item"]["state"]);
 #if DEBUG_OPENHAB_CONNECTOR
-                    printf("  statetext=\"%s\"", item->getStateText().c_str());
+                    printf("  statetext=\"%s\"", item->getStateText());
 #endif
                 }
             }
@@ -406,7 +384,7 @@ int Sitemap::openlink(String url)
                 item->setLink(widget["item"]["link"]);
 
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  link=\"%s\"", item->getLink().c_str());
+            printf("  link=\"%s\"", item->getLink());
 #endif
 
             // Mappings
@@ -445,17 +423,11 @@ int Sitemap::openlink(String url)
     }
     else // httpCode != HTTP_CODE_OK
     {
-        Serial.print("Sitemap::openlink: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
-
+        printf("Item::getIcon: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
 
     http.end();
-
-    // ToDo: free json array
 
     return retval;
 }

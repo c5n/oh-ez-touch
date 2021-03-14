@@ -226,7 +226,7 @@ void setup()
     // Initialize the graphics library's tick
     tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
 
-    infolabel.create(infolabel.INFO, "Connecting to WiFi AP...", 0);
+    infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
     lv_task_handler();
 
     ac_main_setup(&config);
@@ -267,7 +267,7 @@ void loop()
             openhab_ui_set_wifi_state(true);
             openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
             IPAddress ip = WiFi.localIP();
-            infolabel.create(infolabel.INFO, "WLAN CONNECTED!\n IP: " + String(ip[0]) + "." + String(ip[1]) + "." + String(ip[2]) + "." + String(ip[3]), 10);
+            infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
         }
         else if (wlan_status == WL_IDLE_STATUS)
         {
@@ -275,7 +275,7 @@ void loop()
 #if DEBUG_WLAN_STATES
             Serial.println("WiFi: WL_IDLE_STATUS");
 #endif
-            infolabel.create(infolabel.WARNING, "WLAN IDLE", 0);
+            infolabel.create(infolabel.WARNING, "WLAN", "IDLE", 0);
             lv_task_handler();
             delay(1000);
 
@@ -288,7 +288,7 @@ void loop()
             Serial.println("WiFi: WLAN NOT CONNECTED");
 #endif
             openhab_ui_set_wifi_state(false);
-            infolabel.create(infolabel.WARNING, "WLAN NOT CONNECTED", 0);
+            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
             offline_timestamp = millis();
         }
     }
@@ -309,7 +309,7 @@ void loop()
 #if DEBUG_WLAN_STATES
         Serial.println("WiFi: Offline Timeout. Reconnecting...");
 #endif
-        infolabel.create(infolabel.INFO, " Reconnecting to WiFi AP...", 0);
+        infolabel.create(infolabel.INFO, "WLAN", "Reconnecting to AP...", 0);
         lv_task_handler();
 
         ac_main_reconnect();

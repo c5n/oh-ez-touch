@@ -8,6 +8,13 @@
 #define ITEM_SELECTION_COMMAND_LEN_MAX 20
 #define ITEM_SELECTION_LABEL_LEN_MAX 20
 
+#define STR_LABEL_LEN 32
+#define STR_ICON_NAME_LEN 32
+#define STR_STATE_TEXT_LEN 32
+#define STR_PATTERN_LEN 16
+#define STR_LINK_LEN 128
+#define STR_TITLE_LEN 32
+
 enum WidgetType
 {
     item_text,
@@ -40,53 +47,53 @@ enum ItemType
 class Item
 {
 private:
-    String label = {};
-    String icon_name = {};
+    char label[STR_LABEL_LEN];
+    char icon_name[STR_ICON_NAME_LEN];
     enum ItemType type = type_unknown;
-    String state_text = {};
-    String pattern = {};
+    char state_text[STR_STATE_TEXT_LEN];
+    char pattern[STR_PATTERN_LEN];
     float min_val = 0.0f;
     float max_val = 0.0f;
     float step_val = 1.0f;
     char selection_command[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_COMMAND_LEN_MAX] = {};
     char selection_label[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_LABEL_LEN_MAX] = {};
     size_t mapping_count = 0;
-    String link = {};
+    char link[STR_LINK_LEN];
 
 public:
-    int update(String link);
-    int publish(String link);
+    int update(const char* link);
+    int publish(const char* link);
 
     void cleanItem()
     {
-        label = "";
-        icon_name = "";
+        label[0] = 0;
+        icon_name[0] = 0;
         type = type_unknown;
-        state_text = "";
-        link = "";
+        state_text[0] = 0;
+        link[0] = 0;
     }
 
-    size_t getIcon(String website, String name, String state, unsigned char *buffer, size_t buffer_size);
+    size_t getIcon(const char* website, const char* name, const char* state, unsigned char *buffer, size_t buffer_size);
 
-    void setLabel(String newlabel) { label = newlabel; }
-    String getLabel() { return label; }
+    void setLabel(const char* newlabel) { strncpy(label, newlabel, sizeof(label)); }
+    const char* getLabel() { return label; }
 
-    void setIconName(String newiconname) { icon_name = newiconname; }
-    String getIconName() { return icon_name; }
+    void setIconName(const char* newiconname) { strncpy(icon_name, newiconname, sizeof(icon_name)); }
+    const char* getIconName() { return icon_name; }
 
-    void setLink(String newlink) { link = newlink; }
-    String getLink() { return link; }
+    void setLink(const char * newlink) { strncpy(link, newlink, sizeof(link)); }
+    const char * getLink() { return link; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
 
-    String getStateText() { return state_text; }
-    void setStateText(String newtext) { state_text = newtext; }
-    float getStateNumber() { return state_text.toFloat(); }
-    void setStateNumber(float newnumber) { state_text = String(newnumber); }
+    const char* getStateText() { return state_text; }
+    void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
+    float getStateNumber() { return strtof(state_text, NULL); }
+    void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%e", newnumber); }
 
-    String getNumberPattern() { return pattern; }
-    void setNumberPattern(String newpattern) { pattern = newpattern; }
+    const char* getNumberPattern() { return pattern; }
+    void setNumberPattern(const char* newpattern) { strncpy(pattern, newpattern, sizeof(pattern)); }
 
     float getMinVal() { return min_val; }
     void setMinVal(float newval) { min_val = newval; }
@@ -115,13 +122,13 @@ class Sitemap
 {
 private:
     StaticJsonDocument<12000> doc;
-    String title;
+    char title[STR_TITLE_LEN];
     Item item_array[6];
 
 public:
-    int openlink(String url);
+    int openlink(const char* url);
 
-    String getPageName() { return title; }
+    const char* getPageName() { return title; }
     Item* getItem(size_t index) { return &item_array[index]; }
 };
 
