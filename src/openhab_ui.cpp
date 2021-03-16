@@ -545,6 +545,222 @@ void window_item_selection(struct widget_context_s *ctx)
     ctx->state_window_widget = cont;
 }
 
+static void window_item_rollershutter_event_handler(lv_obj_t *obj, lv_event_t event)
+{
+    if (event == LV_EVENT_CLICKED)
+    {
+#if DEBUG_OPENHAB_UI
+        printf("window_item_rollershutter_event_handler: LV_EVENT_CLICKED\n");
+#endif
+        struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
+
+        if (ctx != nullptr)
+        {
+            // deactivate all buttons
+            lv_obj_t *btn = NULL;
+            do
+            {
+                btn = lv_obj_get_child(ctx->state_window_widget, btn);
+
+                if (btn != NULL)
+                    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+            } while (btn != NULL);
+
+            // activate pressed
+            lv_btn_set_style(obj, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+
+            lv_obj_t *label = lv_obj_get_child(obj, NULL);
+            char *command = (char *)lv_obj_get_user_data(label);
+
+#if DEBUG_OPENHAB_UI
+            Serial.printf("button pressed Command: %s\n", command);
+#endif
+            ctx->item->setStateText(command);
+            ctx->item->publish(ctx->item->getLink());
+            ctx->refresh_request = true;
+            BEEPER_EVENT_CHANGE();
+        }
+    }
+}
+
+void window_item_rollershutter(struct widget_context_s *ctx)
+{
+#if DEBUG_OPENHAB_UI
+        printf("window_item_rollershutter()\n");
+#endif
+    // Create a window
+    lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
+    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
+    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
+    lv_win_set_title(win, ctx->item->getLabel());
+
+    // Add close button to the header
+    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_obj_set_event_cb(close_btn, window_close_event_handler);
+
+    // Add buttons
+    lv_obj_t *cont;
+
+    cont = lv_cont_create(win, NULL);
+    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    lv_obj_set_size(cont, lv_obj_get_width(win) * 4 / 5, lv_obj_get_height(win) / 3);
+    lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+
+    lv_obj_t *btn;
+    lv_obj_t *label;
+
+    // Button UP
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_rollershutter_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_UP);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"UP");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    // Button STOP
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_rollershutter_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_STOP);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"STOP");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    // Button DOWN
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_rollershutter_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_DOWN);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"DOWN");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    ctx->state_window_widget = cont;
+}
+
+static void window_item_player_event_handler(lv_obj_t *obj, lv_event_t event)
+{
+    if (event == LV_EVENT_CLICKED)
+    {
+#if DEBUG_OPENHAB_UI
+        printf("window_item_player_event_handler: LV_EVENT_CLICKED\n");
+#endif
+        struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
+
+        if (ctx != nullptr)
+        {
+            // deactivate all buttons
+            lv_obj_t *btn = NULL;
+            do
+            {
+                btn = lv_obj_get_child(ctx->state_window_widget, btn);
+
+                if (btn != NULL)
+                    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+            } while (btn != NULL);
+
+            // activate pressed
+            lv_btn_set_style(obj, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+
+            lv_obj_t *label = lv_obj_get_child(obj, NULL);
+            char *command = (char *)lv_obj_get_user_data(label);
+
+#if DEBUG_OPENHAB_UI
+            Serial.printf("button pressed Command: %s\n", command);
+#endif
+            ctx->item->setStateText(command);
+            ctx->item->publish(ctx->item->getLink());
+            ctx->refresh_request = true;
+            BEEPER_EVENT_CHANGE();
+        }
+    }
+}
+
+void window_item_player(struct widget_context_s *ctx)
+{
+#if DEBUG_OPENHAB_UI
+        printf("window_item_player()\r\n");
+#endif
+    // Create a window
+    lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
+    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
+    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
+    lv_win_set_title(win, ctx->item->getLabel());
+
+    // Add close button to the header
+    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_obj_set_event_cb(close_btn, window_close_event_handler);
+
+    // Add buttons
+    lv_obj_t *cont;
+
+    cont = lv_cont_create(win, NULL);
+    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    lv_obj_set_auto_realign(cont, true);
+    lv_obj_set_size(cont, lv_obj_get_width(win) - LV_DPI / 4, lv_obj_get_height(win) / 3);
+    lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+
+    lv_obj_t *btn;
+    lv_obj_t *label;
+
+    // Button PREVIOUS
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_player_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_PREV);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"PREVIOUS");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    // Button PAUSE
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_player_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_PAUSE);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"PAUSE");
+    if (strcmp(ctx->item->getStateText(), "PAUSE") == 0)
+        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+    else
+        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    // Button PLAY
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_player_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_PLAY);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"PLAY");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+    if (strcmp(ctx->item->getStateText(), "PLAY") == 0)
+        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+    else
+        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    // Button NEXT
+    btn = lv_btn_create(cont, NULL);
+    lv_obj_set_user_data(btn, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btn, window_item_player_event_handler);
+    lv_btn_set_fit2(btn, LV_FIT_TIGHT, LV_FIT_TIGHT);
+    label = lv_label_create(btn, NULL);
+    lv_label_set_text(label, LV_SYMBOL_NEXT);
+    lv_obj_set_user_data(label, (lv_obj_user_data_t)"NEXT");
+    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+
+    ctx->state_window_widget = cont;
+}
+
 static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
 {
     if (event == LV_EVENT_VALUE_CHANGED)
@@ -783,6 +999,16 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
                 BEEPER_EVENT_WINDOW();
                 window_item_selection(ctx);
             }
+            else if (ctx->item->getType() == ItemType::type_rollershutter)
+            {
+                BEEPER_EVENT_WINDOW();
+                window_item_rollershutter(ctx);
+            }
+            else if (ctx->item->getType() == ItemType::type_player)
+            {
+                BEEPER_EVENT_WINDOW();
+                window_item_player(ctx);
+            }
             else if (ctx->item->getType() == ItemType::type_colorpicker)
             {
                 BEEPER_EVENT_WINDOW();
@@ -818,7 +1044,9 @@ void update_state_widget(struct widget_context_s *ctx)
         else
             lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
     }
-    else if (ctx->item->getType() == ItemType::type_switch)
+    else if (  ctx->item->getType() == ItemType::type_switch
+            || ctx->item->getType() == ItemType::type_rollershutter
+            || ctx->item->getType() == ItemType::type_player)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
@@ -1132,7 +1360,9 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
     else if (   wctx->item->getType() == ItemType::type_switch
              || wctx->item->getType() == ItemType::type_setpoint
              || wctx->item->getType() == ItemType::type_slider
-             || wctx->item->getType() == ItemType::type_selection)
+             || wctx->item->getType() == ItemType::type_selection
+             || wctx->item->getType() == ItemType::type_rollershutter
+             || wctx->item->getType() == ItemType::type_player)
     {
         wctx->container_style.body.border.width *= 2;
 

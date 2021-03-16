@@ -15,18 +15,6 @@
 #define STR_LINK_LEN 128
 #define STR_TITLE_LEN 32
 
-enum WidgetType
-{
-    item_text,
-    item_switch,
-    item_setpoint,
-    item_slider,
-    item_selection,
-    item_colorpicker,
-    linked_page,
-    parent_page,
-    unknown
-};
 
 enum ItemType
 {
