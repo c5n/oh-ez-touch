@@ -78,7 +78,7 @@ public:
     const char* getStateText() { return state_text; }
     void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
     float getStateNumber() { return strtof(state_text, NULL); }
-    void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%e", newnumber); }
+    void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
 
     const char* getNumberPattern() { return pattern; }
     void setNumberPattern(const char* newpattern) { strncpy(pattern, newpattern, sizeof(pattern)); }

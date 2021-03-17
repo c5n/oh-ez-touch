@@ -38,7 +38,7 @@ int Item::update(const char* link)
             || Item::type == ItemType::type_slider)
         {
             // convert number to get rid of unit
-            snprintf(remote_state, sizeof(remote_state), "%e", strtof(remote_state, NULL));
+            snprintf(remote_state, sizeof(remote_state), "%f", strtof(remote_state, NULL));
         }
 
         if (strcmp (Item::state_text, remote_state) != 0)
