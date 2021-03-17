@@ -125,21 +125,22 @@ Sitemaps for the OhEzTouch can contain the following elements:
 - Slider
 - Switch
 - Text
+- Default
 
 Example sitemap (```oheztouch.sitemap```):
 ```
 sitemap oheztouch label="OhEzTouch Test"
 {
     Switch      item=OHEZTOUCH_Switch
-    Selection   item=OHEZTOUCH_Select mappings=["SEL1"="Selection 1", "SEL2"="Selection 2", "SEL3"="Selection 3", "SEL4"="Selection 4", "SEL5"="Selection 5", "SEL6"="Selection 6"]
-    Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=5 maxValue=180 step=5
-    Slider      item=OHEZTOUCH_Number label="Slider"    minValue=5 maxValue=180 step=5
-    Colorpicker item=OHEZTOUCH_Color
+    Selection   item=OHEZTOUCH_Switch mappings=[OFF="Off", ON="On"]
+    Selection   item=OHEZTOUCH_Select mappings=["SEL1"="Selection 1", "SEL2"="Selection 2", "SEL3"="Selection 3"]
+    Default     item=OHEZTOUCH_Player
+    Default     item=OHEZTOUCH_Rollershutter
+
     Text label="Submenu" icon="settings"
     {
-        Switch      item=OHEZTOUCH_Switch
-        Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=5 maxValue=180 step=5
-        Slider      item=OHEZTOUCH_Number label="Slider"    minValue=5 maxValue=180 step=5
+        Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=-10 maxValue=10 step=0.5
+        Slider      item=OHEZTOUCH_Number label="Slider"    minValue=-10 maxValue=10 step=1
         Text        item=OHEZTOUCH_Number label="Text"
         Colorpicker item=OHEZTOUCH_Color
     }
@@ -148,11 +149,14 @@ sitemap oheztouch label="OhEzTouch Test"
 ```
 Items for example sitemap:
 ```
-String OHEZTOUCH_Select     "Selection"         <fan>
-String OHEZTOUCH_String     "String"            <text>
-Switch OHEZTOUCH_Switch     "Switch"            <switch>
-Number OHEZTOUCH_Number     "Number [%d sec]"   <time>
-Color  OHEZTOUCH_Color      "Color [%s]"        <colorlight>
+String          OHEZTOUCH_Select        "Selection"         <fan>
+String          OHEZTOUCH_String        "String"            <text>
+Switch          OHEZTOUCH_Switch        "Switch"            <switch>
+Number          OHEZTOUCH_Number        "Number [%.1f °C]"  <temperature>
+Color           OHEZTOUCH_Color         "Color [%s]"        <colorlight>
+Player          OHEZTOUCH_Player        "Player"            <receiver>
+Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
+
 ```
 
 ### Power up
@@ -170,7 +174,10 @@ In the upper right is the menu. Select "Configure new AP".
 
 ![browser_wlanconfig](doc/img/browser_wlanconfig.png)
 
-Fill in your WLAN credentials and click Apply. The ArduiTouch will try to connect. If everything went well, the IP received from your DHCP server will be shown on the display.
+Fill in your WLAN credentials and click Apply. The ArduiTouch will try to connect.
+
+#### Systeminfo
+The IP received from your DHCP server and other information can be obtained by touching the upper bar on the screen.
 
 #### OpenHAB Settings
 ![browser_openhabconfig](doc/img/browser_openhabconfig.png)
