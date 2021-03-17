@@ -72,7 +72,7 @@ public:
     {
         config_filename = filename;
 
-        Serial.printf("loadConfig file: %s\n", filename.c_str());
+        Serial.printf("loadConfig file: %s\r\n", filename.c_str());
 
         File configFile = SPIFFS.open(filename, "r");
         if (!configFile)
@@ -121,22 +121,22 @@ public:
         strlcpy(item.openhab.sensors.bme280.items.pressure, doc["openhab"]["sensors"]["bme280"]["items"]["pressure"] | "", sizeof(item.openhab.sensors.bme280.items.pressure));
 #if DEBUG_CONFIG
         Serial.println("Config::loadConfig: Loaded Values");
-        Serial.printf("  item.general.hostname: %s\n", item.general.hostname);
-        Serial.printf("  item.ntp.hostname: %s\n", item.ntp.hostname);
-        Serial.printf("  item.ntp.gmt_offset: %d\n", item.ntp.gmt_offset);
-        Serial.printf("  item.ntp.daylightsaving: %d\n", item.ntp.daylightsaving);
-        Serial.printf("  item.backlight.activity_timeout: %s\n", item.backlight.activity_timeout);
-        Serial.printf("  item.backlight.normal_brightness: %s\n", item.backlight.normal_brightness);
-        Serial.printf("  item.backlight.dim_brightness: %s\n", item.backlight.dim_brightness);
-        Serial.printf("  item.beeper.enabled: %d\n", item.beeper.enabled);
-        Serial.printf("  item.openhab.hostname: %s\n", item.openhab.hostname);
-        Serial.printf("  item.openhab.port: %d\n", item.openhab.port);
-        Serial.printf("  item.openhab.sitemap: %s\n", item.openhab.sitemap);
-        Serial.printf("  item.openhab.sensors.bme280.use: %d\n", item.openhab.sensors.bme280.use);
-        Serial.printf("  item.openhab.sensors.bme280.interval: %d\n", item.openhab.sensors.bme280.interval);
-        Serial.printf("  item.openhab.sensors.bme280.items.temperature: %s\n", item.openhab.sensors.bme280.items.temperature);
-        Serial.printf("  item.openhab.sensors.bme280.items.humidity: %s\n", item.openhab.sensors.bme280.items.humidity);
-        Serial.printf("  item.openhab.sensors.bme280.items.pressure: %s\n", item.openhab.sensors.bme280.items.pressure);
+        Serial.printf("  item.general.hostname: %s\r\n", item.general.hostname);
+        Serial.printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);
+        Serial.printf("  item.ntp.gmt_offset: %d\r\n", item.ntp.gmt_offset);
+        Serial.printf("  item.ntp.daylightsaving: %d\r\n", item.ntp.daylightsaving);
+        Serial.printf("  item.backlight.activity_timeout: %s\r\n", item.backlight.activity_timeout);
+        Serial.printf("  item.backlight.normal_brightness: %s\r\n", item.backlight.normal_brightness);
+        Serial.printf("  item.backlight.dim_brightness: %s\r\n", item.backlight.dim_brightness);
+        Serial.printf("  item.beeper.enabled: %d\r\n", item.beeper.enabled);
+        Serial.printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
+        Serial.printf("  item.openhab.port: %d\r\n", item.openhab.port);
+        Serial.printf("  item.openhab.sitemap: %s\r\n", item.openhab.sitemap);
+        Serial.printf("  item.openhab.sensors.bme280.use: %d\r\n", item.openhab.sensors.bme280.use);
+        Serial.printf("  item.openhab.sensors.bme280.interval: %d\r\n", item.openhab.sensors.bme280.interval);
+        Serial.printf("  item.openhab.sensors.bme280.items.temperature: %s\r\n", item.openhab.sensors.bme280.items.temperature);
+        Serial.printf("  item.openhab.sensors.bme280.items.humidity: %s\r\n", item.openhab.sensors.bme280.items.humidity);
+        Serial.printf("  item.openhab.sensors.bme280.items.pressure: %s\r\n", item.openhab.sensors.bme280.items.pressure);
 #endif
         return true;
     }
@@ -146,7 +146,7 @@ public:
         if (config_filename.isEmpty())
             return false;
 
-        Serial.printf("saveConfig file: %s\n", config_filename.c_str());
+        Serial.printf("saveConfig file: %s\r\n", config_filename.c_str());
 
         File configFile = SPIFFS.open(config_filename, "w");
         if (!configFile)

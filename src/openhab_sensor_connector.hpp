@@ -8,18 +8,24 @@
 #define DEBUG_OPENHAB_SENSOR_CONNECTOR 0
 #endif
 
-void openhab_sensor_connector_publish(Config &cfg, String item, String value)
+#define STR_URL_LEN     128
+
+void openhab_sensor_connector_publish(Config &cfg, const char* item, const char* value)
 {
-    String url = "http://" + String(cfg.item.openhab.hostname) + ":" + String(cfg.item.openhab.port);
-    url += "/rest/items/" + item;
+    char url[STR_URL_LEN];
+
+    snprintf(url, sizeof(url), "http://%s:%u/rest/items/%s",
+            cfg.item.openhab.hostname,
+            cfg.item.openhab.port,
+            item);
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
-    Serial.print("openhab_sensor_connector_publish: Requesting URL: ");
-    Serial.println(url);
+    printf("openhab_sensor_connector_publish: Requesting URL: %s\r\n", url);
 #endif
 
     HTTPClient http;
     http.begin(url);
+    http.addHeader("Content-Type", "text/plain");
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
     printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value.c_str());
@@ -29,10 +35,7 @@ void openhab_sensor_connector_publish(Config &cfg, String item, String value)
 
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.print("openhab_sensor_connector_publish: URL: ");
-        Serial.println(url);
-        Serial.print("Error on HTTP request. httpCode: ");
-        Serial.println(httpCode);
+        printf("openhab_sensor_connector_publish ERROR httpCode: %i URL: %s\r\n", httpCode, url);
     }
 
     http.end();

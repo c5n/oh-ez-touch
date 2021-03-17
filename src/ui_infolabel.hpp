@@ -8,6 +8,8 @@
 #define DEBUG_UI_INFOLABEL 0
 #endif
 
+#define STR_INFOLABEL_TEMP_BUFFER_LEN (140 + 1)
+
 class Infolabel
 {
 private:
@@ -23,13 +25,12 @@ public:
         ERROR
     };
 
-    void create(enum infolabel_type_e type, String text, uint16_t timeout)
+    void create(enum infolabel_type_e type, const char* topic, const char* text, uint16_t timeout)
     {
         if (il == NULL)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.print("Infolabel::create: Creating new label Text: ");
-            Serial.println(text);
+            printf("Infolabel::create: Topic: %s   Text: %s", topic, text);
 #endif
             lv_style_copy(&label_style, &lv_style_plain);
             label_style.body.border.width = 4;
@@ -52,7 +53,9 @@ public:
             lv_obj_set_width(il, lv_disp_get_hor_res(NULL) * 9 / 10);
         }
 
-        lv_mbox_set_text(il, text.c_str());
+        char buffer[STR_INFOLABEL_TEMP_BUFFER_LEN];
+        snprintf(buffer, sizeof(buffer), "%s\n%s", topic, text);
+        lv_mbox_set_text(il, buffer);
 
         lv_obj_align(il, NULL, LV_ALIGN_CENTER, 0, 0);
 
