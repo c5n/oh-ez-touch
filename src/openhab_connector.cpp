@@ -426,7 +426,7 @@ int Sitemap::openlink(const char* url)
     }
     else // httpCode != HTTP_CODE_OK
     {
-        printf("Item::getIcon: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
+        printf("Sitemap::openlink: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
 

@@ -1488,6 +1488,7 @@ void openhab_ui_loop(void)
     static unsigned long refresh_retry_timeout;
     static unsigned long update_ntp_next_timestamp;
     static unsigned long connection_error_handling_timestamp;
+    static bool sitemap_ok;
 #if DEBUG_OPENHAB_UI
     static unsigned long statistics_timestamp;
 #endif
@@ -1498,6 +1499,7 @@ void openhab_ui_loop(void)
         if (sitemap.openlink(current_page) == 0)
         {
             refresh_page = false;
+            sitemap_ok = true;
             openhab_ui_infolabel.destroy();
             show(content);
 #if DEBUG_OPENHAB_UI
@@ -1511,6 +1513,7 @@ void openhab_ui_loop(void)
 #if DEBUG_OPENHAB_UI
             printf("openhab_ui_loop: openlink failed: %s\r\n", current_page);
 #endif
+            sitemap_ok = false;
             openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
             refresh_retry_timeout = millis() + GET_SITEMAP_RETRY_INTERVAL;
 
@@ -1518,41 +1521,44 @@ void openhab_ui_loop(void)
         }
     }
 
-    for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+    if (sitemap_ok == true)
     {
-        if (   (widget_context[i].item->getType() != ItemType::type_unknown)
-            && (widget_context[i].item->getType() != ItemType::type_link)
-            && (widget_context[i].item->getType() != ItemType::type_parent_link))
+        for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
         {
-            if (widget_context[i].refresh_request == true)
+            if (   (widget_context[i].item->getType() != ItemType::type_unknown)
+                && (widget_context[i].item->getType() != ItemType::type_link)
+                && (widget_context[i].item->getType() != ItemType::type_parent_link))
             {
-                // update widget from local state
-                widget_context[i].update_timestamp = millis();
-                widget_context[i].refresh_request = false;
-                update_icon(&widget_context[i]);
-                update_state_widget(&widget_context[i]);
-            }
-
-            if (widget_context[i].update_timestamp + ITEM_UPDATE_INTERVAL < millis())
-            {
-                // update widget from current remote openhab state
-                widget_context[i].update_timestamp = millis();
-                widget_context[i].refresh_request = false;
-                int result = widget_context[i].item->update(widget_context[i].item->getLink());
-                if (result > 0)
+                if (widget_context[i].refresh_request == true)
                 {
-                    // item value changed
+                    // update widget from local state
+                    widget_context[i].update_timestamp = millis();
+                    widget_context[i].refresh_request = false;
                     update_icon(&widget_context[i]);
                     update_state_widget(&widget_context[i]);
-                    statistics.update_success_cnt++;
                 }
-                else if (result == 0)
+
+                if (widget_context[i].update_timestamp + ITEM_UPDATE_INTERVAL < millis())
                 {
-                    statistics.update_success_cnt++;
-                }
-                else
-                {
-                    statistics.update_fail_cnt++;
+                    // update widget from current remote openhab state
+                    widget_context[i].update_timestamp = millis();
+                    widget_context[i].refresh_request = false;
+                    int result = widget_context[i].item->update(widget_context[i].item->getLink());
+                    if (result > 0)
+                    {
+                        // item value changed
+                        update_icon(&widget_context[i]);
+                        update_state_widget(&widget_context[i]);
+                        statistics.update_success_cnt++;
+                    }
+                    else if (result == 0)
+                    {
+                        statistics.update_success_cnt++;
+                    }
+                    else
+                    {
+                        statistics.update_fail_cnt++;
+                    }
                 }
             }
         }
