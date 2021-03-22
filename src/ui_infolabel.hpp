@@ -32,30 +32,26 @@ public:
 #if DEBUG_UI_INFOLABEL
             printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
-            lv_style_copy(&label_style, &lv_style_plain);
-            label_style.body.border.width = 4;
+            lv_style_init(&label_style);
+            lv_style_set_border_width(&label_style, LV_STATE_DEFAULT, 4);
 
             if (type == INFO)
-                label_style.body.main_color = LV_COLOR_SILVER;
+                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_SILVER);
             else if (type == WARNING)
-                label_style.body.main_color = LV_COLOR_YELLOW;
+                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_YELLOW);
             else if (type == ERROR)
-                label_style.body.main_color = LV_COLOR_RED;
+                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_RED);
 
-            label_style.body.grad_color = label_style.body.main_color;
-            label_style.body.padding.top = LV_DPI / 10;
-            label_style.body.padding.bottom = LV_DPI / 10;
-            label_style.body.padding.left = LV_DPI / 10;
-            label_style.body.padding.right = LV_DPI / 10;
-            label_style.text.font = &custom_font_roboto_22;
-            il = lv_mbox_create(lv_scr_act(), NULL);
-            lv_obj_set_style(il, &label_style);
+            lv_style_set_pad_inner(&label_style, LV_STATE_DEFAULT, LV_DPI / 10);
+            lv_style_set_text_font(&label_style, LV_STATE_DEFAULT, &custom_font_roboto_22);
+            il = lv_msgbox_create(lv_scr_act(), NULL);
+            lv_obj_add_style(il, LV_OBJ_PART_MAIN, &label_style);
             lv_obj_set_width(il, lv_disp_get_hor_res(NULL) * 9 / 10);
         }
 
         char buffer[STR_INFOLABEL_TEMP_BUFFER_LEN];
         snprintf(buffer, sizeof(buffer), "%s\n%s", topic, text);
-        lv_mbox_set_text(il, buffer);
+        lv_msgbox_set_text(il, buffer);
 
         lv_obj_align(il, NULL, LV_ALIGN_CENTER, 0, 0);
 
