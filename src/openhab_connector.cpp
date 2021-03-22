@@ -298,7 +298,7 @@ int Sitemap::openlink(const char* url)
             }
 
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u label=\"%s\"", widget_index, item->getLabel());
+            printf("  idx: %u label=\"%s\"", Sitemap::item_count, item->getLabel());
 #endif
 
             // Icon
@@ -431,7 +431,7 @@ int Sitemap::openlink(const char* url)
             {
                 item->setPageLink(widget["linkedPage"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-                printf("  parent_link=\"%s\"", item->getPageLink());
+                printf("  page_link=\"%s\"", item->getPageLink());
 #endif
             }
 
