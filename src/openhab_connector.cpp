@@ -9,8 +9,6 @@
 #define DEBUG_OPENHAB_CONNECTOR_PACKETDUMP 0
 #endif
 
-#define WIDGET_COUNT_MAX 6
-
 int Item::update(const char* link)
 {
     int retval = 0;
@@ -229,32 +227,48 @@ int Sitemap::openlink(const char* url)
         Serial.println(doc.memoryUsage());
 #endif
 
-        strncpy(title, doc["title"].as<char*>(), sizeof(title));
+        // Save current and last page urls
+        strncpy(last_url, current_url, sizeof(last_url));
+        strncpy(current_url, url, sizeof(current_url));
+
+        if (doc["title"])
+            strncpy(title, doc["title"], sizeof(title));
+        else
+            strncpy(title, "no title", sizeof(title));
 
 #if DEBUG_OPENHAB_CONNECTOR
         printf("Sitemap::openlink(\"%s\")\r\n", url);
-        printf("  title=\"%s\"", title);
+        printf("  title=\"%s\"\r\n", title);
 #endif
 
         // Cleanup Items
-        for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+        for (size_t i = 0; i < ITEM_COUNT_MAX; ++i)
         {
             item_array[i].cleanItem();
         }
 
+        Sitemap::item_count = 0;
+
         // Update Items
-        size_t array_index = 0;
 
         // if current location is a child of the sitemap then set first item
         if (doc["parent"]["link"])
         {
-            item_array[array_index].setType(ItemType::type_parent_link);
-            item_array[array_index].setLink(doc["parent"]["link"]);
+            item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
+            item_array[Sitemap::item_count].setPageLink(doc["parent"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  type=parent_link   link=\"%s\"", item_array[array_index].getLink());
+            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
 #endif
-
-            ++array_index;
+            Sitemap::item_count++;
+        }
+        else if (doc["leaf"])
+        {
+            item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
+            item_array[Sitemap::item_count].setPageLink(last_url);
+#if DEBUG_OPENHAB_CONNECTOR
+            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
+#endif
+            Sitemap::item_count++;
         }
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
@@ -262,7 +276,7 @@ int Sitemap::openlink(const char* url)
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array.getElement(widget_index);
-            Item* item = &item_array[array_index];
+            Item* item = &item_array[Sitemap::item_count];
 
             // Label
             if (widget["linkedPage"])
@@ -272,7 +286,7 @@ int Sitemap::openlink(const char* url)
             else
                 item->setLabel("NO LABEL");
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  label=\"%s\"", item->getLabel());
+            printf("  idx: %u label=\"%s\"", widget_index, item->getLabel());
 #endif
 
             // Icon
@@ -285,14 +299,20 @@ int Sitemap::openlink(const char* url)
             }
 
             // Type
-            if (widget["linkedPage"]["link"])
-                item->setType(ItemType::type_link);
-            else if (widget["type"] == "Text")
+            item->setType(ItemType::type_unknown);
+
+            if (widget["type"] == "Text")
             {
-                if (widget["item"]["type"] && widget["item"]["type"].as<String>() >= "Number")
+                if (widget["linkedPage"]["link"])
+                    item->setType(ItemType::type_link);
+                else if (widget["item"]["type"] && widget["item"]["type"].as<String>() >= "Number")
                     item->setType(ItemType::type_number);
                 else
                     item->setType(ItemType::type_string);
+            }
+            else if (widget["type"] == "Group")
+            {
+                item->setType(ItemType::type_group);
             }
             else if (widget["type"] == "Switch")
             {
@@ -302,6 +322,13 @@ int Sitemap::openlink(const char* url)
                     item->setType(ItemType::type_rollershutter);
                 else if (widget["item"]["type"].as<String>() == "Player")
                     item->setType(ItemType::type_player);
+                else if (widget["item"]["type"].as<String>() == "Group")
+                {
+                    if (widget["item"]["groupType"].as<String>() == "Switch")
+                        item->setType(ItemType::type_switch);
+                    else if (widget["item"]["groupType"].as<String>() == "Rollershutter")
+                        item->setType(ItemType::type_rollershutter);
+                }
             }
             else if (widget["type"] == "Setpoint")
                 item->setType(ItemType::type_setpoint);
@@ -380,15 +407,22 @@ int Sitemap::openlink(const char* url)
                 }
             }
 
-            // Link
-            if (item->getType() == ItemType::type_link)
-                item->setLink(widget["linkedPage"]["link"]);
-            else
-                item->setLink(widget["item"]["link"]);
-
+            // Links
+            if (widget["linkedPage"]["link"])
+            {
+                item->setPageLink(widget["linkedPage"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  link=\"%s\"", item->getLink());
+                printf("  parent_link=\"%s\"", item->getPageLink());
 #endif
+            }
+
+            if (widget["item"]["link"])
+            {
+                item->setLink(widget["item"]["link"]);
+#if DEBUG_OPENHAB_CONNECTOR
+                printf("  link=\"%s\"", item->getLink());
+#endif
+            }
 
             // Mappings
             if (widget["mappings"])
@@ -418,9 +452,9 @@ int Sitemap::openlink(const char* url)
             printf("\r\n");
 #endif
 
-            ++array_index;
+            Sitemap::item_count++;
 
-            if (array_index > WIDGET_COUNT_MAX)
+            if (Sitemap::item_count > ITEM_COUNT_MAX)
                 break;
         }
     }

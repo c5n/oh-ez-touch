@@ -77,8 +77,8 @@
         beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
     }
 
-#define STR_CURRENT_PAGE_LEN        128
-#define STR_CURRENT_WEBSITE_LEN     128
+#define STR_PAGE_LEN        128
+#define STR_WEBSITE_LEN     128
 
 extern void lodepng_free(void* ptr);
 
@@ -141,8 +141,9 @@ struct statistics_s statistics;
 void update_state_widget(struct widget_context_s *ctx);
 
 static bool refresh_page;
-static char current_page[STR_CURRENT_PAGE_LEN];
-static char current_website[STR_CURRENT_WEBSITE_LEN];
+static char current_page[STR_PAGE_LEN];
+static char last_page[STR_PAGE_LEN];
+static char current_website[STR_WEBSITE_LEN];
 
 uint8_t get_signal_quality(int8_t rssi)
 {
@@ -956,12 +957,15 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
                 printf("Item Link: %s", ctx->item->getLink());
 #endif
             }
-            else if (ctx->item->getType() == ItemType::type_link || ctx->item->getType() == ItemType::type_parent_link)
+            else if (ctx->item->getType() == ItemType::type_link
+                     || ctx->item->getType() == ItemType::type_parent_link
+                     || ctx->item->getType() == ItemType::type_group)
             {
 #if DEBUG_OPENHAB_UI
-                printf("LinkedPage Link: %s", ctx->item->getLink());
+                printf("LinkedPage Link: %s", ctx->item->getPageLink());
 #endif
-                strncpy(current_page, ctx->item->getLink(), sizeof(current_page));
+                strncpy(last_page, current_page, sizeof(last_page));
+                strncpy(current_page, ctx->item->getPageLink(), sizeof(current_page));
                 refresh_page = true;
                 if (ctx->item->getType() == ItemType::type_parent_link)
                     BEEPER_EVENT_LINK_BACK()
@@ -971,7 +975,7 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
             else if (ctx->item->getType() == ItemType::type_switch)
             {
 #if DEBUG_OPENHAB_UI
-                printf("LinkedPage Link: %s", ctx->item->getLink());
+                printf("Link: %s", ctx->item->getLink());
                 printf(" ... Posting update");
 #endif
 
@@ -1033,7 +1037,8 @@ void update_state_widget(struct widget_context_s *ctx)
     if (ctx->state_widget == NULL)
         return;
 
-    if (ctx->item->getType() == ItemType::type_string)
+    if (   ctx->item->getType() == ItemType::type_string
+        || ctx->item->getType() == ItemType::type_group)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
@@ -1045,12 +1050,13 @@ void update_state_widget(struct widget_context_s *ctx)
             lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
     }
     else if (  ctx->item->getType() == ItemType::type_switch
-            || ctx->item->getType() == ItemType::type_rollershutter
             || ctx->item->getType() == ItemType::type_player)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
-    else if ((ctx->item->getType() == ItemType::type_setpoint) || (ctx->item->getType() == ItemType::type_slider))
+    else if (  ctx->item->getType() == ItemType::type_setpoint
+            || ctx->item->getType() == ItemType::type_slider
+            || ctx->item->getType() == ItemType::type_rollershutter)
     {
         if (strncmp(ctx->item->getNumberPattern(), "%d", 2) == 0)
             lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern(), (uint16_t)ctx->item->getStateNumber());
@@ -1276,6 +1282,10 @@ static void content_create(void)
 
 void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 {
+#if DEBUG_OPENHAB_UI
+    printf("create_widget: type=%u\r\n", wctx->item->getType());
+#endif
+
     lv_obj_t *cont;
 
     // Create widget button
@@ -1356,7 +1366,22 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
 
         wctx->state_widget = state_label;
     }
+    else if (   wctx->item->getType() == ItemType::type_group)
+    {
+        wctx->container_style.body.border.width *= 2;
+        wctx->container_style.body.border.color = LV_COLOR_BLUE;
+        lv_obj_t *state_label = lv_label_create(cont, NULL);
+        lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
+        lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
+        lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
+        lv_obj_set_style(state_label, &wctx->state_widget_style);
+        lv_obj_move_foreground(state_label);
+        lv_obj_set_width(state_label, lv_obj_get_width(cont));
+        lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
+        wctx->state_widget = state_label;
+    }
     else if (   wctx->item->getType() == ItemType::type_switch
              || wctx->item->getType() == ItemType::type_setpoint
              || wctx->item->getType() == ItemType::type_slider
@@ -1411,16 +1436,18 @@ void show(lv_obj_t *parent)
             lv_obj_del(widget_context[i].container);
             widget_context[i].container = NULL;
         }
+
+        widget_context[i].item = NULL;
     }
 
     header_set_title(sitemap.getPageName());
 
-    for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
+    for (size_t i = 0; i < sitemap.getItemCount(); i++)
     {
-        widget_context[i].item = sitemap.getItem(i);
-
-        if (widget_context[i].item->getType() != ItemType::type_unknown)
+        if (sitemap.getItem(i)->getType() != ItemType::type_unknown)
         {
+            widget_context[i].item = sitemap.getItem(i);
+
             if (widget_context[i].item->getType() != ItemType::type_parent_link)
                 load_icon(&widget_context[i]);
 
@@ -1525,6 +1552,9 @@ void openhab_ui_loop(void)
     {
         for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
         {
+            if (widget_context[i].item == NULL)
+                continue;
+
             if (   (widget_context[i].item->getType() != ItemType::type_unknown)
                 && (widget_context[i].item->getType() != ItemType::type_link)
                 && (widget_context[i].item->getType() != ItemType::type_parent_link))
@@ -1600,7 +1630,7 @@ void openhab_ui_loop(void)
 
         uptime::calculateUptime();
 
-        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\n",
+        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
                       uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds(),
                       statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }

@@ -4,6 +4,8 @@
 #include "Arduino.h"
 #include <ArduinoJson.h>
 
+#define ITEM_COUNT_MAX 6
+
 #define ITEM_SELECTION_COUNT_MAX 10
 #define ITEM_SELECTION_COMMAND_LEN_MAX 20
 #define ITEM_SELECTION_LABEL_LEN_MAX 20
@@ -20,6 +22,7 @@ enum ItemType
 {
     type_parent_link,
     type_link,
+    type_group,
     type_number,
     type_string,
     type_setpoint,
@@ -47,6 +50,7 @@ private:
     char selection_label[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_LABEL_LEN_MAX] = {};
     size_t mapping_count = 0;
     char link[STR_LINK_LEN];
+    char page_link[STR_LINK_LEN];
 
 public:
     int update(const char* link);
@@ -71,6 +75,9 @@ public:
 
     void setLink(const char * newlink) { strncpy(link, newlink, sizeof(link)); }
     const char * getLink() { return link; }
+
+    void setPageLink(const char * newlink) { strncpy(page_link, newlink, sizeof(page_link)); }
+    const char * getPageLink() { return page_link; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
@@ -110,12 +117,16 @@ class Sitemap
 {
 private:
     char title[STR_TITLE_LEN];
-    Item item_array[6];
+    size_t item_count;
+    Item item_array[ITEM_COUNT_MAX];
+    char current_url[STR_LINK_LEN];
+    char last_url[STR_LINK_LEN];
 
 public:
     int openlink(const char* url);
 
     const char* getPageName() { return title; }
+    size_t getItemCount() { return item_count; }
     Item* getItem(size_t index) { return &item_array[index]; }
 };
 
