@@ -279,12 +279,24 @@ int Sitemap::openlink(const char* url)
             Item* item = &item_array[Sitemap::item_count];
 
             // Label
-            if (widget["linkedPage"])
-                item->setLabel(widget["linkedPage"]["title"]);
-            else if (widget["item"])
-                item->setLabel(widget["item"]["label"]);
+            if (widget["label"])
+            {
+                char buffer[STR_LABEL_LEN];
+                snprintf(buffer, sizeof(buffer), widget["label"]);
+                char *end = strchr(buffer, '[');
+                if (end == NULL)
+                    end = buffer + strlen(buffer);
+                end -= 1;
+                while(end > buffer && isspace(*end)) end--;
+                end[1] = '\0';
+
+                item->setLabel(buffer);
+            }
             else
+            {
                 item->setLabel("NO LABEL");
+            }
+
 #if DEBUG_OPENHAB_CONNECTOR
             printf("  idx: %u label=\"%s\"", widget_index, item->getLabel());
 #endif
