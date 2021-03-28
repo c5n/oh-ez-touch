@@ -30,7 +30,7 @@ public:
         if (il == NULL)
         {
 #if DEBUG_UI_INFOLABEL
-            printf("Infolabel::create: Topic: %s   Text: %s", topic, text);
+            printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
             lv_style_copy(&label_style, &lv_style_plain);
             label_style.body.border.width = 4;
