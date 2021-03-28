@@ -20,6 +20,7 @@
 
 enum ItemType
 {
+    type_unknown,
     type_parent_link,
     type_link,
     type_group,
@@ -31,8 +32,7 @@ enum ItemType
     type_colorpicker,
     type_switch,
     type_rollershutter,
-    type_player,
-    type_unknown
+    type_player
 };
 
 class Item
@@ -78,17 +78,27 @@ public:
 
     void setPageLink(const char * newlink) { strncpy(page_link, newlink, sizeof(page_link)); }
     const char * getPageLink() { return page_link; }
+    bool hasPageLink() { return (strlen(page_link) > 0); }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
 
     const char* getStateText() { return state_text; }
     void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
+
     float getStateNumber() { return strtof(state_text, NULL); }
     void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
 
+    bool stateIsNumber()
+    {
+        char * next;
+        strtod(state_text, &next);
+        return ((next != state_text) && (*next == '\0'));
+    }
+
     const char* getNumberPattern() { return pattern; }
     void setNumberPattern(const char* newpattern) { strncpy(pattern, newpattern, sizeof(pattern)); }
+    bool hasNumberPattern() { return (strlen(pattern) > 1); }
 
     float getMinVal() { return min_val; }
     void setMinVal(float newval) { min_val = newval; }

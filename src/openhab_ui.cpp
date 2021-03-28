@@ -1037,12 +1037,13 @@ void update_state_widget(struct widget_context_s *ctx)
     if (ctx->state_widget == NULL)
         return;
 
-    if (   ctx->item->getType() == ItemType::type_string
-        || ctx->item->getType() == ItemType::type_group)
+    if (    ctx->item->getType() == ItemType::type_string
+        || (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == false))
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
-    else if (ctx->item->getType() == ItemType::type_number)
+    else if (   ctx->item->getType() == ItemType::type_number
+            || (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == true))
     {
         if (strncmp(ctx->item->getNumberPattern(), "%d", 2) == 0)
             lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern(), (uint16_t)ctx->item->getStateNumber());
