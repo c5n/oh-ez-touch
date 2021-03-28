@@ -4,6 +4,8 @@
 #include "Arduino.h"
 #include <ArduinoJson.h>
 
+#define ITEM_COUNT_MAX 6
+
 #define ITEM_SELECTION_COUNT_MAX 10
 #define ITEM_SELECTION_COMMAND_LEN_MAX 20
 #define ITEM_SELECTION_LABEL_LEN_MAX 20
@@ -18,8 +20,10 @@
 
 enum ItemType
 {
+    type_unknown,
     type_parent_link,
     type_link,
+    type_group,
     type_number,
     type_string,
     type_setpoint,
@@ -28,8 +32,7 @@ enum ItemType
     type_colorpicker,
     type_switch,
     type_rollershutter,
-    type_player,
-    type_unknown
+    type_player
 };
 
 class Item
@@ -47,6 +50,7 @@ private:
     char selection_label[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_LABEL_LEN_MAX] = {};
     size_t mapping_count = 0;
     char link[STR_LINK_LEN];
+    char page_link[STR_LINK_LEN];
 
 public:
     int update(const char* link);
@@ -72,16 +76,29 @@ public:
     void setLink(const char * newlink) { strncpy(link, newlink, sizeof(link)); }
     const char * getLink() { return link; }
 
+    void setPageLink(const char * newlink) { strncpy(page_link, newlink, sizeof(page_link)); }
+    const char * getPageLink() { return page_link; }
+    bool hasPageLink() { return (strlen(page_link) > 0); }
+
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
 
     const char* getStateText() { return state_text; }
     void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
+
     float getStateNumber() { return strtof(state_text, NULL); }
     void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
 
+    bool stateIsNumber()
+    {
+        char * next;
+        strtod(state_text, &next);
+        return ((next != state_text) && (*next == '\0'));
+    }
+
     const char* getNumberPattern() { return pattern; }
     void setNumberPattern(const char* newpattern) { strncpy(pattern, newpattern, sizeof(pattern)); }
+    bool hasNumberPattern() { return (strlen(pattern) > 1); }
 
     float getMinVal() { return min_val; }
     void setMinVal(float newval) { min_val = newval; }
@@ -110,12 +127,16 @@ class Sitemap
 {
 private:
     char title[STR_TITLE_LEN];
-    Item item_array[6];
+    size_t item_count;
+    Item item_array[ITEM_COUNT_MAX];
+    char current_url[STR_LINK_LEN];
+    char last_url[STR_LINK_LEN];
 
 public:
     int openlink(const char* url);
 
     const char* getPageName() { return title; }
+    size_t getItemCount() { return item_count; }
     Item* getItem(size_t index) { return &item_array[index]; }
 };
 
