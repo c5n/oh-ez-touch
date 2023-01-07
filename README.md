@@ -115,6 +115,7 @@ ArduiTouch      oheztouch-01
 ArduiTouch28    oheztouch-02
 ArduiTouch      oheztouch-03
 ```
+!!! Please be aware of, a Carriage Return after last device in list is needed !!!
 
 It is possible to update all devices in parallel by using the ```-p``` option.
 
