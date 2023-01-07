@@ -53,14 +53,16 @@ for HOSTNAME in "$@"; do
 done
 
 if [[ -f "$OPT_LISTFILE" ]]; then
-    while read -r -a TH_ARRAY
-    do
-        update_process ${TH_ARRAY[0]} ${TH_ARRAY[1]} &
-        if [ "$OPT_FLAG_PARALLEL" -eq 0 ]; then
-            # wait until child process is done
-            wait
-        fi
-    done <"$OPT_LISTFILE"
+   echo "File found! Using list from file: $OPT_LISTFILE"
+   while read -r -a TH_ARRAY
+   do
+      echo "...${TH_ARRAY[0]} OTA-Device: ${TH_ARRAY[1]}"
+      update_process ${TH_ARRAY[0]} ${TH_ARRAY[1]} &
+      if [ "$OPT_FLAG_PARALLEL" -eq 0 ]; then
+         # wait until child process is done
+         wait
+      fi
+   done <"$OPT_LISTFILE"
 fi
 
 # wait until all child processes are done
