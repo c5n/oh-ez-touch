@@ -1037,8 +1037,18 @@ void update_state_widget(struct widget_context_s *ctx)
     if (ctx->state_widget == NULL)
         return;
 
-    if (    ctx->item->getType() == ItemType::type_string
-        || (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == false))
+    if (    ctx->item->getType() == ItemType::type_string)
+    {
+        if (sizeof(ctx->item->getTransformedStateText()) > 0)
+        {
+            lv_label_set_text(ctx->state_widget, ctx->item->getTransformedStateText());
+        }
+        else
+        {
+            lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+        }
+    }
+    else if (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == false)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
