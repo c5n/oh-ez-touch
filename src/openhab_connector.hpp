@@ -13,6 +13,7 @@
 #define STR_LABEL_LEN 32
 #define STR_ICON_NAME_LEN 32
 #define STR_STATE_TEXT_LEN 32
+#define STR_TRANSFORMEDSTATE_TEXT_LEN 32
 #define STR_PATTERN_LEN 16
 #define STR_LINK_LEN 128
 #define STR_TITLE_LEN 32
@@ -42,6 +43,7 @@ private:
     char icon_name[STR_ICON_NAME_LEN];
     enum ItemType type = type_unknown;
     char state_text[STR_STATE_TEXT_LEN];
+    char transformedstate_text[STR_TRANSFORMEDSTATE_TEXT_LEN];
     char pattern[STR_PATTERN_LEN];
     float min_val = 0.0f;
     float max_val = 0.0f;
@@ -62,6 +64,7 @@ public:
         icon_name[0] = 0;
         type = type_unknown;
         state_text[0] = 0;
+        transformedstate_text[0] = 0;
         link[0] = 0;
     }
 
@@ -85,6 +88,9 @@ public:
 
     const char* getStateText() { return state_text; }
     void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
+
+    const char* getTransformedStateText() { return transformedstate_text; }
+    void setTransformedStateText(const char* newtranstext) { strncpy(transformedstate_text, newtranstext, sizeof(transformedstate_text)); }
 
     float getStateNumber() { return strtof(state_text, NULL); }
     void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
