@@ -87,13 +87,9 @@ Infolabel openhab_ui_infolabel;
 
 static Config *current_config;
 
-lv_style_t custom_style_top_bar;
 lv_style_t custom_style_label_state;
 lv_style_t custom_style_label_state_large;
 lv_style_t custom_style_label;
-lv_style_t custom_style_button;
-lv_style_t custom_style_button_toggle;
-lv_style_t custom_style_windows_header;
 
 struct header_s
 {
@@ -181,12 +177,12 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
 
         // Create a window
         lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-        //lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
         lv_win_set_title(win, "Systeminfo");
 
         // Add close button to the header
         lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
         lv_win_set_header_height(win, LV_DPI / 3);
+        lv_win_set_btn_width(win, 0);
         lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
         // Create a normal cell style
@@ -357,12 +353,12 @@ void window_item_colorpicker(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
-    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE); // Add close button and use built-in close action
+    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add content
@@ -370,12 +366,13 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_auto_realign(cont, true);                   // Auto realign when the size changes*/
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0); // This parameters will be sued when realigned
-    //lv_cont_set_fit(cont, LV_FIT_FLOOD);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_MID);
+    lv_cont_set_fit(cont, LV_FIT_PARENT);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_TOP);
 
     // Set the style of the color ring
     static lv_style_t styleMain;
     // lv_style_copy(&styleMain, &lv_style_plain);
+
     // styleMain.line.width = 30;
     // Make the background white
     // styleMain.body.main_color = styleMain.body.grad_color = LV_COLOR_WHITE;
@@ -396,13 +393,8 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     // Choose the 'DISC' type
     lv_cpicker_set_type(colorPicker, LV_CPICKER_TYPE_DISC);
 
-    // Set the styles
-    // lv_cpicker_set_style(colorPicker, LV_CPICKER_STYLE_MAIN, &styleMain);
-    // lv_cpicker_set_style(colorPicker, LV_CPICKER_STYLE_INDICATOR, &styleIndicator);
-
     // Change the knob's color to that of the selected color
-    // lv_cpicker_set_indic_colored(colorPicker, true);
-    // lv_cpicker_set_preview(colorPicker, true);
+    lv_cpicker_set_knob_colored(colorPicker, true);
     lv_obj_set_user_data(colorPicker, (lv_obj_user_data_t)ctx);
     lv_obj_set_event_cb(colorPicker, window_item_colorpicker_event_handler);
 
@@ -437,8 +429,7 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     // Create container for value controls right of the saturation slider
     lv_obj_t *cont_val = lv_cont_create(cont, NULL);
     lv_cont_set_fit(cont_val, LV_FIT_TIGHT);
-    // lv_cont_set_style(cont_val, LV_CONT_STYLE_MAIN, &lv_style_transp);
-    // lv_cont_set_layout(cont_val, LV_LAYOUT_COL_M);
+    lv_cont_set_layout(cont_val, LV_LAYOUT_CENTER);
 
     // Create a label above the slider as spacer
     lv_obj_t *val_slider_spacer = lv_label_create(cont_val, NULL);
@@ -508,12 +499,12 @@ void window_item_selection(struct widget_context_s *ctx)
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
@@ -523,8 +514,8 @@ void window_item_selection(struct widget_context_s *ctx)
     // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_auto_realign(cont, true);
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
-    lv_cont_set_fit(cont, LV_FIT_TIGHT);
-    lv_cont_set_layout(cont, LV_LAYOUT_GRID);
+    lv_cont_set_fit(cont, LV_FIT_PARENT);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_MID);
 
     for (size_t index = 0; index < ctx->item->getSelectionCount(); index++)
     {
@@ -602,12 +593,12 @@ void window_item_rollershutter(struct widget_context_s *ctx)
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
@@ -630,7 +621,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_UP);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"UP");
-    // lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button STOP
     btn = lv_btn_create(cont, NULL);
@@ -640,7 +630,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_STOP);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"STOP");
-    // lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button DOWN
     btn = lv_btn_create(cont, NULL);
@@ -650,7 +639,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_DOWN);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"DOWN");
-    // lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     ctx->state_window_widget = cont;
 }
@@ -701,12 +689,12 @@ void window_item_player(struct widget_context_s *ctx)
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
@@ -730,7 +718,6 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_PREV);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"PREVIOUS");
-    // lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button PAUSE
     btn = lv_btn_create(cont, NULL);
@@ -753,7 +740,6 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_PLAY);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"PLAY");
-    //lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
     if (strcmp(ctx->item->getStateText(), "PLAY") == 0)
         lv_btn_set_state(btn, LV_BTN_STATE_PRESSED);
     else
@@ -767,7 +753,6 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_NEXT);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"NEXT");
-    // lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     ctx->state_window_widget = cont;
 }
@@ -801,12 +786,12 @@ void window_item_slider(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add slider
@@ -906,18 +891,17 @@ void window_item_setpoint(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_obj_add_style(win, LV_WIN_PART_HEADER, &custom_style_windows_header);
-    // lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add content
     static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
     lv_obj_t *btnm1 = lv_btnmatrix_create(win, NULL);
-    // lv_btnm_set_style(btnm1, LV_BTNM_STYLE_BTN_REL, &custom_style_button);
     lv_btnmatrix_set_map(btnm1, btnm_map);
     lv_obj_set_height(btnm1, lv_obj_get_height(win) / 3);
     lv_obj_align(btnm1, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
@@ -1247,7 +1231,6 @@ void update_icon(struct widget_context_s *wctx)
 static void header_create(void)
 {
     header.container = lv_cont_create(lv_disp_get_scr_act(NULL), NULL);
-    lv_obj_add_style(header.container, LV_LABEL_PART_MAIN, &custom_style_top_bar);
     lv_obj_set_width(header.container, lv_disp_get_hor_res(NULL));
     //lv_obj_set_height(header.container, 24);
 
@@ -1255,22 +1238,18 @@ static void header_create(void)
     lv_obj_set_event_cb(header.container, header_event_handler);
 
     header.item.clock = lv_label_create(header.container, NULL);
-    lv_obj_add_style(header.item.clock, LV_LABEL_PART_MAIN, &custom_style_top_bar);
     lv_label_set_text(header.item.clock, "--:--");
     lv_obj_align(header.item.clock, NULL, LV_ALIGN_IN_LEFT_MID, LV_DPI / 10, 0);
 
     header.item.wifi = lv_label_create(header.container, NULL);
-    lv_obj_add_style(header.item.wifi, LV_LABEL_PART_MAIN, &custom_style_top_bar);
     lv_label_set_text(header.item.wifi, LV_SYMBOL_POWER);
     lv_obj_align(header.item.wifi, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 2, 0);
 
     header.item.signal = lv_label_create(header.container, NULL);
-    lv_obj_add_style(header.item.signal, LV_LABEL_PART_MAIN, &custom_style_top_bar);
     lv_label_set_text(header.item.signal, "  %");
     lv_obj_align(header.item.signal, NULL, LV_ALIGN_IN_RIGHT_MID, -LV_DPI / 5, 0);
 
     header.item.title = lv_label_create(header.container, NULL);
-    lv_obj_add_style(header.item.title, LV_LABEL_PART_MAIN, &custom_style_top_bar);
     lv_label_set_text(header.item.title, "Welcome to OhEzTouch");
     lv_label_set_long_mode(header.item.title, LV_LABEL_LONG_SROLL);
     lv_label_set_align(header.item.title, LV_LABEL_ALIGN_CENTER);
@@ -1350,25 +1329,19 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
     printf("widget_create: type=%u\r\n", wctx->item->getType());
 #endif
 
-    lv_obj_t *cont;
-
     // Create widget button
     wctx->container = lv_cont_create(parent, NULL);
     lv_obj_set_click(wctx->container, true);
     lv_obj_set_event_cb(wctx->container, event_handler);
-    lv_obj_set_size(wctx->container, lv_obj_get_width(parent) / 3 - LV_DPI / 16, lv_obj_get_height(parent) / 2 - LV_DPI / 16);
+    lv_obj_set_size(wctx->container, lv_obj_get_width(parent) / 3 - 2, lv_obj_get_height(parent) / 2 - 2);
     lv_cont_set_fit(wctx->container, LV_FIT_NONE);
     lv_cont_set_layout(wctx->container, LV_LAYOUT_COLUMN_MID);
 
-    //const lv_style_t *cont_style = lv_cont_get_style(cont, LV_CONT_STYLE_MAIN);
-    //lv_style_copy(&wctx->container_style, cont_style);
     lv_style_init(&wctx->container_style);
-    lv_style_set_margin_left(&wctx->container_style,LV_STATE_DEFAULT, -5);
-    lv_style_set_margin_right(&wctx->container_style,LV_STATE_DEFAULT, -5);
-    lv_style_set_margin_top(&wctx->container_style,LV_STATE_DEFAULT, -2);
-    lv_style_set_margin_bottom(&wctx->container_style,LV_STATE_DEFAULT, -2);
+    lv_theme_apply(wctx->container, LV_THEME_BTN);
+    lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 2);
     lv_style_set_border_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_BLACK);
-    lv_style_set_border_opa(&wctx->container_style, LV_STATE_DEFAULT, 64);
+    lv_style_set_border_opa(&wctx->container_style, LV_STATE_DEFAULT, LV_OPA_30);
     lv_style_set_bg_grad_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_SILVER);
     lv_style_set_bg_grad_dir(&wctx->container_style, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
     lv_obj_add_style(wctx->container, LV_CONT_PART_MAIN, &wctx->container_style);
@@ -1439,13 +1412,13 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
     {
         lv_style_set_border_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_BLUE);
         lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 4);
-        lv_obj_t *state_label = lv_label_create(cont, NULL);
+        lv_obj_t *state_label = lv_label_create(wctx->container, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
         lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
         lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
-        lv_obj_set_width(state_label, lv_obj_get_width(cont));
+        lv_obj_set_width(state_label, lv_obj_get_width(wctx->container));
         lv_obj_add_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
@@ -1524,11 +1497,6 @@ void openhab_ui_setup(Config *config)
 {
     current_config = config;
 
-    lv_style_init(&custom_style_top_bar);
-    lv_style_set_text_font(&custom_style_top_bar, LV_STATE_DEFAULT, &custom_font_roboto_16);
-    lv_style_set_bg_grad_color(&custom_style_top_bar, LV_STATE_DEFAULT, LV_COLOR_SILVER);
-    lv_style_set_bg_grad_dir(&custom_style_top_bar, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
-
 
     // lv_style_copy(&custom_style_label_state, &lv_style_plain);
     lv_style_init(&custom_style_label_state);
@@ -1548,16 +1516,6 @@ void openhab_ui_setup(Config *config)
     // lv_style_set_pad_bottom(&custom_style_label, LV_STATE_DEFAULT, LV_DPI / 5);
     lv_style_set_text_font(&custom_style_label, LV_STATE_DEFAULT, &custom_font_roboto_16);
     //lv_style_set_text_line_space(&custom_style_label, LV_STATE_DEFAULT, -5);
-
-    lv_style_init(&custom_style_button);
-    // custom_style_button.text.color = lv_color_make(0x20, 0x20, 0x20);
-    // custom_style_button.body.main_color = LV_COLOR_WHITE;
-    // custom_style_button.body.grad_color = LV_COLOR_SILVER;
-
-    // lv_style_copy(&custom_style_button_toggle, &lv_style_btn_tgl_rel);
-
-    lv_style_init(&custom_style_windows_header);
-    lv_style_set_text_font(&custom_style_windows_header, LV_STATE_DEFAULT, &custom_font_roboto_22);
 
     header_create();
     content_create();
