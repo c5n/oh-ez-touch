@@ -317,7 +317,7 @@ int Sitemap::openlink(const char* url)
             {
                 if (widget["linkedPage"]["link"])
                     item->setType(ItemType::type_link);
-                else if (widget["item"]["type"] && widget["item"]["type"].as<String>() >= "Number")
+                else if (widget["item"]["type"] && widget["item"]["type"].as<String>() == "Number")
                     item->setType(ItemType::type_number);
                 else
                     item->setType(ItemType::type_string);
@@ -417,6 +417,12 @@ int Sitemap::openlink(const char* url)
                     printf("  statetext=\"%s\"", item->getStateText());
 #endif
                 }
+            }
+
+            // Transformed State
+            if (widget["item"]["transformedState"])
+            {
+                item->setTransformedStateText(widget["item"]["transformedState"]);
             }
 
             // Links
