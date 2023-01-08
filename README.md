@@ -10,8 +10,13 @@ The touch buttons and graphics are dynamically generated. The structure is defin
 
 ## Partlist
 
-- [ESP32 NodeMCU](https://www.az-delivery.de/products/esp32-developmentboard) or [ESP32 Dev Kit C V4](https://www.az-delivery.de/products/esp-32-dev-kit-c-v4)
+- [ESP32 NodeMCU](https://www.az-delivery.de/products/esp32-developmentboard) or [ESP32 Dev Kit C V4](https://www.az-delivery.de/products/esp-32-dev-kit-c-v4), /for both, no SDCard is needed)
 - [ArduiTouch](https://www.az-delivery.de/products/az-touch-wandgehauseset-mit-touchscreen-fur-esp8266-und-esp32)
+
+(optional)
+- [DC Socket e.g.](https://www.amazon.de/dp/B0975TSZRV?psc=1&ref=ppx_yo2ov_dt_b_product_details)
+- For Flashing: USB zu TTL Serial Adapter, best experience with: [FT232-AZ USB zu TTL Serial Adapter für 3,3V und 5V](https://www.az-delivery.de/products/ftdi-adapter-ft232rl)
+
 
 ## Installation
 
@@ -45,7 +50,19 @@ pio run
 ```
 
 ### Upload
+Example for Connecting UART TTL Adapters for flashing works for me: 
+- Put UART TTL Adapter on 5V with jumper
+- UART VCC connection to ESP32 5V 
+- UART GND connection to ESP32 GND (6. PIN same Row 5V)
+- UART RX connection to ESP32 TXD
+- UART TX connection to ESP32 RXD
+- Connect ESP GND to ESP G0 for Flashing Mode
+
 Connect the ESP32 board to your computer. A ttyUSB device should appear. It will likely be /dev/ttyUSB0 if no other USB-serial adapters are connected.
+Use following Command after connecting to identify just connected adapters 
+```
+dmesg | grep /dev/ttyUSB
+```
 
 2 files have to be uploaded: The filesystem image and the firmware.
 
@@ -53,6 +70,7 @@ If you have no user rights to access the /dev/ttyUSB device, one option is to ad
 
 Execute the following command to upload firmware.
 Upon the output of ```Connecting........_____``` press and hold BOOT button on ESP32 until the upload process starts.
+!! In some circumstances (don't know why) the RST needs to be pushed short time to connect instead of BOOT !!
 
 Upload the filesystem image.
 
@@ -97,6 +115,7 @@ ArduiTouch      oheztouch-01
 ArduiTouch28    oheztouch-02
 ArduiTouch      oheztouch-03
 ```
+!!! Please be aware of, a Carriage Return after last device in list is needed !!!
 
 It is possible to update all devices in parallel by using the ```-p``` option.
 

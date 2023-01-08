@@ -1037,8 +1037,18 @@ void update_state_widget(struct widget_context_s *ctx)
     if (ctx->state_widget == NULL)
         return;
 
-    if (    ctx->item->getType() == ItemType::type_string
-        || (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == false))
+    if (    ctx->item->getType() == ItemType::type_string)
+    {
+        if (sizeof(ctx->item->getTransformedStateText()) > 0)
+        {
+            lv_label_set_text(ctx->state_widget, ctx->item->getTransformedStateText());
+        }
+        else
+        {
+            lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+        }
+    }
+    else if (ctx->item->getType() == ItemType::type_group && ctx->item->stateIsNumber() == false)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
@@ -1050,8 +1060,26 @@ void update_state_widget(struct widget_context_s *ctx)
         else
             lv_label_set_text_fmt(ctx->state_widget, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
     }
-    else if (  ctx->item->getType() == ItemType::type_switch
-            || ctx->item->getType() == ItemType::type_player)
+    else if (  ctx->item->getType() == ItemType::type_switch)
+    {
+        // Mapping found for Switch, should support ON=Text1 and OFF=Text2 (tested)
+        if ( ctx->item->getSelectionCount() > 0)
+        {
+            for (size_t index = 0; index < ctx->item->getSelectionCount(); index++)
+            {
+                if (strcmp(ctx->item->getSelectionCommand(index), ctx->item->getStateText()) == 0)
+                {
+                    lv_label_set_text(ctx->state_widget, ctx->item->getSelectionLabel(index));
+                    break;
+                }
+            }
+        }
+        else
+        {
+            lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+        }
+    }
+    else if (  ctx->item->getType() == ItemType::type_player)
     {
         lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
     }
