@@ -19,6 +19,8 @@
 #include <Update.h>
 #include "StreamString.h"
 #include "HTTPUpdateServer.h"
+#include "debug.h"
+
 
 static const char serverIndex[] PROGMEM = R"(
 <html><body>
@@ -85,7 +87,7 @@ void HTTPUpdateServer::setup(WebServer *server, const String &path, const String
       }
 
       if (_serial_output)
-        Serial.printf("Update: %s\n", upload.filename.c_str());
+        debug_printf("Update: %s\n", upload.filename.c_str());
       uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
       if (!Update.begin(maxSketchSpace)) {  //start with max available size
         _setUpdaterError();
@@ -100,7 +102,7 @@ void HTTPUpdateServer::setup(WebServer *server, const String &path, const String
     else if (_authenticated && upload.status == UPLOAD_FILE_END && !_updaterError.length()) {
       if (Update.end(true)) { //true to set the size to the current progress
         if (_serial_output)
-          Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+          debug_printf("Update Success: %u\nRebooting...\n", upload.totalSize);
       }
       else {
         _setUpdaterError();
