@@ -4,12 +4,18 @@
 #include "driver/beeper_control.hpp"
 
 #include "lodepng/lodepng.h"
-#include "WiFi.h"
 #include "time.h"
+#if (SIMULATOR != 1)
+#include "WiFi.h"
 #include "uptime.h"
+#endif
 #include "version.h"
+#include "debug.h"
 
+#if (SIMULATOR != 1)
 #include <HTTPClient.h>
+#endif
+
 #include <lvgl.h>
 
 #ifndef DEBUG_OPENHAB_UI
@@ -44,6 +50,7 @@
 #define BEEPER_VOLUME 50
 #endif
 
+#if (SIMULATOR != 1)
 #define BEEPER_EVENT_CHANGE()              \
     {                                      \
         beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \
@@ -76,13 +83,23 @@
         beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
         beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
     }
+#else
+#define BEEPER_EVENT_CHANGE() {}
+#define BEEPER_EVENT_LINK() {}
+#define BEEPER_EVENT_LINK_BACK() {}
+#define BEEPER_EVENT_WINDOW() {}
+#define BEEPER_EVENT_WINDOW_CLOSE() {}
+#define BEEPER_EVENT_ERROR() {}
+#endif
 
 #define STR_PAGE_LEN        128
 #define STR_WEBSITE_LEN     128
 
 extern void lodepng_free(void* ptr);
 
+#if (SIMULATOR != 1)
 HTTPClient http;
+#endif
 Infolabel openhab_ui_infolabel;
 
 static Config *current_config;
@@ -213,16 +230,19 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         char temp_buffer[50];
         uint16_t row = 0;
 
+#if (SIMULATOR != 1)
         lv_table_set_cell_value(table, row, 0, "Uptime");
         uptime::calculateUptime();
         sprintf(temp_buffer, "%lu days, %luh %lum %lus",
                 uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
         lv_table_set_cell_value(table, row, 1, temp_buffer);
+#endif
 
         lv_table_set_cell_value(table, ++row, 0, "Version");
         sprintf(temp_buffer, "%u.%02u (%s %s)", VERSION_MAJOR, VERSION_MINOR, __DATE__, __TIME__);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
+#if (SIMULATOR != 1)
         lv_table_set_cell_value(table, ++row, 0, "Hostname");
         lv_table_set_cell_value(table, row, 1, WiFi.getHostname());
 
@@ -261,6 +281,7 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         IPAddress dnsip = WiFi.dnsIP();
         sprintf(temp_buffer, "%u.%u.%u.%u", dnsip[0], dnsip[1], dnsip[2], dnsip[3]);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
+#endif
     }
 }
 
@@ -275,7 +296,7 @@ lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
     hsvcolor.s = strtol(endptr + 1, &endptr, 10);
     hsvcolor.v = strtol(endptr + 1, &endptr, 10);
 
-    Serial.printf("HSV String: %s -> H=%u S=%u V=%u", hsvstring, hsvcolor.h, hsvcolor.s, hsvcolor.v);
+    debug_printf("HSV String: %s -> H=%u S=%u V=%u", hsvstring, hsvcolor.h, hsvcolor.s, hsvcolor.v);
 
     return hsvcolor;
 }
@@ -285,7 +306,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -297,7 +318,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
                     lv_cpicker_get_saturation(ctx->state_window_widget),
                     lv_cpicker_get_value(ctx->state_window_widget));
 #if DEBUG_OPENHAB_UI
-            Serial.printf("hsv string: %s\r\n", hsv);
+            debug_printf("hsv string: %s\r\n", hsv);
 #endif
             ctx->item->setStateText(hsv);
             ctx->item->publish(ctx->item->getLink());
@@ -312,14 +333,14 @@ static void window_item_colorpicker_saturation_event_handler(lv_obj_t *obj, lv_e
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("saturation: %u\n", lv_slider_get_value(obj));
+            debug_printf("saturation: %u\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_saturation(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -333,14 +354,14 @@ static void window_item_colorpicker_value_event_handler(lv_obj_t *obj, lv_event_
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("value: %u\n", lv_slider_get_value(obj));
+            debug_printf("value: %u\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_value(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -482,7 +503,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Label: %s, Command: %s\r\n", lv_label_get_text(label), command);
+            debug_printf("button pressed Label: %s, Command: %s\r\n", lv_label_get_text(label), command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -576,7 +597,7 @@ static void window_item_rollershutter_event_handler(lv_obj_t *obj, lv_event_t ev
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Command: %s\n", command);
+            debug_printf("button pressed Command: %s\n", command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -672,7 +693,7 @@ static void window_item_player_event_handler(lv_obj_t *obj, lv_event_t event)
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Command: %s\n", command);
+            debug_printf("button pressed Command: %s\n", command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -1266,9 +1287,9 @@ static void header_set_title(const char* text)
 
 static void header_update()
 {
+#if (SIMULATOR != 1)
     static int last_second;
     struct tm timeinfo;
-
     if (getLocalTime(&timeinfo, 0))
     {
         if (timeinfo.tm_sec != last_second)
@@ -1289,6 +1310,7 @@ static void header_update()
         signal_last_update = millis();
         lv_label_set_text_fmt(header.item.signal, "%02d%%", get_signal_quality(WiFi.RSSI()));
     }
+#endif
 }
 
 static void content_create(void)
@@ -1622,6 +1644,7 @@ void openhab_ui_loop(void)
         }
     }
 
+#if (SIMULATOR != 1)
     if (update_ntp_next_timestamp < millis())
     {
         update_ntp_next_timestamp = millis() + NTP_TIME_UPDATE_INTERVAL;
@@ -1631,9 +1654,10 @@ void openhab_ui_loop(void)
 #endif
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
-
+#endif
     header_update();
 
+#if (SIMULATOR != 1)
     if (millis() > connection_error_handling_timestamp + (CONNECTION_ERROR_TIMEOUT_S * 1000))
     {
         connection_error_handling_timestamp = millis();
@@ -1652,6 +1676,7 @@ void openhab_ui_loop(void)
         statistics.sitemap_fail_cnt = 0;
         statistics.sitemap_success_cnt = 0;
     }
+#endif
 
 #if DEBUG_OPENHAB_UI
     if (millis() > statistics_timestamp + (10 * 1000))
@@ -1660,7 +1685,7 @@ void openhab_ui_loop(void)
 
         uptime::calculateUptime();
 
-        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
+        debug_printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
                       uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds(),
                       statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }

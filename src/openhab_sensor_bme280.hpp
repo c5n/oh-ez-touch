@@ -52,7 +52,7 @@ void openhab_sensor_bme280_update(Config &cfg)
         {
                 snprintf(buffer, sizeof(buffer), "%.3f", bme280.readTemperature());
 #if DEBUG_OPENHAB_SENSOR_BME280
-                Serial.printf("openhab_sensor_bme280_update: Temperature: %s\r\n", buffer);
+                debug_printf("openhab_sensor_bme280_update: Temperature: %s\r\n", buffer);
 #endif
                 openhab_sensor_connector_publish(cfg, cfg.item.openhab.sensors.bme280.items.temperature, buffer);
         }
@@ -61,7 +61,7 @@ void openhab_sensor_bme280_update(Config &cfg)
         {
                 snprintf(buffer, sizeof(buffer), "%.3f", bme280.readHumidity());
 #if DEBUG_OPENHAB_SENSOR_BME280
-                Serial.printf("openhab_sensor_bme280_update: Humidity: %s\r\n", buffer);
+                debug_printf("openhab_sensor_bme280_update: Humidity: %s\r\n", buffer);
 #endif
                 openhab_sensor_connector_publish(cfg, cfg.item.openhab.sensors.bme280.items.humidity, buffer);
         }
@@ -70,7 +70,7 @@ void openhab_sensor_bme280_update(Config &cfg)
         {
                 snprintf(buffer, sizeof(buffer), "%.3f", bme280.readPressure() / 100.0f);
 #if DEBUG_OPENHAB_SENSOR_BME280
-                Serial.printf("openhab_sensor_bme280_update: Pressure: %s\r\n", buffer);
+                debug_printf("openhab_sensor_bme280_update: Pressure: %s\r\n", buffer);
 #endif
                 openhab_sensor_connector_publish(cfg, cfg.item.openhab.sensors.bme280.items.pressure, buffer);
         }

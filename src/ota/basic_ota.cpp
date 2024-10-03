@@ -3,6 +3,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
+#include "debug.h"
 
 void basic_ota_setup()
 {
@@ -34,10 +35,10 @@ void basic_ota_setup()
             Serial.println("\nEnd");
         })
         .onProgress([](unsigned int progress, unsigned int total) {
-            Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+            debug_printf("Progress: %u%%\r", (progress / (total / 100)));
         })
         .onError([](ota_error_t error) {
-            Serial.printf("Error[%u]: ", error);
+            debug_printf("Error[%u]: ", error);
             if (error == OTA_AUTH_ERROR)
                 Serial.println("Auth Failed");
             else if (error == OTA_BEGIN_ERROR)

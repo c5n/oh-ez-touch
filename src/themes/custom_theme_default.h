@@ -1,10 +1,10 @@
 /**
- * @file lv_theme_template.h
+ * @file custom_theme_default.h
  *
  */
 
-#ifndef LV_THEME_TEMPLATE_H
-#define LV_THEME_TEMPLATE_H
+#ifndef CUSTOM_THEME_DEFAULT_H
+#define CUSTOM_THEME_DEFAULT_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,9 +13,12 @@ extern "C" {
 /*********************
  *      INCLUDES
  *********************/
-#include "../lv_conf_internal.h"
+//#include "lv_conf_internal.h"
+//#include "lv_misc/lv_color.h"
+//#include "lv_themes/lv_theme.h"
 
-#if LV_USE_THEME_TEMPLATE
+
+
 
 /*********************
  *      DEFINES
@@ -48,10 +51,9 @@ lv_theme_t * custom_theme_default_init(lv_color_t color_primary, lv_color_t colo
  *      MACROS
  **********************/
 
-#endif
 
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
 
-#endif /*LV_THEME_TEMPLATE_H*/
+#endif /*CUSTOM_THEME_DEFAULT_H*/

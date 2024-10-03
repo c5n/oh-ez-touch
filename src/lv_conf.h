@@ -14,6 +14,8 @@
 /* clang-format off */
 
 #include <stdint.h>
+//#include "lvgl/lv_themes/lv_theme.h"
+//#include "themes/custom_theme_default.h"
 
 /*====================
    Graphical settings
@@ -77,10 +79,10 @@ typedef int16_t lv_coord_t;
  * The graphical objects and other related data are stored here. */
 
 /* 1: use custom malloc/free, 0: use the built-in `lv_mem_alloc` and `lv_mem_free` */
-#define LV_MEM_CUSTOM      0
+#define LV_MEM_CUSTOM      1
 #if LV_MEM_CUSTOM == 0
 /* Size of the memory used by `lv_mem_alloc` in bytes (>= 2kB)*/
-#  define LV_MEM_SIZE    (32U * 1024U)
+#  define LV_MEM_SIZE    (1024U * 1024U)
 
 /* Complier prefix for a big array declaration */
 #  define LV_MEM_ATTR
@@ -269,7 +271,7 @@ typedef void * lv_indev_drv_user_data_t;            /*Type of user data in the i
  *===============*/
 
 /*1: Enable the log module*/
-#define LV_USE_LOG      0
+#define LV_USE_LOG      1
 #if LV_USE_LOG
 /* How important log should be added:
  * LV_LOG_LEVEL_TRACE       A lot of logs to give detailed information
@@ -282,12 +284,13 @@ typedef void * lv_indev_drv_user_data_t;            /*Type of user data in the i
 
 /* 1: Print the log with 'printf';
  * 0: user need to register a callback with `lv_log_register_print_cb`*/
-#  define LV_LOG_PRINTF   0
+#  define LV_LOG_PRINTF   1
 #endif  /*LV_USE_LOG*/
 
 /*=================
  * Debug settings
  *================*/
+#define LV_THEME_LIVE_UPDATE    0   /*1: Allow theme switching at run time. Uses 8..10 kB of RAM*/
 
 /* If Debug is enabled LittelvGL validates the parameters of the functions.
  * If an invalid parameter is found an error log message is printed and
@@ -399,7 +402,7 @@ typedef void * lv_font_user_data_t;
 
 /* No theme, you can apply your styles as you need
  * No flags. Set LV_THEME_DEFAULT_FLAG 0 */
- #define LV_USE_THEME_EMPTY       0
+ #define LV_USE_THEME_EMPTY       1
 
 /*Simple to the create your theme based on it
  * No flags. Set LV_THEME_DEFAULT_FLAG 0 */
@@ -417,9 +420,9 @@ typedef void * lv_font_user_data_t;
  * white. Else the colors are inverted.
  * No flags. Set LV_THEME_DEFAULT_FLAG 0 */
  #define LV_USE_THEME_MONO        0
-
-#define LV_THEME_DEFAULT_INCLUDE            <stdint.h>      /*Include a header for the init. function*/
-#define LV_THEME_DEFAULT_INIT               custom_theme_default_init
+//#include "src/lv_themes/lv_theme.h"
+#define LV_THEME_DEFAULT_INCLUDE            <stdint.h> //"themes/custom_theme_default.h"      /*Include a header for the init. function*/
+#define LV_THEME_DEFAULT_INIT               lv_theme_empty_init
 #define LV_THEME_DEFAULT_COLOR_PRIMARY      LV_COLOR_MAKE(0x00, 0x80, 0xFF)
 #define LV_THEME_DEFAULT_COLOR_SECONDARY    LV_COLOR_RED
 #define LV_THEME_DEFAULT_FLAG               0

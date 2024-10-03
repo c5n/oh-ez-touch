@@ -8,12 +8,6 @@
  *********************/
 #include "lvgl.h" /*To see all the widgets*/
 
-#ifndef USE_CUSTOM_THEME_DEFAULT
-#define USE_CUSTOM_THEME_DEFAULT 1
-#endif
-
-#if USE_CUSTOM_THEME_DEFAULT
-
 //#include "lv_misc/lv_gc.h"
 
 #if defined(LV_GC_INCLUDE)
@@ -52,8 +46,6 @@ static void theme_apply(lv_obj_t * obj, lv_theme_style_t name);
 /**********************
  *  STATIC VARIABLES
  **********************/
-static lv_theme_t theme;
-
 static lv_theme_t theme;
 static theme_styles_t * styles;
 
@@ -174,13 +166,13 @@ static void btnmatrix_init(void)
 static void cpicker_init(void)
 {
 #if LV_USE_CPICKER
-    lv_style_reset(&styles->cpicker);
+    style_init_reset(&styles->cpicker);
     lv_style_set_bg_opa(&styles->cpicker, LV_STATE_DEFAULT, LV_OPA_COVER);
     lv_style_set_value_opa(&styles->cpicker, LV_STATE_DEFAULT, LV_OPA_COVER);
     lv_style_set_scale_width(&styles->cpicker, LV_STATE_DEFAULT, LV_DPI / 3);
     lv_style_set_pad_inner(&styles->cpicker, LV_STATE_DEFAULT, LV_DPI / 20);
 
-    lv_style_reset(&styles->cpicker_knob);
+    style_init_reset(&styles->cpicker_knob);
     lv_style_set_bg_opa(&styles->cpicker_knob, LV_STATE_DEFAULT, LV_OPA_COVER);
     lv_style_set_border_color(&styles->cpicker_knob, LV_STATE_DEFAULT, lv_color_make(0x0b, 0x19, 0x28));
     lv_style_set_border_width(&styles->cpicker_knob, LV_STATE_DEFAULT, LV_DPI / 50 >= 1 ? LV_DPI / 50 : 1);
@@ -574,5 +566,3 @@ static void style_init_reset(lv_style_t * style)
     if(inited) lv_style_reset(style);
     else lv_style_init(style);
 }
-
-#endif
