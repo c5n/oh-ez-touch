@@ -1,9 +1,9 @@
 
 #ifndef DEBUG
-#define DEBUG 1
+#define DEBUG 0
 #endif
 
-#if 1
+#if 0
 
 #define debug_init()     {}
 #define debug_printf(fmt, ...) \

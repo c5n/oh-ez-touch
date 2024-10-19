@@ -16,6 +16,7 @@ private:
     uint8_t current_brightness;
     uint8_t normal_brightness;
     uint8_t dim_brightness;
+    bool led_invert;
     void set_brightness(uint8_t percent);
 
 public:
@@ -25,7 +26,7 @@ public:
 
     bool resetDimTimeout();
 
-    void setup(uint8_t pin);
+    void setup(uint8_t pin, bool invert);
     void loop();
 };
 
