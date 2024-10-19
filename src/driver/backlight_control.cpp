@@ -11,8 +11,14 @@ void BacklightControl::set_brightness(uint8_t percent)
     Serial.print("BacklightControl::set_brightness: ");
     Serial.println(percent);
 #endif
-    ledcWrite(BACKLIGHT_CONTROL_PWM_CHANNEL, map(percent, 0, 100, 1023, 0));
     BacklightControl::current_brightness = percent;
+
+    if (BacklightControl::led_invert == true)
+    {
+        percent = 100 - percent;
+    }
+
+    ledcWrite(BACKLIGHT_CONTROL_PWM_CHANNEL, map(percent, 0, 100, 1023, 0));
 }
 
 bool BacklightControl::resetDimTimeout()
@@ -37,10 +43,12 @@ bool BacklightControl::resetDimTimeout()
     return woken_up;
 }
 
-void BacklightControl::setup(uint8_t pin)
+void BacklightControl::setup(uint8_t pin, bool invert)
 {
-    ledcSetup(BACKLIGHT_CONTROL_PWM_CHANNEL, 5000, 10);
+    ledcSetup(BACKLIGHT_CONTROL_PWM_CHANNEL, 30000, 10);
     ledcAttachPin(pin, BACKLIGHT_CONTROL_PWM_CHANNEL);
+
+    BacklightControl::led_invert = invert;
 
     set_brightness(BacklightControl::normal_brightness);
 

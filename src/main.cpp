@@ -9,6 +9,10 @@
 
 #if (SIMULATOR == 0)
 #include <TFT_eSPI.h>
+#if (TOUCH_DRIVER_FT6X36 == 1)
+#include <Wire.h>
+#include "TouchDrvFT6X36.hpp"
+#endif
 #include <Ticker.h>
 #include "esp_wifi.h"
 #include "ac_main.hpp"
@@ -53,12 +57,12 @@
 #define TFT_BACKLIGHT_PIN 15
 #endif
 
-#ifndef TFT_TOUCH_FLIP
-#define TFT_TOUCH_FLIP 0
+#ifndef TFT_BACKLIGHT_INVERT
+#define TFT_BACKLIGHT_INVERT 0
 #endif
 
-#ifndef BEEPER_PIN
-#define BEEPER_PIN 21
+#ifndef TFT_TOUCH_FLIP
+#define TFT_TOUCH_FLIP 0
 #endif
 
 #ifndef WLAN_OFFLINE_TIMEOUT
@@ -74,7 +78,9 @@ BacklightControl tft_backlight;
 TFT_eSPI tft = TFT_eSPI(); // TFT instance
 #endif
 
-
+#if (TOUCH_DRIVER_FT6X36 == 1)
+TouchDrvFT6X36 touch_ft6x36;
+#endif
 
 static lv_disp_buf_t disp_buf;
 static lv_color_t buf[LV_HOR_RES_MAX * 10];
@@ -120,8 +126,22 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     static lv_coord_t last_y = 0;
 
     uint16_t touchX, touchY;
+    bool touched = false;
 
-    bool touched = tft.getTouch(&touchX, &touchY, 350);
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    int16_t ftx[2]; int16_t fty[2];
+    touched = (touch_ft6x36.getPoint(ftx, fty, 2) >= 1 ? true : false);
+    if (touched == true)
+        debug_printf("DISPLAY_TOUCH x[0]: %d y[0] %d  x[1]: %d y[1] %d\r\n", ftx[0], fty[0], ftx[1], fty[1]);
+
+    touchX = (fty[0] > 0) ? (uint16_t)fty[0] : 0;
+    //touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = screenHeight - touchY;
+    //touchY = screenHeight - (ftx[0] > 0 && ftx[0] <= screenHeight) ? ftx[0] : 0;
+#else
+    touched = tft.getTouch(&touchX, &touchY, 350);
+#endif
 
 #if TFT_TOUCH_FLIP
     touchX = screenWidth - touchX;
@@ -142,8 +162,12 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         return false;
     }
 #endif
+#if DEBUG_DISPLAY_TOUCH
+        if (data->state = touched)
+            debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
+#endif
 
-    if (touchX <= screenWidth || touchY <= screenHeight)
+    if (touchX <= screenWidth && touchY <= screenHeight)
     {
         if (data->state == LV_INDEV_STATE_REL && touched == true)
         {
@@ -161,10 +185,6 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         // Set the coordinates (if released use the last pressed coordinates)
         data->point.x = last_x;
         data->point.y = last_y;
-#if DEBUG_DISPLAY_TOUCH
-        if (data->state = touched)
-            debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
-#endif
     }
 #if DEBUG_DISPLAY_TOUCH
     else
@@ -216,22 +236,24 @@ void setup()
     lv_log_register_print_cb(my_print); // register print function for debugging
 #endif
 
-#if (SIMULATOR != 1)
+#ifdef BEEPER_PIN
     beeper_setup(BEEPER_PIN);
 
     if (config.item.beeper.enabled == true)
         beeper_enable();
+#endif
 
+#if (SIMULATOR != 1)
     tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
-    tft_backlight.setup(TFT_BACKLIGHT_PIN);
+    tft_backlight.setup(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_INVERT);
 
     tft.begin();        // TFT init
     tft.fillScreen(TFT_PINK);
     tft.setRotation(3); // Landscape orientation
+    tft.invertDisplay(false);
 #endif
-
 
     lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * 10);
 
@@ -249,9 +271,16 @@ void setup()
     lv_disp_drv_register(&disp_drv);
 
 #if (SIMULATOR != 1)
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    if (!touch_ft6x36.begin(Wire, FT6X36_SLAVE_ADDRESS, TOUCH_FT6X36_SDA, TOUCH_FT6X36_SCL))
+    {
+        debug_printf("Failed to find FT6X36 - check your wiring!");
+    }
+#else
     // Initialize input device touch
     uint16_t calData[5] = {275, 3620, 264, 3532, 1};
     tft.setTouch(calData);
+#endif
 #endif
 
     lv_indev_drv_t indev_drv;

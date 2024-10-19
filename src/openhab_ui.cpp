@@ -820,6 +820,7 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_slider_set_range(slider, ctx->item->getMinVal(), ctx->item->getMaxVal());
     lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
     lv_obj_set_width(slider, lv_obj_get_width(win) - LV_DPI / 3);
+    lv_obj_set_height(slider, LV_DPI / 3);
     lv_obj_align(slider, NULL, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_user_data(slider, (lv_obj_user_data_t)ctx);
     lv_obj_set_event_cb(slider, window_item_slider_event_handler);
@@ -921,14 +922,6 @@ void window_item_setpoint(struct widget_context_s *ctx)
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add content
-    static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
-    lv_obj_t *btnm1 = lv_btnmatrix_create(win, NULL);
-    lv_btnmatrix_set_map(btnm1, btnm_map);
-    lv_obj_set_height(btnm1, lv_obj_get_height(win) / 3);
-    lv_obj_align(btnm1, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-    lv_obj_set_user_data(btnm1, (lv_obj_user_data_t)ctx);
-    lv_obj_set_event_cb(btnm1, window_item_setpoint_event_handler);
-
     lv_obj_t *state_label = lv_label_create(win, NULL);
     lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
     lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
@@ -941,7 +934,15 @@ void window_item_setpoint(struct widget_context_s *ctx)
 
     lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &custom_style_label_state_large);
     lv_obj_set_auto_realign(state_label, true);
-    lv_obj_align(state_label, btnm1, LV_ALIGN_OUT_TOP_MID, 0, 0 - LV_DPI / 4);
+
+    static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
+    lv_obj_t *btnm1 = lv_btnmatrix_create(win, NULL);
+    lv_btnmatrix_set_map(btnm1, btnm_map);
+    lv_obj_set_height(btnm1, lv_obj_get_height(win) / 3);
+    lv_obj_align(btnm1, state_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+    lv_obj_set_user_data(btnm1, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btnm1, window_item_setpoint_event_handler);
+
     ctx->state_window_widget = state_label;
 }
 
