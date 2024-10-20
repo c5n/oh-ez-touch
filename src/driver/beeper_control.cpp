@@ -27,7 +27,7 @@ static void beeper_task(void *parameter);
 void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause)
 {
 #if DEBUG_BEEPER_CONTROL
-    Serial.printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
+    debug_printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
 #endif
     if (xRequestQueue != 0)
     {

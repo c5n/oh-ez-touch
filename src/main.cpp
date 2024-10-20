@@ -1,19 +1,37 @@
 #include <Arduino.h>
-#include "lv_conf.h"
+//#include "lv_conf.h"
 #include <lvgl.h>
-#include <Ticker.h>
-#include <TFT_eSPI.h>
-#include "WiFi.h"
-#include "esp_wifi.h"
 #include "version.h"
-#include "ac_main.hpp"
 #include "config.hpp"
-#include "ota/basic_ota.hpp"
 #include "openhab_ui.hpp"
 #include "ui_infolabel.hpp"
-#include "openhab_sensor_main.hpp"
+#include "debug.h"
+
+#if (SIMULATOR == 0)
+#include <TFT_eSPI.h>
+#if (TOUCH_DRIVER_FT6X36 == 1)
+#include <Wire.h>
+#include "TouchDrvFT6X36.hpp"
+#endif
+#include <Ticker.h>
+#include "esp_wifi.h"
+#include "ac_main.hpp"
+#include "WiFi.h"
+#include "ota/basic_ota.hpp"
 #include "driver/backlight_control.hpp"
 #include "driver/beeper_control.hpp"
+#include "openhab_sensor_main.hpp"
+#else
+#include <unistd.h>
+#define SDL_MAIN_HANDLED        /*To fix SDL's "undefined reference to WinMain" issue*/
+#include <SDL2/SDL.h>
+//#include "display/monitor.h"
+#include "indev/mouse.h"
+#include "indev/mousewheel.h"
+#include "indev/keyboard.h"
+#include "sdl/sdl.h"
+#endif
+#include "themes/custom_theme_default.h"
 
 #ifndef DEBUG_OUTPUT_BAUDRATE
 #define DEBUG_OUTPUT_BAUDRATE 115200
@@ -39,12 +57,12 @@
 #define TFT_BACKLIGHT_PIN 15
 #endif
 
-#ifndef TFT_TOUCH_FLIP
-#define TFT_TOUCH_FLIP 0
+#ifndef TFT_BACKLIGHT_INVERT
+#define TFT_BACKLIGHT_INVERT 0
 #endif
 
-#ifndef BEEPER_PIN
-#define BEEPER_PIN 21
+#ifndef TFT_TOUCH_FLIP
+#define TFT_TOUCH_FLIP 0
 #endif
 
 #ifndef WLAN_OFFLINE_TIMEOUT
@@ -54,10 +72,15 @@
 int screenWidth = 320;
 int screenHeight = 240;
 
+#if (SIMULATOR != 1)
 Ticker tick;               // timer for interrupt handler
-TFT_eSPI tft = TFT_eSPI(); // TFT instance
-
 BacklightControl tft_backlight;
+TFT_eSPI tft = TFT_eSPI(); // TFT instance
+#endif
+
+#if (TOUCH_DRIVER_FT6X36 == 1)
+TouchDrvFT6X36 touch_ft6x36;
+#endif
 
 static lv_disp_buf_t disp_buf;
 static lv_color_t buf[LV_HOR_RES_MAX * 10];
@@ -70,29 +93,24 @@ Infolabel infolabel;
 void my_print(lv_log_level_t level, const char *file, uint32_t line, const char *dsc)
 {
 
-    Serial.printf("%s@%d->%s\r\n", file, line, dsc);
+    debug_printf("%s@%d->%s\r\n", file, line, dsc);
     delay(100);
 }
 #endif
 
+#if (SIMULATOR != 1)
 // Display flushing
 void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
 {
-    uint16_t c;
+    uint32_t w = (area->x2 - area->x1 + 1);
+    uint32_t h = (area->y2 - area->y1 + 1);
 
-    tft.startWrite();                                                                            // Start new TFT transaction
-    tft.setAddrWindow(area->x1, area->y1, (area->x2 - area->x1 + 1), (area->y2 - area->y1 + 1)); // set the working window
-    for (int y = area->y1; y <= area->y2; y++)
-    {
-        for (int x = area->x1; x <= area->x2; x++)
-        {
-            c = color_p->full;
-            tft.writeColor(c, 1);
-            color_p++;
-        }
-    }
-    tft.endWrite();            // terminate TFT transaction
-    lv_disp_flush_ready(disp); // tell lvgl that flushing is done
+    tft.startWrite();
+    tft.setAddrWindow(area->x1, area->y1, w, h);
+    tft.pushColors(&color_p->full, w * h, true);
+    tft.endWrite();
+
+    lv_disp_flush_ready(disp);
 }
 
 // Interrupt driven periodic handler
@@ -108,8 +126,22 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     static lv_coord_t last_y = 0;
 
     uint16_t touchX, touchY;
+    bool touched = false;
 
-    bool touched = tft.getTouch(&touchX, &touchY, 350);
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    int16_t ftx[2]; int16_t fty[2];
+    touched = (touch_ft6x36.getPoint(ftx, fty, 2) >= 1 ? true : false);
+    if (touched == true)
+        debug_printf("DISPLAY_TOUCH x[0]: %d y[0] %d  x[1]: %d y[1] %d\r\n", ftx[0], fty[0], ftx[1], fty[1]);
+
+    touchX = (fty[0] > 0) ? (uint16_t)fty[0] : 0;
+    //touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = screenHeight - touchY;
+    //touchY = screenHeight - (ftx[0] > 0 && ftx[0] <= screenHeight) ? ftx[0] : 0;
+#else
+    touched = tft.getTouch(&touchX, &touchY, 350);
+#endif
 
 #if TFT_TOUCH_FLIP
     touchX = screenWidth - touchX;
@@ -121,6 +153,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         return false;
     }
 
+#if (SIMULATOR != 1)
     if (touched == true && tft_backlight.resetDimTimeout() == true)
     {
         if (config.item.beeper.enabled == true)
@@ -128,8 +161,13 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         suppress_touch_timeout = millis() + 200;
         return false;
     }
+#endif
+#if DEBUG_DISPLAY_TOUCH
+        if (data->state = touched)
+            debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
+#endif
 
-    if (touchX <= screenWidth || touchY <= screenHeight)
+    if (touchX <= screenWidth && touchY <= screenHeight)
     {
         if (data->state == LV_INDEV_STATE_REL && touched == true)
         {
@@ -147,35 +185,48 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         // Set the coordinates (if released use the last pressed coordinates)
         data->point.x = last_x;
         data->point.y = last_y;
-#if DEBUG_DISPLAY_TOUCH
-        if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
-#endif
     }
 #if DEBUG_DISPLAY_TOUCH
     else
     {
         if (data->state = touched)
-            Serial.printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\r\n", touchX, touchY);
+            debug_printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\r\n", touchX, touchY);
     }
 #endif
 
     return false; // Return `false` because we are not buffering and no more data to read
 }
+#endif /* #if (SIMULATOR != 1) */
+
+#if (SIMULATOR == 1)
+static int tick_thread(void * data)
+{
+    (void)data;
+
+    while(1) {
+        SDL_Delay(5);   /*Sleep for 5 millisecond*/
+        lv_tick_inc(5); /*Tell LittelvGL that 5 milliseconds were elapsed*/
+    }
+
+    return 0;
+}
+#endif
+
+
 
 void setup()
 {
-    // Prepare for possible serial debug
-    Serial.begin(DEBUG_OUTPUT_BAUDRATE);
+    debug_init();
 
-    Serial.printf("\r\n\n");
-    Serial.printf("***********************************************************\r\n");
-    Serial.printf("*                        OhEzTouch                        *\r\n");
-    Serial.printf("***********************************************************\r\n");
-    Serial.printf("\r\nTarget:     %s\r\n", TARGET_NAME);
-    Serial.printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
-    Serial.printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
-    Serial.printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
+    debug_printf("\r\n\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("*                        OhEzTouch                        *\r\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("\r\nTarget:     %s\r\n", TARGET_NAME);
+    debug_printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
+    debug_printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
+    debug_printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
+
     config.setup();
     config.loadConfig("/config.json");
 
@@ -185,18 +236,24 @@ void setup()
     lv_log_register_print_cb(my_print); // register print function for debugging
 #endif
 
+#ifdef BEEPER_PIN
     beeper_setup(BEEPER_PIN);
 
     if (config.item.beeper.enabled == true)
         beeper_enable();
+#endif
 
+#if (SIMULATOR != 1)
     tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
-    tft_backlight.setup(TFT_BACKLIGHT_PIN);
+    tft_backlight.setup(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_INVERT);
 
     tft.begin();        // TFT init
+    tft.fillScreen(TFT_PINK);
     tft.setRotation(3); // Landscape orientation
+    tft.invertDisplay(false);
+#endif
 
     lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * 10);
 
@@ -205,44 +262,80 @@ void setup()
     lv_disp_drv_init(&disp_drv);
     disp_drv.hor_res = screenWidth;
     disp_drv.ver_res = screenHeight;
+#if (SIMULATOR != 1)
     disp_drv.flush_cb = my_disp_flush;
+#else // SIMULATOR
+    disp_drv.flush_cb = sdl_display_flush;
+#endif
     disp_drv.buffer = &disp_buf;
     lv_disp_drv_register(&disp_drv);
+
+#if (SIMULATOR != 1)
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    if (!touch_ft6x36.begin(Wire, FT6X36_SLAVE_ADDRESS, TOUCH_FT6X36_SDA, TOUCH_FT6X36_SCL))
+    {
+        debug_printf("Failed to find FT6X36 - check your wiring!");
+    }
+#else
+    // Initialize input device touch
+    uint16_t calData[5] = {275, 3620, 264, 3532, 1};
+    tft.setTouch(calData);
+#endif
+#endif
+
+    lv_indev_drv_t indev_drv;
+    lv_indev_drv_init(&indev_drv);          // Descriptor of a input device driver
+    indev_drv.type = LV_INDEV_TYPE_POINTER; // Touch pad is a pointer-like device
+#if (SIMULATOR != 1)
+    indev_drv.read_cb = my_touchpad_read;   // Set your driver function
+#else // SIMULATOR
+    indev_drv.read_cb = sdl_mouse_read;
+#endif
+    lv_indev_drv_register(&indev_drv);      // Finally register the driver
+
+#if (SIMULATOR != 1)
+    // Initialize the graphics library's tick
+    tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
+#else // SIMULATOR
+    sdl_init();
+    //SDL_CreateThread(tick_thread, "tick", NULL);
+#endif
+    lv_theme_t * th = custom_theme_default_init(LV_THEME_DEFAULT_COLOR_PRIMARY, LV_THEME_DEFAULT_COLOR_SECONDARY, LV_THEME_DEFAULT_FLAG, LV_THEME_DEFAULT_FONT_SMALL , LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
+    lv_theme_set_act(th);
 
     // Initialize the screen
     lv_obj_t *scr = lv_cont_create(NULL, NULL);
     lv_disp_load_scr(scr);
 
-    // Initialize input device touch
-    uint16_t calData[5] = {275, 3620, 264, 3532, 1};
-    tft.setTouch(calData);
-
-    lv_indev_drv_t indev_drv;
-    lv_indev_drv_init(&indev_drv);          // Descriptor of a input device driver
-    indev_drv.type = LV_INDEV_TYPE_POINTER; // Touch pad is a pointer-like device
-    indev_drv.read_cb = my_touchpad_read;   // Set your driver function
-    lv_indev_drv_register(&indev_drv);      // Finally register the driver
-
-    // Initialize the graphics library's tick
-    tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
-
+#if (SIMULATOR != 1)
     infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
     lv_task_handler();
 
     ac_main_setup(&config);
 
     WiFi.setSleep(false);
+#endif
 
 #if USE_ARDUINO_BASIC_OTA
     basic_ota_setup();
 #endif
 
     openhab_ui_setup(&config);
+
+#if (SIMULATOR != 1)
     openhab_sensor_main_setup(config);
+#else // SIMULATOR
+    openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
+#endif
 }
 
 void loop()
 {
+#if (SIMULATOR == 1)
+    lv_task_handler(); // let the GUI do its work
+    openhab_ui_loop();
+    SDL_Delay(5);
+#else
     tft_backlight.loop();
     lv_task_handler(); // let the GUI do its work
     ac_main_loop();
@@ -254,7 +347,7 @@ void loop()
     if (WiFi.status() != wlan_status)
     {
 #if DEBUG_WLAN_STATES
-        Serial.printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
+        debug_printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
 #endif
         wlan_status = WiFi.status();
 
@@ -314,4 +407,5 @@ void loop()
 
         ac_main_reconnect();
     }
+#endif
 }

@@ -4,12 +4,18 @@
 #include "driver/beeper_control.hpp"
 
 #include "lodepng/lodepng.h"
-#include "WiFi.h"
 #include "time.h"
+#if (SIMULATOR != 1)
+#include "WiFi.h"
 #include "uptime.h"
+#endif
 #include "version.h"
+#include "debug.h"
 
+#if (SIMULATOR != 1)
 #include <HTTPClient.h>
+#endif
+
 #include <lvgl.h>
 
 #ifndef DEBUG_OPENHAB_UI
@@ -44,6 +50,7 @@
 #define BEEPER_VOLUME 50
 #endif
 
+#if (SIMULATOR != 1)
 #define BEEPER_EVENT_CHANGE()              \
     {                                      \
         beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \
@@ -76,13 +83,23 @@
         beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
         beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
     }
+#else
+#define BEEPER_EVENT_CHANGE() {}
+#define BEEPER_EVENT_LINK() {}
+#define BEEPER_EVENT_LINK_BACK() {}
+#define BEEPER_EVENT_WINDOW() {}
+#define BEEPER_EVENT_WINDOW_CLOSE() {}
+#define BEEPER_EVENT_ERROR() {}
+#endif
 
 #define STR_PAGE_LEN        128
 #define STR_WEBSITE_LEN     128
 
 extern void lodepng_free(void* ptr);
 
+#if (SIMULATOR != 1)
 HTTPClient http;
+#endif
 Infolabel openhab_ui_infolabel;
 
 static Config *current_config;
@@ -90,9 +107,6 @@ static Config *current_config;
 lv_style_t custom_style_label_state;
 lv_style_t custom_style_label_state_large;
 lv_style_t custom_style_label;
-lv_style_t custom_style_button;
-lv_style_t custom_style_button_toggle;
-lv_style_t custom_style_windows_header;
 
 struct header_s
 {
@@ -116,6 +130,8 @@ struct widget_context_s
     bool refresh_request = false;
     lv_obj_t *container = NULL;
     lv_style_t container_style;
+    lv_obj_t *label = NULL;
+    lv_style_t label_style;
     lv_obj_t *img_obj = NULL;
     lv_img_dsc_t img_dsc;
     lv_obj_t *state_widget = NULL;
@@ -178,25 +194,32 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
 
         // Create a window
         lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-        lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
         lv_win_set_title(win, "Systeminfo");
 
         // Add close button to the header
         lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
-        lv_win_set_btn_size(win, LV_DPI / 3);
+        lv_win_set_header_height(win, LV_DPI / 3);
+        lv_win_set_btn_width(win, 0);
         lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
         // Create a normal cell style
         static lv_style_t style_cell1;
-        lv_style_copy(&style_cell1, &lv_style_plain);
-        style_cell1.body.padding.top = LV_DPI / 40;
-        style_cell1.body.padding.bottom = LV_DPI / 40;
-        style_cell1.body.border.width = 1;
-        style_cell1.body.border.color = LV_COLOR_SILVER;
+        lv_style_init(&style_cell1);
+        lv_style_set_border_color(&style_cell1, LV_STATE_DEFAULT, LV_COLOR_SILVER);
+        lv_style_set_border_width(&style_cell1, LV_STATE_DEFAULT, 1);
+        lv_style_set_pad_top(&style_cell1, LV_STATE_DEFAULT, 0);
+        lv_style_set_pad_bottom(&style_cell1, LV_STATE_DEFAULT, 0);
+        lv_style_set_margin_bottom(&style_cell1, LV_STATE_DEFAULT, 0);
+        lv_style_set_text_font(&style_cell1, LV_STATE_DEFAULT, &custom_font_roboto_16);
+
+        static lv_style_t style_bg;
+        lv_style_init(&style_bg);
+        lv_style_set_border_color(&style_bg, LV_STATE_DEFAULT, LV_COLOR_SILVER);
 
         lv_obj_t *table = lv_table_create(win, NULL);
-        lv_table_set_style(table, LV_TABLE_STYLE_CELL1, &style_cell1);
-        lv_table_set_style(table, LV_TABLE_STYLE_BG, &lv_style_transp_tight);
+        //lv_table_set_style(table, LV_TABLE_STYLE_CELL1, &style_cell1);
+        lv_obj_add_style(table, LV_TABLE_PART_CELL1, &style_cell1);
+        lv_obj_add_style(table, LV_TABLE_PART_BG, &style_bg);
         lv_table_set_col_cnt(table, 2);
         lv_table_set_row_cnt(table, 11);
         lv_coord_t table_width = lv_disp_get_hor_res(NULL) - 10;
@@ -207,16 +230,19 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         char temp_buffer[50];
         uint16_t row = 0;
 
+#if (SIMULATOR != 1)
         lv_table_set_cell_value(table, row, 0, "Uptime");
         uptime::calculateUptime();
         sprintf(temp_buffer, "%lu days, %luh %lum %lus",
                 uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
         lv_table_set_cell_value(table, row, 1, temp_buffer);
+#endif
 
         lv_table_set_cell_value(table, ++row, 0, "Version");
         sprintf(temp_buffer, "%u.%02u (%s %s)", VERSION_MAJOR, VERSION_MINOR, __DATE__, __TIME__);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
 
+#if (SIMULATOR != 1)
         lv_table_set_cell_value(table, ++row, 0, "Hostname");
         lv_table_set_cell_value(table, row, 1, WiFi.getHostname());
 
@@ -255,6 +281,7 @@ void header_event_handler(lv_obj_t *obj, lv_event_t event)
         IPAddress dnsip = WiFi.dnsIP();
         sprintf(temp_buffer, "%u.%u.%u.%u", dnsip[0], dnsip[1], dnsip[2], dnsip[3]);
         lv_table_set_cell_value(table, row, 1, temp_buffer);
+#endif
     }
 }
 
@@ -269,7 +296,7 @@ lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
     hsvcolor.s = strtol(endptr + 1, &endptr, 10);
     hsvcolor.v = strtol(endptr + 1, &endptr, 10);
 
-    Serial.printf("HSV String: %s -> H=%u S=%u V=%u", hsvstring, hsvcolor.h, hsvcolor.s, hsvcolor.v);
+    debug_printf("HSV String: %s -> H=%u S=%u V=%u", hsvstring, hsvcolor.h, hsvcolor.s, hsvcolor.v);
 
     return hsvcolor;
 }
@@ -279,7 +306,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -291,7 +318,7 @@ static void window_item_colorpicker_event_handler(lv_obj_t *obj, lv_event_t even
                     lv_cpicker_get_saturation(ctx->state_window_widget),
                     lv_cpicker_get_value(ctx->state_window_widget));
 #if DEBUG_OPENHAB_UI
-            Serial.printf("hsv string: %s\r\n", hsv);
+            debug_printf("hsv string: %s\r\n", hsv);
 #endif
             ctx->item->setStateText(hsv);
             ctx->item->publish(ctx->item->getLink());
@@ -306,14 +333,14 @@ static void window_item_colorpicker_saturation_event_handler(lv_obj_t *obj, lv_e
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_saturation_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("saturation: %u\n", lv_slider_get_value(obj));
+            debug_printf("saturation: %u\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_saturation(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -327,14 +354,14 @@ static void window_item_colorpicker_value_event_handler(lv_obj_t *obj, lv_event_
     if (event == LV_EVENT_VALUE_CHANGED)
     {
 #if DEBUG_OPENHAB_UI
-        Serial.printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\n");
+        debug_printf("window_item_colorpicker_value_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
         if (ctx != nullptr)
         {
 #if DEBUG_OPENHAB_UI
-            Serial.printf("value: %u\n", lv_slider_get_value(obj));
+            debug_printf("value: %u\n", lv_slider_get_value(obj));
 #endif
             lv_cpicker_set_value(ctx->state_window_widget, lv_slider_get_value(obj));
             lv_event_send(ctx->state_window_widget, LV_EVENT_VALUE_CHANGED, NULL);
@@ -347,37 +374,38 @@ void window_item_colorpicker(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
-    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE); // Add close button and use built-in close action
+    lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add content
     lv_obj_t *cont = lv_cont_create(win, NULL);
-    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_auto_realign(cont, true);                   // Auto realign when the size changes*/
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0); // This parameters will be sued when realigned
-    lv_cont_set_fit(cont, LV_FIT_FLOOD);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+    lv_cont_set_fit(cont, LV_FIT_PARENT);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_TOP);
 
     // Set the style of the color ring
     static lv_style_t styleMain;
-    lv_style_copy(&styleMain, &lv_style_plain);
-    styleMain.line.width = 30;
+    // lv_style_copy(&styleMain, &lv_style_plain);
+
+    // styleMain.line.width = 30;
     // Make the background white
-    styleMain.body.main_color = styleMain.body.grad_color = LV_COLOR_WHITE;
+    // styleMain.body.main_color = styleMain.body.grad_color = LV_COLOR_WHITE;
 
     // Set the style of the knob
     static lv_style_t styleIndicator;
-    lv_style_copy(&styleIndicator, &lv_style_pretty);
-    styleIndicator.body.border.color = LV_COLOR_WHITE;
+    // lv_style_copy(&styleIndicator, &lv_style_pretty);
+    // styleIndicator.body.border.color = LV_COLOR_WHITE;
 
     // Ensure that the knob is fully opaque
-    styleIndicator.body.opa = LV_OPA_COVER;
-    styleIndicator.body.border.opa = LV_OPA_COVER;
+    // styleIndicator.body.opa = LV_OPA_COVER;
+    // styleIndicator.body.border.opa = LV_OPA_COVER;
 
     lv_obj_t *colorPicker = lv_cpicker_create(cont, NULL);
     lv_coord_t picker_size = lv_obj_get_height(cont);
@@ -386,13 +414,8 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     // Choose the 'DISC' type
     lv_cpicker_set_type(colorPicker, LV_CPICKER_TYPE_DISC);
 
-    // Set the styles
-    lv_cpicker_set_style(colorPicker, LV_CPICKER_STYLE_MAIN, &styleMain);
-    lv_cpicker_set_style(colorPicker, LV_CPICKER_STYLE_INDICATOR, &styleIndicator);
-
     // Change the knob's color to that of the selected color
-    lv_cpicker_set_indic_colored(colorPicker, true);
-    lv_cpicker_set_preview(colorPicker, true);
+    lv_cpicker_set_knob_colored(colorPicker, true);
     lv_obj_set_user_data(colorPicker, (lv_obj_user_data_t)ctx);
     lv_obj_set_event_cb(colorPicker, window_item_colorpicker_event_handler);
 
@@ -401,7 +424,7 @@ void window_item_colorpicker(struct widget_context_s *ctx)
 
     // Create container for saturation controls right of the colorwheel
     lv_obj_t *cont_sat = lv_cont_create(cont, NULL);
-    lv_cont_set_style(cont_sat, LV_CONT_STYLE_MAIN, &lv_style_transp);
+    // lv_cont_set_style(cont_sat, LV_CONT_STYLE_MAIN, &lv_style_transp);
     lv_cont_set_fit(cont_sat, LV_FIT_TIGHT);
     lv_cont_set_layout(cont_sat, LV_LAYOUT_CENTER);
     lv_obj_set_size(cont_sat, 40, lv_obj_get_height(cont));
@@ -427,8 +450,7 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     // Create container for value controls right of the saturation slider
     lv_obj_t *cont_val = lv_cont_create(cont, NULL);
     lv_cont_set_fit(cont_val, LV_FIT_TIGHT);
-    lv_cont_set_style(cont_val, LV_CONT_STYLE_MAIN, &lv_style_transp);
-    lv_cont_set_layout(cont_val, LV_LAYOUT_COL_M);
+    lv_cont_set_layout(cont_val, LV_LAYOUT_CENTER);
 
     // Create a label above the slider as spacer
     lv_obj_t *val_slider_spacer = lv_label_create(cont_val, NULL);
@@ -457,7 +479,7 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
     if (event == LV_EVENT_CLICKED)
     {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_selection_event_handler: LV_EVENT_CLICKED\n");
+        printf("window_item_selection_event_handler: LV_EVENT_CLICKED\r\n");
 #endif
         struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
 
@@ -470,18 +492,18 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
                 btn = lv_obj_get_child(ctx->state_window_widget, btn);
 
                 if (btn != NULL)
-                    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+                    lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
 
             } while (btn != NULL);
 
             // activate pressed
-            lv_btn_set_style(obj, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+            lv_btn_set_state(obj, LV_BTN_STATE_PRESSED);
 
             lv_obj_t *label = lv_obj_get_child(obj, NULL);
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Label: %s, Command: %s\n", lv_label_get_text(label), command);
+            debug_printf("button pressed Label: %s, Command: %s\r\n", lv_label_get_text(label), command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -494,27 +516,27 @@ static void window_item_selection_event_handler(lv_obj_t *obj, lv_event_t event)
 void window_item_selection(struct widget_context_s *ctx)
 {
 #if DEBUG_OPENHAB_UI
-        printf("window_item_selection()\n");
+        printf("window_item_selection()\r\n");
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
     lv_obj_t *cont;
 
     cont = lv_cont_create(win, NULL);
-    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_auto_realign(cont, true);
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
-    lv_cont_set_fit(cont, LV_FIT_FLOOD);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+    lv_cont_set_fit(cont, LV_FIT_PARENT);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_MID);
 
     for (size_t index = 0; index < ctx->item->getSelectionCount(); index++)
     {
@@ -535,11 +557,11 @@ void window_item_selection(struct widget_context_s *ctx)
 #if DEBUG_OPENHAB_UI
         printf("Button pressed!\n");
 #endif
-            lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+            lv_btn_set_state(btn, LV_BTN_STATE_PRESSED);
         }
         else
         {
-            lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+            lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
         }
     }
 
@@ -564,18 +586,18 @@ static void window_item_rollershutter_event_handler(lv_obj_t *obj, lv_event_t ev
                 btn = lv_obj_get_child(ctx->state_window_widget, btn);
 
                 if (btn != NULL)
-                    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+                     lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
 
             } while (btn != NULL);
 
             // activate pressed
-            lv_btn_set_style(obj, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+            lv_btn_set_state(obj, LV_BTN_STATE_PRESSED);
 
             lv_obj_t *label = lv_obj_get_child(obj, NULL);
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Command: %s\n", command);
+            debug_printf("button pressed Command: %s\n", command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -592,22 +614,22 @@ void window_item_rollershutter(struct widget_context_s *ctx)
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
     lv_obj_t *cont;
 
     cont = lv_cont_create(win, NULL);
-    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_size(cont, lv_obj_get_width(win) * 4 / 5, lv_obj_get_height(win) / 3);
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_MID);
 
     lv_obj_t *btn;
     lv_obj_t *label;
@@ -620,7 +642,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_UP);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"UP");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button STOP
     btn = lv_btn_create(cont, NULL);
@@ -630,7 +651,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_STOP);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"STOP");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button DOWN
     btn = lv_btn_create(cont, NULL);
@@ -640,7 +660,6 @@ void window_item_rollershutter(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_DOWN);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"DOWN");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     ctx->state_window_widget = cont;
 }
@@ -663,18 +682,18 @@ static void window_item_player_event_handler(lv_obj_t *obj, lv_event_t event)
                 btn = lv_obj_get_child(ctx->state_window_widget, btn);
 
                 if (btn != NULL)
-                    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+                    lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
 
             } while (btn != NULL);
 
             // activate pressed
-            lv_btn_set_style(obj, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+            lv_btn_set_state(obj, LV_BTN_STATE_PRESSED);
 
             lv_obj_t *label = lv_obj_get_child(obj, NULL);
             char *command = (char *)lv_obj_get_user_data(label);
 
 #if DEBUG_OPENHAB_UI
-            Serial.printf("button pressed Command: %s\n", command);
+            debug_printf("button pressed Command: %s\n", command);
 #endif
             ctx->item->setStateText(command);
             ctx->item->publish(ctx->item->getLink());
@@ -691,23 +710,23 @@ void window_item_player(struct widget_context_s *ctx)
 #endif
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add buttons
     lv_obj_t *cont;
 
     cont = lv_cont_create(win, NULL);
-    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
+    // lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &lv_style_transp_fit);
     lv_obj_set_auto_realign(cont, true);
     lv_obj_set_size(cont, lv_obj_get_width(win) - LV_DPI / 4, lv_obj_get_height(win) / 3);
     lv_obj_align_origo(cont, NULL, LV_ALIGN_CENTER, 0, 0);
-    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY);
+    lv_cont_set_layout(cont, LV_LAYOUT_PRETTY_MID);
 
     lv_obj_t *btn;
     lv_obj_t *label;
@@ -720,7 +739,6 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_PREV);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"PREVIOUS");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     // Button PAUSE
     btn = lv_btn_create(cont, NULL);
@@ -731,9 +749,9 @@ void window_item_player(struct widget_context_s *ctx)
     lv_label_set_text(label, LV_SYMBOL_PAUSE);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"PAUSE");
     if (strcmp(ctx->item->getStateText(), "PAUSE") == 0)
-        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+        lv_btn_set_state(btn, LV_BTN_STATE_PRESSED);
     else
-        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+        lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
 
     // Button PLAY
     btn = lv_btn_create(cont, NULL);
@@ -743,11 +761,10 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_PLAY);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"PLAY");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
     if (strcmp(ctx->item->getStateText(), "PLAY") == 0)
-        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button_toggle);
+        lv_btn_set_state(btn, LV_BTN_STATE_PRESSED);
     else
-        lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
+        lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
 
     // Button NEXT
     btn = lv_btn_create(cont, NULL);
@@ -757,7 +774,6 @@ void window_item_player(struct widget_context_s *ctx)
     label = lv_label_create(btn, NULL);
     lv_label_set_text(label, LV_SYMBOL_NEXT);
     lv_obj_set_user_data(label, (lv_obj_user_data_t)"NEXT");
-    lv_btn_set_style(btn, LV_BTN_STYLE_REL, &custom_style_button);
 
     ctx->state_window_widget = cont;
 }
@@ -791,12 +807,12 @@ void window_item_slider(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add slider
@@ -804,6 +820,7 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_slider_set_range(slider, ctx->item->getMinVal(), ctx->item->getMaxVal());
     lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
     lv_obj_set_width(slider, lv_obj_get_width(win) - LV_DPI / 3);
+    lv_obj_set_height(slider, LV_DPI / 3);
     lv_obj_align(slider, NULL, LV_ALIGN_CENTER, 0, 0);
     lv_obj_set_user_data(slider, (lv_obj_user_data_t)ctx);
     lv_obj_set_event_cb(slider, window_item_slider_event_handler);
@@ -816,7 +833,7 @@ void window_item_slider(struct widget_context_s *ctx)
     else
         lv_label_set_text_fmt(state_label, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
 
-    lv_obj_set_style(state_label, &custom_style_label_state_large);
+    lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &custom_style_label_state_large);
     lv_obj_set_auto_realign(state_label, true);
     lv_obj_align(state_label, slider, LV_ALIGN_OUT_TOP_MID, 0, 0 - LV_DPI / 10);
     lv_obj_set_width(state_label, lv_obj_get_width(win) - LV_DPI / 20);
@@ -829,7 +846,7 @@ void window_item_slider(struct widget_context_s *ctx)
     else
         lv_label_set_text_fmt(min_value_label, ctx->item->getNumberPattern(), ctx->item->getMinVal());
 
-    lv_obj_set_style(min_value_label, &custom_style_label_state);
+    lv_obj_add_style(min_value_label, LV_LABEL_PART_MAIN, &custom_style_label_state);
     lv_obj_set_auto_realign(min_value_label, true);
     lv_obj_align(min_value_label, slider, LV_ALIGN_OUT_BOTTOM_LEFT, 0, 0);
     lv_obj_set_width(state_label, lv_obj_get_width(win) / 2 - LV_DPI / 20);
@@ -842,7 +859,7 @@ void window_item_slider(struct widget_context_s *ctx)
     else
         lv_label_set_text_fmt(max_value_label, ctx->item->getNumberPattern(), ctx->item->getMaxVal());
 
-    lv_obj_set_style(max_value_label, &custom_style_label_state);
+    lv_obj_add_style(max_value_label, LV_LABEL_PART_MAIN, &custom_style_label_state);
     lv_obj_set_auto_realign(max_value_label, true);
     lv_obj_align(max_value_label, slider, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 0);
     lv_obj_set_width(state_label, lv_obj_get_width(win) / 2 - LV_DPI / 20);
@@ -861,7 +878,7 @@ static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
 
         if (ctx != nullptr)
         {
-            const char *txt = lv_btnm_get_active_btn_text(obj);
+            const char *txt = lv_btnmatrix_get_active_btn_text(obj);
 
 #if DEBUG_OPENHAB_UI
             Serial.print("window_item_setpoint_event_handler: btn_text = ");
@@ -896,24 +913,15 @@ void window_item_setpoint(struct widget_context_s *ctx)
 {
     // Create a window
     lv_obj_t *win = lv_win_create(lv_scr_act(), NULL);
-    lv_win_set_style(win, LV_WIN_STYLE_HEADER, &custom_style_windows_header);
-    lv_win_set_sb_mode(win, LV_SB_MODE_OFF);
     lv_win_set_title(win, ctx->item->getLabel());
+    lv_win_set_header_height(win, lv_obj_get_height(win) / 5);
 
     // Add close button to the header
     lv_obj_t *close_btn = lv_win_add_btn(win, LV_SYMBOL_CLOSE);
+    lv_win_set_btn_width(win, 0);
     lv_obj_set_event_cb(close_btn, window_close_event_handler);
 
     // Add content
-    static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
-    lv_obj_t *btnm1 = lv_btnm_create(win, NULL);
-    lv_btnm_set_style(btnm1, LV_BTNM_STYLE_BTN_REL, &custom_style_button);
-    lv_btnm_set_map(btnm1, btnm_map);
-    lv_obj_set_height(btnm1, lv_obj_get_height(win) / 3);
-    lv_obj_align(btnm1, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0);
-    lv_obj_set_user_data(btnm1, (lv_obj_user_data_t)ctx);
-    lv_obj_set_event_cb(btnm1, window_item_setpoint_event_handler);
-
     lv_obj_t *state_label = lv_label_create(win, NULL);
     lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
     lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
@@ -924,9 +932,17 @@ void window_item_setpoint(struct widget_context_s *ctx)
     else
         lv_label_set_text_fmt(state_label, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
 
-    lv_obj_set_style(state_label, &custom_style_label_state_large);
+    lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &custom_style_label_state_large);
     lv_obj_set_auto_realign(state_label, true);
-    lv_obj_align(state_label, btnm1, LV_ALIGN_OUT_TOP_MID, 0, 0 - LV_DPI / 4);
+
+    static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
+    lv_obj_t *btnm1 = lv_btnmatrix_create(win, NULL);
+    lv_btnmatrix_set_map(btnm1, btnm_map);
+    lv_obj_set_height(btnm1, lv_obj_get_height(win) / 3);
+    lv_obj_align(btnm1, state_label, LV_ALIGN_OUT_BOTTOM_MID, 0, 0);
+    lv_obj_set_user_data(btnm1, (lv_obj_user_data_t)ctx);
+    lv_obj_set_event_cb(btnm1, window_item_setpoint_event_handler);
+
     ctx->state_window_widget = state_label;
 }
 
@@ -1106,8 +1122,8 @@ void update_state_widget(struct widget_context_s *ctx)
     else if (ctx->item->getType() == ItemType::type_colorpicker)
     {
         lv_color_hsv_t color_hsv = hsvCStringToLVColor(ctx->item->getStateText());
-        ctx->state_widget_style.body.main_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
-        ctx->state_widget_style.body.grad_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
+        // ctx->state_widget_style.body.main_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
+        // ctx->state_widget_style.body.grad_color = lv_color_hsv_to_rgb(color_hsv.h, color_hsv.s, color_hsv.v);
         lv_obj_invalidate(ctx->state_widget);
     }
     else
@@ -1238,6 +1254,7 @@ static void header_create(void)
 {
     header.container = lv_cont_create(lv_disp_get_scr_act(NULL), NULL);
     lv_obj_set_width(header.container, lv_disp_get_hor_res(NULL));
+    //lv_obj_set_height(header.container, 24);
 
     lv_obj_set_click(header.container, true);
     lv_obj_set_event_cb(header.container, header_event_handler);
@@ -1271,9 +1288,9 @@ static void header_set_title(const char* text)
 
 static void header_update()
 {
+#if (SIMULATOR != 1)
     static int last_second;
     struct tm timeinfo;
-
     if (getLocalTime(&timeinfo, 0))
     {
         if (timeinfo.tm_sec != last_second)
@@ -1294,6 +1311,7 @@ static void header_update()
         signal_last_update = millis();
         lv_label_set_text_fmt(header.item.signal, "%02d%%", get_signal_quality(WiFi.RSSI()));
     }
+#endif
 }
 
 static void content_create(void)
@@ -1306,107 +1324,125 @@ static void content_create(void)
     lv_obj_set_size(content, hres, vres - lv_obj_get_height(header.container));
     lv_obj_set_pos(content, 0, lv_obj_get_height(header.container));
 
-    lv_cont_set_layout(content, LV_LAYOUT_PRETTY);
+    lv_cont_set_layout(content, LV_LAYOUT_PRETTY_MID);
 }
 
-void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
+void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
+{
+    if (wctx->container != NULL)
+    {
+        /* child objects (label, img_obj and state_widget) will be deleted as well */
+        lv_obj_del(wctx->container);
+    }
+
+    wctx->container = NULL;
+    wctx->label = NULL;
+    wctx->img_obj = NULL;
+    wctx->state_widget = NULL;
+    wctx->state_window_widget = NULL;
+    wctx->item = NULL;
+
+    wctx->update_timestamp = 0;
+    wctx->refresh_request = false;
+}
+
+void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
 {
 #if DEBUG_OPENHAB_UI
-    printf("create_widget: type=%u\r\n", wctx->item->getType());
+    printf("widget_create: type=%u\r\n", wctx->item->getType());
 #endif
 
-    lv_obj_t *cont;
-
     // Create widget button
-    cont = lv_cont_create(parent, NULL);
-    lv_obj_set_click(cont, true);
-    lv_obj_set_event_cb(cont, event_handler);
-    lv_obj_set_size(cont, lv_obj_get_width(parent) / 3 - LV_DPI / 16, lv_obj_get_height(parent) / 2 - LV_DPI / 16);
-    lv_cont_set_fit(cont, LV_FIT_NONE);
-    lv_cont_set_layout(cont, LV_LAYOUT_COL_L);
-    wctx->container = cont;
+    wctx->container = lv_cont_create(parent, NULL);
+    lv_obj_set_click(wctx->container, true);
+    lv_obj_set_event_cb(wctx->container, event_handler);
+    lv_obj_set_size(wctx->container, lv_obj_get_width(parent) / 3 - 2, lv_obj_get_height(parent) / 2 - 2);
+    lv_cont_set_fit(wctx->container, LV_FIT_NONE);
+    lv_cont_set_layout(wctx->container, LV_LAYOUT_COLUMN_MID);
 
-    const lv_style_t *cont_style = lv_cont_get_style(cont, LV_CONT_STYLE_MAIN);
-    lv_style_copy(&wctx->container_style, cont_style);
-
-    wctx->container_style.body.padding.left = 0;
-    wctx->container_style.body.padding.right = 0;
+    lv_style_init(&wctx->container_style);
+    lv_theme_apply(wctx->container, LV_THEME_BTN);
+    lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 2);
+    lv_style_set_border_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_BLACK);
+    lv_style_set_border_opa(&wctx->container_style, LV_STATE_DEFAULT, LV_OPA_30);
+    lv_style_set_bg_grad_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_SILVER);
+    lv_style_set_bg_grad_dir(&wctx->container_style, LV_STATE_DEFAULT, LV_GRAD_DIR_VER);
+    lv_obj_add_style(wctx->container, LV_CONT_PART_MAIN, &wctx->container_style);
 
     // Create top label object
-     lv_obj_t *label = lv_label_create(cont, NULL);
-    lv_obj_set_style(label, &custom_style_label);
-    lv_label_set_align(label, LV_LABEL_ALIGN_CENTER);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_BREAK);
-    lv_label_set_text(label, wctx->item->getLabel());
-    lv_obj_move_foreground(label);
-    lv_obj_set_width(label, lv_obj_get_width(cont) - LV_DPI / 20);
-    lv_obj_set_protect(label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-    lv_obj_align(label, NULL, LV_ALIGN_IN_TOP_MID, 0, 3);
+    wctx->label = lv_label_create(wctx->container, NULL);
+    lv_obj_add_style(wctx->label, LV_LABEL_PART_MAIN, &custom_style_label);
+    lv_obj_set_auto_realign(wctx->label, true);
+    lv_label_set_long_mode(wctx->label, LV_LABEL_LONG_BREAK);
+    lv_label_set_text(wctx->label, wctx->item->getLabel());
+    lv_obj_set_width(wctx->label, lv_obj_get_width(wctx->container) - LV_DPI / 20);
+    lv_label_set_align(wctx->label, LV_LABEL_ALIGN_CENTER);
+    lv_obj_move_foreground(wctx->label);
+    lv_obj_add_protect(wctx->label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+    lv_obj_align(wctx->label, NULL, LV_ALIGN_IN_TOP_MID, 0, 3);
 
     // Create center image object
-    lv_obj_t *img_obj = lv_img_create(cont, NULL);
-    wctx->img_obj = img_obj;
-    lv_obj_set_opa_scale_enable(img_obj, true);
+    wctx->img_obj = lv_img_create(wctx->container, NULL);
 
     if (wctx->img_dsc.data_size > 0)
     {
-        lv_img_set_src(img_obj, &wctx->img_dsc);
-        lv_obj_set_opa_scale(img_obj, LV_OPA_30);
+        lv_img_set_src(wctx->img_obj, &wctx->img_dsc);
+        lv_obj_set_style_local_image_opa(wctx->img_obj, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, 80);
     }
     else if (wctx->item->getType() == ItemType::type_parent_link)
     {
-        lv_img_set_style(img_obj, LV_IMG_STYLE_MAIN, &custom_style_label_state_large);
-        lv_img_set_src(img_obj, LV_SYMBOL_NEW_LINE);
-        lv_obj_set_opa_scale(img_obj, LV_OPA_60);
+        lv_obj_add_style(wctx->img_obj, LV_IMG_PART_MAIN, &custom_style_label_state_large);
+        lv_img_set_src(wctx->img_obj, LV_SYMBOL_NEW_LINE);
+        lv_obj_set_style_local_text_opa(wctx->img_obj, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, 140);
     }
     else
     {
-        lv_img_set_style(img_obj, LV_IMG_STYLE_MAIN, &custom_style_label_state_large);
-        lv_img_set_src(img_obj, LV_SYMBOL_EYE_OPEN);
-        lv_obj_set_opa_scale(img_obj, LV_OPA_20);
+        lv_obj_add_style(wctx->img_obj, LV_IMG_PART_MAIN, &custom_style_label_state_large);
+        lv_img_set_src(wctx->img_obj, LV_SYMBOL_EYE_OPEN);
+        lv_obj_set_style_local_text_opa(wctx->img_obj, LV_IMG_PART_MAIN, LV_STATE_DEFAULT, 50);
     }
 
-    lv_obj_move_background(img_obj);
-    lv_obj_set_protect(img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
-    lv_obj_align(img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_move_background(wctx->img_obj);
+    lv_obj_add_protect(wctx->img_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+    lv_obj_align(wctx->img_obj, NULL, LV_ALIGN_CENTER, 0, 0);
 
     // Define bottom label and button boarder style
     if (   wctx->item->getType() == ItemType::type_parent_link
         || wctx->item->getType() == ItemType::type_link)
     {
-        wctx->container_style.body.border.width *= 2;
-        wctx->container_style.body.border.color = LV_COLOR_BLUE;
-        lv_label_set_align(label, LV_LABEL_ALIGN_CENTER);
-        lv_obj_set_style(label, &custom_style_label_state);
-        lv_obj_align(label, NULL, LV_ALIGN_CENTER, 0, 0);
+        lv_style_set_border_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_BLUE);
+        lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 4);
+        lv_label_set_align(wctx->label, LV_LABEL_ALIGN_CENTER);
+        lv_obj_add_style(wctx->label, LV_LABEL_PART_MAIN, &custom_style_label_state);
+        lv_obj_align(wctx->label, NULL, LV_ALIGN_CENTER, 0, 0);
     }
     else if (   wctx->item->getType() == ItemType::type_string
              || wctx->item->getType() == ItemType::type_number)
     {
-        lv_obj_t *state_label = lv_label_create(cont, NULL);
+        lv_obj_t *state_label = lv_label_create(wctx->container, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
         lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
-        lv_obj_set_style(state_label, &wctx->state_widget_style);
+        lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
-        lv_obj_set_width(state_label, lv_obj_get_width(cont));
-        lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_set_width(state_label, lv_obj_get_width(wctx->container));
+        lv_obj_add_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
     }
     else if (   wctx->item->getType() == ItemType::type_group)
     {
-        wctx->container_style.body.border.width *= 2;
-        wctx->container_style.body.border.color = LV_COLOR_BLUE;
-        lv_obj_t *state_label = lv_label_create(cont, NULL);
+        lv_style_set_border_color(&wctx->container_style, LV_STATE_DEFAULT, LV_COLOR_BLUE);
+        lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 4);
+        lv_obj_t *state_label = lv_label_create(wctx->container, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
         lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
-        lv_obj_set_style(state_label, &wctx->state_widget_style);
+        lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
-        lv_obj_set_width(state_label, lv_obj_get_width(cont));
-        lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_set_width(state_label, lv_obj_get_width(wctx->container));
+        lv_obj_add_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
@@ -1418,38 +1454,37 @@ void create_widget(lv_obj_t *parent, struct widget_context_s *wctx)
              || wctx->item->getType() == ItemType::type_rollershutter
              || wctx->item->getType() == ItemType::type_player)
     {
-        wctx->container_style.body.border.width *= 2;
+        lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 4);
 
-        lv_obj_t *state_label = lv_label_create(cont, NULL);
+        lv_obj_t *state_label = lv_label_create(wctx->container, NULL);
         lv_label_set_align(state_label, LV_LABEL_ALIGN_CENTER);
         lv_label_set_long_mode(state_label, LV_LABEL_LONG_BREAK);
         lv_style_copy(&wctx->state_widget_style, &custom_style_label_state);
-        lv_obj_set_style(state_label, &wctx->state_widget_style);
+        lv_obj_add_style(state_label, LV_LABEL_PART_MAIN, &wctx->state_widget_style);
         lv_obj_move_foreground(state_label);
-        lv_obj_set_width(state_label, lv_obj_get_width(cont));
-        lv_obj_set_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_set_width(state_label, lv_obj_get_width(wctx->container));
+        lv_obj_add_protect(state_label, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(state_label, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -3);
 
         wctx->state_widget = state_label;
     }
     else if (wctx->item->getType() == ItemType::type_colorpicker)
     {
-        wctx->container_style.body.border.width *= 2;
+        lv_style_set_border_width(&wctx->container_style, LV_STATE_DEFAULT, 4);
 
-        lv_obj_t *state_obj = lv_obj_create(cont, NULL);
-        lv_style_copy(&wctx->state_widget_style, &lv_style_pretty_color);
-        lv_obj_set_style(state_obj, &wctx->state_widget_style);
+        lv_obj_t *state_obj = lv_obj_create(wctx->container, NULL);
+        // lv_style_copy(&wctx->state_widget_style, &lv_style_pretty_color);
+        lv_obj_add_style(state_obj, LV_LABEL_PART_MAIN, &wctx->state_widget_style);
         lv_obj_move_foreground(state_obj);
-        lv_obj_set_width(state_obj, lv_obj_get_width(cont) / 3);
+        lv_obj_set_width(state_obj, lv_obj_get_width(wctx->container) / 3);
         lv_obj_set_height(state_obj, 22);
-        lv_obj_set_protect(state_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
+        lv_obj_add_protect(state_obj, LV_PROTECT_POS | LV_PROTECT_FOLLOW);
         lv_obj_align(state_obj, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, -6);
 
         wctx->state_widget = state_obj;
     }
 
-    lv_cont_set_style(cont, LV_CONT_STYLE_MAIN, &wctx->container_style);
-    lv_obj_set_user_data(cont, (lv_obj_user_data_t)wctx);
+    lv_obj_set_user_data(wctx->container, (lv_obj_user_data_t)wctx);
 }
 
 void show(lv_obj_t *parent)
@@ -1458,29 +1493,21 @@ void show(lv_obj_t *parent)
     for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
     {
         free_icon(&widget_context[i].img_dsc);
-
-        // remove button
-        if (widget_context[i].container != NULL)
-        {
-            lv_obj_del(widget_context[i].container);
-            widget_context[i].container = NULL;
-        }
-
-        widget_context[i].item = NULL;
+        widget_destroy(parent, &widget_context[i]);
     }
 
     header_set_title(sitemap.getPageName());
 
-    for (size_t i = 0; i < sitemap.getItemCount(); i++)
+    for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
     {
-        if (sitemap.getItem(i)->getType() != ItemType::type_unknown)
-        {
-            widget_context[i].item = sitemap.getItem(i);
+        widget_context[i].item = sitemap.getItem(i);
 
+        if (widget_context[i].item->getType() != ItemType::type_unknown)
+        {
             if (widget_context[i].item->getType() != ItemType::type_parent_link)
                 load_icon(&widget_context[i]);
 
-            create_widget(parent, &widget_context[i]);
+            widget_create(parent, &widget_context[i]);
             update_state_widget(&widget_context[i]);
         }
     }
@@ -1493,31 +1520,25 @@ void openhab_ui_setup(Config *config)
 {
     current_config = config;
 
-    lv_style_copy(&custom_style_label_state, &lv_style_plain);
-    custom_style_label_state.text.font = &custom_font_roboto_22;
-    custom_style_label_state.text.line_space = 0;
 
-    lv_style_copy(&custom_style_label_state_large, &lv_style_plain);
-    custom_style_label_state_large.text.font = &lv_font_roboto_28;
-    custom_style_label_state_large.text.line_space = 0;
+    // lv_style_copy(&custom_style_label_state, &lv_style_plain);
+    lv_style_init(&custom_style_label_state);
+    lv_style_set_text_font(&custom_style_label_state, LV_STATE_DEFAULT, &custom_font_roboto_22);
+    lv_style_set_text_line_space(&custom_style_label_state, LV_STATE_DEFAULT, 0);
 
-    lv_style_copy(&custom_style_label, &lv_style_plain);
-    custom_style_label.body.padding.left = LV_DPI / 5;
-    custom_style_label.body.padding.right = LV_DPI / 5;
-    custom_style_label.body.padding.top = LV_DPI / 5;
-    custom_style_label.body.padding.bottom = LV_DPI / 5;
-    custom_style_label.text.font = &custom_font_roboto_16;
-    custom_style_label.text.line_space = -5;
+    // lv_style_copy(&custom_style_label_state_large, &lv_style_plain);
+    lv_style_init(&custom_style_label_state_large);
+    lv_style_set_text_font(&custom_style_label_state_large, LV_STATE_DEFAULT, &lv_font_montserrat_36);
+    // custom_style_label_state_large.text.font = &lv_font_roboto_28;
+    // custom_style_label_state_large.text.line_space = 0;
 
-    lv_style_copy(&custom_style_button, &lv_style_btn_rel);
-    custom_style_button.text.color = lv_color_make(0x20, 0x20, 0x20);
-    custom_style_button.body.main_color = LV_COLOR_WHITE;
-    custom_style_button.body.grad_color = LV_COLOR_SILVER;
-
-    lv_style_copy(&custom_style_button_toggle, &lv_style_btn_tgl_rel);
-
-    lv_style_copy(&custom_style_windows_header, &lv_style_plain_color);
-    custom_style_windows_header.text.font = &custom_font_roboto_22;
+    // lv_style_copy(&custom_style_label, &lv_style_plain);
+    lv_style_init(&custom_style_label);
+    // lv_style_set_pad_left(&custom_style_label, LV_STATE_DEFAULT, LV_DPI / 5);
+    // lv_style_set_pad_right(&custom_style_label, LV_STATE_DEFAULT, LV_DPI / 5);
+    // lv_style_set_pad_bottom(&custom_style_label, LV_STATE_DEFAULT, LV_DPI / 5);
+    lv_style_set_text_font(&custom_style_label, LV_STATE_DEFAULT, &custom_font_roboto_16);
+    //lv_style_set_text_line_space(&custom_style_label, LV_STATE_DEFAULT, -5);
 
     header_create();
     content_create();
@@ -1595,6 +1616,7 @@ void openhab_ui_loop(void)
                     widget_context[i].refresh_request = false;
                     update_icon(&widget_context[i]);
                     update_state_widget(&widget_context[i]);
+                    statistics.update_success_cnt++;
                 }
 
                 if (widget_context[i].update_timestamp + ITEM_UPDATE_INTERVAL < millis())
@@ -1623,6 +1645,7 @@ void openhab_ui_loop(void)
         }
     }
 
+#if (SIMULATOR != 1)
     if (update_ntp_next_timestamp < millis())
     {
         update_ntp_next_timestamp = millis() + NTP_TIME_UPDATE_INTERVAL;
@@ -1632,9 +1655,10 @@ void openhab_ui_loop(void)
 #endif
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
-
+#endif
     header_update();
 
+#if (SIMULATOR != 1)
     if (millis() > connection_error_handling_timestamp + (CONNECTION_ERROR_TIMEOUT_S * 1000))
     {
         connection_error_handling_timestamp = millis();
@@ -1645,12 +1669,15 @@ void openhab_ui_loop(void)
             ESP.restart();
         }
 
-        Serial.print("STATISTICS reset");
+#if DEBUG_OPENHAB_UI
+        Serial.print("STATISTICS reset\r\n");
+#endif
         statistics.update_fail_cnt = 0;
         statistics.update_success_cnt = 0;
         statistics.sitemap_fail_cnt = 0;
         statistics.sitemap_success_cnt = 0;
     }
+#endif
 
 #if DEBUG_OPENHAB_UI
     if (millis() > statistics_timestamp + (10 * 1000))
@@ -1659,7 +1686,7 @@ void openhab_ui_loop(void)
 
         uptime::calculateUptime();
 
-        Serial.printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
+        debug_printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
                       uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds(),
                       statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }

@@ -1,5 +1,8 @@
 #include "openhab_connector.hpp"
+
+#if (SIMULATOR != 1)
 #include <HTTPClient.h>
+#endif
 
 #ifndef DEBUG_OPENHAB_CONNECTOR
 #define DEBUG_OPENHAB_CONNECTOR 0
@@ -19,7 +22,7 @@ int Item::update(const char* link)
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::update: Requesting URL: %s\r\n", url);
 #endif
-
+#if (SIMULATOR != 1)
     HTTPClient http;
     http.begin(url);
 
@@ -55,7 +58,7 @@ int Item::update(const char* link)
     }
 
     http.end();
-
+#endif
     return retval;
 }
 
@@ -67,6 +70,7 @@ int Item::publish(const char* url)
     printf("Item::publish: Requesting URL: %s\r\n", url);
 #endif
 
+#if (SIMULATOR != 1)
     HTTPClient http;
     http.begin(url);
     http.addHeader("Content-Type", "text/plain");
@@ -84,6 +88,7 @@ int Item::publish(const char* url)
     }
 
     http.end();
+#endif
 
     return retval;
 }
@@ -99,6 +104,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
+#if (SIMULATOR != 1)
     HTTPClient http;
     http.begin(url);
 
@@ -141,7 +147,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
             int c = stream->readBytes(p_dst, ((size > dst_avail) ? dst_avail : size));
 
 #if DEBUG_OPENHAB_CONNECTOR
-            Serial.printf("get_icon: %u bytes read\r\n", c);
+            debug_printf("get_icon: %u bytes read\r\n", c);
 #if DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
             for (int i = 0; i < c; i++)
                 printf("%02x ", p_dst[i]);
@@ -176,7 +182,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     // ToDo: find a better solution
     if (icon_size > 7)
         icon_size -= 7;
-
+#endif
     return icon_size;
 }
 
@@ -188,7 +194,7 @@ int Sitemap::openlink(const char* url)
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::openlink: Requesting URL: %s\r\n", url);
 #endif
-
+#if (SIMULATOR != 1)
     HTTPClient http;
     http.begin(url);
 
@@ -217,7 +223,7 @@ int Sitemap::openlink(const char* url)
 
         if (doc.containsKey("error"))
         {
-            printf("Sitemap::openlink: json error message: %s", doc["error"]["message"].as<char*>());
+            printf("Sitemap::openlink: json error message: %s", doc["error"]["message"]);
             doc.clear();
             return false;
         }
@@ -261,21 +267,21 @@ int Sitemap::openlink(const char* url)
 #endif
             Sitemap::item_count++;
         }
-        else if (doc["leaf"])
-        {
-            item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
-            item_array[Sitemap::item_count].setPageLink(last_url);
-#if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
-#endif
-            Sitemap::item_count++;
-        }
+//         else if (doc["leaf"] && doc["leaf"].as<bool>() == true)
+//         {
+//             item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
+//             item_array[Sitemap::item_count].setPageLink(last_url);
+// #if DEBUG_OPENHAB_CONNECTOR
+//             printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
+// #endif
+//             Sitemap::item_count++;
+//         }
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
 
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
-            JsonVariant widget = widget_array.getElement(widget_index);
+            JsonVariant widget = widget_array[widget_index];
             Item* item = &item_array[Sitemap::item_count];
 
             // Label
@@ -298,7 +304,7 @@ int Sitemap::openlink(const char* url)
             }
 
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u label=\"%s\"", widget_index, item->getLabel());
+            printf("  idx: %u label=\"%s\"", Sitemap::item_count, item->getLabel());
 #endif
 
             // Icon
@@ -431,7 +437,7 @@ int Sitemap::openlink(const char* url)
             {
                 item->setPageLink(widget["linkedPage"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-                printf("  parent_link=\"%s\"", item->getPageLink());
+                printf("  page_link=\"%s\"", item->getPageLink());
 #endif
             }
 
@@ -449,7 +455,7 @@ int Sitemap::openlink(const char* url)
                 JsonArray map_array = widget["mappings"].as<JsonArray>();
                 for (size_t i = 0; i < map_array.size(); ++i)
                 {
-                    JsonVariant map_elem = map_array.getElement(i);
+                    JsonVariant map_elem = map_array[i];
                     item->setSelectionLabel(i, map_elem["label"]);
                     item->setSelectionCommand(i, map_elem["command"]);
                 }
@@ -460,7 +466,7 @@ int Sitemap::openlink(const char* url)
                 JsonArray map_array = widget["item"]["commandDescription"]["commandOptions"].as<JsonArray>();
                 for (size_t i = 0; i < map_array.size(); ++i)
                 {
-                    JsonVariant map_elem = map_array.getElement(i);
+                    JsonVariant map_elem = map_array[i];
                     item->setSelectionLabel(i, map_elem["label"]);
                     item->setSelectionCommand(i, map_elem["command"]);
                 }
@@ -486,6 +492,6 @@ int Sitemap::openlink(const char* url)
     doc.clear();
 
     http.end();
-
+#endif
     return retval;
 }
