@@ -19,6 +19,9 @@
 #include "WiFi.h"
 #include "ota/basic_ota.hpp"
 #include "driver/backlight_control.hpp"
+#if(AMBILIGHT_CONTROL == 1)
+#include "driver/ambilight_control.hpp"
+#endif
 #include "driver/beeper_control.hpp"
 #include "openhab_sensor_main.hpp"
 #else
@@ -75,6 +78,10 @@ int screenHeight = 240;
 #if (SIMULATOR != 1)
 Ticker tick;               // timer for interrupt handler
 BacklightControl tft_backlight;
+#if(AMBILIGHT_CONTROL == 1)
+AmbilightControl ambilight;
+#endif
+
 TFT_eSPI tft = TFT_eSPI(); // TFT instance
 #endif
 
@@ -156,6 +163,9 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 #if (SIMULATOR != 1)
     if (touched == true && tft_backlight.resetDimTimeout() == true)
     {
+#if(AMBILIGHT_CONTROL == 1)
+        ambilight.resetDimTimeout();
+#endif
         if (config.item.beeper.enabled == true)
             beeper_playNote(NOTE_C4, 50, 100, 0);
         suppress_touch_timeout = millis() + 200;
@@ -249,6 +259,14 @@ void setup()
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
     tft_backlight.setup(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_INVERT);
 
+    #if(AMBILIGHT_CONTROL == 1)
+    ambilight.setDimTimeout(config.item.backlight.activity_timeout);
+    ambilight.setNormalBrightness(config.item.backlight.normal_brightness);
+    ambilight.setDimBrightness(config.item.backlight.dim_brightness);
+    ambilight.setColor(255,100,100);
+    ambilight.setup(AMBILIGHT_RED_PIN, AMBILIGHT_GREEN_PIN, AMBILIGHT_BLUE_PIN, AMBILIGHT_INVERT);
+    #endif
+
     tft.begin();        // TFT init
     tft.fillScreen(TFT_PINK);
     tft.setRotation(3); // Landscape orientation
@@ -337,6 +355,9 @@ void loop()
     SDL_Delay(5);
 #else
     tft_backlight.loop();
+    #if(AMBILIGHT_CONTROL == 1)
+    ambilight.loop();
+    #endif
     lv_task_handler(); // let the GUI do its work
     ac_main_loop();
     infolabel.loop();
