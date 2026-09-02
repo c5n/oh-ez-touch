@@ -141,6 +141,7 @@ struct widget_context_s
     lv_style_t state_widget_style;
     lv_obj_t *state_window_widget = NULL;
     lv_obj_t *state_window_slider = NULL;
+    lv_obj_t *state_window_preset_row = NULL;
     Item *item = NULL;
 };
 
@@ -782,6 +783,47 @@ void window_item_player(struct widget_context_s *ctx)
     ctx->state_window_widget = cont;
 }
 
+/* Quick presets below the slider. The percentages are of the item's range, so
+ * they read literally for a Dimmer (0..100) and still make sense for a Slider
+ * that openHAB gave a narrower range. */
+static const uint8_t slider_preset_percent[] = { 0, 25, 50, 75, 100 };
+
+#define SLIDER_PRESET_COUNT (sizeof(slider_preset_percent) / sizeof(slider_preset_percent[0]))
+
+static int16_t window_item_slider_preset_value(Item *item, uint8_t percent)
+{
+    float min_val = item->getMinVal();
+    float max_val = item->getMaxVal();
+
+    return (int16_t)(min_val + (max_val - min_val) * percent / 100.0f);
+}
+
+/* Show which preset the slider currently sits on, the way the player window
+ * marks the active transport button. Values between two presets leave all of
+ * them unmarked, which is the common case while dragging. */
+static void window_item_slider_refresh_presets(struct widget_context_s *ctx)
+{
+    if (ctx->state_window_preset_row == nullptr || ctx->state_window_slider == nullptr)
+        return;
+
+    int16_t value = lv_slider_get_value(ctx->state_window_slider);
+    lv_obj_t *btn = NULL;
+
+    while ((btn = lv_obj_get_child(ctx->state_window_preset_row, btn)) != NULL)
+    {
+        lv_obj_t *label = lv_obj_get_child(btn, NULL);
+        const uint8_t *percent = (const uint8_t *)lv_obj_get_user_data(label);
+
+        if (percent == nullptr)
+            continue;
+
+        if (window_item_slider_preset_value(ctx->item, *percent) == value)
+            lv_btn_set_state(btn, LV_BTN_STATE_PRESSED);
+        else
+            lv_btn_set_state(btn, LV_BTN_STATE_RELEASED);
+    }
+}
+
 static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
 {
     if (event == LV_EVENT_VALUE_CHANGED)
@@ -800,19 +842,14 @@ static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
             else
                 lv_label_set_text_fmt(ctx->state_window_widget, ctx->item->getNumberPattern(), ctx->item->getStateNumber());
 
+            window_item_slider_refresh_presets(ctx);
+
             ctx->item->publish(ctx->item->getLink());
             ctx->refresh_request = true;
             BEEPER_EVENT_CHANGE();
         }
     }
 }
-
-/* Quick presets below the slider. The percentages are of the item's range, so
- * they read literally for a Dimmer (0..100) and still make sense for a Slider
- * that openHAB gave a narrower range. */
-static const uint8_t slider_preset_percent[] = { 0, 25, 50, 75, 100 };
-
-#define SLIDER_PRESET_COUNT (sizeof(slider_preset_percent) / sizeof(slider_preset_percent[0]))
 
 static void window_item_slider_preset_event_handler(lv_obj_t *obj, lv_event_t event)
 {
@@ -832,9 +869,7 @@ static void window_item_slider_preset_event_handler(lv_obj_t *obj, lv_event_t ev
         if (percent == nullptr)
             return;
 
-        float min_val = ctx->item->getMinVal();
-        float max_val = ctx->item->getMaxVal();
-        int16_t value = (int16_t)(min_val + (max_val - min_val) * *percent / 100.0f);
+        int16_t value = window_item_slider_preset_value(ctx->item, *percent);
 
 #if DEBUG_OPENHAB_UI
         debug_printf("preset pressed: %u%% -> %d\n", *percent, value);
@@ -940,6 +975,9 @@ void window_item_slider(struct widget_context_s *ctx)
 
     ctx->state_window_widget = state_label;
     ctx->state_window_slider = slider;
+    ctx->state_window_preset_row = preset_row;
+
+    window_item_slider_refresh_presets(ctx);
 }
 
 static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
@@ -1424,6 +1462,7 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
     wctx->state_widget = NULL;
     wctx->state_window_widget = NULL;
     wctx->state_window_slider = NULL;
+    wctx->state_window_preset_row = NULL;
     wctx->item = NULL;
 
     wctx->update_timestamp = 0;
