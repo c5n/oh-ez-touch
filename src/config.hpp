@@ -149,7 +149,29 @@ public:
 #endif
         return true;
 #else /* #if (SIMULATOR != 1) */
-        return false;
+        // There is no file system in the simulator; use the values the canned
+        // sitemap in src/sim/sitemap_fixture.cpp is served under.
+        (void)filename;
+
+        strlcpy(item.general.hostname, "oheztouch-sim", sizeof(item.general.hostname));
+
+        strlcpy(item.ntp.hostname, "pool.ntp.org", sizeof(item.ntp.hostname));
+        item.ntp.gmt_offset = 1;
+        item.ntp.daylightsaving = true;
+
+        item.backlight.activity_timeout = 0;
+        item.backlight.normal_brightness = 100;
+        item.backlight.dim_brightness = 10;
+
+        item.beeper.enabled = false;
+
+        strlcpy(item.openhab.hostname, "localhost", sizeof(item.openhab.hostname));
+        item.openhab.port = 8080;
+        strlcpy(item.openhab.sitemap, "demo", sizeof(item.openhab.sitemap));
+
+        item.openhab.sensors.bme280.use = false;
+
+        return true;
 #endif
     }
 

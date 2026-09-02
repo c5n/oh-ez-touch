@@ -1213,6 +1213,14 @@ void load_icon(struct widget_context_s *wctx)
 
     size_t iconsize = wctx->item->getIcon(current_website, wctx->item->getIconName(), wctx->item->getStateText(), iconbuffer, sizeof(iconbuffer));
 
+    if (iconsize == 0)
+    {
+        // No icon available -- the simulator has no HTTP client at all, and on
+        // the device the request may simply have failed. Leave the widget
+        // without an icon instead of running the PNG decoder on nothing.
+        return;
+    }
+
     // Decode the PNG image
     unsigned char *png_decoded;
     uint32_t png_width, png_height;

@@ -77,8 +77,16 @@ firmware. Everything hardware specific (WLAN, SPIFFS, TFT_eSPI, beeper,
 backlight, sensors, OTA) is excluded via the `SIMULATOR` build flag; the small
 Arduino compatibility layer it needs instead lives in `hal/sdl2`.
 
-Note that the openHAB connector is part of the excluded code, so the simulator
-currently draws the header but no sitemap widgets.
+Since there is no HTTP client on the host, the sitemap is not fetched from a
+server but comes from a canned fixture in `src/sim/sitemap_fixture.cpp`. It
+provides a small demo sitemap -- a home page with two sub pages -- covering
+every widget type the UI supports, and goes through the very same parser as a
+real server response. Edit that file to reproduce a particular sitemap.
+
+Item states are read from the fixture and are not written back, so operating a
+widget changes it locally only. Icons are served by openHAB as PNGs over HTTP
+and are therefore unavailable; the widgets show LVGL's image placeholder in
+their place.
 
 ### Upload
 Example for Connecting UART TTL Adapters for flashing works for me: 
