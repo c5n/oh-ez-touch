@@ -84,9 +84,21 @@ every widget type the UI supports, and goes through the very same parser as a
 real server response. Edit that file to reproduce a particular sitemap.
 
 Item states are read from the fixture and are not written back, so operating a
-widget changes it locally only. Icons are served by openHAB as PNGs over HTTP
-and are therefore unavailable; the widgets show LVGL's image placeholder in
-their place.
+widget changes it locally only.
+
+Widget icons are fetched from openHAB over HTTP by the firmware, which the
+simulator cannot do either, so they are compiled in as well. They are not part
+of this repository -- the openHAB classic icon set is licensed under the
+EPL-2.0, which is incompatible with this project's GPL-3.0 -- so fetch them
+once into your working copy:
+```bash
+tools/fetch_sim_icons.py
+```
+This downloads the icons the demo sitemap uses, rasterizes them and writes
+`src/sim/icon_fixture_data.h`, which is ignored by git. It needs network access
+and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run the
+simulator draws the widgets without icons, just as the firmware does when an
+icon request fails.
 
 ### Upload
 Example for Connecting UART TTL Adapters for flashing works for me: 

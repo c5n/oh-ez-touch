@@ -7,6 +7,7 @@
 #if (SIMULATOR != 1)
 #include <HTTPClient.h>
 #else
+#include "sim/icon_fixture.hpp"
 #include "sim/sitemap_fixture.hpp"
 #endif
 
@@ -118,7 +119,17 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
-#if (SIMULATOR != 1)
+#if (SIMULATOR == 1)
+    // No HTTP client in the simulator; use a compiled-in icon if there is one.
+    size_t fixture_size = 0;
+    const unsigned char *fixture_icon = sim_icon_fixture_get(name, state, &fixture_size);
+
+    if (fixture_icon != NULL && fixture_size <= buffer_size)
+    {
+        memcpy(buffer, fixture_icon, fixture_size);
+        icon_size = fixture_size;
+    }
+#else
     HTTPClient http;
     http.begin(url);
 
