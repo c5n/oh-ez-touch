@@ -92,7 +92,10 @@
 #define BEEPER_EVENT_ERROR() {}
 #endif
 
-#define STR_PAGE_LEN        128
+// Holds "http://<hostname>:<port>/rest/sitemaps/<sitemap>/<sitemap>?type=json".
+// With the 32 byte hostname and sitemap fields of Config that needs 133 bytes,
+// which did not fit in the previous 128 and silently truncated the URL.
+#define STR_PAGE_LEN        256
 #define STR_WEBSITE_LEN     128
 
 extern void lodepng_free(void* ptr);
@@ -1563,7 +1566,16 @@ void openhab_ui_set_wifi_state(bool wifi_state)
 void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
 {
     snprintf(current_website, sizeof(current_website), "http://%s:%u", host, port);
-    snprintf(current_page, sizeof(current_page), "%s/rest/sitemaps/%s/%s?type=json", current_website, sitemap, sitemap);
+
+    int page_len = snprintf(current_page, sizeof(current_page), "%s/rest/sitemaps/%s/%s?type=json", current_website, sitemap, sitemap);
+
+    if (page_len < 0 || (size_t)page_len >= sizeof(current_page))
+    {
+        // Truncated URLs fail every request, and the resulting error statistics
+        // reboot the device, so report the actual cause.
+        printf("openhab_ui_connect: sitemap URL truncated to %u bytes: %s\r\n",
+               (unsigned)sizeof(current_page), current_page);
+    }
 
     refresh_page = true;
 }
