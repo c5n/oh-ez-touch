@@ -140,6 +140,7 @@ struct widget_context_s
     lv_obj_t *state_widget = NULL;
     lv_style_t state_widget_style;
     lv_obj_t *state_window_widget = NULL;
+    lv_obj_t *state_window_slider = NULL;
     Item *item = NULL;
 };
 
@@ -806,6 +807,45 @@ static void window_item_slider_event_handler(lv_obj_t *obj, lv_event_t event)
     }
 }
 
+/* Quick presets below the slider. The percentages are of the item's range, so
+ * they read literally for a Dimmer (0..100) and still make sense for a Slider
+ * that openHAB gave a narrower range. */
+static const uint8_t slider_preset_percent[] = { 0, 25, 50, 75, 100 };
+
+#define SLIDER_PRESET_COUNT (sizeof(slider_preset_percent) / sizeof(slider_preset_percent[0]))
+
+static void window_item_slider_preset_event_handler(lv_obj_t *obj, lv_event_t event)
+{
+    if (event == LV_EVENT_CLICKED)
+    {
+#if DEBUG_OPENHAB_UI
+        printf("window_item_slider_preset_event_handler: LV_EVENT_CLICKED\n");
+#endif
+        struct widget_context_s *ctx = (struct widget_context_s *)lv_obj_get_user_data(obj);
+
+        if (ctx == nullptr || ctx->state_window_slider == nullptr)
+            return;
+
+        lv_obj_t *label = lv_obj_get_child(obj, NULL);
+        const uint8_t *percent = (const uint8_t *)lv_obj_get_user_data(label);
+
+        if (percent == nullptr)
+            return;
+
+        float min_val = ctx->item->getMinVal();
+        float max_val = ctx->item->getMaxVal();
+        int16_t value = (int16_t)(min_val + (max_val - min_val) * *percent / 100.0f);
+
+#if DEBUG_OPENHAB_UI
+        debug_printf("preset pressed: %u%% -> %d\n", *percent, value);
+#endif
+        /* Let the slider's own handler do the publishing, exactly as the
+         * colorpicker sliders do, so there is one path to openHAB. */
+        lv_slider_set_value(ctx->state_window_slider, value, LV_ANIM_OFF);
+        lv_event_send(ctx->state_window_slider, LV_EVENT_VALUE_CHANGED, NULL);
+    }
+}
+
 void window_item_slider(struct widget_context_s *ctx)
 {
     // Create a window
@@ -824,7 +864,9 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
     lv_obj_set_width(slider, lv_obj_get_width(win) - LV_DPI / 3);
     lv_obj_set_height(slider, LV_DPI / 3);
-    lv_obj_align(slider, NULL, LV_ALIGN_CENTER, 0, 0);
+    // Shifted up to leave room for the preset row below it, so that value,
+    // slider and presets together stay balanced in the window.
+    lv_obj_align(slider, NULL, LV_ALIGN_CENTER, 0, 0 - LV_DPI / 8);
     lv_obj_set_user_data(slider, (lv_obj_user_data_t)ctx);
     lv_obj_set_event_cb(slider, window_item_slider_event_handler);
 
@@ -867,7 +909,37 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_obj_align(max_value_label, slider, LV_ALIGN_OUT_BOTTOM_RIGHT, 0, 0);
     lv_obj_set_width(state_label, lv_obj_get_width(win) / 2 - LV_DPI / 20);
 
+    // Add a row of preset buttons along the bottom
+    lv_coord_t preset_row_width = lv_obj_get_width(win) - LV_DPI / 4;
+    lv_coord_t preset_gap = LV_DPI / 25;
+    // Cast so that the subtraction stays signed; SLIDER_PRESET_COUNT is a size_t.
+    lv_coord_t preset_btn_width = (preset_row_width - (lv_coord_t)(SLIDER_PRESET_COUNT - 1) * preset_gap)
+                                  / (lv_coord_t)SLIDER_PRESET_COUNT;
+    lv_coord_t preset_btn_height = LV_DPI / 3;
+
+    lv_obj_t *preset_row = lv_cont_create(win, NULL);
+    lv_obj_set_size(preset_row, preset_row_width, preset_btn_height);
+    lv_obj_align(preset_row, NULL, LV_ALIGN_IN_BOTTOM_MID, 0, 0 - LV_DPI / 10);
+
+    // Positioned by hand rather than with a layout, so that all five buttons
+    // are the same width and are guaranteed to fit the 320 px display.
+    for (size_t i = 0; i < SLIDER_PRESET_COUNT; i++)
+    {
+        lv_obj_t *preset_btn = lv_btn_create(preset_row, NULL);
+        lv_obj_set_size(preset_btn, preset_btn_width, preset_btn_height);
+        lv_obj_set_pos(preset_btn, (lv_coord_t)i * (preset_btn_width + preset_gap), 0);
+        lv_obj_set_user_data(preset_btn, (lv_obj_user_data_t)ctx);
+        lv_obj_set_event_cb(preset_btn, window_item_slider_preset_event_handler);
+
+        lv_obj_t *preset_label = lv_label_create(preset_btn, NULL);
+        lv_label_set_text_fmt(preset_label, "%u%%", slider_preset_percent[i]);
+        lv_obj_set_style_local_text_font(preset_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, &custom_font_roboto_16);
+        // The handler reads the percentage back from here.
+        lv_obj_set_user_data(preset_label, (lv_obj_user_data_t)&slider_preset_percent[i]);
+    }
+
     ctx->state_window_widget = state_label;
+    ctx->state_window_slider = slider;
 }
 
 static void window_item_setpoint_event_handler(lv_obj_t *obj, lv_event_t event)
@@ -1351,6 +1423,7 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
     wctx->img_obj = NULL;
     wctx->state_widget = NULL;
     wctx->state_window_widget = NULL;
+    wctx->state_window_slider = NULL;
     wctx->item = NULL;
 
     wctx->update_timestamp = 0;
