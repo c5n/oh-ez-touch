@@ -46,7 +46,7 @@ int Item::update(const char* link)
     if (httpCode == HTTP_CODE_OK)
     {
         char remote_state[STR_STATE_TEXT_LEN];
-        strncpy(remote_state, http.getString().c_str(), sizeof(remote_state));
+        strlcpy(remote_state, http.getString().c_str(), sizeof(remote_state));
 
         // State
         if (   Item::type == ItemType::type_number
@@ -60,7 +60,7 @@ int Item::update(const char* link)
         if (strcmp (Item::state_text, remote_state) != 0)
         {
             retval = 1;
-            strncpy(Item::state_text, remote_state, sizeof(Item::state_text));
+            strlcpy(Item::state_text, remote_state, sizeof(Item::state_text));
 #if DEBUG_OPENHAB_CONNECTOR
             printf("  update statetext to \"%s\"\r\n", Item::state_text);
 #endif
@@ -272,13 +272,13 @@ int Sitemap::openlink(const char* url)
 #endif
 
         // Save current and last page urls
-        strncpy(last_url, current_url, sizeof(last_url));
-        strncpy(current_url, url, sizeof(current_url));
+        strlcpy(last_url, current_url, sizeof(last_url));
+        strlcpy(current_url, url, sizeof(current_url));
 
         if (doc["title"])
-            strncpy(title, doc["title"], sizeof(title));
+            strlcpy(title, json_str(doc["title"]), sizeof(title));
         else
-            strncpy(title, "no title", sizeof(title));
+            strlcpy(title, "no title", sizeof(title));
 
 #if DEBUG_OPENHAB_CONNECTOR
         printf("Sitemap::openlink(\"%s\")\r\n", url);

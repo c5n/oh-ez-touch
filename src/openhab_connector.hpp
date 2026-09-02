@@ -4,6 +4,8 @@
 #include "Arduino.h"
 #include <ArduinoJson.h>
 
+#include <string.h>
+
 #define ITEM_COUNT_MAX 6
 
 #define ITEM_SELECTION_COUNT_MAX 10
@@ -36,6 +38,9 @@ enum ItemType
     type_player
 };
 
+/* The setters of Item and Sitemap copy strings of unknown length straight out
+ * of the sitemap JSON, so they use strlcpy(): it truncates like strncpy() but,
+ * unlike it, always terminates the destination. */
 class Item
 {
 private:
@@ -70,16 +75,16 @@ public:
 
     size_t getIcon(const char* website, const char* name, const char* state, unsigned char *buffer, size_t buffer_size);
 
-    void setLabel(const char* newlabel) { strncpy(label, newlabel, sizeof(label)); }
+    void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
     const char* getLabel() { return label; }
 
-    void setIconName(const char* newiconname) { strncpy(icon_name, newiconname, sizeof(icon_name)); }
+    void setIconName(const char* newiconname) { strlcpy(icon_name, newiconname, sizeof(icon_name)); }
     const char* getIconName() { return icon_name; }
 
-    void setLink(const char * newlink) { strncpy(link, newlink, sizeof(link)); }
+    void setLink(const char * newlink) { strlcpy(link, newlink, sizeof(link)); }
     const char * getLink() { return link; }
 
-    void setPageLink(const char * newlink) { strncpy(page_link, newlink, sizeof(page_link)); }
+    void setPageLink(const char * newlink) { strlcpy(page_link, newlink, sizeof(page_link)); }
     const char * getPageLink() { return page_link; }
     bool hasPageLink() { return (strlen(page_link) > 0); }
 
@@ -87,10 +92,10 @@ public:
     void setType(enum ItemType newtype) { type = newtype; }
 
     const char* getStateText() { return state_text; }
-    void setStateText(const char* newtext) { strncpy(state_text, newtext, sizeof(state_text)); }
+    void setStateText(const char* newtext) { strlcpy(state_text, newtext, sizeof(state_text)); }
 
     const char* getTransformedStateText() { return transformedstate_text; }
-    void setTransformedStateText(const char* newtranstext) { strncpy(transformedstate_text, newtranstext, sizeof(transformedstate_text)); }
+    void setTransformedStateText(const char* newtranstext) { strlcpy(transformedstate_text, newtranstext, sizeof(transformedstate_text)); }
 
     float getStateNumber() { return strtof(state_text, NULL); }
     void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
@@ -103,7 +108,7 @@ public:
     }
 
     const char* getNumberPattern() { return pattern; }
-    void setNumberPattern(const char* newpattern) { strncpy(pattern, newpattern, sizeof(pattern)); }
+    void setNumberPattern(const char* newpattern) { strlcpy(pattern, newpattern, sizeof(pattern)); }
     bool hasNumberPattern() { return (strlen(pattern) > 1); }
 
     float getMinVal() { return min_val; }
@@ -118,11 +123,11 @@ public:
     char *getSelectionCommand(size_t index) { return selection_command[index]; }
     void setSelectionCommand(size_t index, const char *command)
     {
-        strncpy(selection_command[index], command, sizeof(selection_command[index]));
+        strlcpy(selection_command[index], command, sizeof(selection_command[index]));
     }
     void setSelectionLabel(size_t index, const char *label)
     {
-        strncpy(selection_label[index], label, sizeof(selection_label[index]));
+        strlcpy(selection_label[index], label, sizeof(selection_label[index]));
     }
     char *getSelectionLabel(size_t index) { return selection_label[index]; }
     size_t getSelectionCount() { return mapping_count; }

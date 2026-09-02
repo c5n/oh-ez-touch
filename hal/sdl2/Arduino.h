@@ -20,9 +20,30 @@
 #define ARDUINO_H
 
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <string>
+
+/* strlcpy() is a BSD extension that the sources use for bounded, always
+ * terminated copies. The ESP32 C library has it; glibc only from 2.38 on. */
+#if defined(__GLIBC__) && !__GLIBC_PREREQ(2, 38)
+static inline size_t strlcpy(char *dst, const char *src, size_t dst_size)
+{
+    size_t src_len = strlen(src);
+
+    if (dst_size > 0)
+    {
+        size_t copy_len = (src_len < dst_size - 1) ? src_len : dst_size - 1;
+
+        memcpy(dst, src, copy_len);
+        dst[copy_len] = '\0';
+    }
+
+    return src_len;
+}
+#endif
 
 /**********************
  *       String

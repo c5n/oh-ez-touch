@@ -983,8 +983,8 @@ static void event_handler(lv_obj_t *obj, lv_event_t event)
 #if DEBUG_OPENHAB_UI
                 printf("LinkedPage Link: %s", ctx->item->getPageLink());
 #endif
-                strncpy(last_page, current_page, sizeof(last_page));
-                strncpy(current_page, ctx->item->getPageLink(), sizeof(current_page));
+                strlcpy(last_page, current_page, sizeof(last_page));
+                strlcpy(current_page, ctx->item->getPageLink(), sizeof(current_page));
                 refresh_page = true;
                 if (ctx->item->getType() == ItemType::type_parent_link)
                     BEEPER_EVENT_LINK_BACK()
