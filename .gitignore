@@ -1,0 +1,7 @@
+# PlatformIO build output and downloaded dependencies
+.pio/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp

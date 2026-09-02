@@ -1,6 +1,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
+#include <Arduino.h>
 #include <ArduinoJson.h>
 #include "debug.h"
 #if (SIMULATOR == 0)

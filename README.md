@@ -52,6 +52,34 @@ cd oh-ez-touch
 pio run
 ```
 
+### Simulator
+
+The user interface can also be built and run on the development machine, in an
+SDL2 window, without any hardware. This is handy for working on the layout and
+the theme.
+
+Additional prerequisite (Debian/Ubuntu):
+```bash
+sudo apt install libsdl2-dev
+```
+
+Build and run:
+```bash
+pio run -e linux -t exec
+```
+
+A "TFT Simulator" window opens showing a 320x240 screen at double size
+(`SDL_ZOOM` in `platformio.ini`). Mouse clicks act as touch input; closing the
+window ends the program.
+
+The simulator uses the same LVGL version, `lv_conf.h`, fonts and theme as the
+firmware. Everything hardware specific (WLAN, SPIFFS, TFT_eSPI, beeper,
+backlight, sensors, OTA) is excluded via the `SIMULATOR` build flag; the small
+Arduino compatibility layer it needs instead lives in `hal/sdl2`.
+
+Note that the openHAB connector is part of the excluded code, so the simulator
+currently draws the header but no sitemap widgets.
+
 ### Upload
 Example for Connecting UART TTL Adapters for flashing works for me: 
 - Put UART TTL Adapter on 5V with jumper
