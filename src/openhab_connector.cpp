@@ -1,8 +1,22 @@
 #include "openhab_connector.hpp"
 
+#include <ctype.h>
+#include <stdlib.h>
+#include <string.h>
+
 #if (SIMULATOR != 1)
 #include <HTTPClient.h>
+#else
+#include "sim/sitemap_fixture.hpp"
 #endif
+
+/* JsonVariant::as<const char *>() yields NULL for a missing or non-string
+ * value; the comparisons below want an empty string in that case. */
+static inline const char *json_str(JsonVariant value)
+{
+    const char *str = value.as<const char *>();
+    return (str != NULL) ? str : "";
+}
 
 #ifndef DEBUG_OPENHAB_CONNECTOR
 #define DEBUG_OPENHAB_CONNECTOR 0
@@ -194,25 +208,38 @@ int Sitemap::openlink(const char* url)
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::openlink: Requesting URL: %s\r\n", url);
 #endif
-#if (SIMULATOR != 1)
+
+#if (SIMULATOR == 1)
+    // No HTTP client in the simulator; serve a compiled-in page instead.
+    const char *payload = sim_sitemap_fixture_get(url);
+    bool payload_ok = (payload != NULL);
+
+    if (payload_ok == false)
+        printf("Sitemap::openlink: no fixture page for URL: %s\r\n", url);
+#else
     HTTPClient http;
     http.begin(url);
 
     int httpCode = http.GET();
+    bool payload_ok = (httpCode == HTTP_CODE_OK);
+    String payload_string;
 
-    if (httpCode == HTTP_CODE_OK)
-    {
-        String payload = http.getString();
+    if (payload_ok == true)
+        payload_string = http.getString();
+    else
+        printf("Sitemap::openlink: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
+
+    const char *payload = payload_string.c_str();
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.println(httpCode);
-        Serial.println(payload);
+    Serial.println(httpCode);
+    Serial.println(payload);
+#endif
 #endif
 
+    if (payload_ok == true)
+    {
         // Parse JSON object
-        if (doc.isNull() == false)
-            doc.clear();
-
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::NestingLimit(15));
         if (error)
         {
@@ -223,7 +250,7 @@ int Sitemap::openlink(const char* url)
 
         if (doc.containsKey("error"))
         {
-            printf("Sitemap::openlink: json error message: %s", doc["error"]["message"]);
+            printf("Sitemap::openlink: json error message: %s", json_str(doc["error"]["message"]));
             doc.clear();
             return false;
         }
@@ -288,7 +315,7 @@ int Sitemap::openlink(const char* url)
             if (widget["label"])
             {
                 char buffer[STR_LABEL_LEN];
-                snprintf(buffer, sizeof(buffer), widget["label"]);
+                snprintf(buffer, sizeof(buffer), "%s", json_str(widget["label"]));
                 char *end = strchr(buffer, '[');
                 if (end == NULL)
                     end = buffer + strlen(buffer);
@@ -324,7 +351,9 @@ int Sitemap::openlink(const char* url)
                 if (widget["linkedPage"]["link"])
                     item->setType(ItemType::type_link);
                 // >= <= needed to distinct from strings
-                else if (widget["item"]["type"] && widget["item"]["type"].as<String>() >= "Number" && widget["item"]["type"].as<String>() <= "Number:Z")
+                else if (   widget["item"]["type"]
+                         && strcmp(json_str(widget["item"]["type"]), "Number") >= 0
+                         && strcmp(json_str(widget["item"]["type"]), "Number:Z") <= 0)
                     item->setType(ItemType::type_number);
                 else
                     item->setType(ItemType::type_string);
@@ -335,17 +364,17 @@ int Sitemap::openlink(const char* url)
             }
             else if (widget["type"] == "Switch")
             {
-                if (widget["item"]["type"].as<String>() == "Switch")
+                if (strcmp(json_str(widget["item"]["type"]), "Switch") == 0)
                     item->setType(ItemType::type_switch);
-                else if (widget["item"]["type"].as<String>() == "Rollershutter")
+                else if (strcmp(json_str(widget["item"]["type"]), "Rollershutter") == 0)
                     item->setType(ItemType::type_rollershutter);
-                else if (widget["item"]["type"].as<String>() == "Player")
+                else if (strcmp(json_str(widget["item"]["type"]), "Player") == 0)
                     item->setType(ItemType::type_player);
-                else if (widget["item"]["type"].as<String>() == "Group")
+                else if (strcmp(json_str(widget["item"]["type"]), "Group") == 0)
                 {
-                    if (widget["item"]["groupType"].as<String>() == "Switch")
+                    if (strcmp(json_str(widget["item"]["groupType"]), "Switch") == 0)
                         item->setType(ItemType::type_switch);
-                    else if (widget["item"]["groupType"].as<String>() == "Rollershutter")
+                    else if (strcmp(json_str(widget["item"]["groupType"]), "Rollershutter") == 0)
                         item->setType(ItemType::type_rollershutter);
                 }
             }
@@ -412,7 +441,7 @@ int Sitemap::openlink(const char* url)
                     || item->getType() == ItemType::type_slider)
                 {
                     // convert number to get rid of unit
-                    item->setStateNumber(widget["item"]["state"].as<String>().toFloat());
+                    item->setStateNumber(strtof(json_str(widget["item"]["state"]), NULL));
 #if DEBUG_OPENHAB_CONNECTOR
                     printf("  num-statetext=\"%s\"", item->getStateText());
 #endif
@@ -479,19 +508,20 @@ int Sitemap::openlink(const char* url)
 
             Sitemap::item_count++;
 
-            if (Sitemap::item_count > ITEM_COUNT_MAX)
+            if (Sitemap::item_count >= ITEM_COUNT_MAX)
                 break;
         }
     }
-    else // httpCode != HTTP_CODE_OK
+    else
     {
-        printf("Sitemap::openlink: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
         retval = -1;
     }
 
     doc.clear();
 
+#if (SIMULATOR != 1)
     http.end();
 #endif
+
     return retval;
 }
