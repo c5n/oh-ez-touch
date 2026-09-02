@@ -100,6 +100,19 @@ and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run the
 simulator draws the widgets without icons, just as the firmware does when an
 icon request fails.
 
+### Tests
+The unit tests run on the host, in the same `linux` environment as the
+simulator, so they need the SDL2 development files too:
+```bash
+pio test -e linux
+```
+`test/test_item_setters` covers the string setters of `Item`, which copy
+labels, states, patterns and mappings of unknown length straight out of the
+sitemap JSON that openHAB serves. Those copies have to truncate cleanly, and
+the tests place a canary after the object to catch one that does not. They are
+host-only because the setters are inline in `src/openhab_connector.hpp`,
+so nothing from `src/` has to be linked.
+
 ### Upload
 Example for Connecting UART TTL Adapters for flashing works for me: 
 - Put UART TTL Adapter on 5V with jumper
