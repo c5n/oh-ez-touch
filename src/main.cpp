@@ -11,7 +11,7 @@
 #include <TFT_eSPI.h>
 #if (TOUCH_DRIVER_FT6X36 == 1)
 #include <Wire.h>
-#include "TouchDrvFT6X36.hpp"
+#include "TouchDrv.hpp"
 #endif
 #include <Ticker.h>
 #include "esp_wifi.h"
@@ -127,8 +127,19 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     bool touched = false;
 
 #if (TOUCH_DRIVER_FT6X36 == 1)
-    int16_t ftx[2]; int16_t fty[2];
-    touched = (touch_ft6x36.getPoint(ftx, fty, 2) >= 1 ? true : false);
+    /* SensorLib 0.4 deprecated getPoint() in favour of getTouchPoints(); the old
+     * call was only a shim around it. The arrays are zeroed because they used to
+     * be left uninitialised when the panel reported no point at all. */
+    int16_t ftx[2] = { 0, 0 }; int16_t fty[2] = { 0, 0 };
+    const TouchPoints &ftpoints = touch_ft6x36.getTouchPoints();
+
+    for (uint8_t i = 0; (i < ftpoints.getPointCount()) && (i < 2); i++)
+    {
+        ftx[i] = (int16_t)ftpoints.getPoint(i).x;
+        fty[i] = (int16_t)ftpoints.getPoint(i).y;
+    }
+
+    touched = (ftpoints.getPointCount() >= 1);
     if (touched == true)
         debug_printf("DISPLAY_TOUCH x[0]: %d y[0] %d  x[1]: %d y[1] %d\r\n", ftx[0], fty[0], ftx[1], fty[1]);
 
