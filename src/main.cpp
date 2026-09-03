@@ -140,8 +140,10 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     }
 
     touched = (ftpoints.getPointCount() >= 1);
+#if DEBUG_DISPLAY_TOUCH
     if (touched == true)
         debug_printf("DISPLAY_TOUCH x[0]: %d y[0] %d  x[1]: %d y[1] %d\r\n", ftx[0], fty[0], ftx[1], fty[1]);
+#endif
 
     touchX = (fty[0] > 0) ? (uint16_t)fty[0] : 0;
     //touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
@@ -157,7 +159,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     touchY = screenHeight - touchY;
 #endif
 
-    if (suppress_touch_timeout > millis())
+    if ((long)(millis() - suppress_touch_timeout) < 0)
     {
         return false;
     }
@@ -172,16 +174,12 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     }
 #endif
 #if DEBUG_DISPLAY_TOUCH
-        if (data->state = touched)
-            debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
+    if (touched == true)
+        debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
 #endif
 
     if (touchX <= screenWidth && touchY <= screenHeight)
     {
-        if (data->state == LV_INDEV_STATE_REL && touched == true)
-        {
-        }
-
         data->state = touched ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
 
         // Save the state and save the pressed coordinate
@@ -198,7 +196,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 #if DEBUG_DISPLAY_TOUCH
     else
     {
-        if (data->state = touched)
+        if (touched == true)
             debug_printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\r\n", touchX, touchY);
     }
 #endif
@@ -206,21 +204,6 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     return false; // Return `false` because we are not buffering and no more data to read
 }
 #endif /* #if (SIMULATOR != 1) */
-
-#if (SIMULATOR == 1)
-static int tick_thread(void * data)
-{
-    (void)data;
-
-    while(1) {
-        SDL_Delay(5);   /*Sleep for 5 millisecond*/
-        lv_tick_inc(5); /*Tell LittelvGL that 5 milliseconds were elapsed*/
-    }
-
-    return 0;
-}
-#endif
-
 
 
 void setup()
@@ -307,7 +290,6 @@ void setup()
     tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
 #else // SIMULATOR
     sdl_init();
-    //SDL_CreateThread(tick_thread, "tick", NULL);
 #endif
     lv_theme_t * th = custom_theme_default_init(LV_THEME_DEFAULT_COLOR_PRIMARY, LV_THEME_DEFAULT_COLOR_SECONDARY, LV_THEME_DEFAULT_FLAG, LV_THEME_DEFAULT_FONT_SMALL , LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
     lv_theme_set_act(th);
@@ -368,7 +350,6 @@ void loop()
             infolabel.destroy();
             openhab_ui_set_wifi_state(true);
             openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
-            IPAddress ip = WiFi.localIP();
             infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
         }
         else if (wlan_status == WL_IDLE_STATUS)
@@ -405,7 +386,7 @@ void loop()
 #endif
     }
 
-    if (wlan_status != WL_CONNECTED && millis() > offline_timestamp + WLAN_OFFLINE_TIMEOUT)
+    if (wlan_status != WL_CONNECTED && millis() - offline_timestamp >= WLAN_OFFLINE_TIMEOUT)
     {
         offline_timestamp = millis();
 #if DEBUG_WLAN_STATES

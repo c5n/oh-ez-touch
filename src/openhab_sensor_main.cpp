@@ -4,8 +4,8 @@
 #include "Arduino.h"
 #include "config.hpp"
 
-#ifndef OPENHAB_SENDOR_MAIN_DEBUG
-#define OPENHAB_SENDOR_MAIN_DEBUG 1
+#ifndef DEBUG_OPENHAB_SENSOR_MAIN
+#define DEBUG_OPENHAB_SENSOR_MAIN 0
 #endif
 
 static bool sensor_bme280_initialized = false;
@@ -23,9 +23,9 @@ void openhab_sensor_main_loop(Config &config)
 {
     static unsigned long bme280_refresh_timeout = 0;
 
-    if ((sensor_bme280_initialized == true) && (millis() > bme280_refresh_timeout))
+    if ((sensor_bme280_initialized == true) && ((long)(millis() - bme280_refresh_timeout) >= 0))
     {
-#if OPENHAB_SENDOR_MAIN_DEBUG
+#if DEBUG_OPENHAB_SENSOR_MAIN
         Serial.println("openhab_sensor_main_loop: refreshing bme280");
 #endif
         bme280_refresh_timeout = millis() + config.item.openhab.sensors.bme280.interval * 1000;

@@ -100,12 +100,15 @@ public:
 
         std::unique_ptr<char[]> buf(new char[size]);
 
-        configFile.readBytes(buf.get(), size);
+        size_t read_size = configFile.readBytes(buf.get(), size);
 
         configFile.close();
 
         JsonDocument doc;
-        auto error = deserializeJson(doc, buf.get());
+        /* readBytes() does not terminate the buffer, so the parser has to be
+         * given its length -- the const char * overload would read past the
+         * end. The char * overload also parses in place, without copying. */
+        auto error = deserializeJson(doc, buf.get(), read_size);
         if (error)
         {
             Serial.println("Failed to parse config file");
@@ -134,9 +137,9 @@ public:
         debug_printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);
         debug_printf("  item.ntp.gmt_offset: %d\r\n", item.ntp.gmt_offset);
         debug_printf("  item.ntp.daylightsaving: %d\r\n", item.ntp.daylightsaving);
-        debug_printf("  item.backlight.activity_timeout: %s\r\n", item.backlight.activity_timeout);
-        debug_printf("  item.backlight.normal_brightness: %s\r\n", item.backlight.normal_brightness);
-        debug_printf("  item.backlight.dim_brightness: %s\r\n", item.backlight.dim_brightness);
+        debug_printf("  item.backlight.activity_timeout: %lu\r\n", item.backlight.activity_timeout);
+        debug_printf("  item.backlight.normal_brightness: %u\r\n", item.backlight.normal_brightness);
+        debug_printf("  item.backlight.dim_brightness: %u\r\n", item.backlight.dim_brightness);
         debug_printf("  item.beeper.enabled: %d\r\n", item.beeper.enabled);
         debug_printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
         debug_printf("  item.openhab.port: %d\r\n", item.openhab.port);
