@@ -10,10 +10,18 @@
 
 #define STR_INFOLABEL_TEMP_BUFFER_LEN (140 + 1)
 
+/* A transient banner shown over the UI, e.g. for WLAN state changes.
+ *
+ * Under LVGL v7 this was an lv_msgbox used purely as a styled text panel. The
+ * v9 msgbox is a full dialog with a header, footer and button area, which does
+ * not fit -- so this is now a plain object with one label, which is all the
+ * widget ever was. It lives on the top layer so it floats above the page
+ * without being deleted when the page is rebuilt. */
 class Infolabel
 {
 private:
     lv_obj_t *il = NULL;
+    lv_obj_t *label = NULL;
     lv_style_t label_style;
     unsigned long timeout_timestamp = 0;
 
@@ -33,27 +41,38 @@ public:
             printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
             lv_style_init(&label_style);
-            lv_style_set_border_width(&label_style, LV_STATE_DEFAULT, 4);
+            lv_style_set_border_width(&label_style, 4);
+            lv_style_set_border_color(&label_style, lv_color_black());
+            lv_style_set_bg_opa(&label_style, LV_OPA_COVER);
 
             if (type == INFO)
-                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_SILVER);
+                lv_style_set_bg_color(&label_style, lv_color_make(0xc0, 0xc0, 0xc0));
             else if (type == WARNING)
-                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_YELLOW);
+                lv_style_set_bg_color(&label_style, lv_palette_main(LV_PALETTE_YELLOW));
             else if (type == ERROR)
-                lv_style_set_bg_color(&label_style, LV_STATE_DEFAULT, LV_COLOR_RED);
+                lv_style_set_bg_color(&label_style, lv_palette_main(LV_PALETTE_RED));
 
-            lv_style_set_pad_inner(&label_style, LV_STATE_DEFAULT, LV_DPI / 10);
-            lv_style_set_text_font(&label_style, LV_STATE_DEFAULT, &custom_font_roboto_22);
-            il = lv_msgbox_create(lv_scr_act(), NULL);
-            lv_obj_add_style(il, LV_OBJ_PART_MAIN, &label_style);
-            lv_obj_set_width(il, lv_disp_get_hor_res(NULL) * 9 / 10);
+            lv_style_set_pad_all(&label_style, LV_DPI_DEF / 10);
+            lv_style_set_text_font(&label_style, &custom_font_roboto_22);
+            lv_style_set_text_color(&label_style, lv_color_black());
+
+            il = lv_obj_create(lv_layer_top());
+            lv_obj_remove_flag(il, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_add_style(il, &label_style, LV_PART_MAIN);
+            lv_obj_set_width(il, lv_display_get_horizontal_resolution(NULL) * 9 / 10);
+            lv_obj_set_height(il, LV_SIZE_CONTENT);
+
+            label = lv_label_create(il);
+            lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+            lv_obj_set_width(label, lv_pct(100));
+            lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         }
 
         char buffer[STR_INFOLABEL_TEMP_BUFFER_LEN];
         snprintf(buffer, sizeof(buffer), "%s\n%s", topic, text);
-        lv_msgbox_set_text(il, buffer);
+        lv_label_set_text(label, buffer);
 
-        lv_obj_align(il, NULL, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_align(il, LV_ALIGN_CENTER, 0, 0);
 
         if (timeout > 0)
             timeout_timestamp = millis() + timeout * 1000;
@@ -68,8 +87,9 @@ public:
 #if DEBUG_UI_INFOLABEL
             Serial.println("Infolabel::destroy: Destroying label");
 #endif
-            lv_obj_del(il);
+            lv_obj_delete(il);
             il = NULL;
+            label = NULL;
             timeout_timestamp = 0;
         }
     }

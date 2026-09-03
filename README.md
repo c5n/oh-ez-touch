@@ -56,7 +56,7 @@ pio run
 
 The user interface can also be built and run on the development machine, in an
 SDL2 window, without any hardware. This is handy for working on the layout and
-the theme.
+the styling.
 
 Additional prerequisite (Debian/Ubuntu):
 ```bash
@@ -68,12 +68,13 @@ Build and run:
 pio run -e linux -t exec
 ```
 
-A "TFT Simulator" window opens showing a 320x240 screen at double size
-(`SDL_ZOOM` in `platformio.ini`). Mouse clicks act as touch input; closing the
-window ends the program.
+An "OhEzTouch" window opens showing a 320x240 screen at double size
+(`lv_sdl_window_set_zoom()` in `src/main.cpp`). Mouse clicks act as touch input;
+closing the window ends the program.
 
-The simulator uses the same LVGL version, `lv_conf.h`, fonts and theme as the
-firmware. Everything hardware specific (WLAN, SPIFFS, TFT_eSPI, beeper,
+The simulator uses the same LVGL version, `lv_conf.h`, fonts and styles as the
+firmware; the display and mouse come from LVGL's own SDL driver, enabled by
+`LV_USE_SDL`. Everything hardware specific (WLAN, SPIFFS, TFT_eSPI, beeper,
 backlight, sensors, OTA) is excluded via the `SIMULATOR` build flag; the small
 Arduino compatibility layer it needs instead lives in `hal/sdl2`.
 

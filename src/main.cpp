@@ -3,9 +3,10 @@
 #include <lvgl.h>
 #include "version.h"
 #include "config.hpp"
+#include "debug.h"
+
 #include "openhab_ui.hpp"
 #include "ui_infolabel.hpp"
-#include "debug.h"
 
 #if (SIMULATOR == 0)
 #include <TFT_eSPI.h>
@@ -13,7 +14,6 @@
 #include <Wire.h>
 #include "TouchDrv.hpp"
 #endif
-#include <Ticker.h>
 #include "esp_wifi.h"
 #include "ac_main.hpp"
 #include "WiFi.h"
@@ -25,11 +25,12 @@
 #include <unistd.h>
 #define SDL_MAIN_HANDLED        /*To fix SDL's "undefined reference to WinMain" issue*/
 #include <SDL2/SDL.h>
-/* Display and input come from the vendored SDL driver in src/sdl, so the
- * separate lv_drivers package is not needed. */
-#include "sdl/sdl.h"
+/* Display and input come from LVGL's own SDL driver, enabled by LV_USE_SDL in
+ * lv_conf.h. The vendored copy of the (abandoned) lv_drivers SDL backend that
+ * used to live in src/sdl is gone. */
+#include <drivers/sdl/lv_sdl_window.h>
+#include <drivers/sdl/lv_sdl_mouse.h>
 #endif
-#include "themes/custom_theme_default.h"
 
 #ifndef DEBUG_OUTPUT_BAUDRATE
 #define DEBUG_OUTPUT_BAUDRATE 115200
@@ -45,10 +46,6 @@
 
 #ifndef USE_ARDUINO_BASIC_OTA
 #define USE_ARDUINO_BASIC_OTA 0
-#endif
-
-#ifndef LVGL_TICK_PERIOD
-#define LVGL_TICK_PERIOD 20
 #endif
 
 #ifndef TFT_BACKLIGHT_PIN
@@ -71,7 +68,6 @@ int screenWidth = 320;
 int screenHeight = 240;
 
 #if (SIMULATOR != 1)
-Ticker tick;               // timer for interrupt handler
 BacklightControl tft_backlight;
 TFT_eSPI tft = TFT_eSPI(); // TFT instance
 #endif
@@ -80,48 +76,60 @@ TFT_eSPI tft = TFT_eSPI(); // TFT instance
 TouchDrvFT6X36 touch_ft6x36;
 #endif
 
-static lv_disp_buf_t disp_buf;
-static lv_color_t buf[LV_HOR_RES_MAX * 10];
+#if (SIMULATOR != 1)
+/* One tenth of the screen, as before. Note this must NOT be an lv_color_t
+ * array: in LVGL v9 lv_color_t is a 3-byte {b,g,r} struct regardless of
+ * LV_COLOR_DEPTH, so sizing it that way would allocate the wrong number of
+ * bytes for an RGB565 panel. lv_display_set_buffers() takes bytes too.
+ * The simulator needs none of this: lv_sdl_window_create() brings its own. */
+static LV_ATTRIBUTE_MEM_ALIGN uint8_t draw_buf[320 * 10 * (LV_COLOR_DEPTH / 8)];
+#endif
 
 Config config;
 Infolabel infolabel;
 
-#if USE_LV_LOG != 0
-// Serial debugging
-void my_print(lv_log_level_t level, const char *file, uint32_t line, const char *dsc)
+/* LVGL's tick source. Wrapping millis() is not cosmetic: lv_tick_get_cb_t
+ * returns uint32_t, while millis() returns unsigned long, which is 64 bit on
+ * the simulator host. This replaces both the v7 Ticker ISR on the device and
+ * the SDL driver's tick thread. */
+static uint32_t ui_tick_get(void)
 {
+    return (uint32_t)millis();
+}
 
-    debug_printf("%s@%d->%s\r\n", file, line, dsc);
-    delay(100);
+#if LV_USE_LOG != 0
+// Serial debugging
+static void my_print(lv_log_level_t level, const char *buf)
+{
+    LV_UNUSED(level);
+    debug_printf("%s\r\n", buf);
 }
 #endif
 
 #if (SIMULATOR != 1)
 // Display flushing
-void my_disp_flush(lv_disp_drv_t *disp, const lv_area_t *area, lv_color_t *color_p)
+void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 {
-    uint32_t w = (area->x2 - area->x1 + 1);
-    uint32_t h = (area->y2 - area->y1 + 1);
+    uint32_t w = lv_area_get_width(area);
+    uint32_t h = lv_area_get_height(area);
 
+    /* LV_COLOR_16_SWAP is gone in v9; the byte order is the driver's business.
+     * pushColors(uint16_t *, len, true) swaps as it writes, which is what the
+     * v7 code relied on -- so no lv_draw_sw_rgb565_swap() here. The cast
+     * matters: the uint8_t * overload takes a byte count and does not swap. */
     tft.startWrite();
     tft.setAddrWindow(area->x1, area->y1, w, h);
-    tft.pushColors(&color_p->full, w * h, true);
+    tft.pushColors((uint16_t *)px_map, w * h, true);
     tft.endWrite();
 
-    lv_disp_flush_ready(disp);
+    lv_display_flush_ready(disp);
 }
 
-// Interrupt driven periodic handler
-static void lv_tick_handler(void)
-{
-    lv_tick_inc(LVGL_TICK_PERIOD);
-}
-
-bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
+void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
     static unsigned long suppress_touch_timeout;
-    static lv_coord_t last_x = 0;
-    static lv_coord_t last_y = 0;
+    static int32_t last_x = 0;
+    static int32_t last_y = 0;
 
     uint16_t touchX, touchY;
     bool touched = false;
@@ -161,7 +169,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 
     if ((long)(millis() - suppress_touch_timeout) < 0)
     {
-        return false;
+        return;
     }
 
 #if (SIMULATOR != 1)
@@ -170,7 +178,7 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
         if (config.item.beeper.enabled == true)
             beeper_playNote(NOTE_C4, 50, 100, 0);
         suppress_touch_timeout = millis() + 200;
-        return false;
+        return;
     }
 #endif
 #if DEBUG_DISPLAY_TOUCH
@@ -180,10 +188,10 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
 
     if (touchX <= screenWidth && touchY <= screenHeight)
     {
-        data->state = touched ? LV_INDEV_STATE_PR : LV_INDEV_STATE_REL;
+        data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
 
         // Save the state and save the pressed coordinate
-        if (data->state == LV_INDEV_STATE_PR)
+        if (data->state == LV_INDEV_STATE_PRESSED)
         {
             last_x = touchX;
             last_y = touchY;
@@ -201,7 +209,8 @@ bool my_touchpad_read(lv_indev_drv_t *indev_driver, lv_indev_data_t *data)
     }
 #endif
 
-    return false; // Return `false` because we are not buffering and no more data to read
+    /* data->continue_reading defaults to false: we do not buffer, so there is
+     * never more data to read in one go. */
 }
 #endif /* #if (SIMULATOR != 1) */
 
@@ -224,7 +233,7 @@ void setup()
 
     lv_init();
 
-#if USE_LV_LOG != 0
+#if LV_USE_LOG != 0
     lv_log_register_print_cb(my_print); // register print function for debugging
 #endif
 
@@ -247,20 +256,20 @@ void setup()
     tft.invertDisplay(false);
 #endif
 
-    lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * 10);
+    /* Register the tick source before anything can ask LVGL for the time. */
+    lv_tick_set_cb(ui_tick_get);
 
     // Initialize the display
-    lv_disp_drv_t disp_drv;
-    lv_disp_drv_init(&disp_drv);
-    disp_drv.hor_res = screenWidth;
-    disp_drv.ver_res = screenHeight;
 #if (SIMULATOR != 1)
-    disp_drv.flush_cb = my_disp_flush;
+    lv_display_t *disp = lv_display_create(screenWidth, screenHeight);
+    lv_display_set_flush_cb(disp, my_disp_flush);
+    lv_display_set_buffers(disp, draw_buf, NULL, sizeof(draw_buf),
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
 #else // SIMULATOR
-    disp_drv.flush_cb = sdl_display_flush;
+    lv_display_t *disp = lv_sdl_window_create(screenWidth, screenHeight);
+    lv_sdl_window_set_zoom(disp, 2.0f);   // was -D SDL_ZOOM=2
+    lv_sdl_window_set_title(disp, "OhEzTouch");
 #endif
-    disp_drv.buffer = &disp_buf;
-    lv_disp_drv_register(&disp_drv);
 
 #if (SIMULATOR != 1)
 #if (TOUCH_DRIVER_FT6X36 == 1)
@@ -275,32 +284,21 @@ void setup()
 #endif
 #endif
 
-    lv_indev_drv_t indev_drv;
-    lv_indev_drv_init(&indev_drv);          // Descriptor of a input device driver
-    indev_drv.type = LV_INDEV_TYPE_POINTER; // Touch pad is a pointer-like device
 #if (SIMULATOR != 1)
-    indev_drv.read_cb = my_touchpad_read;   // Set your driver function
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER); // Touch pad is a pointer-like device
+    lv_indev_set_read_cb(indev, my_touchpad_read);
+    lv_indev_set_display(indev, disp);
 #else // SIMULATOR
-    indev_drv.read_cb = sdl_mouse_read;
+    lv_sdl_mouse_create();
 #endif
-    lv_indev_drv_register(&indev_drv);      // Finally register the driver
-
-#if (SIMULATOR != 1)
-    // Initialize the graphics library's tick
-    tick.attach_ms(LVGL_TICK_PERIOD, lv_tick_handler);
-#else // SIMULATOR
-    sdl_init();
-#endif
-    lv_theme_t * th = custom_theme_default_init(LV_THEME_DEFAULT_COLOR_PRIMARY, LV_THEME_DEFAULT_COLOR_SECONDARY, LV_THEME_DEFAULT_FLAG, LV_THEME_DEFAULT_FONT_SMALL , LV_THEME_DEFAULT_FONT_NORMAL, LV_THEME_DEFAULT_FONT_SUBTITLE, LV_THEME_DEFAULT_FONT_TITLE);
-    lv_theme_set_act(th);
-
-    // Initialize the screen
-    lv_obj_t *scr = lv_cont_create(NULL, NULL);
-    lv_disp_load_scr(scr);
+    /* The hand-forked v7 theme is gone; the project styles its own widgets and
+     * only needs sane defaults underneath. */
+    lv_display_set_theme(disp, lv_theme_simple_init(disp));
 
 #if (SIMULATOR != 1)
     infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
-    lv_task_handler();
+    lv_timer_handler();
 
     ac_main_setup(&config);
 
@@ -323,12 +321,12 @@ void setup()
 void loop()
 {
 #if (SIMULATOR == 1)
-    lv_task_handler(); // let the GUI do its work
+    lv_timer_handler(); // let the GUI do its work
     openhab_ui_loop();
     SDL_Delay(5);
 #else
     tft_backlight.loop();
-    lv_task_handler(); // let the GUI do its work
+    lv_timer_handler(); // let the GUI do its work
     ac_main_loop();
     infolabel.loop();
 
@@ -359,7 +357,7 @@ void loop()
             Serial.println("WiFi: WL_IDLE_STATUS");
 #endif
             infolabel.create(infolabel.WARNING, "WLAN", "IDLE", 0);
-            lv_task_handler();
+            lv_timer_handler();
             delay(1000);
 
             ESP.restart();
@@ -393,7 +391,7 @@ void loop()
         Serial.println("WiFi: Offline Timeout. Reconnecting...");
 #endif
         infolabel.create(infolabel.INFO, "WLAN", "Reconnecting to AP...", 0);
-        lv_task_handler();
+        lv_timer_handler();
 
         ac_main_reconnect();
     }
