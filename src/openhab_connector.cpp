@@ -214,7 +214,9 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
 int Sitemap::openlink(const char* url)
 {
     int retval = 0;
-    DynamicJsonDocument doc(12000);
+    /* ArduinoJson 7 documents size themselves, so the former fixed 12000 byte
+     * capacity is gone; the parser now grows the pool to fit the page. */
+    JsonDocument doc;
 
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::openlink: Requesting URL: %s\r\n", url);
@@ -259,7 +261,9 @@ int Sitemap::openlink(const char* url)
             return false;
         }
 
-        if (doc.containsKey("error"))
+        /* containsKey() is deprecated in ArduinoJson 7. The value is indexed as
+         * an object right below, so test for exactly that. */
+        if (doc["error"].is<JsonObject>())
         {
             printf("Sitemap::openlink: json error message: %s", json_str(doc["error"]["message"]));
             doc.clear();
@@ -267,8 +271,11 @@ int Sitemap::openlink(const char* url)
         }
 
 #if DEBUG_OPENHAB_CONNECTOR
-        Serial.print("Doc memory usage: ");
-        Serial.println(doc.memoryUsage());
+        /* ArduinoJson 7 dropped memoryUsage() -- it always returns zero. The
+         * serialized size is the closest figure that still says something
+         * about how big the page was. */
+        Serial.print("Doc serialized size: ");
+        Serial.println(measureJson(doc));
 #endif
 
         // Save current and last page urls

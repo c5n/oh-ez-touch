@@ -104,7 +104,7 @@ public:
 
         configFile.close();
 
-        StaticJsonDocument<512> doc;
+        JsonDocument doc;
         auto error = deserializeJson(doc, buf.get());
         if (error)
         {
@@ -190,7 +190,7 @@ public:
             return false;
         }
 
-        StaticJsonDocument<1024> doc;
+        JsonDocument doc;
 
         doc["general"]["hostname"] = item.general.hostname;
 
