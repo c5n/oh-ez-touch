@@ -8,7 +8,7 @@
 #define DEBUG_AC_SETTINGS 0
 #endif
 
-Config *current_config;
+static Config *current_config;
 
 // Declare AutoConnectElements for the page asf /openhab_setting
 ACText(config_general_header, "<h2>General</h2>");
