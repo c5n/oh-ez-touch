@@ -61,7 +61,7 @@ private:
 
 public:
     int update(const char* link);
-    int publish(const char* link);
+    int publish(const char* url);
 
     void cleanItem()
     {
@@ -83,6 +83,7 @@ public:
 
     void setLink(const char * newlink) { strlcpy(link, newlink, sizeof(link)); }
     const char * getLink() { return link; }
+    bool hasLink() { return (strlen(link) > 0); }
 
     void setPageLink(const char * newlink) { strlcpy(page_link, newlink, sizeof(page_link)); }
     const char * getPageLink() { return page_link; }

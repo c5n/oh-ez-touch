@@ -11,6 +11,14 @@
 #include "sim/sitemap_fixture.hpp"
 #endif
 
+#ifndef DEBUG_OPENHAB_CONNECTOR
+#define DEBUG_OPENHAB_CONNECTOR 0
+#endif
+
+#ifndef DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
+#define DEBUG_OPENHAB_CONNECTOR_PACKETDUMP 0
+#endif
+
 /* JsonVariant::as<const char *>() yields NULL for a missing or non-string
  * value; the comparisons below want an empty string in that case. */
 static inline const char *json_str(JsonVariant value)
@@ -19,13 +27,26 @@ static inline const char *json_str(JsonVariant value)
     return (str != NULL) ? str : "";
 }
 
-#ifndef DEBUG_OPENHAB_CONNECTOR
-#define DEBUG_OPENHAB_CONNECTOR 0
-#endif
+/* openHAB offers the same label/command list either as the widget's "mappings"
+ * or as the item's "commandOptions"; both are read into the item's fixed
+ * selection arrays, so the count has to be clamped to what those hold. */
+static void parse_selection(Item *item, JsonVariant array_value)
+{
+    JsonArray map_array = array_value.as<JsonArray>();
+    size_t count = map_array.size();
 
-#ifndef DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
-#define DEBUG_OPENHAB_CONNECTOR_PACKETDUMP 0
-#endif
+    if (count > ITEM_SELECTION_COUNT_MAX)
+        count = ITEM_SELECTION_COUNT_MAX;
+
+    for (size_t i = 0; i < count; ++i)
+    {
+        JsonVariant map_elem = map_array[i];
+        item->setSelectionLabel(i, json_str(map_elem["label"]));
+        item->setSelectionCommand(i, json_str(map_elem["command"]));
+    }
+
+    item->setSelectionCount(count);
+}
 
 int Item::update(const char* link)
 {
@@ -49,20 +70,24 @@ int Item::update(const char* link)
         strlcpy(remote_state, http.getString().c_str(), sizeof(remote_state));
 
         // State
-        if (   Item::type == ItemType::type_number
-            || Item::type == ItemType::type_setpoint
-            || Item::type == ItemType::type_slider)
+        if (   type == ItemType::type_number
+            || type == ItemType::type_setpoint
+            || type == ItemType::type_slider)
         {
-            // convert number to get rid of unit
-            snprintf(remote_state, sizeof(remote_state), "%f", strtof(remote_state, NULL));
+            /* Strip the unit openHAB appends ("21.5 degC"), and re-print with
+             * the same format setStateNumber() uses so that the comparison
+             * below sees identical text for an unchanged value. Going via a
+             * local keeps the source and destination of snprintf() apart. */
+            float remote_value = strtof(remote_state, NULL);
+            snprintf(remote_state, sizeof(remote_state), "%f", remote_value);
         }
 
-        if (strcmp (Item::state_text, remote_state) != 0)
+        if (strcmp(state_text, remote_state) != 0)
         {
             retval = 1;
-            strlcpy(Item::state_text, remote_state, sizeof(Item::state_text));
+            strlcpy(state_text, remote_state, sizeof(state_text));
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  update statetext to \"%s\"\r\n", Item::state_text);
+            printf("  update statetext to \"%s\"\r\n", state_text);
 #endif
         }
     }
@@ -169,10 +194,11 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
                 break;
             }
 
-            int c = stream->readBytes(p_dst, ((size > dst_avail) ? dst_avail : size));
+            // size <= dst_avail here, so the whole chunk fits
+            int c = stream->readBytes(p_dst, size);
 
 #if DEBUG_OPENHAB_CONNECTOR
-            debug_printf("get_icon: %u bytes read\r\n", c);
+            debug_printf("get_icon: %d bytes read\r\n", c);
 #if DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
             for (int i = 0; i < c; i++)
                 printf("%02x ", p_dst[i]);
@@ -181,14 +207,8 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
 #endif
             icon_size += c;
 
-            if (len > c)
+            if (len > 0)
                 len -= c;
-
-            if (dst_avail < c)
-            {
-                icon_size = 0;
-                break;
-            }
 
             dst_avail -= c;
             p_dst += c;
@@ -219,7 +239,7 @@ int Sitemap::openlink(const char* url)
     JsonDocument doc;
 
 #if DEBUG_OPENHAB_CONNECTOR
-    printf("Item::openlink: Requesting URL: %s\r\n", url);
+    printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
 #endif
 
 #if (SIMULATOR == 1)
@@ -254,22 +274,26 @@ int Sitemap::openlink(const char* url)
     {
         // Parse JSON object
         DeserializationError error = deserializeJson(doc, payload, DeserializationOption::NestingLimit(15));
+
+        /* Both of these used to "return false", which is 0 and therefore the
+         * success code of this function, so the caller kept the stale page and
+         * the HTTP client was never closed. */
         if (error)
         {
-            printf("Sitemap::openlink: deserializeJson() failed: %s", error.c_str());
-            doc.clear();
-            return false;
+            printf("Sitemap::openlink: deserializeJson() failed: %s\r\n", error.c_str());
+            payload_ok = false;
         }
-
         /* containsKey() is deprecated in ArduinoJson 7. The value is indexed as
          * an object right below, so test for exactly that. */
-        if (doc["error"].is<JsonObject>())
+        else if (doc["error"].is<JsonObject>())
         {
-            printf("Sitemap::openlink: json error message: %s", json_str(doc["error"]["message"]));
-            doc.clear();
-            return false;
+            printf("Sitemap::openlink: json error message: %s\r\n", json_str(doc["error"]["message"]));
+            payload_ok = false;
         }
+    }
 
+    if (payload_ok == true)
+    {
 #if DEBUG_OPENHAB_CONNECTOR
         /* ArduinoJson 7 dropped memoryUsage() -- it always returns zero. The
          * serialized size is the closest figure that still says something
@@ -298,36 +322,32 @@ int Sitemap::openlink(const char* url)
             item_array[i].cleanItem();
         }
 
-        Sitemap::item_count = 0;
+        item_count = 0;
 
         // Update Items
 
         // if current location is a child of the sitemap then set first item
         if (doc["parent"]["link"])
         {
-            item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
-            item_array[Sitemap::item_count].setPageLink(doc["parent"]["link"]);
+            item_array[item_count].setType(ItemType::type_parent_link);
+            item_array[item_count].setPageLink(doc["parent"]["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
+            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", item_count, item_array[item_count].getPageLink());
 #endif
-            Sitemap::item_count++;
+            item_count++;
         }
-//         else if (doc["leaf"] && doc["leaf"].as<bool>() == true)
-//         {
-//             item_array[Sitemap::item_count].setType(ItemType::type_parent_link);
-//             item_array[Sitemap::item_count].setPageLink(last_url);
-// #if DEBUG_OPENHAB_CONNECTOR
-//             printf("  idx: %u type=parent_link   link=\"%s\"\r\n", Sitemap::item_count, item_array[Sitemap::item_count].getPageLink());
-// #endif
-//             Sitemap::item_count++;
-//         }
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
 
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array[widget_index];
-            Item* item = &item_array[Sitemap::item_count];
+            Item* item = &item_array[item_count];
+
+            /* Every lookup walks the object, so the two nodes that are read
+             * over and over below are resolved once here. */
+            JsonVariant json_item = widget["item"];
+            const char *item_type = json_str(json_item["type"]);
 
             // Label
             if (widget["label"])
@@ -349,7 +369,7 @@ int Sitemap::openlink(const char* url)
             }
 
 #if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u label=\"%s\"", Sitemap::item_count, item->getLabel());
+            printf("  idx: %u label=\"%s\"", item_count, item->getLabel());
 #endif
 
             // Icon
@@ -369,9 +389,9 @@ int Sitemap::openlink(const char* url)
                 if (widget["linkedPage"]["link"])
                     item->setType(ItemType::type_link);
                 // >= <= needed to distinct from strings
-                else if (   widget["item"]["type"]
-                         && strcmp(json_str(widget["item"]["type"]), "Number") >= 0
-                         && strcmp(json_str(widget["item"]["type"]), "Number:Z") <= 0)
+                else if (   item_type[0] != '\0'
+                         && strcmp(item_type, "Number") >= 0
+                         && strcmp(item_type, "Number:Z") <= 0)
                     item->setType(ItemType::type_number);
                 else
                     item->setType(ItemType::type_string);
@@ -382,17 +402,19 @@ int Sitemap::openlink(const char* url)
             }
             else if (widget["type"] == "Switch")
             {
-                if (strcmp(json_str(widget["item"]["type"]), "Switch") == 0)
+                if (strcmp(item_type, "Switch") == 0)
                     item->setType(ItemType::type_switch);
-                else if (strcmp(json_str(widget["item"]["type"]), "Rollershutter") == 0)
+                else if (strcmp(item_type, "Rollershutter") == 0)
                     item->setType(ItemType::type_rollershutter);
-                else if (strcmp(json_str(widget["item"]["type"]), "Player") == 0)
+                else if (strcmp(item_type, "Player") == 0)
                     item->setType(ItemType::type_player);
-                else if (strcmp(json_str(widget["item"]["type"]), "Group") == 0)
+                else if (strcmp(item_type, "Group") == 0)
                 {
-                    if (strcmp(json_str(widget["item"]["groupType"]), "Switch") == 0)
+                    const char *group_type = json_str(json_item["groupType"]);
+
+                    if (strcmp(group_type, "Switch") == 0)
                         item->setType(ItemType::type_switch);
-                    else if (strcmp(json_str(widget["item"]["groupType"]), "Rollershutter") == 0)
+                    else if (strcmp(group_type, "Rollershutter") == 0)
                         item->setType(ItemType::type_rollershutter);
                 }
             }
@@ -412,8 +434,8 @@ int Sitemap::openlink(const char* url)
             // MinVal
             if (widget["minValue"])
                 item->setMinVal(widget["minValue"].as<float>());
-            else if (widget["item"]["stateDescription"]["minimum"])
-                item->setMinVal(widget["item"]["stateDescription"]["minimum"].as<float>());
+            else if (json_item["stateDescription"]["minimum"])
+                item->setMinVal(json_item["stateDescription"]["minimum"].as<float>());
             else
                 item->setMinVal(0.0f);
 #if DEBUG_OPENHAB_CONNECTOR
@@ -423,8 +445,8 @@ int Sitemap::openlink(const char* url)
             // MaxVal
             if (widget["maxValue"])
                 item->setMaxVal(widget["maxValue"].as<float>());
-            else if (widget["item"]["stateDescription"]["maximum"])
-                item->setMaxVal(widget["item"]["stateDescription"]["maximum"].as<float>());
+            else if (json_item["stateDescription"]["maximum"])
+                item->setMaxVal(json_item["stateDescription"]["maximum"].as<float>());
             else
                 item->setMaxVal(100.0f);
 #if DEBUG_OPENHAB_CONNECTOR
@@ -434,8 +456,8 @@ int Sitemap::openlink(const char* url)
             // Step
             if (widget["step"])
                 item->setStep(widget["step"].as<float>());
-            else if (widget["item"]["stateDescription"]["step"])
-                item->setStep(widget["item"]["stateDescription"]["step"].as<float>());
+            else if (json_item["stateDescription"]["step"])
+                item->setStep(json_item["stateDescription"]["step"].as<float>());
             else
                 item->setStep(1.0f);
 #if DEBUG_OPENHAB_CONNECTOR
@@ -443,8 +465,8 @@ int Sitemap::openlink(const char* url)
 #endif
 
             // Number format string
-            if (widget["item"]["stateDescription"]["pattern"])
-                item->setNumberPattern(widget["item"]["stateDescription"]["pattern"]);
+            if (json_item["stateDescription"]["pattern"])
+                item->setNumberPattern(json_item["stateDescription"]["pattern"]);
             else
                 item->setNumberPattern("%d");
 #if DEBUG_OPENHAB_CONNECTOR
@@ -452,21 +474,21 @@ int Sitemap::openlink(const char* url)
 #endif
 
             // State
-            if (widget["item"]["state"])
+            if (json_item["state"])
             {
                 if (   item->getType() == ItemType::type_number
                     || item->getType() == ItemType::type_setpoint
                     || item->getType() == ItemType::type_slider)
                 {
                     // convert number to get rid of unit
-                    item->setStateNumber(strtof(json_str(widget["item"]["state"]), NULL));
+                    item->setStateNumber(strtof(json_str(json_item["state"]), NULL));
 #if DEBUG_OPENHAB_CONNECTOR
                     printf("  num-statetext=\"%s\"", item->getStateText());
 #endif
                 }
                 else
                 {
-                    item->setStateText(widget["item"]["state"]);
+                    item->setStateText(json_item["state"]);
 #if DEBUG_OPENHAB_CONNECTOR
                     printf("  statetext=\"%s\"", item->getStateText());
 #endif
@@ -474,9 +496,9 @@ int Sitemap::openlink(const char* url)
             }
 
             // Transformed State
-            if (widget["item"]["transformedState"])
+            if (json_item["transformedState"])
             {
-                item->setTransformedStateText(widget["item"]["transformedState"]);
+                item->setTransformedStateText(json_item["transformedState"]);
             }
 
             // Links
@@ -488,9 +510,9 @@ int Sitemap::openlink(const char* url)
 #endif
             }
 
-            if (widget["item"]["link"])
+            if (json_item["link"])
             {
-                item->setLink(widget["item"]["link"]);
+                item->setLink(json_item["link"]);
 #if DEBUG_OPENHAB_CONNECTOR
                 printf("  link=\"%s\"", item->getLink());
 #endif
@@ -498,35 +520,17 @@ int Sitemap::openlink(const char* url)
 
             // Mappings
             if (widget["mappings"])
-            {
-                JsonArray map_array = widget["mappings"].as<JsonArray>();
-                for (size_t i = 0; i < map_array.size(); ++i)
-                {
-                    JsonVariant map_elem = map_array[i];
-                    item->setSelectionLabel(i, map_elem["label"]);
-                    item->setSelectionCommand(i, map_elem["command"]);
-                }
-                item->setSelectionCount(map_array.size());
-            }
-            else if (widget["item"]["commandDescription"]["commandOptions"])
-            {
-                JsonArray map_array = widget["item"]["commandDescription"]["commandOptions"].as<JsonArray>();
-                for (size_t i = 0; i < map_array.size(); ++i)
-                {
-                    JsonVariant map_elem = map_array[i];
-                    item->setSelectionLabel(i, map_elem["label"]);
-                    item->setSelectionCommand(i, map_elem["command"]);
-                }
-                item->setSelectionCount(map_array.size());
-            }
+                parse_selection(item, widget["mappings"]);
+            else if (json_item["commandDescription"]["commandOptions"])
+                parse_selection(item, json_item["commandDescription"]["commandOptions"]);
 
 #if DEBUG_OPENHAB_CONNECTOR
             printf("\r\n");
 #endif
 
-            Sitemap::item_count++;
+            item_count++;
 
-            if (Sitemap::item_count >= ITEM_COUNT_MAX)
+            if (item_count >= ITEM_COUNT_MAX)
                 break;
         }
     }
@@ -534,8 +538,6 @@ int Sitemap::openlink(const char* url)
     {
         retval = -1;
     }
-
-    doc.clear();
 
 #if (SIMULATOR != 1)
     http.end();
