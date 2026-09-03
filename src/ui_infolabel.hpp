@@ -15,7 +15,7 @@ class Infolabel
 private:
     lv_obj_t *il = NULL;
     lv_style_t label_style;
-    unsigned long timeout_timestamp;
+    unsigned long timeout_timestamp = 0;
 
 public:
     enum infolabel_type_e
@@ -76,7 +76,7 @@ public:
 
     void loop(void)
     {
-        if (timeout_timestamp > 0 && millis() >= timeout_timestamp)
+        if (timeout_timestamp > 0 && (long)(millis() - timeout_timestamp) >= 0)
         {
 #if DEBUG_UI_INFOLABEL
             Serial.println("Infolabel::loop: infolabel timeout reached");

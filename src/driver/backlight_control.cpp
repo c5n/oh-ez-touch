@@ -57,7 +57,9 @@ void BacklightControl::setup(uint8_t pin, bool invert)
 
 void BacklightControl::loop()
 {
-    if ((BacklightControl::dim_timeout_timestamp != 0) && (BacklightControl::dim_timeout_timestamp < millis()) && (BacklightControl::current_brightness != BacklightControl::dim_brightness))
+    if (   (BacklightControl::dim_timeout_timestamp != 0)
+        && ((long)(millis() - BacklightControl::dim_timeout_timestamp) >= 0)
+        && (BacklightControl::current_brightness != BacklightControl::dim_brightness))
     {
 #if DEBUG_BACKLIGHT_CONTROL
         Serial.println("BacklightControl::loop: activity timeout, dim display");
