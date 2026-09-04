@@ -9,7 +9,7 @@
  * Two things keep this small. Every page is streamed through one fixed buffer
  * and is never assembled anywhere -- PageBuilder grew each page as a single
  * repeatedly-realloc'ed String, with a transient heap peak of some 8 to 12 KB.
- * And every setting is described exactly once, in webui_fields[], which one
+ * And every setting is described exactly once, in settings_fields[], which one
  * loop renders and another parses; the AutoConnect version had the field list
  * written out three times, as the GET prefill, the POST parse and the echo
  * page, and they had drifted apart.
@@ -21,6 +21,8 @@
  */
 
 #include "webui.hpp"
+
+#include "settings_fields.hpp"
 
 #include "openhab_ui.hpp"
 #include "ota/HTTPUpdateServer.h"
@@ -44,12 +46,6 @@
 /* Widest destination in Config::item is char[32]; the rest is headroom so
  * that an over-long submission is truncated here rather than rejected. */
 #define WEBUI_VALUE_MAX 80
-
-/* WebServer's own cap lives in its Parsing.cpp rather than its header, so it
- * cannot be asserted against directly. This mirrors the framework default;
- * should the framework ever raise it, this stays wrong in the harmless
- * direction. */
-#define WEBUI_MAX_POST_ARGS 32
 
 /* Unauthenticated, as it has always been. Kept as macros so that a build can
  * override them without touching this file. */
@@ -76,162 +72,13 @@ static WebServer *webui_server = &webui_http;
 
 /* ------------------------------------------------------------------ fields */
 
-enum webui_kind_e
-{
-    WEBUI_SECTION = 0, /* heading only, no field                            */
-    WEBUI_TEXT,        /* char[]                                            */
-    WEBUI_INT,         /* int                                               */
-    WEBUI_UINT,        /* unsigned int                                      */
-    WEBUI_ULONG,       /* unsigned long                                     */
-    WEBUI_BOOL,        /* bool, rendered as a checkbox                      */
-    WEBUI_ENUM         /* enum, rendered as a select over ->names           */
-};
-
-/* Reject '/' and ':' -- this was the ^[^/:]*$ pattern on the AutoConnect
- * inputs, which the browser enforced and the firmware did not, so a
- * hand-written POST could put anything into Config. */
-#define WEBUI_F_HOSTCHARS 0x01u
-/* Mark the label: the setting is only read during setup(). */
-#define WEBUI_F_RESTART 0x02u
-
-struct webui_field_s
-{
-    const char        *name;   /* POST argument name; [a-z0-9_] only        */
-    const char        *label;
-    const char *const *names;  /* WEBUI_ENUM: the option names              */
-    uint16_t           offset; /* byte offset into Config::item             */
-    int32_t            min;
-    int32_t            max;
-    uint8_t            kind;
-    uint8_t            size;   /* WEBUI_TEXT: sizeof the destination        */
-    uint8_t            count;  /* WEBUI_ENUM: number of options             */
-    uint8_t            flags;
-};
-
-/* Config itself is not standard-layout -- it mixes a private String with the
- * public settings struct -- so offsetof() on it would be ill-formed.
- * Config::item is, and every offset below is relative to it.
+/* The row macros, the field table and the by-offset accessors live in
+ * settings_fields.hpp: the touch settings screen walks the same rows, and a
+ * second copy of the list here is exactly the drift the table was introduced
+ * to stop. What stays below is the HTML rendering and the POST parsing.
  *
- * The target has to be an offset rather than a pointer or a lambda: a table
- * of pointers into a global would need dynamic initialisation and would land
- * in RAM, where this one stays in flash. Same reasoning as the uint32_t
- * colours in ui_style.hpp. */
-typedef decltype(Config::item) webui_item_t;
-
-#define OFF(path) ((uint16_t)offsetof(webui_item_t, path))
-#define SZ(path) ((uint8_t)sizeof(((webui_item_t *)0)->path))
-
-/* Shorthand, so that a row fits on one line and the table can be read against
- * the settings tables in README.md. */
-#define SEC(lbl)                    {NULL, (lbl), NULL, 0,          0,     0, WEBUI_SECTION, 0,        0,   0}
-#define TXT(nm, lbl, path, fl)      {(nm), (lbl), NULL, OFF(path),  0,     0, WEBUI_TEXT,    SZ(path), 0,   (fl)}
-#define SINT(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), WEBUI_INT,    0,        0,   0}
-#define UINT(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), WEBUI_UINT,   0,        0,   0}
-#define ULNG(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), WEBUI_ULONG,  0,        0,   0}
-#define CHK(nm, lbl, path)          {(nm), (lbl), NULL, OFF(path),  0,     0, WEBUI_BOOL,    0,        0,   0}
-#define SEL(nm, lbl, path, tbl, n)  {(nm), (lbl), (tbl), OFF(path), 0, (n) - 1, WEBUI_ENUM,  0,      (n),   0}
-
-static const struct webui_field_s webui_fields[] = {
-
-    SEC("General"),
-    TXT("hostname", "Hostname", general.hostname, WEBUI_F_HOSTCHARS | WEBUI_F_RESTART),
-
-    SEC("NTP Time"),
-    TXT("ntp_host", "Host", ntp.hostname, WEBUI_F_HOSTCHARS | WEBUI_F_RESTART),
-    SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, -12, 14),
-    CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving),
-
-    SEC("Appearance"),
-    /* The option names come straight from ui_theme.hpp, so the dropdown, the
-     * config file and the simulator's environment variables cannot drift
-     * apart. Unlike the AutoConnect version this needs no 1-based index
-     * arithmetic: the POST carries the name, and the lookup owns the
-     * fallback. */
-    SEL("theme", "Theme", ui.theme, ui_theme_names, UI_THEME_FAMILY_COUNT),
-    SEL("night_mode", "Night mode", ui.night_mode, ui_night_mode_names, UI_NIGHT_MODE_COUNT),
-    UINT("night_from", "Night from [h]", ui.night_from, 0, 23),
-    UINT("night_to", "Night to [h]", ui.night_to, 0, 23),
-
-    SEC("LCD Backlight Dimming"),
-    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
-    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
-    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
-
-    SEC("Beeper"),
-    CHK("beeper", "Enable beeper", beeper.enabled),
-
-    SEC("OpenHAB Server"),
-    TXT("oh_host", "Host", openhab.hostname, WEBUI_F_HOSTCHARS),
-    SINT("oh_port", "Port", openhab.port, 1, 65535),
-    TXT("oh_sitemap", "Sitemap", openhab.sitemap, WEBUI_F_HOSTCHARS),
-
-    SEC("Sensors"),
-    CHK("bme_use", "Use BME280 sensor", openhab.sensors.bme280.use),
-    SINT("bme_interval", "Update interval [s]", openhab.sensors.bme280.interval, 1, 86400),
-    TXT("bme_temp", "Temperature item", openhab.sensors.bme280.items.temperature, 0),
-    TXT("bme_hum", "Humidity item", openhab.sensors.bme280.items.humidity, 0),
-    TXT("bme_press", "Pressure item", openhab.sensors.bme280.items.pressure, 0),
-};
-
-#define WEBUI_FIELD_COUNT (sizeof(webui_fields) / sizeof(webui_fields[0]))
-
-/* WebServer stops parsing after WEBSERVER_MAX_POST_ARGS arguments and says so
- * only through one log_e(), so a form that outgrows the cap loses fields in
- * silence. The settings form posts one argument per non-section row; the WLAN
- * credentials are deliberately a second form for that reason. */
-static_assert(WEBUI_FIELD_COUNT <= WEBUI_MAX_POST_ARGS,
-              "the settings form would exceed WEBSERVER_MAX_POST_ARGS");
-
-/* The generic accessors below reach into Config by offset, so a field whose C
- * type stops matching its kind would corrupt its neighbours rather than fail
- * to compile. These are the checks that keep the table honest. */
-static_assert(sizeof(int) == sizeof(int32_t), "WEBUI_INT width");
-static_assert(sizeof(enum ui_theme_family_e) == sizeof(unsigned int), "WEBUI_ENUM width");
-static_assert(sizeof(enum ui_night_mode_e) == sizeof(unsigned int), "WEBUI_ENUM width");
-
-static int32_t webui_field_read(const struct webui_field_s *f, const Config *config)
-{
-    const void *p = (const uint8_t *)&config->item + f->offset;
-
-    switch (f->kind)
-    {
-    case WEBUI_INT:
-        return (int32_t) * (const int *)p;
-    case WEBUI_UINT:
-    case WEBUI_ENUM:
-        return (int32_t) * (const unsigned int *)p;
-    case WEBUI_ULONG:
-        return (int32_t) * (const unsigned long *)p;
-    case WEBUI_BOOL:
-        return *(const bool *)p ? 1 : 0;
-    default:
-        return 0;
-    }
-}
-
-static void webui_field_write(const struct webui_field_s *f, Config *config, int32_t value)
-{
-    void *p = (uint8_t *)&config->item + f->offset;
-
-    switch (f->kind)
-    {
-    case WEBUI_INT:
-        *(int *)p = (int)value;
-        break;
-    case WEBUI_UINT:
-    case WEBUI_ENUM:
-        *(unsigned int *)p = (unsigned int)value;
-        break;
-    case WEBUI_ULONG:
-        *(unsigned long *)p = (unsigned long)value;
-        break;
-    case WEBUI_BOOL:
-        *(bool *)p = (value != 0);
-        break;
-    default:
-        break;
-    }
-}
+ * The WEBSERVER_MAX_POST_ARGS guard moved there with the table, as
+ * SETTINGS_MAX_POST_ARGS, where the row count is a constant expression. */
 
 /* ------------------------------------------------------------------ writer */
 
@@ -404,12 +251,11 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
 
     webui_put(o, "<form method='post' action='/save'>");
 
-    for (size_t i = 0; i < WEBUI_FIELD_COUNT; i++)
+    for (size_t i = 0; i < settings_field_count; i++)
     {
-        const struct webui_field_s *f = &webui_fields[i];
-        const void                 *p = (const uint8_t *)&config->item + f->offset;
+        const struct settings_field_s *f = &settings_fields[i];
 
-        if (f->kind == WEBUI_SECTION)
+        if (f->kind == SETTINGS_SECTION)
         {
             if (open == true)
                 webui_put(o, "</fieldset>");
@@ -420,28 +266,28 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
         }
 
         webui_putf(o, "<label>%s%s%s", f->label,
-                   (f->flags & WEBUI_F_RESTART) ? " *" : "",
-                   (f->kind == WEBUI_BOOL) ? " " : "<br>");
+                   (f->flags & SETTINGS_F_RESTART) ? " *" : "",
+                   (f->kind == SETTINGS_BOOL) ? " " : "<br>");
 
         switch (f->kind)
         {
-        case WEBUI_TEXT:
+        case SETTINGS_TEXT:
             webui_putf(o, "<input type='text' name='%s' maxlength='%u' value='",
                        f->name, (unsigned)(f->size - 1));
-            webui_put_escaped(o, (const char *)p);
+            webui_put_escaped(o, settings_field_text(f, &config->item));
             webui_put(o, "'>");
             break;
 
-        case WEBUI_BOOL:
+        case SETTINGS_BOOL:
             /* No <br> for this one: a checkbox belongs on the same line as
              * its text, where every other kind wants its input underneath. */
             webui_putf(o, "<input type='checkbox' name='%s'%s>", f->name,
-                       *(const bool *)p ? " checked" : "");
+                       settings_field_read(f, &config->item) ? " checked" : "");
             break;
 
-        case WEBUI_ENUM:
+        case SETTINGS_ENUM:
         {
-            int32_t selected = webui_field_read(f, config);
+            int32_t selected = settings_field_read(f, &config->item);
 
             webui_putf(o, "<select name='%s'>", f->name);
 
@@ -456,7 +302,7 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
         default:
             webui_putf(o, "<input type='number' name='%s' min='%ld' max='%ld' value='%ld'>",
                        f->name, (long)f->min, (long)f->max,
-                       (long)webui_field_read(f, config));
+                       (long)settings_field_read(f, &config->item));
             break;
         }
 
@@ -471,7 +317,7 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
 }
 
 /* A form of its own, and not only for tidiness: WebServer stops parsing a
- * body after WEBUI_MAX_POST_ARGS arguments, and provisioning must not depend
+ * body after SETTINGS_MAX_POST_ARGS arguments, and provisioning must not depend
  * on a valid settings round-trip. The passphrase is never sent back to the
  * browser, and an empty one is submitted as an open network. */
 static void webui_send_wlan_form(struct webui_out_s *o)
@@ -538,12 +384,12 @@ static void webui_handle_save()
 {
     Config *config = webui_config;
 
-    for (size_t i = 0; i < WEBUI_FIELD_COUNT; i++)
+    for (size_t i = 0; i < settings_field_count; i++)
     {
-        const struct webui_field_s *f = &webui_fields[i];
-        char                        value[WEBUI_VALUE_MAX];
+        const struct settings_field_s *f = &settings_fields[i];
+        char                           value[WEBUI_VALUE_MAX];
 
-        if (f->kind == WEBUI_SECTION)
+        if (f->kind == SETTINGS_SECTION)
             continue;
 
         /* An unchecked box is simply absent from the body, so a checkbox is
@@ -551,9 +397,9 @@ static void webui_handle_save()
          * absent argument leaves the stored value alone, which is what makes a
          * partial POST -- an older firmware's bookmarked form, say -- harmless
          * rather than destructive. */
-        if (f->kind == WEBUI_BOOL)
+        if (f->kind == SETTINGS_BOOL)
         {
-            webui_field_write(f, config, webui_server->hasArg(f->name) ? 1 : 0);
+            settings_field_write(f, &config->item, webui_server->hasArg(f->name) ? 1 : 0);
             continue;
         }
 
@@ -562,48 +408,23 @@ static void webui_handle_save()
 
         strlcpy(value, webui_server->arg(f->name).c_str(), sizeof(value));
 
+        /* The character check, the clamp and the option lookup all live in
+         * settings_fields.cpp, so the touch screen applies the same rules to
+         * the same rows -- a value the web form rejects is not one the panel
+         * can smuggle in. */
         switch (f->kind)
         {
-        case WEBUI_TEXT:
-            /* Enforced here and not only by the browser's pattern attribute,
-             * because a hand-written POST does not run the browser's. */
-            if ((f->flags & WEBUI_F_HOSTCHARS) && strpbrk(value, "/:") != NULL)
-                break;
-
-            strlcpy((char *)&config->item + f->offset, value, f->size);
+        case SETTINGS_TEXT:
+            settings_field_set_text(f, &config->item, value);
             break;
 
-        case WEBUI_ENUM:
-        {
-            /* Unknown names resolve to the first option, the same fallback
-             * ui_theme_from_name() applies to the config file. */
-            int32_t index = 0;
-
-            for (uint8_t n = 0; n < f->count; n++)
-            {
-                if (strcasecmp(value, f->names[n]) == 0)
-                {
-                    index = n;
-                    break;
-                }
-            }
-
-            webui_field_write(f, config, index);
+        case SETTINGS_ENUM:
+            settings_field_write(f, &config->item, settings_field_enum_from_name(f, value));
             break;
-        }
 
         default:
-        {
-            long n = strtol(value, NULL, 10);
-
-            if (n < f->min)
-                n = f->min;
-            if (n > f->max)
-                n = f->max;
-
-            webui_field_write(f, config, (int32_t)n);
+            settings_field_set_number(f, &config->item, strtol(value, NULL, 10));
             break;
-        }
         }
     }
 
@@ -613,10 +434,13 @@ static void webui_handle_save()
     Serial.println("webui: settings saved");
 #endif
 
-    /* The theme is the one setting that applies without a restart. This is a
-     * request rather than a repaint: the repaint happens in openhab_ui_loop(),
-     * on the task that owns LVGL. */
-    openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
+    /* Re-apply everything that does not need a reboot -- the theme, the openHAB
+     * endpoint, the backlight timings, the beeper. Shared with the touch
+     * settings screen, and the reason only two rows still carry
+     * SETTINGS_F_RESTART. The theme part of it is a request rather than a
+     * repaint: the repaint happens in openhab_ui_loop(), on the task that owns
+     * LVGL, which this handler is not. */
+    settings_apply_live(config);
 
     /* 303 rather than a page of its own: the browser re-GETs /, which renders
      * the values actually stored. That is what AutoConnect's echo page was
@@ -671,23 +495,25 @@ void webui_setup(Config *config)
     /* The accessors reach into Config by offset, so a row naming a field that
      * has since moved or shrunk would quietly read and write its neighbours.
      * offsetof() keeps the offsets right by construction; this catches the
-     * remaining case, a row whose kind no longer matches its field's width. */
-    for (size_t i = 0; i < WEBUI_FIELD_COUNT; i++)
+     * remaining case, a row whose kind no longer matches its field's width.
+     * The table is shared with the touch settings screen now, so this checks
+     * that screen's rows too -- it just happens to run from here. */
+    for (size_t i = 0; i < settings_field_count; i++)
     {
-        const struct webui_field_s *f = &webui_fields[i];
-        size_t                      width;
+        const struct settings_field_s *f = &settings_fields[i];
+        size_t                         width;
 
         switch (f->kind)
         {
-        case WEBUI_SECTION:
+        case SETTINGS_SECTION:
             continue;
-        case WEBUI_TEXT:
+        case SETTINGS_TEXT:
             width = f->size;
             break;
-        case WEBUI_BOOL:
+        case SETTINGS_BOOL:
             width = sizeof(bool);
             break;
-        case WEBUI_ULONG:
+        case SETTINGS_ULONG:
             width = sizeof(unsigned long);
             break;
         default:
@@ -695,8 +521,8 @@ void webui_setup(Config *config)
             break;
         }
 
-        if (f->offset + width > sizeof(webui_item_t))
-            Serial.printf("webui: field '%s' runs past Config::item\r\n", f->name);
+        if (f->offset + width > sizeof(settings_item_t))
+            Serial.printf("settings: field '%s' runs past Config::item\r\n", f->name);
     }
 #endif
 

@@ -816,7 +816,7 @@
 
 #define LV_USE_IMAGEBUTTON 0
 
-#define LV_USE_KEYBOARD 0
+#define LV_USE_KEYBOARD 1
 
 #define LV_USE_LABEL 1
 #if LV_USE_LABEL
@@ -857,9 +857,9 @@
 
 #define LV_USE_TABLE 1
 
-#define LV_USE_TABVIEW 0
+#define LV_USE_TABVIEW 1
 
-#define LV_USE_TEXTAREA 0   /**< Requires: lv_label */
+#define LV_USE_TEXTAREA 1   /**< Requires: lv_label */
 #if LV_USE_TEXTAREA != 0
     #define LV_TEXTAREA_DEF_PWD_SHOW_TIME 1500    /**< [ms] */
 #endif

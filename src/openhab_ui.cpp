@@ -1,8 +1,9 @@
 #include "openhab_ui.hpp"
 #include "openhab_connector.hpp"
 #include "ui_infolabel.hpp"
+#include "ui_beep.hpp"
+#include "ui_settings.hpp"
 #include "ui_style.hpp"
-#include "driver/beeper_control.hpp"
 
 #include "lodepng/lodepng.h"
 #include "time.h"
@@ -57,51 +58,6 @@
 
 #define ICON_PNG_BUFFER_SIZE 5000
 
-#ifndef BEEPER_VOLUME
-#define BEEPER_VOLUME 50
-#endif
-
-#if (SIMULATOR != 1)
-#define BEEPER_EVENT_CHANGE()              \
-    {                                      \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \
-    }
-#define BEEPER_EVENT_LINK()                  \
-    {                                        \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 20, 10); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0);  \
-    }
-#define BEEPER_EVENT_LINK_BACK()            \
-    {                                       \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 5); \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 10, 5); \
-        beeper_playNote(NOTE_A6, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_WINDOW()               \
-    {                                       \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_G7, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_WINDOW_CLOSE()         \
-    {                                       \
-        beeper_playNote(NOTE_G7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_ERROR()                 \
-    {                                        \
-        beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
-        beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
-    }
-#else
-#define BEEPER_EVENT_CHANGE() {}
-#define BEEPER_EVENT_LINK() {}
-#define BEEPER_EVENT_LINK_BACK() {}
-#define BEEPER_EVENT_WINDOW() {}
-#define BEEPER_EVENT_WINDOW_CLOSE() {}
-#define BEEPER_EVENT_ERROR() {}
-#endif
 
 // Holds "http://<hostname>:<port>/rest/sitemaps/<sitemap>/<sitemap>?type=json".
 // With the 32 byte hostname and sitemap fields of Config that needs 133 bytes,
@@ -186,7 +142,7 @@ static char current_page[STR_PAGE_LEN];
 static char last_page[STR_PAGE_LEN];
 static char current_website[STR_WEBSITE_LEN];
 
-uint8_t get_signal_quality(int8_t rssi)
+uint8_t openhab_ui_signal_quality(int8_t rssi)
 {
     if (rssi < -100)
         return 0;
@@ -356,94 +312,20 @@ static void publish_button_command(lv_event_t *e)
     BEEPER_EVENT_CHANGE();
 }
 
+/* The status bar opens the settings screen, on the tab it has always led to:
+ * the Systeminfo table, which is now that screen's Info tab. Everything that
+ * table used to be built from moved to ui_settings.cpp with it. */
 static void header_event_handler(lv_event_t *e)
 {
     LV_UNUSED(e);
-    {
+
 #if DEBUG_OPENHAB_UI
-        printf("header_event_handler: LV_EVENT_CLICKED\r\n");
+    printf("header_event_handler: LV_EVENT_CLICKED\r\n");
 #endif
 
-        BEEPER_EVENT_WINDOW();
+    BEEPER_EVENT_WINDOW();
 
-        lv_obj_t *content = window_create("Systeminfo");
-
-        lv_obj_t *table = lv_table_create(content);
-        /* The cell style used to be built here, behind a one-shot flag that
-         * would have pinned the first theme's colours for the whole run. */
-        lv_obj_add_style(table, &ui_style_table_cell, LV_PART_ITEMS);
-        /* Eleven rows do not fit 240 px, so the scrollbar is on screen and
-         * needs a colour of the theme's rather than lv_theme_simple's grey.
-         * The slider's indicator colour is the right one to borrow: a scrollbar
-         * thumb is the same idea, and for the Default theme it happens to be
-         * the very grey lv_theme_simple was supplying. */
-        lv_obj_set_style_bg_color(table, lv_color_hex(ui_style_theme()->slider_indic.bg), LV_PART_SCROLLBAR);
-        lv_table_set_column_count(table, 2);
-        lv_table_set_row_count(table, 11);
-        int32_t table_width = lv_display_get_horizontal_resolution(NULL) - 10;
-        lv_table_set_column_width(table, 0, table_width * 30 / 100);
-        lv_table_set_column_width(table, 1, table_width * 70 / 100);
-        /* v9 tables scroll rather than growing, so the table has to be told how
-         * much room it may take; eleven rows do not fit 240 px. */
-        lv_obj_set_size(table, lv_pct(100), lv_pct(100));
-        lv_obj_align(table, LV_ALIGN_CENTER, 0, 0);
-
-        char temp_buffer[50];
-        uint16_t row = 0;
-
-#if (SIMULATOR != 1)
-        lv_table_set_cell_value(table, row, 0, "Uptime");
-        uptime::calculateUptime();
-        sprintf(temp_buffer, "%lu days, %luh %lum %lus",
-                uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-#endif
-
-        lv_table_set_cell_value(table, ++row, 0, "Version");
-        sprintf(temp_buffer, "%u.%02u (%s %s)", VERSION_MAJOR, VERSION_MINOR, __DATE__, __TIME__);
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-
-#if (SIMULATOR != 1)
-        lv_table_set_cell_value(table, ++row, 0, "Hostname");
-        lv_table_set_cell_value(table, row, 1, WiFi.getHostname());
-
-        lv_table_set_cell_value(table, ++row, 0, "SSID");
-        lv_table_set_cell_value(table, row, 1, WiFi.SSID().c_str());
-
-        lv_table_set_cell_value(table, ++row, 0, "BSSID");
-        lv_table_set_cell_value(table, row, 1, WiFi.BSSIDstr().c_str());
-
-        lv_table_set_cell_value(table, ++row, 0, "RSSI");
-
-        int8_t signal_rssi = WiFi.RSSI();
-
-        sprintf(temp_buffer, "%i dBm (%u %%)", signal_rssi, get_signal_quality(signal_rssi));
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-
-        lv_table_set_cell_value(table, ++row, 0, "MAC");
-        lv_table_set_cell_value(table, row, 1, WiFi.macAddress().c_str());
-
-        lv_table_set_cell_value(table, ++row, 0, "IP Addr.");
-        IPAddress ip = WiFi.localIP();
-        sprintf(temp_buffer, "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-
-        lv_table_set_cell_value(table, ++row, 0, "Mask");
-        IPAddress mask = WiFi.subnetMask();
-        sprintf(temp_buffer, "%u.%u.%u.%u", mask[0], mask[1], mask[2], mask[3]);
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-
-        lv_table_set_cell_value(table, ++row, 0, "Gateway");
-        IPAddress gwip = WiFi.gatewayIP();
-        sprintf(temp_buffer, "%u.%u.%u.%u", gwip[0], gwip[1], gwip[2], gwip[3]);
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-
-        lv_table_set_cell_value(table, ++row, 0, "DNS");
-        IPAddress dnsip = WiFi.dnsIP();
-        sprintf(temp_buffer, "%u.%u.%u.%u", dnsip[0], dnsip[1], dnsip[2], dnsip[3]);
-        lv_table_set_cell_value(table, row, 1, temp_buffer);
-#endif
-    }
+    ui_settings_open(SETTINGS_TAB_INFO);
 }
 
 lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
@@ -1216,7 +1098,7 @@ static void header_update()
     if (millis() - signal_last_update >= HEADER_SIGNAL_UPDATE_INTERVAL)
     {
         signal_last_update = millis();
-        lv_label_set_text_fmt(header.item.signal, "%02d%%", get_signal_quality(WiFi.RSSI()));
+        lv_label_set_text_fmt(header.item.signal, "%02d%%", openhab_ui_signal_quality(WiFi.RSSI()));
     }
 #endif
 }
@@ -1509,7 +1391,9 @@ void openhab_ui_request_theme(enum ui_theme_family_e family, bool night)
  * cannot do are done by hand: an open window is closed, because the block the
  * LCARS header ends in is an object rather than a property, and the tiles are
  * recreated, because the symbol opacities are local styles and a variant may
- * want a different marker per item type. */
+ * want a different marker per item type. The settings screen, if it is up, is
+ * rebuilt for the same kind of reason -- and it has to be, since the theme is
+ * changed from one of its own tabs. */
 static void theme_apply_pending(void)
 {
     theme_pending = false;
@@ -1526,6 +1410,11 @@ static void theme_apply_pending(void)
         lv_obj_delete(open_window);
         open_window = NULL;
     }
+
+    /* Same reason, on the other screen: the settings tab bar and keyboard set
+     * some styles locally at creation, and the Info table's cells are a
+     * snapshot -- none of which a style refresh can redo. */
+    ui_settings_rebuild();
 
     if (sitemap_ok == true)
         page_rebuild(content, false);

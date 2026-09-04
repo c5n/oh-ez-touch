@@ -6,7 +6,9 @@
 #include "debug.h"
 
 #include "openhab_ui.hpp"
+#include "settings_fields.hpp"
 #include "ui_infolabel.hpp"
+#include "ui_settings.hpp"
 
 #if (SIMULATOR == 0)
 #include <TFT_eSPI.h>
@@ -84,6 +86,36 @@ static LV_ATTRIBUTE_MEM_ALIGN uint8_t draw_buf[320 * 10 * (LV_COLOR_DEPTH / 8)];
 
 Config config;
 Infolabel infolabel;
+
+/* Re-apply every setting that does not need a reboot. Declared in
+ * settings_fields.hpp and called from both save paths -- the web form in
+ * webui.cpp and the touch settings screen in ui_settings.cpp -- so that the two
+ * agree on what a save actually does. It lives here because this is where the
+ * backlight and the beeper are owned.
+ *
+ * Everything it touches used to be read once in setup() and never again, which
+ * is why the openHAB host, the backlight levels and the beeper were effectively
+ * restart-only settings without ever saying so. The theme goes through
+ * openhab_ui_request_theme(), which only records a request: this is reachable
+ * from the web handler, where lv_timer_handler() is not being pumped and
+ * nothing may touch LVGL. Disabling the beeper needs no call at all -- the
+ * per-touch blip below reads config.item.beeper.enabled live. */
+void settings_apply_live(Config *config)
+{
+    openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
+
+#if (SIMULATOR != 1)
+    openhab_ui_connect(config->item.openhab.hostname, config->item.openhab.port,
+                       config->item.openhab.sitemap);
+
+    tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
+    tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
+    tft_backlight.setDimBrightness(config->item.backlight.dim_brightness);
+
+    if (config->item.beeper.enabled == true)
+        beeper_enable();
+#endif
+}
 
 /* LVGL's tick source. Wrapping millis() is not cosmetic: lv_tick_get_cb_t
  * returns uint32_t, while millis() returns unsigned long, which is 64 bit on
@@ -314,11 +346,13 @@ void setup()
 #endif
 
     openhab_ui_setup(&config);
+    ui_settings_setup(&config);
 
 #if (SIMULATOR != 1)
     openhab_sensor_main_setup(config);
 #else // SIMULATOR
     openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
+    ui_settings_open_from_env();
 #endif
 }
 
@@ -326,11 +360,16 @@ void loop()
 {
 #if (SIMULATOR == 1)
     lv_timer_handler(); // let the GUI do its work
+    ui_settings_loop();
     openhab_ui_loop();
     SDL_Delay(5);
 #else
     tft_backlight.loop();
     lv_timer_handler(); // let the GUI do its work
+    /* Outside the WL_CONNECTED guard further down, unlike openhab_ui_loop():
+     * the settings screen is how a device with no credentials gets any, so its
+     * access point scan has to keep running while the station is offline. */
+    ui_settings_loop();
     wlan_loop();
     webui_loop();
     infolabel.loop();
@@ -396,6 +435,20 @@ void loop()
         {
             infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
+    }
+
+    /* A pristine device: WLAN_PORTAL means no credentials are stored at all, so
+     * there is nothing to retry and nobody is coming to fix it. Bring up the
+     * settings screen on the WLAN tab, which is the only thing anyone can
+     * usefully do with the panel in that state. Once, so that closing it is
+     * respected -- and only for WLAN_PORTAL, never for a device that is merely
+     * offline and will reconnect by itself. */
+    static bool settings_shown_for_portal = false;
+
+    if (settings_shown_for_portal == false && wlan_state() == WLAN_PORTAL)
+    {
+        settings_shown_for_portal = true;
+        ui_settings_open(SETTINGS_TAB_WLAN);
     }
 
     if (wlan_status == WL_CONNECTED)

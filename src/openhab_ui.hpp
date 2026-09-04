@@ -5,6 +5,12 @@
 #include "config.hpp"
 #include "ui_theme.hpp"
 #include <lvgl.h>
+#include <stdint.h>
+
+/* An RSSI in dBm as a percentage, the way the status bar has always shown it.
+ * Public because the settings screen's Info tab and its access point scan want
+ * the same scale as the header, not one of their own. */
+uint8_t openhab_ui_signal_quality(int8_t rssi);
 
 void openhab_ui_setup(Config *config);
 void openhab_ui_set_wifi_state(bool wifi_state);
