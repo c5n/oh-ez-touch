@@ -37,8 +37,9 @@ static void test_every_night_mode_name_round_trips(void)
     }
 }
 
-/* AutoConnect matches a select element's option text with equalsIgnoreCase(),
- * so the config file has to accept the same spellings the web form does. */
+/* The web form submits a select element's option text, which webui.cpp looks
+ * up with strcasecmp(), so the config file has to accept the same spellings
+ * the form does. */
 static void test_name_lookup_ignores_case(void)
 {
     TEST_ASSERT_EQUAL_INT(UI_THEME_LCARS, ui_theme_from_name("lcars"));

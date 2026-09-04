@@ -1487,10 +1487,10 @@ bool openhab_ui_night_active(Config *config)
 /* Ask for a variant; openhab_ui_loop() carries it out.
  *
  * The switch is deliberately not done here. The web handler that calls this
- * runs deep inside AutoConnect's request handling, with the whole web server on
- * the loop task's stack and lv_timer_handler() not being pumped -- no place to
- * be freeing and reallocating the style property arrays that the draw path
- * reads, let alone deleting and recreating widgets. */
+ * runs inside the web server's request handling, on the loop task's stack and
+ * with lv_timer_handler() not being pumped -- no place to be freeing and
+ * reallocating the style property arrays that the draw path reads, let alone
+ * deleting and recreating widgets. */
 void openhab_ui_request_theme(enum ui_theme_family_e family, bool night)
 {
     if (family == ui_style_family() && night == ui_style_night())

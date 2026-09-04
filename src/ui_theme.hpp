@@ -7,7 +7,7 @@
  * The theme has to be named in four places that have nothing else in common:
  * the config file, the web form, the simulator environment, and the style table
  * in ui_style.cpp. Putting the enum in ui_style.hpp would drag <lvgl.h> into
- * config.hpp, and from there into ac_main.cpp, the sensor translation units and
+ * config.hpp, and from there into webui.cpp, the sensor translation units and
  * the host tests. Hence this header, which all four can include cheaply. */
 
 #include <strings.h> /* strcasecmp(): POSIX, present in both newlib and glibc */
@@ -68,8 +68,8 @@ static inline const char *ui_night_mode_name(enum ui_night_mode_e mode)
 /* Anything unknown -- a typo in a hand-edited config.json, a name written by a
  * newer firmware, or the NULL that getenv() returns for an unset variable --
  * resolves to the first entry rather than to nothing. The comparison is
- * case-insensitive because AutoConnect's own select() matches its option text
- * with equalsIgnoreCase(), and the two halves have to agree. */
+ * case-insensitive to match the web form, whose POST carries the option text
+ * and looks it up the same way -- the two halves have to agree. */
 static inline enum ui_theme_family_e ui_theme_from_name(const char *name)
 {
     if (name != NULL)
