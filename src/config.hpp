@@ -3,13 +3,26 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <stdlib.h>
 #include "debug.h"
+#include "ui_theme.hpp"
 #if (SIMULATOR == 0)
 #include "SPIFFS.h"
 #endif
 
 #ifndef DEBUG_CONFIG
 #define DEBUG_CONFIG 0
+#endif
+
+/* The largest config file that will be read. Sized well above what the file
+ * actually needs -- the shipped data/config.json is around 900 bytes of
+ * pretty-printed JSON, and saveConfig() writes it back compacted to about half
+ * that -- so that adding a setting does not silently push the file over the
+ * limit and fall back to every default. It is still bounded, because the size
+ * comes from the filesystem and a corrupt SPIFFS can report anything; the
+ * buffer below is allocated from the real file size, not from this. */
+#ifndef CONFIG_FILE_MAX_SIZE
+#define CONFIG_FILE_MAX_SIZE 2048
 #endif
 
 class Config
@@ -30,6 +43,17 @@ public:
             int gmt_offset;
             bool daylightsaving;
         } ntp;
+        struct
+        {
+            /* Stored by name in the file, as an enum here: an unknown name
+             * cannot survive loadConfig(), so every consumer -- the styles, the
+             * web form's dropdown -- gets a value that is valid by
+             * construction. See ui_theme.hpp. */
+            enum ui_theme_family_e theme;
+            enum ui_night_mode_e night_mode;
+            unsigned int night_from;
+            unsigned int night_to;
+        } ui;
         struct
         {
             unsigned long activity_timeout;
@@ -91,10 +115,13 @@ public:
         }
 
         size_t size = configFile.size();
-        if (size > 1024)
+        if (size > CONFIG_FILE_MAX_SIZE)
         {
             configFile.close();
-            Serial.println("Config file size is too large");
+            /* Say by how much: a file that grew past the limit reads as "every
+             * setting reverted to its default", which is otherwise a puzzle. */
+            Serial.printf("Config file size %u is too large (max %u)\r\n",
+                          (unsigned)size, (unsigned)CONFIG_FILE_MAX_SIZE);
             return false;
         }
 
@@ -119,6 +146,10 @@ public:
         strlcpy(item.ntp.hostname, doc["ntp"]["hostname"] | "pool.ntp.org", sizeof(item.ntp.hostname));
         item.ntp.gmt_offset = doc["ntp"]["gmt_offset"] | 1;
         item.ntp.daylightsaving = doc["ntp"]["daylightsaving"] | false;
+        item.ui.theme = ui_theme_from_name(doc["ui"]["theme"] | UI_THEME_NAME_DEFAULT);
+        item.ui.night_mode = ui_night_mode_from_name(doc["ui"]["night_mode"] | UI_NIGHT_NAME_OFF);
+        item.ui.night_from = doc["ui"]["night_from"] | 22;
+        item.ui.night_to = doc["ui"]["night_to"] | 6;
         item.backlight.activity_timeout = doc["backlight"]["activity_timeout"] | 60;
         item.backlight.normal_brightness = doc["backlight"]["normal_brightness"] | 100;
         item.backlight.dim_brightness = doc["backlight"]["dim_brightness"] | 40;
@@ -137,6 +168,10 @@ public:
         debug_printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);
         debug_printf("  item.ntp.gmt_offset: %d\r\n", item.ntp.gmt_offset);
         debug_printf("  item.ntp.daylightsaving: %d\r\n", item.ntp.daylightsaving);
+        debug_printf("  item.ui.theme: %d (%s)\r\n", (int)item.ui.theme, ui_theme_name(item.ui.theme));
+        debug_printf("  item.ui.night_mode: %d (%s)\r\n", (int)item.ui.night_mode, ui_night_mode_name(item.ui.night_mode));
+        debug_printf("  item.ui.night_from: %u\r\n", item.ui.night_from);
+        debug_printf("  item.ui.night_to: %u\r\n", item.ui.night_to);
         debug_printf("  item.backlight.activity_timeout: %lu\r\n", item.backlight.activity_timeout);
         debug_printf("  item.backlight.normal_brightness: %u\r\n", item.backlight.normal_brightness);
         debug_printf("  item.backlight.dim_brightness: %u\r\n", item.backlight.dim_brightness);
@@ -161,6 +196,20 @@ public:
         strlcpy(item.ntp.hostname, "pool.ntp.org", sizeof(item.ntp.hostname));
         item.ntp.gmt_offset = 1;
         item.ntp.daylightsaving = true;
+
+        /* No filesystem and no web server on the host, so the theme comes from
+         * the environment -- which means all six variants can be compared
+         * without a rebuild:
+         *   OHEZ_THEME=lcars OHEZ_NIGHT=on pio run -e linux -t exec
+         * getenv() returns NULL when unset, and the ui_theme.hpp lookups read
+         * that as the first entry. */
+        item.ui.theme = ui_theme_from_name(getenv("OHEZ_THEME"));
+        item.ui.night_mode = ui_night_mode_from_name(getenv("OHEZ_NIGHT"));
+        /* Without these two the "auto" mode would be stuck on the 22-6 window
+         * and could only be watched by waiting for it. atoi() answers 0 for
+         * unset and for nonsense alike, which is a valid hour. */
+        item.ui.night_from = getenv("OHEZ_NIGHT_FROM") ? (unsigned int)atoi(getenv("OHEZ_NIGHT_FROM")) : 22;
+        item.ui.night_to = getenv("OHEZ_NIGHT_TO") ? (unsigned int)atoi(getenv("OHEZ_NIGHT_TO")) : 6;
 
         item.backlight.activity_timeout = 0;
         item.backlight.normal_brightness = 100;
@@ -200,6 +249,11 @@ public:
         doc["ntp"]["hostname"] = item.ntp.hostname;
         doc["ntp"]["gmt_offset"] = item.ntp.gmt_offset;
         doc["ntp"]["daylightsaving"] = item.ntp.daylightsaving;
+
+        doc["ui"]["theme"] = ui_theme_name(item.ui.theme);
+        doc["ui"]["night_mode"] = ui_night_mode_name(item.ui.night_mode);
+        doc["ui"]["night_from"] = item.ui.night_from;
+        doc["ui"]["night_to"] = item.ui.night_to;
 
         doc["backlight"]["activity_timeout"] = item.backlight.activity_timeout;
         doc["backlight"]["normal_brightness"] = item.backlight.normal_brightness;

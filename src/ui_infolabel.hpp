@@ -2,6 +2,7 @@
 #define UI_INFOLABEL_HPP
 
 #include "Arduino.h"
+#include "ui_style.hpp"
 #include <lvgl.h>
 
 #ifndef DEBUG_UI_INFOLABEL
@@ -22,7 +23,6 @@ class Infolabel
 private:
     lv_obj_t *il = NULL;
     lv_obj_t *label = NULL;
-    lv_style_t label_style;
     unsigned long timeout_timestamp = 0;
 
 public:
@@ -40,25 +40,13 @@ public:
 #if DEBUG_UI_INFOLABEL
             printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
-            lv_style_init(&label_style);
-            lv_style_set_border_width(&label_style, 4);
-            lv_style_set_border_color(&label_style, lv_color_black());
-            lv_style_set_bg_opa(&label_style, LV_OPA_COVER);
-
-            if (type == INFO)
-                lv_style_set_bg_color(&label_style, lv_color_make(0xc0, 0xc0, 0xc0));
-            else if (type == WARNING)
-                lv_style_set_bg_color(&label_style, lv_palette_main(LV_PALETTE_YELLOW));
-            else if (type == ERROR)
-                lv_style_set_bg_color(&label_style, lv_palette_main(LV_PALETTE_RED));
-
-            lv_style_set_pad_all(&label_style, LV_DPI_DEF / 10);
-            lv_style_set_text_font(&label_style, &custom_font_roboto_22);
-            lv_style_set_text_color(&label_style, lv_color_black());
-
+            /* The panel used to build a private style here. It now shares the
+             * theme's, which is what lets a theme change repaint a banner that
+             * is already on screen -- lv_obj_report_style_change() reaches the
+             * top layer, but it can only refresh a style someone else owns. */
             il = lv_obj_create(lv_layer_top());
             lv_obj_remove_flag(il, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_add_style(il, &label_style, LV_PART_MAIN);
+            lv_obj_add_style(il, &ui_style_info, LV_PART_MAIN);
             lv_obj_set_width(il, lv_display_get_horizontal_resolution(NULL) * 9 / 10);
             lv_obj_set_height(il, LV_SIZE_CONTENT);
 
@@ -67,6 +55,18 @@ public:
             lv_obj_set_width(label, lv_pct(100));
             lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
         }
+
+        /* Outside the guard above, unlike the style setup that used to live
+         * there: main.cpp calls create() again on a live banner to report the
+         * next WLAN state, and a severity set only on the first call meant an
+         * error kept the colour of the info that preceded it. */
+        lv_obj_remove_style(il, &ui_style_info_warning, LV_PART_MAIN);
+        lv_obj_remove_style(il, &ui_style_info_error, LV_PART_MAIN);
+
+        if (type == WARNING)
+            lv_obj_add_style(il, &ui_style_info_warning, LV_PART_MAIN);
+        else if (type == ERROR)
+            lv_obj_add_style(il, &ui_style_info_error, LV_PART_MAIN);
 
         char buffer[STR_INFOLABEL_TEMP_BUFFER_LEN];
         snprintf(buffer, sizeof(buffer), "%s\n%s", topic, text);

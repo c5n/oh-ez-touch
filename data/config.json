@@ -3,16 +3,18 @@
     {
         "hostname": "oheztouch-new"
     },
-    "wlan":
-    {
-        "ssid":     "myssid",
-        "password": "secretpassword"
-    },
     "ntp":
     {
         "hostname":         "pool.ntp.org",
         "gmt_offset":       1,
         "daylightsaving":   0
+    },
+    "ui":
+    {
+        "theme":        "Default",
+        "night_mode":   "off",
+        "night_from":   22,
+        "night_to":     6
     },
     "backlight":
     {

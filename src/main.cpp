@@ -296,6 +296,14 @@ void setup()
      * only needs sane defaults underneath. */
     lv_display_set_theme(disp, lv_theme_simple_init(disp));
 
+    /* Before the first widget of any kind, and before openhab_ui_setup(): the
+     * info label below is created on the top layer while WLAN is still coming
+     * up, and it draws on the shared styles rather than a private one of its
+     * own. lv_screen_active() is valid from the lv_display_create() above,
+     * which is what ui_style_init() needs to style the screen itself. */
+    ui_style_select(config.item.ui.theme, openhab_ui_night_active(&config));
+    ui_style_init();
+
 #if (SIMULATOR != 1)
     infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
     lv_timer_handler();

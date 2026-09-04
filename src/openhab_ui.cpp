@@ -49,6 +49,12 @@
 
 #define HEADER_SIGNAL_UPDATE_INTERVAL 5000
 
+/* How often the automatic night schedule is compared against the clock. The
+ * comparison is cheap and openhab_ui_request_theme() drops a request that
+ * changes nothing, so this only has to be fine enough that the switch looks
+ * prompt at the boundary. */
+#define NIGHT_CHECK_INTERVAL (30 * 1000)
+
 #define ICON_PNG_BUFFER_SIZE 5000
 
 #ifndef BEEPER_VOLUME
@@ -165,6 +171,17 @@ void update_state_widget(struct widget_context_s *ctx);
 static_assert(WIDGET_COUNT_MAX <= ITEM_COUNT_MAX, "WIDGET_COUNT_MAX exceeds ITEM_COUNT_MAX");
 
 static bool refresh_page;
+/* Whether the tile page currently reflects a sitemap. A theme change rebuilds
+ * the tiles, which is only meaningful once there is something to rebuild. */
+static bool sitemap_ok;
+/* The item or systeminfo window on screen, if any. Kept so that a theme change
+ * can close it -- and, incidentally, so that a second tap on the header cannot
+ * stack a second systeminfo window on the first. */
+static lv_obj_t *open_window;
+/* A requested variant, applied from openhab_ui_loop(). */
+static bool theme_pending;
+static enum ui_theme_family_e theme_pending_family;
+static bool theme_pending_night;
 static char current_page[STR_PAGE_LEN];
 static char last_page[STR_PAGE_LEN];
 static char current_website[STR_WEBSITE_LEN];
@@ -184,7 +201,12 @@ uint8_t get_signal_quality(int8_t rssi)
  * inside an event of one of the window's own descendants. */
 static void window_close_event_handler(lv_event_t *e)
 {
-    lv_obj_delete_async((lv_obj_t *)lv_event_get_user_data(e));
+    lv_obj_t *win = (lv_obj_t *)lv_event_get_user_data(e);
+
+    if (win == open_window)
+        open_window = NULL;
+
+    lv_obj_delete_async(win);
     BEEPER_EVENT_WINDOW_CLOSE();
 }
 
@@ -231,8 +253,9 @@ static lv_obj_t *window_create(const char *title)
     lv_obj_set_size(win, lv_pct(100), lv_pct(100));
     lv_obj_set_style_pad_all(win, 0, 0);
     lv_obj_set_style_pad_gap(win, 0, 0);
-    lv_obj_set_style_radius(win, 0, 0);
-    lv_obj_set_style_border_width(win, 0, 0);
+    /* The background, radius and border come from the theme: without a style of
+     * its own the window would keep lv_theme_simple's white. */
+    lv_obj_add_style(win, &ui_style_window, LV_PART_MAIN);
     lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
 
     lv_obj_t *header = lv_obj_create(win);
@@ -257,6 +280,11 @@ static lv_obj_t *window_create(const char *title)
     lv_obj_t *content = plain_container(win);
     lv_obj_set_width(content, lv_pct(100));
     lv_obj_set_flex_grow(content, 1);
+
+    /* Whatever the theme wants to add to the header bar itself. */
+    ui_style_decorate_window(header);
+
+    open_window = win;
 
     return content;
 }
@@ -340,21 +368,16 @@ static void header_event_handler(lv_event_t *e)
 
         lv_obj_t *content = window_create("Systeminfo");
 
-        // Create a normal cell style
-        static lv_style_t style_cell;
-        static bool style_cell_inited;
-        if (style_cell_inited == false)
-        {
-            style_cell_inited = true;
-            lv_style_init(&style_cell);
-            lv_style_set_border_color(&style_cell, lv_color_make(0xc0, 0xc0, 0xc0));
-            lv_style_set_border_width(&style_cell, 1);
-            lv_style_set_pad_ver(&style_cell, 0);
-            lv_style_set_text_font(&style_cell, &custom_font_roboto_16);
-        }
-
         lv_obj_t *table = lv_table_create(content);
-        lv_obj_add_style(table, &style_cell, LV_PART_ITEMS);
+        /* The cell style used to be built here, behind a one-shot flag that
+         * would have pinned the first theme's colours for the whole run. */
+        lv_obj_add_style(table, &ui_style_table_cell, LV_PART_ITEMS);
+        /* Eleven rows do not fit 240 px, so the scrollbar is on screen and
+         * needs a colour of the theme's rather than lv_theme_simple's grey.
+         * The slider's indicator colour is the right one to borrow: a scrollbar
+         * thumb is the same idea, and for the Default theme it happens to be
+         * the very grey lv_theme_simple was supplying. */
+        lv_obj_set_style_bg_color(table, lv_color_hex(ui_style_theme()->slider_indic.bg), LV_PART_SCROLLBAR);
         lv_table_set_column_count(table, 2);
         lv_table_set_row_count(table, 11);
         int32_t table_width = lv_display_get_horizontal_resolution(NULL) - 10;
@@ -505,6 +528,7 @@ static lv_obj_t *colorpicker_slider_create(lv_obj_t *parent, struct widget_conte
 
     lv_obj_t *slider = lv_slider_create(row);
     lv_obj_add_style(slider, &ui_style_slider, LV_PART_MAIN);
+    lv_obj_add_style(slider, &ui_style_slider_indicator, LV_PART_INDICATOR);
     lv_obj_add_style(slider, &ui_style_slider_knob, LV_PART_KNOB);
     lv_obj_set_flex_grow(slider, 1);
     lv_slider_set_range(slider, 0, max);
@@ -534,8 +558,7 @@ void window_item_colorpicker(struct widget_context_s *ctx)
     lv_obj_t *swatch = lv_obj_create(content);
     lv_obj_remove_flag(swatch, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(swatch, lv_pct(100), LV_DPI_DEF / 4);
-    lv_obj_set_style_border_color(swatch, lv_color_black(), 0);
-    lv_obj_set_style_border_width(swatch, 1, 0);
+    lv_obj_add_style(swatch, &ui_style_swatch, LV_PART_MAIN);
     ctx->state_window_widget = swatch;
 
     ctx->state_window_hsv[HSV_H] = colorpicker_slider_create(content, ctx, "H", 359, color_hsv.h);
@@ -715,6 +738,7 @@ void window_item_slider(struct widget_context_s *ctx)
     // Add slider
     lv_obj_t *slider = lv_slider_create(content);
     lv_obj_add_style(slider, &ui_style_slider, LV_PART_MAIN);
+    lv_obj_add_style(slider, &ui_style_slider_indicator, LV_PART_INDICATOR);
     lv_obj_add_style(slider, &ui_style_slider_knob, LV_PART_KNOB);
     lv_slider_set_range(slider, ctx->item->getMinVal(), ctx->item->getMaxVal());
     lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
@@ -761,7 +785,7 @@ void window_item_slider(struct widget_context_s *ctx)
 
         lv_obj_t *preset_label = lv_label_create(preset_btn);
         lv_label_set_text_fmt(preset_label, "%u%%", slider_preset_percent[i]);
-        lv_obj_set_style_text_font(preset_label, &custom_font_roboto_16, 0);
+        lv_obj_add_style(preset_label, &ui_style_label, LV_PART_MAIN);
         lv_obj_center(preset_label);
     }
 
@@ -831,6 +855,9 @@ void window_item_setpoint(struct widget_context_s *ctx)
     static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
     lv_obj_t *btnm1 = lv_buttonmatrix_create(content);
     lv_buttonmatrix_set_map(btnm1, btnm_map);
+    /* The matrix itself is a panel inside the window, and would otherwise keep
+     * lv_theme_simple's white behind the two buttons. */
+    lv_obj_add_style(btnm1, &ui_style_window, LV_PART_MAIN);
     lv_obj_add_style(btnm1, &ui_style_btn, LV_PART_ITEMS);
     lv_obj_set_width(btnm1, lv_pct(100));
     lv_obj_set_height(btnm1, lv_pct(40));
@@ -1164,9 +1191,12 @@ static void header_set_title(const char* text)
 
 static void header_update()
 {
-#if (SIMULATOR != 1)
     static int last_second;
     struct tm timeinfo;
+
+    /* Not device-only any more: hal/sdl2 answers getLocalTime() from the host
+     * clock, so the simulator shows the real time here and the night schedule
+     * can be watched crossing its boundary. */
     if (getLocalTime(&timeinfo, 0))
     {
         if (timeinfo.tm_sec != last_second)
@@ -1180,6 +1210,7 @@ static void header_update()
         }
     }
 
+#if (SIMULATOR != 1)
     static unsigned long signal_last_update;
 
     if (millis() - signal_last_update >= HEADER_SIGNAL_UPDATE_INTERVAL)
@@ -1284,22 +1315,29 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
     // Create center image object
     wctx->img_obj = lv_image_create(wctx->container);
 
+    /* The watermark's opacity and recolour are the theme's: a dark theme has to
+     * lift these dark line-art PNGs off the tile without drowning the caption
+     * and state line that sit in front of them. */
+    lv_obj_add_style(wctx->img_obj, &ui_style_icon, LV_PART_MAIN);
+
     if (wctx->img_dsc.data_size > 0)
     {
         lv_image_set_src(wctx->img_obj, &wctx->img_dsc);
-        lv_obj_set_style_image_opa(wctx->img_obj, 80, 0);
     }
     else if (wctx->item->getType() == ItemType::type_parent_link)
     {
         lv_obj_add_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
         lv_image_set_src(wctx->img_obj, LV_SYMBOL_NEW_LINE);
-        lv_obj_set_style_text_opa(wctx->img_obj, 140, 0);
+        /* A local style, not a shared one: text_opa is not inheritable and the
+         * two symbol fallbacks want different values. A theme change recreates
+         * the tiles, so these follow it that way rather than by a refresh. */
+        lv_obj_set_style_text_opa(wctx->img_obj, ui_style_theme()->symbol_opa, 0);
     }
     else
     {
         lv_obj_add_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
         lv_image_set_src(wctx->img_obj, LV_SYMBOL_EYE_OPEN);
-        lv_obj_set_style_text_opa(wctx->img_obj, 50, 0);
+        lv_obj_set_style_text_opa(wctx->img_obj, ui_style_theme()->symbol_dim_opa, 0);
     }
 
     lv_obj_move_background(wctx->img_obj);
@@ -1345,20 +1383,28 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
         /* A percentage, not lv_obj_get_width(container) / 3: v9 defers layout,
          * so the container the swatch was just added to still reports zero. */
         lv_obj_set_size(state_obj, lv_pct(33), 22);
-        lv_obj_set_style_border_color(state_obj, lv_color_black(), 0);
-        lv_obj_set_style_border_width(state_obj, 1, 0);
+        lv_obj_add_style(state_obj, &ui_style_swatch, LV_PART_MAIN);
         lv_obj_align(state_obj, LV_ALIGN_BOTTOM_MID, 0, -6);
 
         wctx->state_widget = state_obj;
     }
 }
 
-void show(lv_obj_t *parent)
+/* Rebuild the tile page from the sitemap already parsed into memory.
+ *
+ * reload_icons tells the two callers apart. A new page has to free the old
+ * icons and fetch the new ones; a theme change only needs the tiles recreated,
+ * and the decoded pixels in wctx->img_dsc are still the right ones -- fetching
+ * them again would be six HTTP requests for no new pixels. widget_destroy()
+ * leaves img_dsc alone, which is what makes that safe. */
+static void page_rebuild(lv_obj_t *parent, bool reload_icons)
 {
     // cleanup page
     for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
     {
-        free_icon(&widget_context[i].img_dsc);
+        if (reload_icons == true)
+            free_icon(&widget_context[i].img_dsc);
+
         widget_destroy(parent, &widget_context[i]);
     }
 
@@ -1370,13 +1416,18 @@ void show(lv_obj_t *parent)
 
         if (widget_context[i].item->getType() != ItemType::type_unknown)
         {
-            if (widget_context[i].item->getType() != ItemType::type_parent_link)
+            if (reload_icons == true && widget_context[i].item->getType() != ItemType::type_parent_link)
                 load_icon(&widget_context[i]);
 
             widget_create(parent, &widget_context[i]);
             update_state_widget(&widget_context[i]);
         }
     }
+}
+
+void show(lv_obj_t *parent)
+{
+    page_rebuild(parent, true);
 }
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1386,10 +1437,98 @@ void openhab_ui_setup(Config *config)
 {
     current_config = config;
 
-    ui_style_init();
+    /* ui_style_select() and ui_style_init() used to be called here. They now run
+     * in main.cpp, before the first widget of any kind: the info label is
+     * created on the top layer long before this function runs, and it draws on
+     * the shared styles rather than a private one of its own. */
 
     header_create();
     content_create();
+}
+
+/* Whether the night variant should be in effect right now.
+ *
+ * "auto" needs the wall clock, which does not exist until NTP has answered.
+ * Until then getLocalTime() fails and the variant in effect is kept rather than
+ * snapped to day, so a device powered up at night does not glare for a minute
+ * and then dim. */
+bool openhab_ui_night_active(Config *config)
+{
+    switch (config->item.ui.night_mode)
+    {
+    case UI_NIGHT_ON:
+        return true;
+
+    case UI_NIGHT_AUTO:
+    {
+        struct tm timeinfo;
+
+        if (getLocalTime(&timeinfo, 0) == false)
+            return ui_style_night();
+
+        unsigned int hour = (unsigned int)timeinfo.tm_hour;
+        unsigned int from = config->item.ui.night_from;
+        unsigned int to = config->item.ui.night_to;
+
+        /* The interesting window wraps past midnight -- 22 to 6 -- so this
+         * cannot be a plain range test. from == to means the window is empty. */
+        if (from <= to)
+            return (hour >= from && hour < to);
+
+        return (hour >= from || hour < to);
+    }
+
+    case UI_NIGHT_OFF:
+    default:
+        return false;
+    }
+}
+
+/* Ask for a variant; openhab_ui_loop() carries it out.
+ *
+ * The switch is deliberately not done here. The web handler that calls this
+ * runs deep inside AutoConnect's request handling, with the whole web server on
+ * the loop task's stack and lv_timer_handler() not being pumped -- no place to
+ * be freeing and reallocating the style property arrays that the draw path
+ * reads, let alone deleting and recreating widgets. */
+void openhab_ui_request_theme(enum ui_theme_family_e family, bool night)
+{
+    if (family == ui_style_family() && night == ui_style_night())
+        return;
+
+    theme_pending_family = family;
+    theme_pending_night = night;
+    theme_pending = true;
+}
+
+/* Switch variant without a reboot.
+ *
+ * The shared styles are refilled in place and reported, which carries every
+ * colour and font -- including the info label on the top layer, since LVGL
+ * keeps its layers in the display's screen array. Two things a style refresh
+ * cannot do are done by hand: an open window is closed, because the block the
+ * LCARS header ends in is an object rather than a property, and the tiles are
+ * recreated, because the symbol opacities are local styles and a variant may
+ * want a different marker per item type. */
+static void theme_apply_pending(void)
+{
+    theme_pending = false;
+
+    ui_style_select(theme_pending_family, theme_pending_night);
+    ui_style_apply();
+
+#if DEBUG_OPENHAB_UI
+    printf("theme_apply_pending: %s\r\n", ui_style_name());
+#endif
+
+    if (open_window != NULL)
+    {
+        lv_obj_delete(open_window);
+        open_window = NULL;
+    }
+
+    if (sitemap_ok == true)
+        page_rebuild(content, false);
 }
 
 void openhab_ui_set_wifi_state(bool wifi_state)
@@ -1420,7 +1559,7 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
 void openhab_ui_loop(void)
 {
     static unsigned long refresh_retry_timeout;
-    static bool sitemap_ok;
+    static unsigned long night_check_next_timestamp;
 #if (SIMULATOR != 1)
     static unsigned long update_ntp_next_timestamp;
     static unsigned long connection_error_handling_timestamp;
@@ -1522,6 +1661,18 @@ void openhab_ui_loop(void)
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
 #endif
+
+    /* The automatic night schedule. Rollover-safe like the deadline above, and
+     * free when nothing has changed: openhab_ui_request_theme() drops a request
+     * that names the variant already in effect. */
+    if ((long)(millis() - night_check_next_timestamp) >= 0)
+    {
+        night_check_next_timestamp = millis() + NIGHT_CHECK_INTERVAL;
+
+        openhab_ui_request_theme(current_config->item.ui.theme,
+                                 openhab_ui_night_active(current_config));
+    }
+
     header_update();
 
 #if (SIMULATOR != 1)
@@ -1557,4 +1708,10 @@ void openhab_ui_loop(void)
                       statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }
 #endif
+
+    /* Last in the loop on purpose: by here every request this iteration was
+     * going to make has been made, so nothing is in flight while the styles are
+     * reset and the tiles are recreated. */
+    if (theme_pending == true)
+        theme_apply_pending();
 }

@@ -33,6 +33,20 @@ void delay(unsigned long ms)
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
+bool getLocalTime(struct tm *info, uint32_t ms)
+{
+    /* No NTP to wait for on the host: the clock is set or the process could not
+     * have started. */
+    (void)ms;
+
+    time_t now = time(NULL);
+
+    if (localtime_r(&now, info) == NULL)
+        return false;
+
+    return true;
+}
+
 void delayMicroseconds(unsigned int us)
 {
     std::this_thread::sleep_for(std::chrono::microseconds(us));

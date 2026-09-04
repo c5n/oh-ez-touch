@@ -3,6 +3,11 @@
 
 #include "AutoConnect.h"
 #include "config.hpp"
+#include "ui_theme.hpp"
+/* For openhab_ui_request_theme(): the theme is the one setting on this page
+ * that takes effect without a reset. Nothing here touches LVGL directly --
+ * openhab_ui owns the widgets and applies the change from its own loop. */
+#include "openhab_ui.hpp"
 
 #ifndef DEBUG_AC_SETTINGS
 #define DEBUG_AC_SETTINGS 0
@@ -18,6 +23,15 @@ ACText(config_ntp_header, "<h2>NTP Time</h2>");
 ACInput(config_ntp_host, "", "Host", "^[^/:]*$");
 ACInput(config_ntp_gmt_offset, "", "GMT Offset", "^-?[0-9]*$", "0");
 ACCheckbox(config_ntp_daylightsaving, "daylightsaving", "Daylight Saving (+1h)");
+
+ACText(config_ui_header, "<h2>Appearance</h2>");
+/* The option strings are the UI_*_NAME_* macros the enums are built from, so
+ * the dropdown order is the enum order -- which is what makes the 1-based index
+ * arithmetic in the two handlers below safe. */
+ACSelect(config_ui_theme, {UI_THEME_NAME_DEFAULT, UI_THEME_NAME_LCARS, UI_THEME_NAME_JARVIS}, "Theme", UI_THEME_DEFAULT + 1);
+ACSelect(config_ui_night_mode, {UI_NIGHT_NAME_OFF, UI_NIGHT_NAME_ON, UI_NIGHT_NAME_AUTO}, "Night mode", UI_NIGHT_OFF + 1);
+ACInput(config_ui_night_from, "", "Night from [h]", "^([0-9]|1[0-9]|2[0-3])$", "22");
+ACInput(config_ui_night_to, "", "Night to [h]", "^([0-9]|1[0-9]|2[0-3])$", "6");
 
 ACText(config_backlight_header, "<h2>LCD Backlight Dimming</h2>");
 ACInput(config_backlight_timeout, "", "Activity timeout [s] (0=off)", "^[0-9]*$", "0");
@@ -49,6 +63,11 @@ AutoConnectAux openhab_settings("/openhab_settings", "OpenHAB Settings", true,
                                  config_ntp_host,
                                  config_ntp_gmt_offset,
                                  config_ntp_daylightsaving,
+                                 config_ui_header,
+                                 config_ui_theme,
+                                 config_ui_night_mode,
+                                 config_ui_night_from,
+                                 config_ui_night_to,
                                  config_backlight_header,
                                  config_backlight_timeout,
                                  config_backlight_normal_brightness,
@@ -86,6 +105,16 @@ String ac_settings_handler(AutoConnectAux &aux, PageArgument &args)
     aux["config_ntp_gmt_offset"].value = String(current_config->item.ntp.gmt_offset);
     aux["config_ntp_daylightsaving"].as<AutoConnectCheckbox>().checked = current_config->item.ntp.daylightsaving;
 
+    /* .selected is a 1-based index, 0 meaning nothing selected. It is computed
+     * from the enum rather than looked up with select(), which assigns only on
+     * a match and leaves the previous selection in place on a miss -- and the
+     * previous selection is real state here, because the element is a global
+     * held by reference and every POST writes to it. */
+    aux["config_ui_theme"].as<AutoConnectSelect>().selected = (uint8_t)current_config->item.ui.theme + 1;
+    aux["config_ui_night_mode"].as<AutoConnectSelect>().selected = (uint8_t)current_config->item.ui.night_mode + 1;
+    aux["config_ui_night_from"].value = String(current_config->item.ui.night_from);
+    aux["config_ui_night_to"].value = String(current_config->item.ui.night_to);
+
     aux["config_backlight_timeout"].value = String(current_config->item.backlight.activity_timeout);
     aux["config_backlight_normal_brightness"].value = String(current_config->item.backlight.normal_brightness);
     aux["config_backlight_dim_brightness"].value = String(current_config->item.backlight.dim_brightness);
@@ -117,6 +146,13 @@ String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
     current_config->item.ntp.gmt_offset = args.arg("config_ntp_gmt_offset").toInt();
     current_config->item.ntp.daylightsaving = args.hasArg("config_ntp_daylightsaving") ? true : false;
 
+    /* A select submits its option text, not its index, so the same name lookup
+     * the config file loader uses applies here. */
+    current_config->item.ui.theme = ui_theme_from_name(args.arg("config_ui_theme").c_str());
+    current_config->item.ui.night_mode = ui_night_mode_from_name(args.arg("config_ui_night_mode").c_str());
+    current_config->item.ui.night_from = args.arg("config_ui_night_from").toInt();
+    current_config->item.ui.night_to = args.arg("config_ui_night_to").toInt();
+
     current_config->item.backlight.activity_timeout = args.arg("config_backlight_timeout").toInt();
     current_config->item.backlight.normal_brightness = args.arg("config_backlight_normal_brightness").toInt();
     current_config->item.backlight.dim_brightness = args.arg("config_backlight_dim_brightness").toInt();
@@ -141,6 +177,13 @@ String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
     echo.value += "Server: " + String(current_config->item.ntp.hostname) + "<br>\r\n";
     echo.value += "GMT Offset: " + String(current_config->item.ntp.gmt_offset) + "<br>\r\n";
     echo.value += "Daylightsaving: " + String(current_config->item.ntp.daylightsaving) + "<br>\r\n";
+    echo.value += "<b>Appearance</b><br>\r\n";
+    /* Echoing what was stored rather than what was posted, so that a value the
+     * lookup did not recognise visibly reads back as the default. */
+    echo.value += "Theme: " + String(ui_theme_name(current_config->item.ui.theme)) + "<br>\r\n";
+    echo.value += "Night mode: " + String(ui_night_mode_name(current_config->item.ui.night_mode)) + "<br>\r\n";
+    echo.value += "Night from: " + String(current_config->item.ui.night_from) + "<br>\r\n";
+    echo.value += "Night to: " + String(current_config->item.ui.night_to) + "<br>\r\n";
     echo.value += "<b>Backlight</b><br>\r\n";
     echo.value += "Activity Timeout: " + String(current_config->item.backlight.activity_timeout) + "<br>\r\n";
     echo.value += "Normal Brightness: " + String(current_config->item.backlight.normal_brightness) + "<br>\r\n";
@@ -163,6 +206,12 @@ String ac_settings_save_handler(AutoConnectAux &aux, PageArgument &args)
 #endif
 
     current_config->saveConfig();
+
+    /* The theme is the one setting here that does not wait for the reset button
+     * below. This only records the request; openhab_ui_loop() carries it out
+     * once this request is off the stack. */
+    openhab_ui_request_theme(current_config->item.ui.theme,
+                             openhab_ui_night_active(current_config));
 
     return String("");
 }

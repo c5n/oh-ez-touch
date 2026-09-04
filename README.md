@@ -42,9 +42,9 @@ git clone https://github.com/c5n/oh-ez-touch.git
 ```
 
 ### Configuration
-It is possible to configure WLAN SSID and password before compilation, so the ESP32 connects right to your WLAN. Of course, other things can be changed as well. Configuration file: ```data/config.json```
+Defaults for the hostname, NTP, appearance, backlight, beeper and the OpenHAB server can be set before compilation in ```data/config.json```. They are the values a pristine device starts with; everything there can also be changed later in the web interface.
 
-If you don't change the settings or the device can not connect to your network, the ESP32 will switch to AccessPoint mode. You can connect to it using a MobilePhone. See chapter [Usage](#usage) for more details.
+WLAN credentials are not part of that file -- they are entered through the captive portal and kept by AutoConnect. So on a pristine device the ESP32 will switch to AccessPoint mode. You can connect to it using a MobilePhone. See chapter [Usage](#usage) for more details.
 
 ### Build
 ```
@@ -87,6 +87,20 @@ real server response. Edit that file to reproduce a particular sitemap.
 Item states are read from the fixture and are not written back, so operating a
 widget changes it locally only.
 
+There is no config file and no web server on the host either, so the theme comes
+from the environment. That means all six variants can be compared without a
+rebuild:
+```bash
+OHEZ_THEME=lcars pio run -e linux -t exec
+OHEZ_THEME=jarvis OHEZ_NIGHT=on pio run -e linux -t exec
+```
+`OHEZ_THEME` takes `default`, `lcars` or `jarvis` and `OHEZ_NIGHT` takes `off`,
+`on` or `auto`; anything unrecognised, and an unset variable, means the default.
+`OHEZ_NIGHT_FROM` and `OHEZ_NIGHT_TO` set the hours the `auto` window spans
+(22 and 6 by default). Unlike the firmware, the simulator answers
+`getLocalTime()` from the host clock (`hal/sdl2`), so the header shows the real
+time and `OHEZ_NIGHT=auto` can be watched crossing its boundary.
+
 Widget icons are fetched from openHAB over HTTP by the firmware, which the
 simulator cannot do either, so they are compiled in as well. They are not part
 of this repository -- the openHAB classic icon set is licensed under the
@@ -101,6 +115,13 @@ and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run the
 simulator draws the widgets without icons, just as the firmware does when an
 icon request fails.
 
+### Fonts
+
+The LVGL font sources in `src/fonts/` are generated and committed, so a normal
+build needs no font tooling. Regenerate them with `tools/build_fonts.sh` after
+changing a face, a size or a glyph range; it needs `lv_font_conv` (an npm tool)
+and, for the LCARS face, network access to fetch Antonio from Google Fonts.
+
 ### Tests
 The unit tests run on the host, in the same `linux` environment as the
 simulator, so they need the SDL2 development files too:
@@ -113,6 +134,12 @@ sitemap JSON that openHAB serves. Those copies have to truncate cleanly, and
 the tests place a canary after the object to catch one that does not. They are
 host-only because the setters are inline in `src/openhab_connector.hpp`,
 so nothing from `src/` has to be linked.
+
+`test/test_ui_theme` covers the theme name lookups in `src/ui_theme.hpp`. They
+are the only funnel between a theme's name and its enum, and four callers pass
+through them -- the config file, the web form, the simulator's environment and
+the compiled-in defaults -- none of which checks the result, so the fallback to
+the default theme has to hold for a typo, an empty string and a NULL alike.
 
 ### Upload
 Example for Connecting UART TTL Adapters for flashing works for me: 
@@ -247,7 +274,7 @@ Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
 Connect the ArduiTouch to an appropriate power suppy (e.g. 12 V, 300 mA).
 
 ### Configuration
-If you have configured your WLAN and other things in the data/config.json file, the ArdioTouch should connect and try to load the sitemap right away. Great, you can skip the following steps.
+Once WLAN credentials have been entered, the ArduiTouch connects and tries to load the sitemap right away, using the defaults from ```data/config.json``` for everything else. On a device that has been through the portal before, you can skip the following steps.
 
 #### Configure new AP
 On pristine devices, no WLAN is configured. The ArduiTouch will start an AccessPoint called oheztouch-new after about 30 seconds.
@@ -280,6 +307,19 @@ Setting         | Default       | Description
 Host            | pool.ntp.org  | Host which serves the time. e.g. pool.ntp.org or your router.
 GMT Offset      | 1             | Offset of your timezone from Greenwich Mean Time
 Daylight Saving | 0             | Daylight saving +1 hour
+
+##### Appearance
+
+Setting         | Default       | Description
+--------------- | ------------- | -------------
+Theme           | Default       | Look of the user interface: ```Default```, ```LCARS``` or ```JARVIS```
+Night mode      | off           | ```off```, ```on```, or ```auto``` to follow the clock
+Night from      | 22            | Hour the night variant starts, when night mode is ```auto```
+Night to        | 6             | Hour the night variant ends, when night mode is ```auto```
+
+The theme takes effect as soon as it is saved -- it is the one setting on this
+page that does not need the reset. ```auto``` needs the clock, so it only starts
+working once NTP has answered.
 
 ##### LCD Backlight Dimming
 
@@ -337,7 +377,7 @@ Contact: c5n AT posteo DOT de
 - [x] openhab_ui: Improve selection, setpoint and slider elements
 - [x] ac: Improve OTA firmware update --> batchupdate.sh
 - [ ] main: Show portal active icon
-- [ ] openhab_ui: Add theme support
+- [x] openhab_ui: Add theme support
 - [ ] main: Add screen calibration
 - [ ] main: Add setup wizard with WLAN credential input instead of portal procedure
 - [ ] sensors: Sensors should submit update instead of command
@@ -355,3 +395,7 @@ This project was created using the following projects and libraries. A big thank
 - https://github.com/Hieromon/AutoConnect
 - https://github.com/Bodmer/TFT_eSPI
 - https://github.com/YiannisBourkelis/Uptime-Library
+
+Embedded fonts:
+- [Roboto](https://fonts.google.com/specimen/Roboto) (Apache-2.0), the default UI face
+- [Antonio](https://fonts.google.com/specimen/Antonio) (SIL OFL 1.1), the condensed face of the LCARS theme

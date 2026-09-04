@@ -9,6 +9,8 @@
  *   - `Serial`  : used by debug.h and the DEBUG_* code paths
  *   - `millis()`: used by ui_infolabel and openhab_ui
  *   - `delay()`
+ *   - `getLocalTime()`: used by openhab_ui for the header clock and the
+ *     automatic night schedule
  *
  * Everything hardware related (WiFi, SPIFFS, TFT_eSPI, Ticker, ESP, ...) is
  * excluded from the simulator by the `SIMULATOR` guards in the sources and is
@@ -25,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string>
+#include <time.h>
 
 /* strlcpy() is a BSD extension that the sources use for bounded, always
  * terminated copies. The ESP32 C library has it; glibc only from 2.38 on. */
@@ -136,6 +139,15 @@ unsigned long micros(void);
 
 void delay(unsigned long ms);
 void delayMicroseconds(unsigned int us);
+
+/** Local wall clock, the ESP32 core's signature.
+ *
+ * On the device this waits up to ms milliseconds for NTP to have set the clock
+ * and fails while it has not. The host's clock is always set, so this fills in
+ * from localtime() and succeeds -- which is the point: it lets the simulator
+ * show a real time in the header and exercise the automatic night schedule,
+ * neither of which could be seen otherwise. */
+bool getLocalTime(struct tm *info, uint32_t ms = 5000);
 
 /**********************
  *    Sketch entry
