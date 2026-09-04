@@ -103,6 +103,16 @@ OHEZ_THEME=jarvis OHEZ_NIGHT=on pio run -e linux -t exec
 `getLocalTime()` from the host clock (`hal/sdl2`), so the header shows the real
 time and `OHEZ_NIGHT=auto` can be watched crossing its boundary.
 
+`OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
+`wlan`, `openhab`, `sensors`, `other` or `info`:
+```bash
+OHEZ_SETTINGS=wlan pio run -e linux -t exec
+```
+Touching the status bar opens it here too, but on the host there is no radio to
+leave unconfigured, so the screen never comes up on its own the way it does on a
+pristine device. The WLAN tab's **Scan** answers from a canned list of networks,
+next to the canned sitemap; `Save` stores nothing, since there is no filesystem.
+
 Widget icons are fetched from openHAB over HTTP by the firmware, which the
 simulator cannot do either, so they are compiled in as well. They are not part
 of this repository -- the openHAB classic icon set is licensed under the
@@ -300,19 +310,43 @@ Route            | Purpose
 
 None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
 
-#### Systeminfo
-The IP received from your DHCP server and other information can be obtained by touching the upper bar on the screen.
+#### Settings on the screen
+Touching the upper bar opens the settings screen. It has five tabs, and the
+buttons across the top carry a symbol each rather than a name -- five words do
+not fit 320 pixels -- so the title bar names the tab you are on.
+
+Tab                     | Contents
+----------------------- | --------
+WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
+openHAB (house symbol)  | Host, port and sitemap
+Sensors (eye symbol)    | The BME280 rows
+Other (gear symbol)     | Hostname, NTP, appearance, backlight and beeper
+Info (list symbol)      | The Systeminfo table -- uptime, version, and the IP your DHCP server handed out -- and a **Restart** button
+
+Touching a row opens an on-screen keyboard for the text and number settings, and
+toggles or steps the switches and the drop-down-style ones in place. Nothing is
+stored until you press **Save** on that tab, so leaving the screen throws away
+whatever you were in the middle of typing.
+
+If a setting you changed is one of the two that are only read while the device
+boots -- the hostname, and the BME280 on/off -- **Save** offers to restart. Every
+other setting applies immediately, on this screen and in the web interface
+alike.
+
+**A device with no WLAN credentials brings this screen up by itself at boot**, on
+the WLAN tab. That is the whole setup procedure: scan, pick the network, type the
+password, Save. No second device and no browser needed.
 
 #### OpenHAB Settings
-Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart.
+Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```src/settings_fields.cpp```, so they cannot drift apart.
 
-Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved.
+Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the backlight levels and the beeper, which used to need one without saying so.
 
 ##### General
 
 Setting         | Default       | Description
 --------------- | --------------| -----------
-Hostname        | oheztouch-new | Set the hostname of this device according to your naming convention
+Hostname ```*```| oheztouch-new | Set the hostname of this device according to your naming convention. Also the name of the setup AccessPoint.
 
 
 ##### NTP Time
@@ -332,9 +366,9 @@ Night mode      | off           | ```off```, ```on```, or ```auto``` to follow t
 Night from      | 22            | Hour the night variant starts, when night mode is ```auto```
 Night to        | 6             | Hour the night variant ends, when night mode is ```auto```
 
-The theme takes effect as soon as it is saved -- it is the one setting on this
-page that does not need the reset. ```auto``` needs the clock, so it only starts
-working once NTP has answered.
+The theme takes effect as soon as it is saved, on the screen as well as in the
+browser. ```auto``` needs the clock, so it only starts working once NTP has
+answered.
 
 ##### LCD Backlight Dimming
 
@@ -357,6 +391,16 @@ Setting         | Default       | Description
 Host            | openhabian    | Hostname of the OpenHAB server
 Port            | 8080          | Port
 Sitemap         | oheztouch     | Name of the sitemap you've setup for this ArduiTouch device
+
+##### Sensors
+
+Setting                 | Default | Description
+----------------------- | ------- | -------------
+Use BME280 sensor ```*```| off     | Read the optional BME280 and publish it to OpenHAB
+Update interval         | 180     | Seconds between two readings
+Temperature item        |         | Name of the OpenHAB item the temperature is sent to
+Humidity item           |         | Name of the OpenHAB item the humidity is sent to
+Pressure item           |         | Name of the OpenHAB item the pressure is sent to
 
 ### Fix icons
 
@@ -394,7 +438,7 @@ Contact: c5n AT posteo DOT de
 - [x] main: Show portal active icon
 - [x] openhab_ui: Add theme support
 - [ ] main: Add screen calibration
-- [x] main: Add setup wizard with WLAN credential input instead of portal procedure
+- [x] main: Add setup wizard with WLAN credential input instead of portal procedure -- on the panel too, see [Settings on the screen](#settings-on-the-screen)
 - [ ] doc: Retake the web interface screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages
 - [ ] build: Replace ```-O0``` in ```[common] build_flags```. It applies to about 402 KB of compiled text (LVGL, TFT_eSPI, the Arduino libraries, ```src/```) while the prebuilt ESP-IDF archives are already ```-Os```; ```-Os``` should free 100-150 KB, and ```-fno-exceptions``` a slice of the 70 KB of exception tables in those units. Measure before believing it.
 - [ ] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA```. It is disabled in every environment, but its unconditional references keep ArduinoOTA, ESPmDNS and mdns linked -- about 4 KB of flash for dead code.
