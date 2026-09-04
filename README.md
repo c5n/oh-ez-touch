@@ -44,7 +44,9 @@ git clone https://github.com/c5n/oh-ez-touch.git
 ### Configuration
 Defaults for the hostname, NTP, appearance, backlight, beeper and the OpenHAB server can be set before compilation in ```data/config.json```. They are the values a pristine device starts with; everything there can also be changed later in the web interface.
 
-WLAN credentials are not part of that file -- they are entered through the captive portal and kept by AutoConnect. So on a pristine device the ESP32 will switch to AccessPoint mode. You can connect to it using a MobilePhone. See chapter [Usage](#usage) for more details.
+WLAN credentials are not part of that file. They are kept in the ESP32's NVS, which survives both an OTA update and ```pio run -t uploadfs``` -- a config file would be overwritten by the latter. Credentials stored by older firmware, which used AutoConnect, are migrated automatically on the first boot of this one.
+
+A device with no credentials raises an open access point named after its hostname and shows that name and its address on screen. You can connect to it with a phone. See chapter [Usage](#usage) for more details.
 
 ### Build
 ```
@@ -276,22 +278,35 @@ Connect the ArduiTouch to an appropriate power suppy (e.g. 12 V, 300 mA).
 ### Configuration
 Once WLAN credentials have been entered, the ArduiTouch connects and tries to load the sitemap right away, using the defaults from ```data/config.json``` for everything else. On a device that has been through the portal before, you can skip the following steps.
 
-#### Configure new AP
-On pristine devices, no WLAN is configured. The ArduiTouch will start an AccessPoint called oheztouch-new after about 30 seconds.
+#### Configure the WLAN
+On pristine devices, no WLAN is configured. The ArduiTouch immediately raises an open AccessPoint named after its hostname -- ```oheztouch-new``` by default -- and shows that name and the address to open on its own screen.
 
-Connect your smartphone to this unsecured WLAN. A notification should appear: "Sign in to a Wi-Fi network". This is the portal page of the ArduiTouch. Click on that.
+Connect your smartphone to that unsecured WLAN and open ```http://192.168.4.1/```. There is no captive-portal popup, which is why the device tells you the address itself.
 
-In the upper right is the menu. Select "Configure new AP".
+Fill in your network and password in the WLAN section and press Connect. The ArduiTouch reconnects right away; the AccessPoint closes a few seconds later.
 
-![browser_wlanconfig](doc/img/browser_wlanconfig.png)
+If the device is already provisioned but cannot reach its network, it raises the same AccessPoint for ten minutes and then keeps retrying quietly. It is an open network and the firmware update endpoint is unauthenticated, which is why it does not stay up indefinitely.
 
-Fill in your WLAN credentials and click Apply. The ArduiTouch will try to connect.
+#### Web interface
+Everything the device serves, on port 80:
+
+Route            | Purpose
+---------------- | -------
+```/```          | Status, the WLAN section and all settings
+```/save```      | Stores the settings and redirects back to ```/```
+```/wifi```      | Stores WLAN credentials and reconnects
+```/restart```   | Reboots the device
+```/update```    | Firmware upload, also used by ```tools/batchupdate.sh```
+
+None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
 
 #### Systeminfo
 The IP received from your DHCP server and other information can be obtained by touching the upper bar on the screen.
 
 #### OpenHAB Settings
-![browser_openhabconfig](doc/img/browser_openhabconfig.png)
+Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart.
+
+Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved.
 
 ##### General
 
@@ -376,10 +391,13 @@ Contact: c5n AT posteo DOT de
 - [ ] openhab_ui: Add secured sections with PIN protection
 - [x] openhab_ui: Improve selection, setpoint and slider elements
 - [x] ac: Improve OTA firmware update --> batchupdate.sh
-- [ ] main: Show portal active icon
+- [x] main: Show portal active icon
 - [x] openhab_ui: Add theme support
 - [ ] main: Add screen calibration
-- [ ] main: Add setup wizard with WLAN credential input instead of portal procedure
+- [x] main: Add setup wizard with WLAN credential input instead of portal procedure
+- [ ] doc: Retake the web interface screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages
+- [ ] build: Replace ```-O0``` in ```[common] build_flags```. It applies to about 402 KB of compiled text (LVGL, TFT_eSPI, the Arduino libraries, ```src/```) while the prebuilt ESP-IDF archives are already ```-Os```; ```-Os``` should free 100-150 KB, and ```-fno-exceptions``` a slice of the 70 KB of exception tables in those units. Measure before believing it.
+- [ ] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA```. It is disabled in every environment, but its unconditional references keep ArduinoOTA, ESPmDNS and mdns linked -- about 4 KB of flash for dead code.
 - [ ] sensors: Sensors should submit update instead of command
 - [ ] sensors: Support DS18B20 onewire sensors
 
@@ -392,7 +410,7 @@ This project was created using the following projects and libraries. A big thank
 - https://platformio.org/
 - https://lvgl.io/
 - https://arduinojson.org/
-- https://github.com/Hieromon/AutoConnect
+- https://github.com/Hieromon/AutoConnect (origin of ```src/ota/HTTPUpdateServer.*```, the OTA update handler)
 - https://github.com/Bodmer/TFT_eSPI
 - https://github.com/YiannisBourkelis/Uptime-Library
 
