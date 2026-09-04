@@ -23,6 +23,8 @@
 #include "webui.hpp"
 
 #include "openhab_ui.hpp"
+#include "ota/HTTPUpdateServer.h"
+#include "wlan.hpp"
 #include "ui_theme.hpp"
 #include "version.h"
 #include "debug.h"
@@ -49,8 +51,28 @@
  * direction. */
 #define WEBUI_MAX_POST_ARGS 32
 
+/* Unauthenticated, as it has always been. Kept as macros so that a build can
+ * override them without touching this file. */
+#ifndef UPDATER_USERNAME
+#define UPDATER_USERNAME ""
+#endif
+
+#ifndef UPDATER_PASSWORD
+#define UPDATER_PASSWORD ""
+#endif
+
+#ifndef WEBUI_PORT
+#define WEBUI_PORT 80
+#endif
+
+/* No HTTP authentication, which is what AutoConnect was configured for too
+ * (auth = AC_AUTH_NONE, and the OTA endpoint never had any). Worth knowing
+ * before exposing one of these outside a home network. */
+static WebServer        webui_http(WEBUI_PORT);
+static HTTPUpdateServer webui_updater;
+
 static Config    *webui_config = NULL;
-static WebServer *webui_server = NULL;
+static WebServer *webui_server = &webui_http;
 
 /* ------------------------------------------------------------------ fields */
 
@@ -362,6 +384,17 @@ static void webui_send_status(struct webui_out_s *o)
     webui_putf(o, "<tr><td>MAC</td><td>%s</td></tr>", WiFi.macAddress().c_str());
     webui_putf(o, "<tr><td>Free heap</td><td>%u bytes</td></tr>", (unsigned)ESP.getFreeHeap());
 
+    if (wlan_ap_ssid() != NULL)
+    {
+        uint32_t ip = wlan_ap_ip();
+
+        webui_put(o, "<tr><td>Setup AP</td><td>");
+        webui_put_escaped(o, wlan_ap_ssid());
+        webui_putf(o, " (%u.%u.%u.%u)</td></tr>",
+                   (unsigned)(ip & 0xFF), (unsigned)((ip >> 8) & 0xFF),
+                   (unsigned)((ip >> 16) & 0xFF), (unsigned)((ip >> 24) & 0xFF));
+    }
+
     webui_put(o, "</table></fieldset>");
 }
 
@@ -437,6 +470,26 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
                  "<button type='submit'>Save</button></form>");
 }
 
+/* A form of its own, and not only for tidiness: WebServer stops parsing a
+ * body after WEBUI_MAX_POST_ARGS arguments, and provisioning must not depend
+ * on a valid settings round-trip. The passphrase is never sent back to the
+ * browser, and an empty one is submitted as an open network. */
+static void webui_send_wlan_form(struct webui_out_s *o)
+{
+    webui_put(o, "<form method='post' action='/wifi'>"
+                 "<fieldset><legend>WLAN</legend>"
+                 "<label>Network (SSID)<br>"
+                 "<input type='text' name='ssid' maxlength='32' value='");
+    webui_put_escaped(o, wlan_sta_ssid());
+    webui_putf(o, "'></label><label>Password<br>"
+                  "<input type='password' name='psk' maxlength='%u'></label>",
+               (unsigned)(WLAN_PSK_SIZE - 1));
+    webui_put(o, "<p class='n'>The device reconnects immediately; the setup "
+                 "access point closes a few seconds later.</p>"
+                 "<button type='submit'>Connect</button>"
+                 "</fieldset></form>");
+}
+
 static void webui_begin_page(struct webui_out_s *o)
 {
     o->len = 0;
@@ -465,7 +518,12 @@ static void webui_handle_root()
         webui_put(&out, "<fieldset><legend>Saved</legend>"
                         "<p class='n'>Settings stored.</p></fieldset>");
 
+    if (webui_server->hasArg("wifi") == true)
+        webui_put(&out, "<fieldset><legend>WLAN</legend>"
+                        "<p class='n'>Credentials stored, connecting.</p></fieldset>");
+
     webui_send_status(&out);
+    webui_send_wlan_form(&out);
     webui_send_form(&out, webui_config);
 
     webui_put(&out, "<form method='get' action='/update'>"
@@ -568,6 +626,25 @@ static void webui_handle_save()
     webui_server->send(303, "text/plain", "");
 }
 
+static void webui_handle_wifi()
+{
+    char ssid[WLAN_SSID_SIZE];
+    char psk[WLAN_PSK_SIZE];
+
+    strlcpy(ssid, webui_server->arg("ssid").c_str(), sizeof(ssid));
+    strlcpy(psk, webui_server->arg("psk").c_str(), sizeof(psk));
+
+    if (wlan_set_credentials(ssid, psk) == false)
+    {
+        webui_server->sendHeader("Location", "/", true);
+        webui_server->send(303, "text/plain", "");
+        return;
+    }
+
+    webui_server->sendHeader("Location", "/?wifi=1", true);
+    webui_server->send(303, "text/plain", "");
+}
+
 static void webui_handle_restart()
 {
     webui_server->send(200, "text/html",
@@ -586,10 +663,9 @@ static void webui_handle_not_found()
     webui_server->send(302, "text/plain", "");
 }
 
-void webui_setup(Config *config, WebServer *server)
+void webui_setup(Config *config)
 {
     webui_config = config;
-    webui_server = server;
 
 #if DEBUG_WEBUI
     /* The accessors reach into Config by offset, so a row naming a field that
@@ -626,6 +702,7 @@ void webui_setup(Config *config, WebServer *server)
 
     webui_server->on("/", HTTP_GET, webui_handle_root);
     webui_server->on("/save", HTTP_POST, webui_handle_save);
+    webui_server->on("/wifi", HTTP_POST, webui_handle_wifi);
     webui_server->on("/restart", HTTP_POST, webui_handle_restart);
     webui_server->on("/restart", HTTP_GET, webui_handle_restart);
 
@@ -636,10 +713,17 @@ void webui_setup(Config *config, WebServer *server)
     /* One release of grace for bookmarks of the AutoConnect page. */
     webui_server->on("/openhab_settings", HTTP_GET, webui_handle_not_found);
 
-    webui_install_not_found();
+    webui_server->onNotFound(webui_handle_not_found);
+
+    /* Registered after our own pages so the explicit paths win the match, and
+     * kept exactly as it was: tools/batchupdate.sh POSTs a multipart body to
+     * /update, and HTTPUpdateServer ignores the field name. */
+    webui_updater.setup(webui_server, "/update", UPDATER_USERNAME, UPDATER_PASSWORD);
+
+    webui_server->begin();
 }
 
-void webui_install_not_found(void)
+void webui_loop(void)
 {
-    webui_server->onNotFound(webui_handle_not_found);
+    webui_server->handleClient();
 }

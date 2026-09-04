@@ -15,7 +15,7 @@
 #include "TouchDrv.hpp"
 #endif
 #include "esp_wifi.h"
-#include "ac_main.hpp"
+#include "webui.hpp"
 #include "wlan.hpp"
 #include "WiFi.h"
 #include "ota/basic_ota.hpp"
@@ -59,10 +59,6 @@
 
 #ifndef TFT_TOUCH_FLIP
 #define TFT_TOUCH_FLIP 0
-#endif
-
-#ifndef WLAN_OFFLINE_TIMEOUT
-#define WLAN_OFFLINE_TIMEOUT (2 * 60 * 1000)
 #endif
 
 int screenWidth = 320;
@@ -309,30 +305,8 @@ void setup()
     infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
     lv_timer_handler();
 
-    /* First step of taking the WLAN over from AutoConnect: prove that the
-     * credentials it stored can be read back, while it is still the one
-     * connecting. Reads only -- nothing adopts the result yet. The radio has
-     * to be up first, because the SDK's own station config is one of the two
-     * places wlan_credentials_import() looks. */
-    {
-        char ssid[WLAN_SSID_SIZE];
-        char psk[WLAN_PSK_SIZE];
-
-        WiFi.mode(WIFI_STA);
-
-        if (wlan_credentials_get(ssid, sizeof(ssid), psk, sizeof(psk)) == true)
-            debug_printf("wlan: own credentials for '%s' (%u byte key)\r\n",
-                         ssid, (unsigned)strlen(psk));
-        else if (wlan_credentials_import(ssid, sizeof(ssid), psk, sizeof(psk)) == true)
-            debug_printf("wlan: importable credentials for '%s' (%u byte key)\r\n",
-                         ssid, (unsigned)strlen(psk));
-        else
-            debug_printf("wlan: no credentials stored\r\n");
-    }
-
-    ac_main_setup(&config);
-
-    WiFi.setSleep(false);
+    wlan_setup(&config);
+    webui_setup(&config);
 #endif
 
 #if USE_ARDUINO_BASIC_OTA
@@ -357,11 +331,11 @@ void loop()
 #else
     tft_backlight.loop();
     lv_timer_handler(); // let the GUI do its work
-    ac_main_loop();
+    wlan_loop();
+    webui_loop();
     infolabel.loop();
 
     static wl_status_t wlan_status = WL_NO_SHIELD;
-    static unsigned long offline_timestamp = 0;
 
     if (WiFi.status() != wlan_status)
     {
@@ -380,27 +354,47 @@ void loop()
             openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
             infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
         }
-        else if (wlan_status == WL_IDLE_STATUS)
-        {
-            // required by AutoConnect
-#if DEBUG_WLAN_STATES
-            Serial.println("WiFi: WL_IDLE_STATUS");
-#endif
-            infolabel.create(infolabel.WARNING, "WLAN", "IDLE", 0);
-            lv_timer_handler();
-            delay(1000);
-
-            ESP.restart();
-            delay(1000);
-        }
         else
         {
+            /* There used to be a WL_IDLE_STATUS branch here that rebooted the
+             * device, because once AutoConnect's blocking begin() had given up
+             * nothing would ever start another attempt. wlan_loop() has a
+             * retry timer, so idle is now just a state we leave on a later
+             * tick -- and a momentary idle report can no longer reboot the
+             * device in the middle of an OTA upload. */
 #if DEBUG_WLAN_STATES
             Serial.println("WiFi: WLAN NOT CONNECTED");
 #endif
             openhab_ui_set_wifi_state(false);
             infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
-            offline_timestamp = millis();
+        }
+    }
+
+    /* The setup access point is raised a little after the station gives up, so
+     * it needs a transition of its own rather than riding on the WiFi.status()
+     * one. This is the on-screen half of provisioning: with no captive portal
+     * there is nowhere else to learn the address from. Comparing the pointer
+     * is enough -- wlan_ap_ssid() returns either NULL or the one hostname. */
+    static const char *reported_ap = NULL;
+
+    if (wlan_ap_ssid() != reported_ap)
+    {
+        reported_ap = wlan_ap_ssid();
+
+        if (reported_ap != NULL)
+        {
+            uint32_t ip = wlan_ap_ip();
+            char     text[80];
+
+            snprintf(text, sizeof(text), "AP %s\nhttp://%u.%u.%u.%u", reported_ap,
+                     (unsigned)(ip & 0xFF), (unsigned)((ip >> 8) & 0xFF),
+                     (unsigned)((ip >> 16) & 0xFF), (unsigned)((ip >> 24) & 0xFF));
+
+            infolabel.create(infolabel.INFO, "Setup", text, 0);
+        }
+        else if (wlan_status != WL_CONNECTED)
+        {
+            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
     }
 
@@ -412,18 +406,6 @@ void loop()
 #if USE_ARDUINO_BASIC_OTA
         basic_ota_loop();
 #endif
-    }
-
-    if (wlan_status != WL_CONNECTED && millis() - offline_timestamp >= WLAN_OFFLINE_TIMEOUT)
-    {
-        offline_timestamp = millis();
-#if DEBUG_WLAN_STATES
-        Serial.println("WiFi: Offline Timeout. Reconnecting...");
-#endif
-        infolabel.create(infolabel.INFO, "WLAN", "Reconnecting to AP...", 0);
-        lv_timer_handler();
-
-        ac_main_reconnect();
     }
 #endif
 }

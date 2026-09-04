@@ -233,3 +233,271 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
 
     return false;
 }
+
+/* ----------------------------------------------------------- the state machine */
+
+#ifndef WLAN_CONNECT_TIMEOUT
+#define WLAN_CONNECT_TIMEOUT (20 * 1000)
+#endif
+
+#ifndef WLAN_RETRY_INTERVAL
+#define WLAN_RETRY_INTERVAL (60 * 1000)
+#endif
+
+/* How long the access point stays up after the station connects, so that the
+ * browser which just submitted the credentials gets its response. */
+#ifndef WLAN_AP_LINGER
+#define WLAN_AP_LINGER (5 * 1000)
+#endif
+
+/* How long the access point stays up per offline episode. It is an open
+ * network and /update is unauthenticated, so it is not left up indefinitely
+ * on a device that merely lost its WLAN -- that device keeps retrying
+ * quietly instead. A device with no credentials at all is the exception: it
+ * would otherwise be unreachable forever. */
+#ifndef WLAN_AP_TIMEOUT
+#define WLAN_AP_TIMEOUT (10 * 60 * 1000)
+#endif
+
+static Config           *wlan_config = NULL;
+static enum wlan_state_e wlan_current = WLAN_IDLE;
+
+static char wlan_sta_ssid_buf[WLAN_SSID_SIZE];
+static char wlan_sta_psk_buf[WLAN_PSK_SIZE];
+
+static bool wlan_ap_is_up = false;
+
+/* One access-point window per offline episode, armed again once the station
+ * has been back online. */
+static bool wlan_ap_spent = false;
+
+static unsigned long wlan_connect_deadline = 0;
+static unsigned long wlan_retry_deadline = 0;
+static unsigned long wlan_ap_deadline = 0;
+static unsigned long wlan_ap_linger_deadline = 0;
+
+/* Deadlines are compared as a signed difference so that they survive the
+ * millis() rollover, which is the idiom the rest of this project uses. */
+static bool wlan_due(unsigned long deadline)
+{
+    return ((long)(millis() - deadline) >= 0);
+}
+
+static void wlan_ap_raise(void)
+{
+    if (wlan_ap_is_up == true)
+        return;
+
+    /* AP_STA rather than AP: a connection attempt may well be in flight, and
+     * dropping the station would abandon it. */
+    WiFi.mode(WIFI_AP_STA);
+
+    /* Open, as AutoConnect's was (-DAUTOCONNECT_PSK='""'), and named after
+     * the host so that a rack of these is tellable apart. No softAPConfig():
+     * the core default of 192.168.4.1 is what a user expects, where
+     * AutoConnect used 172.217.28.1 -- a Google address picked to bait
+     * captive-portal detection, which is pointless without the DNS hijack we
+     * deliberately do not do. */
+    WiFi.softAP(wlan_config->item.general.hostname);
+
+    wlan_ap_is_up = true;
+    wlan_ap_deadline = millis() + WLAN_AP_TIMEOUT;
+
+#if DEBUG_WLAN
+    Serial.printf("wlan: AP '%s' up at %s\r\n",
+                  wlan_config->item.general.hostname,
+                  WiFi.softAPIP().toString().c_str());
+#endif
+}
+
+static void wlan_ap_drop(void)
+{
+    if (wlan_ap_is_up == false)
+        return;
+
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+    wlan_ap_is_up = false;
+
+#if DEBUG_WLAN
+    Serial.println("wlan: AP down");
+#endif
+}
+
+static void wlan_connect_begin(void)
+{
+    WiFi.begin(wlan_sta_ssid_buf, wlan_sta_psk_buf);
+
+    wlan_current = WLAN_CONNECTING;
+    wlan_connect_deadline = millis() + WLAN_CONNECT_TIMEOUT;
+
+#if DEBUG_WLAN
+    Serial.printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
+#endif
+}
+
+/* Entering an offline episode: start the retry timer, and open the access
+ * point once so that a device with wrong credentials can be corrected. */
+static void wlan_go_offline(void)
+{
+    wlan_current = WLAN_RETRY_WAIT;
+    wlan_retry_deadline = millis() + WLAN_RETRY_INTERVAL;
+
+    if (wlan_ap_spent == false)
+    {
+        wlan_ap_raise();
+        wlan_ap_spent = true;
+    }
+}
+
+void wlan_setup(Config *config)
+{
+    wlan_config = config;
+
+    /* We own the credentials now, so the SDK need not write its own copy on
+     * every begin(). This also leaves AutoConnect's copy untouched, which is
+     * what lets a downgrade still find its credentials. */
+    WiFi.persistent(false);
+
+    /* Before mode(): setHostname() only records the name, which is applied
+     * when the station interface is created. AutoConnect had these the other
+     * way round, and the hostname is what tools/batchupdate.sh resolves
+     * devices by. */
+    WiFi.setHostname(config->item.general.hostname);
+
+    WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false);
+    WiFi.setAutoReconnect(true);
+
+    bool have = wlan_credentials_get(wlan_sta_ssid_buf, sizeof(wlan_sta_ssid_buf),
+                                     wlan_sta_psk_buf, sizeof(wlan_sta_psk_buf));
+
+    /* Nothing of ours stored: adopt whatever AutoConnect left behind, so that
+     * a device provisioned through its portal does not have to be provisioned
+     * again. Deliberately not gated behind a "already imported" marker -- the
+     * import only runs when our own store is empty anyway, and leaving it
+     * unconditional means a device that gets downgraded and re-provisioned
+     * still migrates cleanly on the way back up. */
+    if (have == false)
+    {
+        have = wlan_credentials_import(wlan_sta_ssid_buf, sizeof(wlan_sta_ssid_buf),
+                                       wlan_sta_psk_buf, sizeof(wlan_sta_psk_buf));
+
+        if (have == true)
+            wlan_credentials_set(wlan_sta_ssid_buf, wlan_sta_psk_buf);
+    }
+
+    if (have == true)
+    {
+        wlan_connect_begin();
+        return;
+    }
+
+    /* No credentials at all. Nothing to retry, so the access point stays up
+     * without a deadline and the screen shows how to reach it. */
+    wlan_ap_raise();
+    wlan_ap_spent = true;
+    wlan_current = WLAN_PORTAL;
+
+#if DEBUG_WLAN
+    Serial.println("wlan: no credentials, waiting to be provisioned");
+#endif
+}
+
+void wlan_loop(void)
+{
+    switch (wlan_current)
+    {
+    case WLAN_CONNECTING:
+        if (WiFi.status() == WL_CONNECTED)
+        {
+            wlan_current = WLAN_ONLINE;
+            wlan_ap_linger_deadline = millis() + WLAN_AP_LINGER;
+            wlan_ap_spent = false;
+
+#if DEBUG_WLAN
+            Serial.printf("wlan: online as %s\r\n", WiFi.localIP().toString().c_str());
+#endif
+        }
+        else if (wlan_due(wlan_connect_deadline) == true)
+        {
+            WiFi.disconnect(false);
+            wlan_go_offline();
+        }
+        break;
+
+    case WLAN_ONLINE:
+        if (WiFi.status() != WL_CONNECTED)
+            wlan_go_offline();
+        else if (wlan_ap_is_up == true && wlan_due(wlan_ap_linger_deadline) == true)
+            wlan_ap_drop();
+        break;
+
+    case WLAN_RETRY_WAIT:
+        if (wlan_ap_is_up == true && wlan_due(wlan_ap_deadline) == true)
+            wlan_ap_drop();
+
+        if (wlan_due(wlan_retry_deadline) == true)
+            wlan_connect_begin();
+        break;
+
+    case WLAN_PORTAL:
+    case WLAN_IDLE:
+    default:
+        break;
+    }
+}
+
+void wlan_reconnect(void)
+{
+    if (wlan_sta_ssid_buf[0] == '\0')
+        return;
+
+    wlan_connect_begin();
+}
+
+bool wlan_set_credentials(const char *ssid, const char *psk)
+{
+    if (ssid == NULL || ssid[0] == '\0')
+        return false;
+
+    strlcpy(wlan_sta_ssid_buf, ssid, sizeof(wlan_sta_ssid_buf));
+    strlcpy(wlan_sta_psk_buf, (psk != NULL) ? psk : "", sizeof(wlan_sta_psk_buf));
+
+    if (wlan_credentials_set(wlan_sta_ssid_buf, wlan_sta_psk_buf) == false)
+        return false;
+
+    /* The access point must survive this call: the browser that submitted the
+     * credentials is connected to it and still needs its response. It goes
+     * away on the linger timer once the station is up. */
+    wlan_ap_spent = true;
+    wlan_connect_begin();
+
+    return true;
+}
+
+enum wlan_state_e wlan_state(void)
+{
+    return wlan_current;
+}
+
+const char *wlan_ap_ssid(void)
+{
+    if (wlan_ap_is_up == false)
+        return NULL;
+
+    return wlan_config->item.general.hostname;
+}
+
+uint32_t wlan_ap_ip(void)
+{
+    if (wlan_ap_is_up == false)
+        return 0;
+
+    return (uint32_t)WiFi.softAPIP();
+}
+
+const char *wlan_sta_ssid(void)
+{
+    return wlan_sta_ssid_buf;
+}
