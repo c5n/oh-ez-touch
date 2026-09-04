@@ -16,6 +16,7 @@
 #endif
 #include "esp_wifi.h"
 #include "ac_main.hpp"
+#include "wlan.hpp"
 #include "WiFi.h"
 #include "ota/basic_ota.hpp"
 #include "driver/backlight_control.hpp"
@@ -307,6 +308,27 @@ void setup()
 #if (SIMULATOR != 1)
     infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
     lv_timer_handler();
+
+    /* First step of taking the WLAN over from AutoConnect: prove that the
+     * credentials it stored can be read back, while it is still the one
+     * connecting. Reads only -- nothing adopts the result yet. The radio has
+     * to be up first, because the SDK's own station config is one of the two
+     * places wlan_credentials_import() looks. */
+    {
+        char ssid[WLAN_SSID_SIZE];
+        char psk[WLAN_PSK_SIZE];
+
+        WiFi.mode(WIFI_STA);
+
+        if (wlan_credentials_get(ssid, sizeof(ssid), psk, sizeof(psk)) == true)
+            debug_printf("wlan: own credentials for '%s' (%u byte key)\r\n",
+                         ssid, (unsigned)strlen(psk));
+        else if (wlan_credentials_import(ssid, sizeof(ssid), psk, sizeof(psk)) == true)
+            debug_printf("wlan: importable credentials for '%s' (%u byte key)\r\n",
+                         ssid, (unsigned)strlen(psk));
+        else
+            debug_printf("wlan: no credentials stored\r\n");
+    }
 
     ac_main_setup(&config);
 
