@@ -692,9 +692,15 @@
  *  #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)
  *  @endcode
  */
+/* Two families: Roboto for the Default and JARVIS themes, and the condensed
+ * Antonio ("lcars") for the LCARS theme. Regenerate both with
+ * tools/build_fonts.sh. */
 #define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(custom_font_roboto_16) \
                                LV_FONT_DECLARE(custom_font_roboto_22) \
-                               LV_FONT_DECLARE(custom_font_roboto_36)
+                               LV_FONT_DECLARE(custom_font_roboto_36) \
+                               LV_FONT_DECLARE(custom_font_lcars_16) \
+                               LV_FONT_DECLARE(custom_font_lcars_22) \
+                               LV_FONT_DECLARE(custom_font_lcars_36)
 
 /** Always set a default font */
 #define LV_FONT_DEFAULT &custom_font_roboto_16
