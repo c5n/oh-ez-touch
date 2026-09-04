@@ -1,6 +1,7 @@
 #include "ac_main.hpp"
 #include "ac_settings.hpp"
 #include "config.hpp"
+#include "webui.hpp"
 
 #include <WebServer.h>
 #include "ota/HTTPUpdateServer.h"
@@ -31,16 +32,6 @@ AutoConnectConfig ACConfig;
 AutoConnectAux update("/update", "Update");
 HTTPUpdateServer httpUpdater;
 
-static void page_not_found_handler()
-{
-#if DEBUG_AC_MAIN
-    Serial.println("page_not_found_handler");
-#endif
-
-    httpServer.sendHeader("Location", "/_ac", true);
-    httpServer.send(302, "text/plane", "");
-}
-
 bool startCP(IPAddress ip)
 {
 #if DEBUG_AC_MAIN
@@ -54,6 +45,11 @@ void ac_main_reconnect()
     ACConfig.autoRise = false; // do not start captive portal on reconnect
     Portal.config(ACConfig);
     Portal.begin();
+
+    /* Portal.begin() installs an onNotFound of its own, so ours goes back
+     * afterwards -- which is what this module did before, with a redirect to
+     * /_ac instead of to /. */
+    webui_install_not_found();
 }
 
 void ac_main_setup(Config *config)
@@ -71,8 +67,15 @@ void ac_main_setup(Config *config)
     ACConfig.autoReset = true;
     ACConfig.apid = ACConfig.hostName;
     ACConfig.portalTimeout = 60 * 1000; // close portal after timeout
-    ACConfig.homeUri = "_ac";           // we do not have an own site. go to ac main site.
+    ACConfig.homeUri = "/";             // our own page, not AutoConnect's
     Portal.config(ACConfig);
+
+    /* Our own pages first: WebServer walks its handler list in registration
+     * order, and AutoConnect inserts a catch-all PageBuilder in begin().
+     * It does not claim "/" -- AUTOCONNECT_URI is "/_ac", so _classifyHandle()
+     * finds no page element for our paths -- but registering ahead of it is
+     * one less thing to depend on. webui_setup() also owns onNotFound now. */
+    webui_setup(config, &httpServer);
 
     ac_settings_setup(config);
     Portal.join({openhab_settings, openhab_settings_save});
@@ -83,7 +86,10 @@ void ac_main_setup(Config *config)
 
     Portal.begin();
 
-    httpServer.onNotFound(page_not_found_handler);
+    /* Portal.begin() installs an onNotFound of its own, so ours goes back
+     * afterwards -- which is what this module did before, with a redirect to
+     * /_ac instead of to /. */
+    webui_install_not_found();
 }
 
 void ac_main_loop()
