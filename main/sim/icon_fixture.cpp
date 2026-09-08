@@ -4,7 +4,9 @@
  * See icon_fixture.hpp.
  */
 
-#if (SIMULATOR == 1)
+#include "sdkconfig.h"
+
+#if CONFIG_IDF_TARGET_LINUX
 
 #include "icon_fixture.hpp"
 
@@ -74,4 +76,4 @@ const unsigned char *sim_icon_fixture_get(const char *name, const char *state, s
 
 #endif /* SIM_ICON_FIXTURE_GENERATED */
 
-#endif /* #if (SIMULATOR == 1) */
+#endif /* #if CONFIG_IDF_TARGET_LINUX */

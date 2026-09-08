@@ -6,9 +6,9 @@
  * two implementations -- main/port/esp32/ and main/port/linux/ -- selected by
  * main/CMakeLists.txt.
  *
- * This replaces the `#if (SIMULATOR != 1)` guards scattered through src/ and
- * the `build_src_filter` subtractions in platformio.ini. Two rules follow from
- * that, and they are the whole point of the layer:
+ * This replaces the `#if (SIMULATOR != 1)` guards that were scattered through
+ * src/ and the `build_src_filter` subtractions in platformio.ini. Two rules
+ * follow from that, and they are the whole point of the layer:
  *
  *   1. A concern that only one target can implement gets a header of its own,
  *      so the application says *what* it needs and the target says how.
@@ -17,14 +17,16 @@
  *      implementation is an explicit, documented no-op, never an empty stub
  *      standing in for something observable.
  *
- * Ports that arrive with later commits: port_display, port_indev,
- * port_backlight, port_beeper, port_net, port_ntp, port_ota.
+ * Ports that arrive with later commits: port_backlight, port_beeper, port_net,
+ * port_ntp, port_ota.
  */
 #ifndef OHEZ_PORT_H
 #define OHEZ_PORT_H
 
-#include "port_sys.h"
-#include "port_storage.h"
+#include "port_display.h"
+#include "port_indev.h"
 #include "port_kv.h"
+#include "port_storage.h"
+#include "port_sys.h"
 
 #endif /* OHEZ_PORT_H */

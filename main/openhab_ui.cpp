@@ -1,3 +1,5 @@
+#include "sdkconfig.h"
+
 #include "openhab_ui.hpp"
 #include "openhab_connector.hpp"
 #include "ui_infolabel.hpp"
@@ -7,16 +9,17 @@
 
 #include "lodepng/lodepng.h"
 #include "time.h"
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #include "WiFi.h"
 #include "uptime.h"
 #endif
 #include "version.h"
 #include "debug.h"
+#include "port/port_sys.h"
 
 #include "esp_log.h"
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #include <HTTPClient.h>
 #endif
 
@@ -69,7 +72,7 @@
 
 extern void lodepng_free(void* ptr);
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 HTTPClient http;
 #endif
 Infolabel openhab_ui_infolabel;
@@ -94,7 +97,7 @@ static lv_obj_t *content = nullptr;
 
 struct widget_context_s
 {
-    unsigned long update_timestamp = 0;
+    uint64_t update_timestamp = 0;
     bool refresh_request = false;
     lv_obj_t *container = NULL;
     lv_obj_t *label = NULL;
@@ -1077,10 +1080,11 @@ static void header_update()
     static int last_second;
     struct tm timeinfo;
 
-    /* Not device-only any more: hal/sdl2 answers getLocalTime() from the host
-     * clock, so the simulator shows the real time here and the night schedule
-     * can be watched crossing its boundary. */
-    if (getLocalTime(&timeinfo, 0))
+    /* Not device-only: port_localtime() answers from the host clock in the
+     * simulator, so it shows the real time here and the night schedule can be
+     * watched crossing its boundary. On the device it fails until NTP has
+     * answered, and the clock label simply stays as it was. */
+    if (port_localtime(&timeinfo))
     {
         if (timeinfo.tm_sec != last_second)
         {
@@ -1093,12 +1097,12 @@ static void header_update()
         }
     }
 
-#if (SIMULATOR != 1)
-    static unsigned long signal_last_update;
+#if !CONFIG_IDF_TARGET_LINUX
+    static uint64_t signal_last_update;
 
-    if (millis() - signal_last_update >= HEADER_SIGNAL_UPDATE_INTERVAL)
+    if (port_millis() - signal_last_update >= HEADER_SIGNAL_UPDATE_INTERVAL)
     {
-        signal_last_update = millis();
+        signal_last_update = port_millis();
         lv_label_set_text_fmt(header.item.signal, "%02d%%", openhab_ui_signal_quality(WiFi.RSSI()));
     }
 #endif
@@ -1332,9 +1336,9 @@ void openhab_ui_setup(Config *config)
 /* Whether the night variant should be in effect right now.
  *
  * "auto" needs the wall clock, which does not exist until NTP has answered.
- * Until then getLocalTime() fails and the variant in effect is kept rather than
- * snapped to day, so a device powered up at night does not glare for a minute
- * and then dim. */
+ * Until then port_localtime() fails and the variant in effect is kept rather
+ * than snapped to day, so a device powered up at night does not glare for a
+ * minute and then dim. */
 bool openhab_ui_night_active(Config *config)
 {
     switch (config->item.ui.night_mode)
@@ -1346,7 +1350,7 @@ bool openhab_ui_night_active(Config *config)
     {
         struct tm timeinfo;
 
-        if (getLocalTime(&timeinfo, 0) == false)
+        if (port_localtime(&timeinfo) == false)
             return ui_style_night();
 
         unsigned int hour = (unsigned int)timeinfo.tm_hour;
@@ -1448,18 +1452,18 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
 
 void openhab_ui_loop(void)
 {
-    static unsigned long refresh_retry_timeout;
-    static unsigned long night_check_next_timestamp;
-#if (SIMULATOR != 1)
-    static unsigned long update_ntp_next_timestamp;
-    static unsigned long connection_error_handling_timestamp;
+    static uint64_t refresh_retry_timeout;
+    static uint64_t night_check_next_timestamp;
+#if !CONFIG_IDF_TARGET_LINUX
+    static uint64_t update_ntp_next_timestamp;
+    static uint64_t connection_error_handling_timestamp;
 #endif
-#if DEBUG_OPENHAB_UI && (SIMULATOR != 1)
-    static unsigned long statistics_timestamp;
+#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
+    static uint64_t statistics_timestamp;
 #endif
     openhab_ui_infolabel.loop();
 
-    if (refresh_page == true && (long)(millis() - refresh_retry_timeout) >= 0)
+    if (refresh_page == true && port_millis() >= refresh_retry_timeout)
     {
         if (sitemap.openlink(current_page) == 0)
         {
@@ -1467,7 +1471,7 @@ void openhab_ui_loop(void)
             sitemap_ok = true;
             openhab_ui_infolabel.destroy();
             show(content);
-#if DEBUG_OPENHAB_UI && (SIMULATOR != 1)
+#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
             printf("Free Heap: %u\r\n", (unsigned)ESP.getFreeHeap());
 #endif
             statistics.sitemap_success_cnt++;
@@ -1479,7 +1483,7 @@ void openhab_ui_loop(void)
 #endif
             sitemap_ok = false;
             openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
-            refresh_retry_timeout = millis() + GET_SITEMAP_RETRY_INTERVAL;
+            refresh_retry_timeout = port_millis() + GET_SITEMAP_RETRY_INTERVAL;
 
             statistics.sitemap_fail_cnt++;
         }
@@ -1504,17 +1508,17 @@ void openhab_ui_loop(void)
                 if (widget_context[i].refresh_request == true)
                 {
                     // update widget from local state
-                    widget_context[i].update_timestamp = millis();
+                    widget_context[i].update_timestamp = port_millis();
                     widget_context[i].refresh_request = false;
                     update_icon(&widget_context[i]);
                     update_state_widget(&widget_context[i]);
                     statistics.update_success_cnt++;
                 }
 
-                if (millis() - widget_context[i].update_timestamp >= ITEM_UPDATE_INTERVAL)
+                if (port_millis() - widget_context[i].update_timestamp >= ITEM_UPDATE_INTERVAL)
                 {
                     // update widget from current remote openhab state
-                    widget_context[i].update_timestamp = millis();
+                    widget_context[i].update_timestamp = port_millis();
                     widget_context[i].refresh_request = false;
                     int result = widget_context[i].item->update(widget_context[i].item->getLink());
                     if (result > 0)
@@ -1537,12 +1541,14 @@ void openhab_ui_loop(void)
         }
     }
 
-#if (SIMULATOR != 1)
-    /* Rollover-safe deadline test: the difference stays correct across the
-     * ~49 day wrap of millis(), which a plain "millis() > deadline" does not. */
-    if ((long)(millis() - update_ntp_next_timestamp) >= 0)
+#if !CONFIG_IDF_TARGET_LINUX
+    /* Plain comparisons: port_millis() is 64 bit, so there is no rollover to
+     * be safe against. These used to be (long)(millis() - deadline) >= 0, which
+     * meant wrap-safe arithmetic on the device and an ordinary comparison on
+     * the 64-bit host -- the same source with two different behaviours. */
+    if (port_millis() >= update_ntp_next_timestamp)
     {
-        update_ntp_next_timestamp = millis() + NTP_TIME_UPDATE_INTERVAL;
+        update_ntp_next_timestamp = port_millis() + NTP_TIME_UPDATE_INTERVAL;
 
 #if DEBUG_OPENHAB_UI
         printf("openhab_ui_loop: update time using ntp\r\n");
@@ -1551,12 +1557,12 @@ void openhab_ui_loop(void)
     }
 #endif
 
-    /* The automatic night schedule. Rollover-safe like the deadline above, and
+    /* The automatic night schedule. Same deadline shape as above, and
      * free when nothing has changed: openhab_ui_request_theme() drops a request
      * that names the variant already in effect. */
-    if ((long)(millis() - night_check_next_timestamp) >= 0)
+    if (port_millis() >= night_check_next_timestamp)
     {
-        night_check_next_timestamp = millis() + NIGHT_CHECK_INTERVAL;
+        night_check_next_timestamp = port_millis() + NIGHT_CHECK_INTERVAL;
 
         openhab_ui_request_theme(current_config->item.ui.theme,
                                  openhab_ui_night_active(current_config));
@@ -1564,10 +1570,10 @@ void openhab_ui_loop(void)
 
     header_update();
 
-#if (SIMULATOR != 1)
-    if (millis() - connection_error_handling_timestamp >= (CONNECTION_ERROR_TIMEOUT_S * 1000))
+#if !CONFIG_IDF_TARGET_LINUX
+    if (port_millis() - connection_error_handling_timestamp >= (CONNECTION_ERROR_TIMEOUT_S * 1000))
     {
-        connection_error_handling_timestamp = millis();
+        connection_error_handling_timestamp = port_millis();
 
         if ((statistics.update_fail_cnt > statistics.update_success_cnt) || (statistics.sitemap_fail_cnt > statistics.sitemap_success_cnt))
         {
@@ -1585,10 +1591,10 @@ void openhab_ui_loop(void)
     }
 #endif
 
-#if DEBUG_OPENHAB_UI && (SIMULATOR != 1)
-    if (millis() - statistics_timestamp >= (10 * 1000))
+#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
+    if (port_millis() - statistics_timestamp >= (10 * 1000))
     {
-        statistics_timestamp = millis();
+        statistics_timestamp = port_millis();
 
         uptime::calculateUptime();
 

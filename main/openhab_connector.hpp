@@ -1,9 +1,10 @@
 #ifndef OPENHAB_CONNECTOR_H
 #define OPENHAB_CONNECTOR_H
 
-#include "Arduino.h"
 #include <ArduinoJson.h>
 
+#include <stdbool.h>
+#include <stddef.h>
 #include <string.h>
 
 #define ITEM_COUNT_MAX 6

@@ -1,10 +1,12 @@
 # The application component.
 #
-# The application sources moved in here from src/ but are not built yet: they
-# are still written against the Arduino framework, which no longer exists on
-# either target. They join SRCS module by module as the port layer grows under
-# them; selftest.cpp holds the app_main() that keeps both targets linking and
-# exercises what is already ported, and goes away with the last of them.
+# The application is ported target by target rather than module by module,
+# because the two targets diverge in what they still need: the simulator's set
+# is complete below and it builds and runs, while the device firmware waits for
+# esp_lcd, esp_wifi and esp_http_server to replace TFT_eSPI, WiFi and
+# WebServer. Until then the device target builds selftest.cpp -- which links,
+# boots and exercises the port layer -- and the sources not listed here are
+# still Arduino code that compiles on neither target.
 
 # The platform boundary: one implementation directory per target, selected here.
 # This is what replaces platformio.ini's `build_src_filter` subtractions -- a
@@ -14,12 +16,33 @@ if(CONFIG_IDF_TARGET_LINUX)
     set(OHEZ_PORT_SRCS
         "port/linux/port_sys.c"
         "port/linux/port_storage.c"
-        "port/linux/port_flash.c")
+        "port/linux/port_flash.c"
+        "port/linux/port_display.c"
+        "port/linux/port_indev.c")
 else()
     set(OHEZ_PORT_SRCS
         "port/esp32/port_sys.c"
         "port/esp32/port_storage.c"
         "port/esp32/port_flash.c")
+endif()
+
+# The UI, the openHAB client and the settings. Target-independent code, but it
+# only compiles where every port it needs exists, which today is the host.
+set(OHEZ_APP_SRCS
+    "main.cpp"
+    "config.cpp"
+    "openhab_connector.cpp"
+    "openhab_ui.cpp"
+    "settings_fields.cpp"
+    "ui_settings.cpp"
+    "ui_style.cpp"
+    "sim/icon_fixture.cpp"
+    "sim/sitemap_fixture.cpp")
+
+if(CONFIG_IDF_TARGET_LINUX)
+    set(OHEZ_SRCS ${OHEZ_APP_SRCS})
+else()
+    set(OHEZ_SRCS "selftest.cpp")
 endif()
 
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition)
@@ -31,7 +54,7 @@ if(NOT CONFIG_IDF_TARGET_LINUX)
     list(APPEND OHEZ_REQUIRES spiffs esp_timer)
 endif()
 
-idf_component_register(SRCS "selftest.cpp"
+idf_component_register(SRCS ${OHEZ_SRCS}
                             "port/port_storage_stdio.c"
                             "port/port_kv.c"
                             ${OHEZ_PORT_SRCS}

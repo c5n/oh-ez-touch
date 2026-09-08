@@ -19,6 +19,8 @@
  * decides whether a restart is worth offering.
  */
 
+#include "sdkconfig.h"
+
 #include "ui_settings.hpp"
 
 #include "openhab_ui.hpp"
@@ -29,8 +31,9 @@
 #include "version.h"
 #include "wlan.hpp"
 #include "debug.h"
+#include "port/port_sys.h"
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #include <WiFi.h>
 #include <uptime.h>
 #endif
@@ -120,7 +123,7 @@ static struct scan_result_s scan_results[SCAN_RESULT_MAX];
 static uint8_t              scan_result_count = 0;
 static bool                 scan_running = false;
 
-static unsigned long wlan_state_refresh_deadline = 0;
+static uint64_t wlan_state_refresh_deadline = 0;
 
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
@@ -327,7 +330,7 @@ static void confirm_restart_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     ESP.restart();
 #else
     overlay_close();
@@ -628,7 +631,7 @@ static void scan_status_set(const char *text)
         lv_label_set_text(tab_status[SETTINGS_TAB_WLAN], text);
 }
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 /* Keep the strongest sighting of each name and drop the rest: a mesh reports
  * the same SSID once per radio, which would otherwise fill the whole list. */
 static void scan_result_insert(const char *ssid, int8_t rssi, bool encrypted)
@@ -676,11 +679,11 @@ static void scan_results_sort(void)
         scan_results[j] = key;
     }
 }
-#endif /* #if (SIMULATOR != 1) */
+#endif /* #if !CONFIG_IDF_TARGET_LINUX */
 
 static void scan_start(void)
 {
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     if (scan_running == true)
         return;
 
@@ -698,8 +701,8 @@ static void scan_start(void)
     scan_status_set("Scanning...");
 #else
     /* No radio on the host. A canned list, in the spirit of
-     * src/sim/sitemap_fixture.cpp, so the tab can be laid out and clicked
-     * through with `pio run -e linux -t exec`. */
+     * sim/sitemap_fixture.cpp, so the tab can be laid out and clicked through
+     * in the simulator. */
     static const struct scan_result_s canned[] = {
         {"FRITZ!Box 7590", -42, true},
         {"oheztouch-lab", -55, true},
@@ -722,7 +725,7 @@ static void scan_start(void)
 
 static void scan_poll(void)
 {
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     if (scan_running == false)
         return;
 
@@ -823,7 +826,7 @@ static void wlan_save_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     if (wlan_set_credentials(wlan_ssid_buf, wlan_psk_buf) == false)
     {
         status_set(SETTINGS_TAB_WLAN, "Needs an SSID");
@@ -856,7 +859,7 @@ static void wlan_state_update(void)
 
     char text[120];
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     const char *state;
 
     switch (wlan_state())
@@ -969,7 +972,7 @@ static void info_tab_build(lv_obj_t *rows)
     char     buffer[50];
     uint16_t row = 0;
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     uptime::calculateUptime();
     snprintf(buffer, sizeof(buffer), "%lu days, %luh %lum %lus", uptime::getDays(),
              uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
@@ -980,7 +983,7 @@ static void info_tab_build(lv_obj_t *rows)
              __TIME__);
     row = info_row(table, row, "Version", buffer);
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     row = info_row(table, row, "Hostname", WiFi.getHostname());
     row = info_row(table, row, "SSID", WiFi.SSID().c_str());
     row = info_row(table, row, "BSSID", WiFi.BSSIDstr().c_str());
@@ -1247,7 +1250,7 @@ void ui_settings_open(enum settings_tab_e tab)
 
     wlan_ssid_buf[0] = '\0';
     wlan_psk_buf[0] = '\0';
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     /* The passphrase is deliberately left blank rather than prefilled, as in
      * the web form -- it is never shown back to anyone. */
     char stored_psk[WLAN_PSK_SIZE];
@@ -1337,7 +1340,7 @@ void ui_settings_rebuild(void)
     screen_build((uint8_t)lv_tabview_get_tab_active(tabview));
 }
 
-#if (SIMULATOR == 1)
+#if CONFIG_IDF_TARGET_LINUX
 void ui_settings_open_from_env(void)
 {
     const char *name = getenv("OHEZ_SETTINGS");
@@ -1371,9 +1374,9 @@ void ui_settings_loop(void)
 
     scan_poll();
 
-    if ((long)(millis() - wlan_state_refresh_deadline) >= 0)
+    if (port_millis() >= wlan_state_refresh_deadline)
     {
-        wlan_state_refresh_deadline = millis() + WLAN_STATE_REFRESH_INTERVAL;
+        wlan_state_refresh_deadline = port_millis() + WLAN_STATE_REFRESH_INTERVAL;
         wlan_state_update();
     }
 }

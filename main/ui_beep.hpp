@@ -1,6 +1,8 @@
 #ifndef UI_BEEP_HPP
 #define UI_BEEP_HPP
 
+#include "sdkconfig.h"
+
 /* The UI's sound policy, one macro per kind of thing the user just did.
  *
  * These lived in openhab_ui.cpp until the settings screen needed the same
@@ -9,7 +11,7 @@
  * simulator, which has no beeper, compiles them away to nothing.
  */
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #include "driver/beeper_control.hpp"
 #endif
 
@@ -17,7 +19,7 @@
 #define BEEPER_VOLUME 50
 #endif
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #define BEEPER_EVENT_CHANGE()              \
     {                                      \
         beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \

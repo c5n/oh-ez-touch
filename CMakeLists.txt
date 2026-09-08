@@ -37,6 +37,17 @@ if(NOT OHEZ_GIT_HASH)
 endif()
 idf_build_set_property(COMPILE_DEFINITIONS "VERSION_GIT_HASH=\"${OHEZ_GIT_HASH}\"" APPEND)
 
+# What the boot banner, the Info tab and the web status page call this build.
+# Was -DTARGET_NAME per platformio.ini environment; the device side becomes the
+# board choice from main/Kconfig.projbuild once the firmware runs on IDF
+# drivers, which is also when the three board names stop being one placeholder.
+if(CONFIG_IDF_TARGET_LINUX)
+    set(OHEZ_TARGET_NAME "Simulator")
+else()
+    set(OHEZ_TARGET_NAME "ArduiTouch")
+endif()
+idf_build_set_property(COMPILE_DEFINITIONS "TARGET_NAME=\"${OHEZ_TARGET_NAME}\"" APPEND)
+
 # data/ becomes the `spiffs` partition. FLASH_IN_PROJECT builds the image during
 # a normal build and flashes it with the firmware, so PlatformIO's separate
 # `pio run -t uploadfs` step disappears. There is no SPIFFS on the linux target

@@ -1,6 +1,8 @@
 #ifndef UI_SETTINGS_HPP
 #define UI_SETTINGS_HPP
 
+#include "sdkconfig.h"
+
 #include "config.hpp"
 #include "settings_fields.hpp"
 
@@ -31,16 +33,16 @@ void ui_settings_rebuild(void);
  * provisioning happens while offline, which is the whole point. */
 void ui_settings_loop(void);
 
-#if (SIMULATOR == 1)
+#if CONFIG_IDF_TARGET_LINUX
 /* Open the screen at boot, on the tab OHEZ_SETTINGS names -- wlan, openhab,
  * sensors, other or info; anything else, including an unset variable, leaves it
  * closed. On the device the screen is reached by tapping the status bar, or
  * comes up by itself when there are no credentials, and the host has neither a
  * status bar worth tapping nor a radio:
  *
- *   OHEZ_SETTINGS=wlan pio run -e linux -t exec
+ *   OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
  *
- * Same idea as OHEZ_THEME and OHEZ_NIGHT in config.hpp. */
+ * Same idea as OHEZ_THEME and OHEZ_NIGHT, for which see config.cpp. */
 void ui_settings_open_from_env(void);
 #endif
 

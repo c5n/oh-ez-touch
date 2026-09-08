@@ -1,9 +1,10 @@
 #ifndef UI_INFOLABEL_HPP
 #define UI_INFOLABEL_HPP
 
-#include "Arduino.h"
+#include "port/port_sys.h"
 #include "ui_style.hpp"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <lvgl.h>
 
@@ -25,7 +26,7 @@ class Infolabel
 private:
     lv_obj_t *il = NULL;
     lv_obj_t *label = NULL;
-    unsigned long timeout_timestamp = 0;
+    uint64_t timeout_timestamp = 0;
 
 public:
     enum infolabel_type_e
@@ -77,7 +78,7 @@ public:
         lv_obj_align(il, LV_ALIGN_CENTER, 0, 0);
 
         if (timeout > 0)
-            timeout_timestamp = millis() + timeout * 1000;
+            timeout_timestamp = port_millis() + timeout * 1000;
         else
             timeout_timestamp = 0;
     }
@@ -98,7 +99,7 @@ public:
 
     void loop(void)
     {
-        if (timeout_timestamp > 0 && (long)(millis() - timeout_timestamp) >= 0)
+        if (timeout_timestamp > 0 && port_millis() >= timeout_timestamp)
         {
 #if DEBUG_UI_INFOLABEL
             printf("Infolabel::loop: infolabel timeout reached\r\n");

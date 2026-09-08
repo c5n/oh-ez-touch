@@ -1,10 +1,10 @@
 /**
  * @file sitemap_fixture.hpp
  *
- * Canned openHAB sitemap pages for the host simulator (SIMULATOR == 1).
+ * Canned openHAB sitemap pages for the host simulator.
  *
- * The simulator has no HTTP client -- every HTTPClient call in
- * openhab_connector.cpp is excluded by the SIMULATOR guards -- so the sitemap
+ * The simulator has no HTTP client yet -- every HTTPClient call in
+ * openhab_connector.cpp is still excluded on the linux target -- so the sitemap
  * JSON is compiled in instead. This lets the UI be developed and reviewed on
  * the development machine without an openHAB server, and gives a stable,
  * reproducible screen for comparing rendering changes.
@@ -19,9 +19,10 @@
 /**
  * Look up a canned sitemap page.
  *
- * Matching is done on the REST path (everything from "/rest/" onwards, with a
- * trailing "?type=json" removed), so the configured host and port do not
- * matter.
+ * Matching is done on the page name in /rest/sitemaps/<sitemap>/<page>, with
+ * the page whose name equals the sitemap's taken as the home page -- so neither
+ * the configured host and port nor the configured sitemap name has to match the
+ * fixture.
  *
  * @param url the URL the connector would have requested
  * @return the JSON body, or NULL if no fixture page matches

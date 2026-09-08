@@ -73,9 +73,10 @@ struct settings_field_s
     uint8_t            tab;    /* SETTINGS_SECTION only (enum settings_tab_e) */
 };
 
-/* Config itself is not standard-layout -- it mixes a private String with the
- * public settings struct -- so offsetof() on it would be ill-formed.
- * Config::item is, and every offset in the table is relative to it. */
+/* Config itself is not standard-layout -- it mixes a private member (the name
+ * of the file it was loaded from) with the public settings struct -- so
+ * offsetof() on it would be ill-formed. Config::item is, and every offset in
+ * the table is relative to it. */
 typedef decltype(Config::item) settings_item_t;
 
 extern const struct settings_field_s settings_fields[];

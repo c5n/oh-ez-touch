@@ -10,6 +10,7 @@
  * config.hpp, and from there into webui.cpp, the sensor translation units and
  * the host tests. Hence this header, which all four can include cheaply. */
 
+#include <stddef.h>  /* NULL: the lookups below take an unset name */
 #include <strings.h> /* strcasecmp(): POSIX, present in both newlib and glibc */
 
 #define UI_THEME_NAME_DEFAULT "Default"

@@ -3,9 +3,9 @@
  *
  * This firmware used to leave the radio and the credentials entirely to
  * AutoConnect. It keeps them itself now, in NVS rather than in
- * /config.json -- a config file is overwritten by `pio run -t uploadfs`,
- * which would silently unprovision every device it is uploaded to, while NVS
- * survives both that and an OTA.
+ * config.json -- the config file is overwritten whenever the filesystem image
+ * is flashed, which would silently unprovision every device it is written to,
+ * while NVS survives both that and an OTA.
  */
 
 #include "wlan.hpp"

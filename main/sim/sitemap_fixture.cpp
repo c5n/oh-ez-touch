@@ -11,7 +11,9 @@
  * "back" item that a page with a "parent" produces.
  */
 
-#if (SIMULATOR == 1)
+#include "sdkconfig.h"
+
+#if CONFIG_IDF_TARGET_LINUX
 
 #include "sitemap_fixture.hpp"
 
@@ -274,14 +276,17 @@ static const char page_bedroom[] = R"json(
 }
 )json";
 
+/* Keyed by page name, not by full path: openHAB's own URL for a sitemap's home
+ * page is /rest/sitemaps/<sitemap>/<sitemap>, so keying on the path would mean
+ * the simulator only rendered anything when config.json happened to name the
+ * sitemap "demo". The page name is what actually identifies a page. */
 static const struct
 {
-    const char *path;
+    const char *page;
     const char *body;
 } fixture_pages[] = {
-    { "/rest/sitemaps/demo/demo",    page_demo    },
-    { "/rest/sitemaps/demo/living",  page_living  },
-    { "/rest/sitemaps/demo/bedroom", page_bedroom },
+    { "living",  page_living  },
+    { "bedroom", page_bedroom },
 };
 
 const char *sim_sitemap_fixture_get(const char *url)
@@ -291,17 +296,29 @@ const char *sim_sitemap_fixture_get(const char *url)
 
     /* Skip the scheme and authority, so that the configured host and port do
      * not have to match the fixture. */
-    const char *path = strstr(url, "/rest/");
+    const char *path = strstr(url, "/rest/sitemaps/");
     if (path == NULL)
-        path = url;
+        return NULL;
 
-    /* Compare without the query string. */
-    size_t path_len = strcspn(path, "?");
+    path += strlen("/rest/sitemaps/");
+
+    /* /<sitemap>/<page>, then the query string. */
+    size_t sitemap_len = strcspn(path, "/");
+    if (path[sitemap_len] != '/')
+        return NULL;
+
+    const char *page = path + sitemap_len + 1;
+    size_t page_len = strcspn(page, "?");
+
+    /* The home page is the one whose name equals the sitemap's, whatever that
+     * happens to be. */
+    if (page_len == sitemap_len && strncmp(page, path, page_len) == 0)
+        return page_demo;
 
     for (size_t i = 0; i < sizeof(fixture_pages) / sizeof(fixture_pages[0]); ++i)
     {
-        if (   strlen(fixture_pages[i].path) == path_len
-            && strncmp(fixture_pages[i].path, path, path_len) == 0)
+        if (   strlen(fixture_pages[i].page) == page_len
+            && strncmp(fixture_pages[i].page, page, page_len) == 0)
         {
             return fixture_pages[i].body;
         }
@@ -310,4 +327,4 @@ const char *sim_sitemap_fixture_get(const char *url)
     return NULL;
 }
 
-#endif /* #if (SIMULATOR == 1) */
+#endif /* #if CONFIG_IDF_TARGET_LINUX */

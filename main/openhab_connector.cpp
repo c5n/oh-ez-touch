@@ -1,3 +1,5 @@
+#include "sdkconfig.h"
+
 #include "openhab_connector.hpp"
 
 #include <ctype.h>
@@ -5,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
 #include <HTTPClient.h>
 #else
 #include "sim/icon_fixture.hpp"
@@ -59,7 +61,7 @@ int Item::update(const char* link)
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::update: Requesting URL: %s\r\n", url);
 #endif
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     HTTPClient http;
     http.begin(url);
 
@@ -111,7 +113,7 @@ int Item::publish(const char* url)
     printf("Item::publish: Requesting URL: %s\r\n", url);
 #endif
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     HTTPClient http;
     http.begin(url);
     http.addHeader("Content-Type", "text/plain");
@@ -145,7 +147,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
-#if (SIMULATOR == 1)
+#if CONFIG_IDF_TARGET_LINUX
     // No HTTP client in the simulator; use a compiled-in icon if there is one.
     size_t fixture_size = 0;
     const unsigned char *fixture_icon = sim_icon_fixture_get(name, state, &fixture_size);
@@ -243,7 +245,7 @@ int Sitemap::openlink(const char* url)
     printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
 #endif
 
-#if (SIMULATOR == 1)
+#if CONFIG_IDF_TARGET_LINUX
     // No HTTP client in the simulator; serve a compiled-in page instead.
     const char *payload = sim_sitemap_fixture_get(url);
     bool payload_ok = (payload != NULL);
@@ -538,7 +540,7 @@ int Sitemap::openlink(const char* url)
         retval = -1;
     }
 
-#if (SIMULATOR != 1)
+#if !CONFIG_IDF_TARGET_LINUX
     http.end();
 #endif
 
