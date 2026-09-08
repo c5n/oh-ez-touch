@@ -1,0 +1,28 @@
+## Registry dependencies for the device build.
+##
+## Not for the linux target: none of these has a linux branch, and the
+## simulator's display and pointer come from LVGL's SDL driver instead. The
+## `rules` below are the only conditioning the component manager offers -- it
+## cannot key on a Kconfig symbol -- so all three panel and touch drivers are
+## fetched for every board and the linker drops the two that are not used.
+dependencies:
+  idf: ">=5.2"
+
+  ## ILI9341 has no in-tree driver; ST7789 is part of esp_lcd itself.
+  espressif/esp_lcd_ili9341:
+    version: "^2.1.0"
+    rules:
+      - if: "target != linux"
+
+  ## ArduiTouch: the resistive panel behind the display, on the same SPI bus.
+  atanisoft/esp_lcd_touch_xpt2046:
+    version: "^1.0.6"
+    rules:
+      - if: "target != linux"
+
+  ## Lanbon L8: FT6336 on I2C. The driver is written for the FT5x06 family;
+  ## the address and the touch-data register block are believed identical.
+  espressif/esp_lcd_touch_ft5x06:
+    version: "^1.1.1"
+    rules:
+      - if: "target != linux"

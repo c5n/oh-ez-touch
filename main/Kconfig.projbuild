@@ -1,0 +1,39 @@
+menu "OhEzTouch"
+
+choice OHEZ_BOARD
+    prompt "Target board"
+    default OHEZ_BOARD_ARDUITOUCH
+    depends on !IDF_TARGET_LINUX
+    help
+        Which panel this firmware is built for. This replaces the four
+        PlatformIO environments, which differed only in their -D flags.
+
+        The pin assignments themselves are not here: they are a property of
+        the board rather than something a user chooses, and keeping them in
+        main/port/esp32/board_pins.h keeps them reviewable in one table
+        instead of spread over three defaults files.
+
+config OHEZ_BOARD_ARDUITOUCH
+    bool "ArduiTouch 2.4\" (ILI9341, XPT2046)"
+
+config OHEZ_BOARD_ARDUITOUCH28
+    bool "ArduiTouch 2.8\" (ILI9341, XPT2046)"
+
+config OHEZ_BOARD_LANBON
+    bool "Lanbon L8 (ST7789, FT6X36)"
+
+endchoice
+
+config OHEZ_ARDUITOUCH_JTAG_PINS
+    bool "ArduiTouch: move the pins an attached JTAG probe needs"
+    depends on OHEZ_BOARD_ARDUITOUCH
+    default n
+    help
+        The esp-prog JTAG probe takes GPIO 12-15, which collides with the
+        touch chip select (14) and the backlight (15). This moves them to 26
+        and 16, as the ArduiTouch_debug_JTAG PlatformIO environment did.
+
+        It is a pin remap and nothing else: the board is still an ArduiTouch,
+        which is why it is an option here rather than a fourth board.
+
+endmenu

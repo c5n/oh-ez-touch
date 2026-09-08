@@ -1,0 +1,2 @@
+# ArduiTouch 2.4" -- ILI9341 over SPI, XPT2046 resistive touch on the same bus.
+CONFIG_OHEZ_BOARD_ARDUITOUCH=y

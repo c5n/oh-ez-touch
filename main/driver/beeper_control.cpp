@@ -1,18 +1,20 @@
 #include "beeper_control.hpp"
 
-#include "Arduino.h"
-
 #include <stdio.h>
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+
 #include "esp_log.h"
+
+#include "port/port_beeper.h"
 
 #ifndef DEBUG_BEEPER_CONTROL
 #define DEBUG_BEEPER_CONTROL 0
 #endif
 
-#define BEEPER_PWM_FREQUENCY    2000
-#define BEEPER_PWM_RESOLUTION   8
-#define BEEPER_TASK_STACK_SIZE  800
+#define BEEPER_TASK_STACK_SIZE  2048
 
 struct request_s
 {
@@ -22,68 +24,78 @@ struct request_s
     uint16_t pause;
 };
 
-QueueHandle_t xRequestQueue = 0;
+static QueueHandle_t xRequestQueue = NULL;
 
 static void beeper_task(void *parameter);
-
-#define BEEP_NOTE_REQUEST_NULL 0
 
 void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause)
 {
 #if DEBUG_BEEPER_CONTROL
-    debug_printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
+    printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
 #endif
-    if (xRequestQueue != 0)
+    if (xRequestQueue != NULL)
     {
         struct request_s new_request;
         new_request.note = note;
-        volume = volume > 100 ? 100 : volume;
-        new_request.volume = map(volume, 0, 100, 0, 127);
+        new_request.volume = volume > 100 ? 100 : volume;
         new_request.duration = duration;
         new_request.pause = pause;
         xQueueSend(xRequestQueue, &new_request, 0);
     }
 }
 
-void beeper_setup(uint8_t pin)
+void beeper_setup(void)
 {
-    ledcSetup(BEEPER_CONTROL_PWM_CHANNEL, BEEPER_PWM_FREQUENCY, BEEPER_PWM_RESOLUTION);
-    ledcAttachPin(pin, BEEPER_CONTROL_PWM_CHANNEL);
-    ledcWrite(BEEPER_CONTROL_PWM_CHANNEL, 0); // set volume to 0
+    port_beeper_init();
 }
 
 void beeper_enable(void)
 {
+    /* Called from setup() and again from settings_apply_live() on every save.
+     * Without this it created a second queue -- orphaning the first, along with
+     * anything queued in it -- and started a second task on every save. */
+    if (xRequestQueue != NULL)
+        return;
+
     xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH, sizeof(struct request_s));
-    if (xRequestQueue == 0)
-        ESP_LOGE("beeper", "beeper_setup: Failed to create the queue");
+
+    if (xRequestQueue == NULL)
+    {
+        ESP_LOGE("beeper", "beeper_enable: Failed to create the queue");
+        return;
+    }
 
     xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL, 1, NULL);
 }
 
 static void beeper_task(void *parameter)
 {
+    (void)parameter;
+
     while (true)
     {
         struct request_s beep_request;
-        if (xQueueReceive(xRequestQueue, &beep_request, 1 / portTICK_PERIOD_MS) == pdTRUE)
+
+        /* Blocks until there is a note. This used to poll with a 1 ms timeout,
+         * which on the host target rounds to no wait at all -- the tick is 4 ms
+         * -- and would have spun a core for nothing. */
+        if (xQueueReceive(xRequestQueue, &beep_request, portMAX_DELAY) == pdTRUE)
         {
-            ledcWriteTone(BEEPER_CONTROL_PWM_CHANNEL, beep_request.note);
-            ledcWrite(BEEPER_CONTROL_PWM_CHANNEL, beep_request.volume);
-            vTaskDelay(beep_request.duration / portTICK_PERIOD_MS);
-            ledcWrite(BEEPER_CONTROL_PWM_CHANNEL, 0);
-            vTaskDelay(beep_request.pause / portTICK_PERIOD_MS);
-        }
+            port_beeper_tone(beep_request.note, beep_request.volume);
+            vTaskDelay(pdMS_TO_TICKS(beep_request.duration));
+            port_beeper_tone(beep_request.note, 0);
+            vTaskDelay(pdMS_TO_TICKS(beep_request.pause));
 
 #if DEBUG_BEEPER_CONTROL
-        static UBaseType_t stack_free = -1;
-        UBaseType_t stack_free_new = uxTaskGetStackHighWaterMark(NULL);
+            static UBaseType_t stack_free = 0;
+            UBaseType_t stack_free_new = uxTaskGetStackHighWaterMark(NULL);
 
-        if (stack_free_new != stack_free)
-        {
-            stack_free = stack_free_new;
-            printf("beeper_task: stack_free=%u\r\n", (unsigned)stack_free);
-        }
+            if (stack_free_new != stack_free)
+            {
+                stack_free = stack_free_new;
+                printf("beeper_task: stack_free=%u\r\n", (unsigned)stack_free);
+            }
 #endif
+        }
     }
 }

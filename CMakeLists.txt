@@ -1,10 +1,15 @@
 # ESP-IDF project definition for oh-ez-touch.
 #
-# Build for a device:
-#   idf.py -B build/esp32 -DSDKCONFIG=build/esp32/sdkconfig \
-#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32" \
+# Build for a device -- once per board, and the board's defaults file is what
+# selects it:
+#   idf.py -B build/arduitouch -DSDKCONFIG=build/arduitouch/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch" \
 #          set-target esp32
-#   idf.py -B build/esp32 build flash monitor
+#   idf.py -B build/arduitouch build flash monitor
+#
+# sdkconfig.defaults.arduitouch28 and sdkconfig.defaults.lanbon are the other
+# two. Omitting the board file gives the ArduiTouch 2.4", which is the Kconfig
+# default.
 #
 # Build the host simulator:
 #   idf.py -B build/linux -DSDKCONFIG=build/linux/sdkconfig \
@@ -38,11 +43,17 @@ endif()
 idf_build_set_property(COMPILE_DEFINITIONS "VERSION_GIT_HASH=\"${OHEZ_GIT_HASH}\"" APPEND)
 
 # What the boot banner, the Info tab and the web status page call this build.
-# Was -DTARGET_NAME per platformio.ini environment; the device side becomes the
-# board choice from main/Kconfig.projbuild once the firmware runs on IDF
-# drivers, which is also when the three board names stop being one placeholder.
+# Was -DTARGET_NAME per platformio.ini environment, and is the board choice from
+# main/Kconfig.projbuild now. The names are the environments' own, so an
+# existing installation reports the same string it did before.
 if(CONFIG_IDF_TARGET_LINUX)
     set(OHEZ_TARGET_NAME "Simulator")
+elseif(CONFIG_OHEZ_BOARD_ARDUITOUCH28)
+    set(OHEZ_TARGET_NAME "ArduiTouch28")
+elseif(CONFIG_OHEZ_BOARD_LANBON)
+    set(OHEZ_TARGET_NAME "Lanbon")
+elseif(CONFIG_OHEZ_ARDUITOUCH_JTAG_PINS)
+    set(OHEZ_TARGET_NAME "ArduiTouchJTAG")
 else()
     set(OHEZ_TARGET_NAME "ArduiTouch")
 endif()

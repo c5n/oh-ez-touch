@@ -1,22 +1,22 @@
 #ifndef BACKLIGHT_CONTROL_HPP
 #define BACKLIGHT_CONTROL_HPP
 
-#include "config.hpp"
-#include "stdint.h"
+#include <stdint.h>
 
-#ifndef BACKLIGHT_CONTROL_PWM_CHANNEL
-#define BACKLIGHT_CONTROL_PWM_CHANNEL 0
-#endif
-
+/* When to dim, and to what.
+ *
+ * Shared by both targets: the PWM behind it is port_backlight, which does
+ * nothing in the simulator, but the timing decisions here are the part worth
+ * running everywhere.
+ */
 class BacklightControl
 {
 private:
-    unsigned long dim_timeout_timestamp;
+    uint64_t dim_timeout_timestamp;
     unsigned long dim_timeout;
     uint8_t current_brightness;
     uint8_t normal_brightness;
     uint8_t dim_brightness;
-    bool led_invert;
     void set_brightness(uint8_t percent);
 
 public:
@@ -24,9 +24,11 @@ public:
     void setNormalBrightness(uint8_t percent) { normal_brightness = percent; };
     void setDimBrightness(uint8_t percent) { dim_brightness = percent; };
 
+    /* Wake the display and restart the timeout. True when this call was what
+     * woke it, which the touch handler uses to swallow the tap. */
     bool resetDimTimeout();
 
-    void setup(uint8_t pin, bool invert);
+    void setup();
     void loop();
 };
 

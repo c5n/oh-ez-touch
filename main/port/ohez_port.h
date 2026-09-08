@@ -17,12 +17,13 @@
  *      implementation is an explicit, documented no-op, never an empty stub
  *      standing in for something observable.
  *
- * Ports that arrive with later commits: port_backlight, port_beeper, port_net,
- * port_ntp, port_ota.
+ * Ports that arrive with later commits: port_net, port_ntp, port_ota.
  */
 #ifndef OHEZ_PORT_H
 #define OHEZ_PORT_H
 
+#include "port_backlight.h"
+#include "port_beeper.h"
 #include "port_display.h"
 #include "port_indev.h"
 #include "port_kv.h"

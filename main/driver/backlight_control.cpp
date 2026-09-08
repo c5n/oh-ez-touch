@@ -1,7 +1,9 @@
 #include "backlight_control.hpp"
-#include "Arduino.h"
 
 #include <stdio.h>
+
+#include "port/port_backlight.h"
+#include "port/port_sys.h"
 
 #ifndef DEBUG_BACKLIGHT_CONTROL
 #define DEBUG_BACKLIGHT_CONTROL 0
@@ -14,12 +16,11 @@ void BacklightControl::set_brightness(uint8_t percent)
 #endif
     BacklightControl::current_brightness = percent;
 
-    if (BacklightControl::led_invert == true)
-    {
-        percent = 100 - percent;
-    }
-
-    ledcWrite(BACKLIGHT_CONTROL_PWM_CHANNEL, map(percent, 0, 100, 1023, 0));
+    /* Straight through: which way round the pin has to move to make the panel
+     * brighter is the board's business, and lives in port_backlight. This used
+     * to invert the percentage here and then map it to a descending duty, two
+     * inversions that cancelled on one board and not on the other. */
+    port_backlight_set(percent);
 }
 
 bool BacklightControl::resetDimTimeout()
@@ -39,17 +40,14 @@ bool BacklightControl::resetDimTimeout()
     if (BacklightControl::dim_timeout == 0)
         BacklightControl::dim_timeout_timestamp = 0;
     else
-        BacklightControl::dim_timeout_timestamp = millis() + BacklightControl::dim_timeout * 1000;
+        BacklightControl::dim_timeout_timestamp = port_millis() + BacklightControl::dim_timeout * 1000;
 
     return woken_up;
 }
 
-void BacklightControl::setup(uint8_t pin, bool invert)
+void BacklightControl::setup()
 {
-    ledcSetup(BACKLIGHT_CONTROL_PWM_CHANNEL, 30000, 10);
-    ledcAttachPin(pin, BACKLIGHT_CONTROL_PWM_CHANNEL);
-
-    BacklightControl::led_invert = invert;
+    port_backlight_init();
 
     set_brightness(BacklightControl::normal_brightness);
 
@@ -59,7 +57,7 @@ void BacklightControl::setup(uint8_t pin, bool invert)
 void BacklightControl::loop()
 {
     if (   (BacklightControl::dim_timeout_timestamp != 0)
-        && ((long)(millis() - BacklightControl::dim_timeout_timestamp) >= 0)
+        && (port_millis() >= BacklightControl::dim_timeout_timestamp)
         && (BacklightControl::current_brightness != BacklightControl::dim_brightness))
     {
 #if DEBUG_BACKLIGHT_CONTROL

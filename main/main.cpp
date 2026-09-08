@@ -37,26 +37,19 @@
 #include "esp_event.h"
 #include "esp_log.h"
 
+#include "driver/backlight_control.hpp"
+#include "driver/beeper_control.hpp"
+
 #if !CONFIG_IDF_TARGET_LINUX
 #include "esp_wifi.h"
 #include "webui.hpp"
 #include "wlan.hpp"
 #include "WiFi.h"
-#include "driver/backlight_control.hpp"
-#include "driver/beeper_control.hpp"
 #include "openhab_sensor_main.hpp"
 #endif
 
 #ifndef DEBUG_WLAN_STATES
 #define DEBUG_WLAN_STATES 0
-#endif
-
-#ifndef TFT_BACKLIGHT_PIN
-#define TFT_BACKLIGHT_PIN 15
-#endif
-
-#ifndef TFT_BACKLIGHT_INVERT
-#define TFT_BACKLIGHT_INVERT 0
 #endif
 
 /* Set by the top-level CMakeLists.txt. The fallback is what a build that has
@@ -74,9 +67,10 @@
 
 static const char *TAG = "ohez";
 
-#if !CONFIG_IDF_TARGET_LINUX
+/* Both of these are shared now: the pin behind them is port_backlight and
+ * port_beeper, and the parts here -- when to dim, and the queue of notes --
+ * run on the host too, where they drive nothing but are at least exercised. */
 BacklightControl tft_backlight;
-#endif
 
 Config config;
 Infolabel infolabel;
@@ -101,14 +95,26 @@ void settings_apply_live(Config *config)
     openhab_ui_connect(config->item.openhab.hostname, config->item.openhab.port,
                        config->item.openhab.sitemap);
 
-#if !CONFIG_IDF_TARGET_LINUX
     tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config->item.backlight.dim_brightness);
 
     if (config->item.beeper.enabled == true)
         beeper_enable();
-#endif
+}
+
+/* Declared by port_indev.h, called from the device's pointer read on every
+ * press. Waking a dimmed display is the one thing a touch does that the widget
+ * under the finger must not also see. */
+extern "C" bool ohez_touch_wake(void)
+{
+    if (tft_backlight.resetDimTimeout() == false)
+        return false;
+
+    if (config.item.beeper.enabled == true)
+        beeper_playNote(NOTE_C4, 50, 100, 0);
+
+    return true;
 }
 
 #if LV_USE_LOG != 0
@@ -169,19 +175,15 @@ static void ohez_setup(void)
      * targets read the same monotonic clock. */
     lv_tick_set_cb(port_tick_ms);
 
-#if !CONFIG_IDF_TARGET_LINUX
-#ifdef BEEPER_PIN
-    beeper_setup(BEEPER_PIN);
+    beeper_setup();
 
     if (config.item.beeper.enabled == true)
         beeper_enable();
-#endif
 
     tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
-    tft_backlight.setup(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_INVERT);
-#endif
+    tft_backlight.setup();
 
     lv_display_t *disp = port_display_init();
 
@@ -222,6 +224,8 @@ static void ohez_setup(void)
 
 static void ohez_loop(void)
 {
+    tft_backlight.loop();
+
 #if CONFIG_IDF_TARGET_LINUX
     lv_timer_handler(); // let the GUI do its work
     ui_settings_loop();
@@ -230,7 +234,6 @@ static void ohez_loop(void)
      * what the other tasks on the host target need in order to run at all. */
     vTaskDelay(pdMS_TO_TICKS(5));
 #else
-    tft_backlight.loop();
     lv_timer_handler(); // let the GUI do its work
     /* Outside the WL_CONNECTED guard further down, unlike openhab_ui_loop():
      * the settings screen is how a device with no credentials gets any, so its

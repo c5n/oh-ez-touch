@@ -1,15 +1,18 @@
 /**
  * @file selftest.cpp
  *
- * Temporary entry point for the ESP-IDF build, and the only compiled source in
- * main/ while the application is still being ported. The application sources
- * now live next to this file but are not built yet -- they are written against
- * the Arduino framework, which exists on neither target -- so this file is what
- * keeps both targets linking, and it exercises the parts that are ported: LVGL,
- * lodepng and ArduinoJson all link, the port layer answers, and on the linux
- * target an SDL window actually opens.
+ * Temporary entry point for the device build, and the only compiled source in
+ * main/ there while the application is still being ported: the rest of it is
+ * written against WiFi, WebServer and HTTPUpdateServer, which no longer exist.
  *
- * It is deleted once main.cpp provides app_main().
+ * It is not a placeholder. It brings the panel up exactly as the application
+ * will -- port_display, port_indev, port_backlight, port_beeper, the same LVGL
+ * setup on the same one task -- and draws a screen that can be looked at and
+ * tapped. Flashing it is how the display driver, the touch calibration, the
+ * backlight polarity and the beeper get checked, which cannot be done from a
+ * desktop.
+ *
+ * It is deleted once main.cpp compiles for the device too.
  */
 
 #include <stdio.h>
@@ -25,9 +28,26 @@
 #include "lodepng/lodepng.h"
 #include "ArduinoJson.h"
 
+#include "driver/backlight_control.hpp"
+#include "driver/beeper_control.hpp"
 #include "port/ohez_port.h"
 
 static const char *TAG = "ohez";
+
+static BacklightControl backlight;
+
+/* Declared by port_indev.h. The application's version, in main.cpp, also sounds
+ * the touch blip and reads the beeper setting from the config; here the point
+ * is only that a tap on a dimmed panel brightens it and is not passed on. */
+extern "C" bool ohez_touch_wake(void)
+{
+    if (backlight.resetDimTimeout() == false)
+        return false;
+
+    beeper_playNote(NOTE_C4, 50, 100, 0);
+
+    return true;
+}
 
 /* lv_conf.h sets LV_LOG_PRINTF 0 because printf() from more than one task is
  * documented-unsafe on the FreeRTOS POSIX simulator. */
@@ -125,31 +145,52 @@ static void ui_task(void *arg)
 {
     LV_UNUSED(arg);
 
-    /* All LVGL init happens here rather than in app_main: LVGL's SDL backend
-     * pumps SDL from an lv_timer, so SDL_Init() and every SDL_PollEvent() run
-     * on whichever task calls lv_timer_handler(). SDL requires that to be one
-     * and the same thread. */
+    /* All LVGL init happens on this one task, as in the application: LVGL has
+     * no locking of its own (LV_USE_OS is LV_OS_NONE), and on the host its SDL
+     * backend pumps SDL from an lv_timer, so SDL_Init() and every
+     * SDL_PollEvent() run on whichever task calls lv_timer_handler(). */
     lv_init();
     lv_log_register_print_cb(ui_log_print);
     lv_tick_set_cb(port_tick_ms);
 
-#if CONFIG_IDF_TARGET_LINUX
-    lv_display_t *disp = lv_sdl_window_create(320, 240);
-    lv_sdl_window_set_zoom(disp, 2.0f);
-    lv_sdl_window_set_title(disp, "OhEzTouch");
-    lv_sdl_mouse_create();
+    lv_display_t *disp = port_display_init();
+    port_indev_init(disp);
 
-    lv_obj_t *label = lv_label_create(lv_screen_active());
-    lv_label_set_text_fmt(label, "oh-ez-touch\nESP-IDF skeleton\n%s", VERSION_GIT_HASH);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    /* Dim after 10 s and come back on a tap: short enough to watch, and it is
+     * the one behaviour that needs the backlight, the touch panel and the
+     * timeout state machine to agree. */
+    backlight.setNormalBrightness(100);
+    backlight.setDimBrightness(20);
+    backlight.setDimTimeout(10);
+    backlight.setup();
+
+    beeper_setup();
+    beeper_enable();
+
+    /* A button rather than a label: tapping it is what checks that the touch
+     * coordinates land where the finger is. */
+    lv_obj_t *button = lv_button_create(lv_screen_active());
+    lv_obj_center(button);
+
+    lv_obj_t *label = lv_label_create(button);
+    lv_label_set_text(label, "tap me");
     lv_obj_center(label);
-#else
-    /* The esp_lcd display and esp_lcd_touch input ports arrive with the device
-     * bring-up commit; until then this target only proves that it links. */
-    ESP_LOGI(TAG, "no display port yet on this target");
-#endif
+
+    lv_obj_add_event_cb(button, [](lv_event_t *e) {
+        static unsigned taps;
+        lv_obj_t *tapped = (lv_obj_t *)lv_event_get_target(e);
+        lv_label_set_text_fmt(lv_obj_get_child(tapped, 0), "tap %u", ++taps);
+        beeper_playNote(NOTE_C7, 50, 20, 0);
+    }, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *banner = lv_label_create(lv_screen_active());
+    lv_label_set_text_fmt(banner, "oh-ez-touch selftest\n%s\n%s", TARGET_NAME, VERSION_GIT_HASH);
+    lv_obj_set_style_text_align(banner, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(banner, LV_ALIGN_TOP_MID, 0, 4);
 
     for (;;) {
+        backlight.loop();
+
         uint32_t next = lv_timer_handler();
         if (next == LV_NO_TIMER_READY) {
             next = LV_DEF_REFR_PERIOD;
@@ -160,7 +201,7 @@ static void ui_task(void *arg)
 
 extern "C" void app_main(void)
 {
-    ESP_LOGI(TAG, "oh-ez-touch %s starting", VERSION_GIT_HASH);
+    ESP_LOGI(TAG, "oh-ez-touch selftest %s on %s", VERSION_GIT_HASH, TARGET_NAME);
     smoke_test_components();
     smoke_test_port();
 

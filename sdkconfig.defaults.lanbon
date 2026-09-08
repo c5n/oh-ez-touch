@@ -1,0 +1,2 @@
+# Lanbon L8 -- ST7789 over SPI, FT6336 capacitive touch on I2C, no buzzer.
+CONFIG_OHEZ_BOARD_LANBON=y

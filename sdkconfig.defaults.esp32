@@ -11,3 +11,8 @@ CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# The XPT2046 driver's own conversion is a full-scale map with no offset, which
+# cannot express this panel's calibration -- see main/port/esp32/port_indev.c.
+# port_indev supplies a process_coordinates callback instead.
+CONFIG_XPT2046_CONVERT_ADC_TO_COORDS=n

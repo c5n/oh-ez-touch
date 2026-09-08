@@ -3,28 +3,54 @@
 # The application is ported target by target rather than module by module,
 # because the two targets diverge in what they still need: the simulator's set
 # is complete below and it builds and runs, while the device firmware waits for
-# esp_lcd, esp_wifi and esp_http_server to replace TFT_eSPI, WiFi and
-# WebServer. Until then the device target builds selftest.cpp -- which links,
-# boots and exercises the port layer -- and the sources not listed here are
-# still Arduino code that compiles on neither target.
+# esp_wifi, esp_http_server and an OTA handler to replace WiFi, WebServer and
+# HTTPUpdateServer. Until then the device target builds selftest.cpp, which
+# brings up the display, the touch panel, the backlight and the beeper and is
+# therefore a real check of the hardware ports -- and the sources not listed
+# here are still Arduino code that compiles on neither target.
+
+# IDF_TARGET rather than CONFIG_IDF_TARGET_LINUX, and not interchangeably: the
+# CONFIG_* variables are not set during the pass that reads REQUIRES, so a
+# device-only requirement guarded on one of them leaks into the linux build and
+# fails there with "component not registered".
+idf_build_get_property(ohez_target IDF_TARGET)
+if(ohez_target STREQUAL "linux")
+    set(OHEZ_LINUX 1)
+else()
+    set(OHEZ_LINUX 0)
+endif()
 
 # The platform boundary: one implementation directory per target, selected here.
 # This is what replaces platformio.ini's `build_src_filter` subtractions -- a
 # concern a target cannot provide is absent from its directory, so leaving one
 # out is a link error rather than a silent no-op.
-if(CONFIG_IDF_TARGET_LINUX)
+if(OHEZ_LINUX)
     set(OHEZ_PORT_SRCS
         "port/linux/port_sys.c"
         "port/linux/port_storage.c"
         "port/linux/port_flash.c"
         "port/linux/port_display.c"
-        "port/linux/port_indev.c")
+        "port/linux/port_indev.c"
+        "port/linux/port_backlight.c"
+        "port/linux/port_beeper.c")
 else()
     set(OHEZ_PORT_SRCS
         "port/esp32/port_sys.c"
         "port/esp32/port_storage.c"
-        "port/esp32/port_flash.c")
+        "port/esp32/port_flash.c"
+        "port/esp32/port_display.c"
+        "port/esp32/port_indev.c"
+        "port/esp32/port_backlight.c"
+        "port/esp32/port_beeper.c"
+        "port/esp32/board_i2c.c")
 endif()
+
+# Policy that sits directly on the port layer and is worth running on both
+# targets: when to dim the display, and a queue that plays a chime without
+# blocking the screen for its duration.
+set(OHEZ_DRIVER_SRCS
+    "driver/backlight_control.cpp"
+    "driver/beeper_control.cpp")
 
 # The UI, the openHAB client and the settings. Target-independent code -- the
 # openHAB client genuinely so, since esp_http_client builds for both targets --
@@ -44,7 +70,7 @@ set(OHEZ_APP_SRCS
     "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp")
 
-if(CONFIG_IDF_TARGET_LINUX)
+if(OHEZ_LINUX)
     set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 else()
     set(OHEZ_SRCS "selftest.cpp")
@@ -52,22 +78,37 @@ endif()
 
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
                   esp_event)
-if(NOT CONFIG_IDF_TARGET_LINUX)
+if(NOT OHEZ_LINUX)
     # esp_timer is deliberately absent from the linux side: it registers
     # headers-only there, so esp_timer.h is not even includable -- which is
     # exactly why port_sys has two implementations. spiffs likewise excludes
     # esp_spiffs.c on linux.
     list(APPEND OHEZ_REQUIRES spiffs esp_timer)
+
+    # The panel, the touch panel and the two PWMs. The three registry drivers
+    # come from main/idf_component.yml; only one panel and one touch driver is
+    # reachable in a given build, and the linker drops the rest.
+    list(APPEND OHEZ_REQUIRES
+        esp_lcd
+        esp_driver_spi
+        esp_driver_ledc
+        esp_driver_i2c
+        espressif__esp_lcd_ili9341
+        espressif__esp_lcd_touch
+        espressif__esp_lcd_touch_ft5x06
+        atanisoft__esp_lcd_touch_xpt2046)
 endif()
 
 idf_component_register(SRCS ${OHEZ_SRCS}
+                            ${OHEZ_DRIVER_SRCS}
                             "port/port_storage_stdio.c"
                             "port/port_kv.c"
                             ${OHEZ_PORT_SRCS}
                        INCLUDE_DIRS "." "port"
+                       PRIV_INCLUDE_DIRS "port/esp32"
                        REQUIRES ${OHEZ_REQUIRES})
 
-if(CONFIG_IDF_TARGET_LINUX)
+if(OHEZ_LINUX)
     # port/linux/port_flash.c needs the partition table the build just
     # generated, to seed the emulated flash image with. Only CMake knows where
     # the build directory is.

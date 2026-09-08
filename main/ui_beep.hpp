@@ -1,25 +1,24 @@
 #ifndef UI_BEEP_HPP
 #define UI_BEEP_HPP
 
-#include "sdkconfig.h"
-
 /* The UI's sound policy, one macro per kind of thing the user just did.
  *
  * These lived in openhab_ui.cpp until the settings screen needed the same
  * sounds for the same gestures -- a window opening should not sound different
- * depending on which file created it. Macros rather than functions so that the
- * simulator, which has no beeper, compiles them away to nothing.
+ * depending on which file created it. Macros rather than functions because a
+ * chime is a sequence of notes and naming each sequence beats repeating it.
+ *
+ * They are unconditional now. Where there is no buzzer -- the simulator, and
+ * the Lanbon L8 -- the notes are queued and played into a port_beeper that
+ * makes no sound, which costs nothing and keeps the guards out of the UI.
  */
 
-#if !CONFIG_IDF_TARGET_LINUX
 #include "driver/beeper_control.hpp"
-#endif
 
 #ifndef BEEPER_VOLUME
 #define BEEPER_VOLUME 50
 #endif
 
-#if !CONFIG_IDF_TARGET_LINUX
 #define BEEPER_EVENT_CHANGE()              \
     {                                      \
         beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \
@@ -52,13 +51,5 @@
         beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
         beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
     }
-#else
-#define BEEPER_EVENT_CHANGE() {}
-#define BEEPER_EVENT_LINK() {}
-#define BEEPER_EVENT_LINK_BACK() {}
-#define BEEPER_EVENT_WINDOW() {}
-#define BEEPER_EVENT_WINDOW_CLOSE() {}
-#define BEEPER_EVENT_ERROR() {}
-#endif
 
 #endif // UI_BEEP_HPP
