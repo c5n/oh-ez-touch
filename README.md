@@ -313,7 +313,9 @@ None of these is authenticated, and the setup AccessPoint is open, so anyone who
 #### Settings on the screen
 Touching the upper bar opens the settings screen. It has five tabs, and the
 buttons across the top carry a symbol each rather than a name -- five words do
-not fit 320 pixels -- so the title bar names the tab you are on.
+not fit 320 pixels -- so the bar along the bottom names the tab you are on. That
+bar also holds the tab's buttons and the **X** that leaves the screen; there is
+no title bar, so that all of the 240 pixels that are not chrome go to settings.
 
 Tab                     | Contents
 ----------------------- | --------
