@@ -44,10 +44,7 @@
 #include "wlan.hpp"
 
 #include "openhab_sensor_main.hpp"
-
-#if !CONFIG_IDF_TARGET_LINUX
 #include "webui.hpp"
-#endif
 
 #ifndef DEBUG_WLAN_STATES
 #define DEBUG_WLAN_STATES 0
@@ -93,8 +90,11 @@ void settings_apply_live(Config *config)
 {
     openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
 
-    openhab_ui_connect(config->item.openhab.hostname, config->item.openhab.port,
-                       config->item.openhab.sitemap);
+    /* A request, not a call: this is reached from the web handler, which runs
+     * on the server's task, and openhab_ui_connect() rewrites the page URL that
+     * the UI task may be fetching from at that moment. */
+    openhab_ui_request_connect(config->item.openhab.hostname, config->item.openhab.port,
+                               config->item.openhab.sitemap);
 
     tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
@@ -155,6 +155,15 @@ static void ohez_setup(void)
      * to publish. esp_wifi and esp_netif will want it too. */
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    /* The other store. It holds the WLAN credentials, and nothing else opens
+     * it: without this wlan_credentials_get() finds nothing on a device that
+     * has been provisioned, which reads as "not configured" and raises the
+     * setup access point on every boot. */
+    esp_err_t kv = port_kv_init();
+
+    if (kv != ESP_OK)
+        ESP_LOGE(TAG, "no credential store: %s", esp_err_to_name(kv));
+
     if (config.setup() == false)
     {
         /* Keep going: loadConfig() below fills in the built-in defaults, so the
@@ -213,9 +222,7 @@ static void ohez_setup(void)
         lv_timer_handler();
     }
 
-#if !CONFIG_IDF_TARGET_LINUX
     webui_setup(&config);
-#endif
 
     openhab_ui_setup(&config);
     ui_settings_setup(&config);
@@ -248,9 +255,7 @@ static void ohez_loop(void)
      * access point scan has to keep running while the station is offline. */
     ui_settings_loop();
     wlan_loop();
-#if !CONFIG_IDF_TARGET_LINUX
     webui_loop();
-#endif
     infolabel.loop();
 
     /* Seeded with the state at the first call rather than with a "nothing yet"

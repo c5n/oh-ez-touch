@@ -132,6 +132,10 @@ static bool sitemap_ok;
 static lv_obj_t *open_window;
 /* A requested variant, applied from openhab_ui_loop(). */
 static bool theme_pending;
+static bool connect_pending;
+static char connect_pending_host[32];
+static uint16_t connect_pending_port;
+static char connect_pending_sitemap[32];
 static enum ui_theme_family_e theme_pending_family;
 static bool theme_pending_night;
 static char current_page[STR_PAGE_LEN];
@@ -981,7 +985,9 @@ void load_icon(struct widget_context_s *wctx)
 
     // Decode the PNG image
     unsigned char *png_decoded;
-    uint32_t png_width, png_height;
+    /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and the two
+     * are the same type on the host and different ones on the device. */
+    unsigned png_width, png_height;
 
 #if DEBUG_OPENHAB_UI
     printf("load_icon: %s ", wctx->item->getIconName());
@@ -1377,6 +1383,14 @@ bool openhab_ui_night_active(Config *config)
  * with lv_timer_handler() not being pumped -- no place to be freeing and
  * reallocating the style property arrays that the draw path reads, let alone
  * deleting and recreating widgets. */
+void openhab_ui_request_connect(const char *host, uint16_t port, const char *sitemap)
+{
+    strlcpy(connect_pending_host, host, sizeof(connect_pending_host));
+    strlcpy(connect_pending_sitemap, sitemap, sizeof(connect_pending_sitemap));
+    connect_pending_port = port;
+    connect_pending = true;
+}
+
 void openhab_ui_request_theme(enum ui_theme_family_e family, bool night)
 {
     if (family == ui_style_family() && night == ui_style_night())
@@ -1608,6 +1622,13 @@ void openhab_ui_loop(void)
     /* Last in the loop on purpose: by here every request this iteration was
      * going to make has been made, so nothing is in flight while the styles are
      * reset and the tiles are recreated. */
+    if (connect_pending == true)
+    {
+        connect_pending = false;
+        openhab_ui_connect(connect_pending_host, connect_pending_port,
+                           connect_pending_sitemap);
+    }
+
     if (theme_pending == true)
         theme_apply_pending();
 }

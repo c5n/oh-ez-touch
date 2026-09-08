@@ -3,6 +3,9 @@
 
 #include "ui_theme.hpp"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
 /* The largest config file that will be read. Sized well above what the file
  * actually needs -- the shipped data/config.json is around 900 bytes of
  * pretty-printed JSON, and saveConfig() writes it back compacted to about half
@@ -101,7 +104,30 @@ public:
     /** Write item back to the file loadConfig() was given. */
     bool saveConfig();
 
+    /**
+     * Hold this across a group of writes to item.
+     *
+     * There are two writers -- the web form's POST handler and the settings
+     * screen's Save -- and since the web server got a task of its own they can
+     * genuinely run at the same time. The handler writes item field by field
+     * over twenty-odd fields, so without this a save from the panel during a
+     * save from the browser could interleave them.
+     *
+     * Recursive, because settings_apply_live() is called with it held and
+     * reads config through the same object.
+     *
+     * Readers are deliberately not locked. openhab_ui reads these fields on
+     * every loop and taking a mutex there would cost more than the failure it
+     * prevents: the worst a reader can see is one char[32] caught mid-strlcpy,
+     * which shows as a truncated hostname for one iteration and is corrected on
+     * the next. The writers are locked because a torn *write* is what would
+     * persist.
+     */
+    void lock();
+    void unlock();
+
 private:
+    SemaphoreHandle_t mutex = NULL;
     char config_filename[32] = "";
 };
 

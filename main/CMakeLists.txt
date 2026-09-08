@@ -1,13 +1,8 @@
 # The application component.
 #
-# The application is ported target by target rather than module by module,
-# because the two targets diverge in what they still need: the simulator's set
-# is complete below and it builds and runs, while the device firmware waits for
-# esp_wifi, esp_http_server and an OTA handler to replace WiFi, WebServer and
-# HTTPUpdateServer. Until then the device target builds selftest.cpp, which
-# brings up the display, the touch panel, the backlight and the beeper and is
-# therefore a real check of the hardware ports -- and the sources not listed
-# here are still Arduino code that compiles on neither target.
+# One source list for both targets. Everything above the port layer is shared:
+# what differs between a panel and a desktop is in main/port/, and that is the
+# whole of the difference.
 
 # IDF_TARGET rather than CONFIG_IDF_TARGET_LINUX, and not interchangeably: the
 # CONFIG_* variables are not set during the pass that reads REQUIRES, so a
@@ -58,10 +53,7 @@ set(OHEZ_DRIVER_SRCS
     "driver/backlight_control.cpp"
     "driver/beeper_control.cpp")
 
-# The UI, the openHAB client and the settings. Target-independent code -- the
-# openHAB client genuinely so, since esp_http_client builds for both targets --
-# but it only compiles where every port it needs exists, which today is the
-# host.
+# The UI, the openHAB client, the settings and the web interface.
 set(OHEZ_APP_SRCS
     "main.cpp"
     "config.cpp"
@@ -74,23 +66,18 @@ set(OHEZ_APP_SRCS
     "settings_fields.cpp"
     "ui_settings.cpp"
     "ui_style.cpp"
+    "webui.cpp"
+    "webui_ota.cpp"
+    "webui_transport.cpp"
+    "webui_transport_esp32.cpp"
+    "webui_transport_linux.cpp"
     "wlan.cpp"
     "wlan_radio.cpp"
     "sim/icon_fixture.cpp"
     "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp")
 
-if(OHEZ_LINUX)
-    set(OHEZ_SRCS ${OHEZ_APP_SRCS})
-else()
-    # selftest.cpp is the entry point until the web UI and the OTA handler are
-    # ported. Everything else that already compiles for the device is built
-    # alongside it, so that it is checked now rather than all at once at the
-    # end -- these are compiled but not yet called.
-    set(OHEZ_SRCS "selftest.cpp" "config.cpp" "wlan.cpp" "wlan_radio.cpp"
-                  "openhab_http.cpp" "openhab_sensor_bme280.cpp"
-                  "openhab_sensor_connector.cpp" "openhab_sensor_main.cpp")
-endif()
+set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
                   esp_event)
@@ -111,6 +98,8 @@ if(NOT OHEZ_LINUX)
         esp_driver_i2c
         esp_wifi
         esp_netif
+        esp_http_server
+        app_update
         espressif__esp_lcd_ili9341
         espressif__esp_lcd_touch
         espressif__esp_lcd_touch_ft5x06

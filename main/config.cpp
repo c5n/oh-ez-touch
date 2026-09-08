@@ -24,8 +24,23 @@
 
 static const char *TAG = "config";
 
+void Config::lock()
+{
+    if (mutex != NULL)
+        xSemaphoreTakeRecursive(mutex, portMAX_DELAY);
+}
+
+void Config::unlock()
+{
+    if (mutex != NULL)
+        xSemaphoreGiveRecursive(mutex);
+}
+
 bool Config::setup()
 {
+    if (mutex == NULL)
+        mutex = xSemaphoreCreateRecursiveMutex();
+
     esp_err_t err = port_storage_init();
 
     if (err != ESP_OK)

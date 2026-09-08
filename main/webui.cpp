@@ -14,10 +14,16 @@
  * written out three times, as the GET prefill, the POST parse and the echo
  * page, and they had drifted apart.
  *
- * Note for anyone extending this: it runs on the loop task, inside
- * handleClient(), with lv_timer_handler() not being pumped. It must not touch
- * LVGL. openhab_ui.hpp is included for the theme request, which is explicitly
- * a request -- recorded here, carried out from openhab_ui_loop().
+ * Note for anyone extending this: the handlers run on the *server's* task, not
+ * on the one that owns LVGL, and they must not touch it. That used to be a
+ * convention -- WebServer::handleClient() called them from the loop task, so
+ * they could not race anything -- and it is now enforced by the two things
+ * openhab_ui.hpp is included for: openhab_ui_request_theme() and
+ * openhab_ui_request_connect(), both of which only record a request that
+ * openhab_ui_loop() carries out. Writes to Config go under config->lock().
+ *
+ * Which server delivers this is webui_transport.h's business. There are two,
+ * and the reason there have to be is written down there.
  */
 
 #include "webui.hpp"
@@ -25,19 +31,21 @@
 #include "settings_fields.hpp"
 
 #include "openhab_ui.hpp"
-#include "ota/HTTPUpdateServer.h"
+#include "port/port_net.h"
+#include "port/port_sys.h"
+#include "webui_ota.hpp"
+#include "webui_transport.h"
 #include "wlan.hpp"
 #include "ui_theme.hpp"
 #include "version.h"
 #include "debug.h"
 
-#include <Arduino.h>
-#include <WebServer.h>
-#include <WiFi.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
-#include <uptime.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #ifndef DEBUG_WEBUI
 #define DEBUG_WEBUI 0
@@ -47,28 +55,14 @@
  * that an over-long submission is truncated here rather than rejected. */
 #define WEBUI_VALUE_MAX 80
 
-/* Unauthenticated, as it has always been. Kept as macros so that a build can
- * override them without touching this file. */
-#ifndef UPDATER_USERNAME
-#define UPDATER_USERNAME ""
-#endif
-
-#ifndef UPDATER_PASSWORD
-#define UPDATER_PASSWORD ""
-#endif
-
+/* No HTTP authentication, which is what AutoConnect was configured for too
+ * (auth = AC_AUTH_NONE, and the OTA endpoint never had any). Worth knowing
+ * before exposing one of these outside a home network. */
 #ifndef WEBUI_PORT
 #define WEBUI_PORT 80
 #endif
 
-/* No HTTP authentication, which is what AutoConnect was configured for too
- * (auth = AC_AUTH_NONE, and the OTA endpoint never had any). Worth knowing
- * before exposing one of these outside a home network. */
-static WebServer        webui_http(WEBUI_PORT);
-static HTTPUpdateServer webui_updater;
-
-static Config    *webui_config = NULL;
-static WebServer *webui_server = &webui_http;
+static Config *webui_config = NULL;
 
 /* ------------------------------------------------------------------ fields */
 
@@ -92,8 +86,9 @@ static WebServer *webui_server = &webui_http;
  * task is affordable; the handlers below add little else. */
 struct webui_out_s
 {
-    char   buf[512];
-    size_t len;
+    webui_request_t *req;
+    char             buf[512];
+    size_t           len;
 };
 
 #define WEBUI_OUT_FLUSH_AT (sizeof(((struct webui_out_s *)0)->buf) - 128)
@@ -106,7 +101,7 @@ static void webui_flush(struct webui_out_s *o)
     if (o->len == 0)
         return;
 
-    webui_server->sendContent(o->buf, o->len);
+    webui_write(o->req, o->buf, o->len);
     o->len = 0;
 }
 
@@ -184,7 +179,7 @@ static void webui_putf(struct webui_out_s *o, const char *fmt, ...)
 
 /* -------------------------------------------------------------------- page */
 
-static const char webui_page_head[] PROGMEM =
+static const char webui_page_head[] =
     "<!DOCTYPE html><html><head><meta charset='utf-8'>"
     "<meta name='viewport' content='width=device-width,initial-scale=1'>"
     "<title>OhEzTouch</title><style>"
@@ -205,7 +200,7 @@ static const char webui_page_head[] PROGMEM =
     "p.n{font-size:.8em;color:#666}"
     "</style></head><body><div class='w'><h1>OhEzTouch</h1>";
 
-static const char webui_page_tail[] PROGMEM = "</div></body></html>";
+static const char webui_page_tail[] = "</div></body></html>";
 
 static void webui_send_status(struct webui_out_s *o)
 {
@@ -214,22 +209,31 @@ static void webui_send_status(struct webui_out_s *o)
     webui_putf(o, "<tr><td>Version</td><td>%u.%02u</td></tr>", VERSION_MAJOR, VERSION_MINOR);
     webui_putf(o, "<tr><td>Build</td><td>%s %s</td></tr>", __DATE__, __TIME__);
 
-    uptime::calculateUptime();
-    webui_putf(o, "<tr><td>Uptime</td><td>%lu days, %luh %lum %lus</td></tr>",
-               uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
+    unsigned long long up = (unsigned long long)(port_millis() / 1000);
+
+    webui_putf(o, "<tr><td>Uptime</td><td>%llu days, %lluh %llum %llus</td></tr>",
+               up / 86400, (up / 3600) % 24, (up / 60) % 60, up % 60);
+
+    port_net_info_t net;
+
+    port_net_info(&net);
 
     webui_put(o, "<tr><td>Hostname</td><td>");
-    webui_put_escaped(o, WiFi.getHostname());
+    webui_put_escaped(o, net.hostname);
     webui_put(o, "</td></tr>");
 
     webui_put(o, "<tr><td>SSID</td><td>");
-    webui_put_escaped(o, WiFi.SSID().c_str());
+    webui_put_escaped(o, net.ssid);
     webui_put(o, "</td></tr>");
 
-    webui_putf(o, "<tr><td>RSSI</td><td>%i dBm</td></tr>", (int)WiFi.RSSI());
-    webui_putf(o, "<tr><td>IP</td><td>%s</td></tr>", WiFi.localIP().toString().c_str());
-    webui_putf(o, "<tr><td>MAC</td><td>%s</td></tr>", WiFi.macAddress().c_str());
-    webui_putf(o, "<tr><td>Free heap</td><td>%u bytes</td></tr>", (unsigned)ESP.getFreeHeap());
+    if (net.rssi == PORT_NET_RSSI_WIRED)
+        webui_put(o, "<tr><td>RSSI</td><td>wired</td></tr>");
+    else
+        webui_putf(o, "<tr><td>RSSI</td><td>%i dBm</td></tr>", (int)net.rssi);
+
+    webui_putf(o, "<tr><td>IP</td><td>%s</td></tr>", net.ip);
+    webui_putf(o, "<tr><td>MAC</td><td>%s</td></tr>", net.mac);
+    webui_putf(o, "<tr><td>Free heap</td><td>%u bytes</td></tr>", (unsigned)port_free_heap());
 
     if (wlan_ap_ssid() != NULL)
     {
@@ -336,14 +340,14 @@ static void webui_send_wlan_form(struct webui_out_s *o)
                  "</fieldset></form>");
 }
 
-static void webui_begin_page(struct webui_out_s *o)
+static void webui_begin_page(struct webui_out_s *o, webui_request_t *req)
 {
+    o->req = req;
     o->len = 0;
 
     /* Chunked, because the length of the page is not known until it has been
      * written -- which is the point of not assembling it. */
-    webui_server->setContentLength(CONTENT_LENGTH_UNKNOWN);
-    webui_server->send(200, "text/html", "");
+    webui_begin_chunked(req, "text/html");
     webui_put(o, webui_page_head);
 }
 
@@ -351,20 +355,20 @@ static void webui_end_page(struct webui_out_s *o)
 {
     webui_put(o, webui_page_tail);
     webui_flush(o);
-    webui_server->sendContent("", 0); /* the terminating empty chunk */
+    webui_end_chunked(o->req);
 }
 
-static void webui_handle_root()
+static void webui_handle_root(webui_request_t *req)
 {
     struct webui_out_s out;
 
-    webui_begin_page(&out);
+    webui_begin_page(&out, req);
 
-    if (webui_server->hasArg("saved") == true)
+    if (webui_has_arg(req, "saved") == true)
         webui_put(&out, "<fieldset><legend>Saved</legend>"
                         "<p class='n'>Settings stored.</p></fieldset>");
 
-    if (webui_server->hasArg("wifi") == true)
+    if (webui_has_arg(req, "wifi") == true)
         webui_put(&out, "<fieldset><legend>WLAN</legend>"
                         "<p class='n'>Credentials stored, connecting.</p></fieldset>");
 
@@ -380,9 +384,14 @@ static void webui_handle_root()
     webui_end_page(&out);
 }
 
-static void webui_handle_save()
+static void webui_handle_save(webui_request_t *req)
 {
     Config *config = webui_config;
+
+    /* Every write to item is under this, and so is settings_apply_live() at the
+     * end -- it reads back what was just written, and the two together have to
+     * look atomic to a save from the panel. */
+    config->lock();
 
     for (size_t i = 0; i < settings_field_count; i++)
     {
@@ -399,14 +408,14 @@ static void webui_handle_save()
          * rather than destructive. */
         if (f->kind == SETTINGS_BOOL)
         {
-            settings_field_write(f, &config->item, webui_server->hasArg(f->name) ? 1 : 0);
+            settings_field_write(f, &config->item, webui_has_arg(req, f->name) ? 1 : 0);
             continue;
         }
 
-        if (webui_server->hasArg(f->name) == false)
+        if (webui_has_arg(req, f->name) == false)
             continue;
 
-        strlcpy(value, webui_server->arg(f->name).c_str(), sizeof(value));
+        webui_arg(req, f->name, value, sizeof(value));
 
         /* The character check, the clamp and the option lookup all live in
          * settings_fields.cpp, so the touch screen applies the same rules to
@@ -446,45 +455,48 @@ static void webui_handle_save()
      * the values actually stored. That is what AutoConnect's echo page was
      * for, minus a third copy of the field list, and it also means a reload
      * does not re-post the form. */
-    webui_server->sendHeader("Location", "/?saved=1", true);
-    webui_server->send(303, "text/plain", "");
+    config->unlock();
+
+    webui_redirect(req, 303, "/?saved=1");
 }
 
-static void webui_handle_wifi()
+static void webui_handle_wifi(webui_request_t *req)
 {
     char ssid[WLAN_SSID_SIZE];
     char psk[WLAN_PSK_SIZE];
 
-    strlcpy(ssid, webui_server->arg("ssid").c_str(), sizeof(ssid));
-    strlcpy(psk, webui_server->arg("psk").c_str(), sizeof(psk));
+    webui_arg(req, "ssid", ssid, sizeof(ssid));
+    webui_arg(req, "psk", psk, sizeof(psk));
 
     if (wlan_set_credentials(ssid, psk) == false)
     {
-        webui_server->sendHeader("Location", "/", true);
-        webui_server->send(303, "text/plain", "");
+        webui_redirect(req, 303, "/");
         return;
     }
 
-    webui_server->sendHeader("Location", "/?wifi=1", true);
-    webui_server->send(303, "text/plain", "");
+    webui_redirect(req, 303, "/?wifi=1");
 }
 
-static void webui_handle_restart()
+static void webui_handle_restart(webui_request_t *req)
 {
-    webui_server->send(200, "text/html",
-                       "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-                       "<meta http-equiv='refresh' content='15;URL=/'>"
-                       "</head><body>Restarting...</body></html>");
+    webui_send(req, 200, "text/html",
+               "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+               "<meta http-equiv='refresh' content='15;URL=/'>"
+               "</head><body>Restarting...</body></html>");
 
     /* Let the response reach the client before the radio goes away. */
-    delay(200);
-    ESP.restart();
+    vTaskDelay(pdMS_TO_TICKS(200));
+    port_restart();
 }
 
-static void webui_handle_not_found()
+static void webui_handle_favicon(webui_request_t *req)
 {
-    webui_server->sendHeader("Location", "/", true);
-    webui_server->send(302, "text/plain", "");
+    webui_send(req, 204, "text/plain", NULL);
+}
+
+static void webui_handle_not_found(webui_request_t *req)
+{
+    webui_redirect(req, 302, "/");
 }
 
 void webui_setup(Config *config)
@@ -526,30 +538,29 @@ void webui_setup(Config *config)
     }
 #endif
 
-    webui_server->on("/", HTTP_GET, webui_handle_root);
-    webui_server->on("/save", HTTP_POST, webui_handle_save);
-    webui_server->on("/wifi", HTTP_POST, webui_handle_wifi);
-    webui_server->on("/restart", HTTP_POST, webui_handle_restart);
-    webui_server->on("/restart", HTTP_GET, webui_handle_restart);
+    webui_transport_route("/", WEBUI_GET, webui_handle_root);
+    webui_transport_route("/save", WEBUI_POST, webui_handle_save);
+    webui_transport_route("/wifi", WEBUI_POST, webui_handle_wifi);
+    webui_transport_route("/restart", WEBUI_POST, webui_handle_restart);
+    webui_transport_route("/restart", WEBUI_GET, webui_handle_restart);
 
     /* Browsers ask for this unprompted; answering 204 keeps it out of the
      * not-found redirect. */
-    webui_server->on("/favicon.ico", HTTP_GET, []() { webui_server->send(204); });
+    webui_transport_route("/favicon.ico", WEBUI_GET, webui_handle_favicon);
 
-    /* One release of grace for bookmarks of the AutoConnect page. */
-    webui_server->on("/openhab_settings", HTTP_GET, webui_handle_not_found);
+    /* The path and the method are what tools/batchupdate.sh knows, so they do
+     * not change. The GET is the upload form. */
+    webui_transport_route("/update", WEBUI_GET, webui_ota_handle_form);
+    webui_transport_route_stream("/update", webui_ota_handle_upload);
 
-    webui_server->onNotFound(webui_handle_not_found);
+    /* Everything else, which includes one release of grace for bookmarks of
+     * the AutoConnect page at /openhab_settings. */
+    webui_transport_route_default(webui_handle_not_found);
 
-    /* Registered after our own pages so the explicit paths win the match, and
-     * kept exactly as it was: tools/batchupdate.sh POSTs a multipart body to
-     * /update, and HTTPUpdateServer ignores the field name. */
-    webui_updater.setup(webui_server, "/update", UPDATER_USERNAME, UPDATER_PASSWORD);
-
-    webui_server->begin();
+    webui_transport_start(WEBUI_PORT);
 }
 
 void webui_loop(void)
 {
-    webui_server->handleClient();
+    webui_transport_loop();
 }

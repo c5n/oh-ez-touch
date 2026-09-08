@@ -15,6 +15,12 @@ uint8_t openhab_ui_signal_quality(int8_t rssi);
 void openhab_ui_setup(Config *config);
 void openhab_ui_set_wifi_state(bool wifi_state);
 void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap);
+
+/* The same, asked for from a task that does not own the UI -- the web handler.
+ * It only records the request; openhab_ui_loop() carries it out. Without this
+ * the handler would rewrite the page URL out from under a fetch in progress.
+ * Same shape, and the same reason, as openhab_ui_request_theme(). */
+void openhab_ui_request_connect(const char *host, uint16_t port, const char *sitemap);
 void openhab_ui_loop(void);
 
 /* Whether the configured night mode says the night variant applies right now.
