@@ -48,9 +48,11 @@
 #endif
 
 /* 320x240 leaves very little room, so the chrome is measured rather than
- * proportional: window_create()'s vertical/5 header would eat a fifth of the
- * screen for a title this screen can afford to keep small. */
-#define HEADER_HEIGHT 30
+ * proportional -- window_create()'s vertical/5 header would eat a fifth of the
+ * screen. There is no title bar here at all: the tab bar and the footer are as
+ * much chrome as 240 px can carry, and a third bar holding only a title and a
+ * close button spent a row of settings on what the footer says and does just
+ * as well. */
 #define TAB_BAR_HEIGHT 32
 #define FOOTER_HEIGHT 34
 #define ROW_HEIGHT 30
@@ -80,7 +82,6 @@ static settings_item_t baseline;
 static lv_obj_t *screen = NULL;
 static lv_obj_t *prev_screen = NULL;
 static lv_obj_t *tabview = NULL;
-static lv_obj_t *title_label = NULL;
 
 /* One per tab: the scrollable list of rows, and the footer's message label. */
 static lv_obj_t *tab_rows[SETTINGS_TAB_COUNT];
@@ -126,8 +127,8 @@ static bool rebuild_pending = false;
 
 /* Symbols, not words: the tab bar is five buttons across 320 px, and the
  * condensed LCARS face at 16 px still cannot fit "openHAB" and "Sensors" into
- * 64 px each. The header title names the active tab instead, which is more
- * legible than a clipped label would be. */
+ * 64 px each. The footer names the active tab instead, which is more legible
+ * than a clipped label would be. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
     LV_SYMBOL_WIFI, LV_SYMBOL_HOME, LV_SYMBOL_EYE_OPEN, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
 
@@ -302,10 +303,9 @@ static void overlay_close(void)
  * nor take a touch that was aimed at the overlay.
  *
  * IGNORE_LAYOUT is what makes "full-screen" true. The screen is a column flex
- * of header and tabview, and without it the overlay becomes a third item of
- * that column -- placed *below* the header rather than over it, 240 px tall
- * starting 30 px down, with its bottom row off the display. On the keyboard
- * that row is the one carrying LVGL's OK and cancel keys. */
+ * whose one item, the tabview, grows to fill it; without the flag the overlay
+ * becomes a second item, laid out *after* the tabview at the bottom edge and
+ * 240 px tall from there, so all but its top edge falls off the display. */
 static lv_obj_t *overlay_create(void)
 {
     overlay_close();
@@ -835,7 +835,7 @@ static void wlan_save_event(lv_event_t *e)
     BEEPER_EVENT_CHANGE();
     wlan_state_update();
 #else
-    status_set(SETTINGS_TAB_WLAN, "No radio (simulator)");
+    status_set(SETTINGS_TAB_WLAN, "No radio (sim)");
 #endif
 }
 
@@ -1009,8 +1009,11 @@ static void tab_changed_event(lv_event_t *e)
 
     uint32_t tab = lv_tabview_get_tab_active(tabview);
 
-    if (tab < SETTINGS_TAB_COUNT)
-        lv_label_set_text_fmt(title_label, "Settings: %s", tab_title[tab]);
+    /* Leaving a tab and coming back clears what the last action reported. A
+     * message stays as long as the user is looking at the tab that caused it,
+     * which is the whole of its useful life. */
+    if (tab < SETTINGS_TAB_COUNT && tab_status[tab] != NULL)
+        lv_label_set_text(tab_status[tab], tab_title[tab]);
 }
 
 static void close_event(lv_event_t *e)
@@ -1062,10 +1065,25 @@ static lv_obj_t *tab_page_build(uint8_t tab)
     lv_obj_set_style_pad_ver(footer, 0, 0);
     lv_obj_set_style_pad_column(footer, 4, 0);
 
+    /* First child, so close sits in the same place on all five tabs and never
+     * lands where Save was a moment ago -- the footer's other buttons differ
+     * per tab, this one must not appear to move. */
+    lv_obj_add_event_cb(button_create(footer, LV_SYMBOL_CLOSE), close_event, LV_EVENT_CLICKED,
+                        NULL);
+
+    /* At rest this names the tab, which is the job the title bar used to do for
+     * the symbol-only tab buttons; an action's result replaces it until the
+     * user leaves the tab. */
     tab_status[tab] = lv_label_create(footer);
-    lv_label_set_text(tab_status[tab], "");
+    lv_label_set_text(tab_status[tab], tab_title[tab]);
     lv_label_set_long_mode(tab_status[tab], LV_LABEL_LONG_DOT);
     lv_obj_set_flex_grow(tab_status[tab], 1);
+    /* DOT only writes its dots in the last line that still fits the height, so
+     * at LV_SIZE_CONTENT it never dots at all: it wraps, grows a second line,
+     * and the longest message ("Applied, not saved") spills out of a bar that
+     * neither scrolls nor clips. One line of the header font is the height
+     * that makes DOT do what it is here for. */
+    lv_obj_set_height(tab_status[tab], lv_font_get_line_height(ui_style_theme()->font_normal));
 
     if (tab == SETTINGS_TAB_INFO)
     {
@@ -1083,6 +1101,10 @@ static lv_obj_t *tab_page_build(uint8_t tab)
         lv_obj_add_event_cb(button_create(footer, "Save"), save_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)tab);
     }
+
+    /* Appends the LCARS end cap, so it has to follow the buttons. This is the
+     * bar that used to be the header, and it keeps the header's decoration. */
+    ui_style_decorate_window(footer);
 
     return rows;
 }
@@ -1154,28 +1176,6 @@ static void screen_build(uint8_t tab)
 
     lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
 
-    /* The same header window_create() builds, minus the vertical/5 height:
-     * a title, a close button and whatever decoration the theme adds. */
-    lv_obj_t *header = lv_obj_create(screen);
-
-    lv_obj_remove_flag(header, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(header, lv_pct(100), HEADER_HEIGHT);
-    lv_obj_add_style(header, &ui_style_win_header, LV_PART_MAIN);
-    lv_obj_set_style_pad_ver(header, 0, 0);
-    lv_obj_set_style_pad_hor(header, 5, 0);
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    title_label = lv_label_create(header);
-    lv_label_set_long_mode(title_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(title_label, 1);
-
-    lv_obj_t *close_btn = button_create(header, LV_SYMBOL_CLOSE);
-    lv_obj_add_event_cb(close_btn, close_event, LV_EVENT_CLICKED, NULL);
-
-    ui_style_decorate_window(header);
-
     tabview = lv_tabview_create(screen);
     lv_tabview_set_tab_bar_size(tabview, TAB_BAR_HEIGHT);
     lv_obj_set_width(tabview, lv_pct(100));
@@ -1220,7 +1220,6 @@ static void screen_build(uint8_t tab)
     lv_obj_add_event_cb(tabview, tab_changed_event, LV_EVENT_VALUE_CHANGED, NULL);
 
     lv_tabview_set_active(tabview, tab, LV_ANIM_OFF);
-    lv_label_set_text_fmt(title_label, "Settings: %s", tab_title[tab]);
 }
 
 /* ------------------------------------------------------------------- API */
@@ -1240,7 +1239,6 @@ void ui_settings_open(enum settings_tab_e tab)
         /* Already up: treat this as a request for that tab, the way the single
          * open_window slot in openhab_ui.cpp stops a second window stacking. */
         lv_tabview_set_active(tabview, tab, LV_ANIM_OFF);
-        lv_label_set_text_fmt(title_label, "Settings: %s", tab_title[tab]);
         return;
     }
 
@@ -1295,7 +1293,6 @@ void ui_settings_close(void)
 
     screen = NULL;
     tabview = NULL;
-    title_label = NULL;
     rebuild_pending = false;
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
