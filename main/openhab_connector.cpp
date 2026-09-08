@@ -1,6 +1,7 @@
 #include "openhab_connector.hpp"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -265,8 +266,7 @@ int Sitemap::openlink(const char* url)
     const char *payload = payload_string.c_str();
 
 #if DEBUG_OPENHAB_CONNECTOR
-    Serial.println(httpCode);
-    Serial.println(payload);
+    printf("Sitemap::openlink: httpCode %d, payload:\r\n%s\r\n", httpCode, payload);
 #endif
 #endif
 
@@ -298,8 +298,7 @@ int Sitemap::openlink(const char* url)
         /* ArduinoJson 7 dropped memoryUsage() -- it always returns zero. The
          * serialized size is the closest figure that still says something
          * about how big the page was. */
-        Serial.print("Doc serialized size: ");
-        Serial.println(measureJson(doc));
+        printf("Doc serialized size: %u\r\n", (unsigned)measureJson(doc));
 #endif
 
         // Save current and last page urls

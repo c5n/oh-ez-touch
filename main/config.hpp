@@ -5,6 +5,8 @@
 #include <ArduinoJson.h>
 #include <stdlib.h>
 #include "debug.h"
+
+#include "esp_log.h"
 #include "ui_theme.hpp"
 #if (SIMULATOR == 0)
 #include "SPIFFS.h"
@@ -91,7 +93,7 @@ public:
 #if (SIMULATOR != 1)
         if (!SPIFFS.begin())
         {
-            Serial.println("Failed to mount file system");
+            ESP_LOGE("config", "Failed to mount file system");
             return false;
         }
         return true;
@@ -120,8 +122,8 @@ public:
             configFile.close();
             /* Say by how much: a file that grew past the limit reads as "every
              * setting reverted to its default", which is otherwise a puzzle. */
-            Serial.printf("Config file size %u is too large (max %u)\r\n",
-                          (unsigned)size, (unsigned)CONFIG_FILE_MAX_SIZE);
+            ESP_LOGE("config", "Config file size %u is too large (max %u)",
+                     (unsigned)size, (unsigned)CONFIG_FILE_MAX_SIZE);
             return false;
         }
 
@@ -138,7 +140,7 @@ public:
         auto error = deserializeJson(doc, buf.get(), read_size);
         if (error)
         {
-            Serial.println("Failed to parse config file");
+            ESP_LOGE("config", "Failed to parse config file");
             return false;
         }
 
@@ -163,7 +165,7 @@ public:
         strlcpy(item.openhab.sensors.bme280.items.humidity, doc["openhab"]["sensors"]["bme280"]["items"]["humidity"] | "", sizeof(item.openhab.sensors.bme280.items.humidity));
         strlcpy(item.openhab.sensors.bme280.items.pressure, doc["openhab"]["sensors"]["bme280"]["items"]["pressure"] | "", sizeof(item.openhab.sensors.bme280.items.pressure));
 #if DEBUG_CONFIG
-        Serial.println("Config::loadConfig: Loaded Values");
+        printf("Config::loadConfig: Loaded Values\r\n");
         debug_printf("  item.general.hostname: %s\r\n", item.general.hostname);
         debug_printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);
         debug_printf("  item.ntp.gmt_offset: %d\r\n", item.ntp.gmt_offset);
@@ -238,7 +240,7 @@ public:
         File configFile = SPIFFS.open(config_filename, "w");
         if (!configFile)
         {
-            Serial.println("Failed to open config file for writing");
+            ESP_LOGE("config", "Failed to open config file for writing");
             return false;
         }
 

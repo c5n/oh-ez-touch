@@ -443,7 +443,7 @@ Contact: c5n AT posteo DOT de
 - [x] main: Add setup wizard with WLAN credential input instead of portal procedure -- on the panel too, see [Settings on the screen](#settings-on-the-screen)
 - [ ] doc: Retake the web interface screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages
 - [ ] build: Replace ```-O0``` in ```[common] build_flags```. It applies to about 402 KB of compiled text (LVGL, TFT_eSPI, the Arduino libraries, ```src/```) while the prebuilt ESP-IDF archives are already ```-Os```; ```-Os``` should free 100-150 KB, and ```-fno-exceptions``` a slice of the 70 KB of exception tables in those units. Measure before believing it.
-- [ ] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA```. It is disabled in every environment, but its unconditional references keep ArduinoOTA, ESPmDNS and mdns linked -- about 4 KB of flash for dead code.
+- [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] sensors: Sensors should submit update instead of command
 - [ ] sensors: Support DS18B20 onewire sensors
 

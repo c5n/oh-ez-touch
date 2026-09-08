@@ -431,7 +431,7 @@ static void webui_handle_save()
     config->saveConfig();
 
 #if DEBUG_WEBUI
-    Serial.println("webui: settings saved");
+    printf("webui: settings saved\r\n");
 #endif
 
     /* Re-apply everything that does not need a reboot -- the theme, the openHAB
@@ -522,7 +522,7 @@ void webui_setup(Config *config)
         }
 
         if (f->offset + width > sizeof(settings_item_t))
-            Serial.printf("settings: field '%s' runs past Config::item\r\n", f->name);
+            printf("settings: field '%s' runs past Config::item\r\n", f->name);
     }
 #endif
 

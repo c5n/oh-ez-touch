@@ -12,6 +12,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <stdio.h>
 #include <string.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
@@ -75,7 +76,7 @@ bool wlan_credentials_set(const char *ssid, const char *psk)
     if (pref.begin(WLAN_NVS_NAMESPACE, false) == false)
     {
 #if DEBUG_WLAN
-        Serial.println("wlan: cannot open " WLAN_NVS_NAMESPACE " for writing");
+        printf("wlan: cannot open " WLAN_NVS_NAMESPACE " for writing\r\n");
 #endif
         return false;
     }
@@ -147,7 +148,7 @@ static bool wlan_import_blob(char *ssid, size_t ssid_size, char *psk, size_t psk
     {
 #if DEBUG_WLAN
         if (size != 0)
-            Serial.printf("wlan: implausible AC_CREDT blob of %u bytes\r\n", (unsigned)size);
+            printf("wlan: implausible AC_CREDT blob of %u bytes\r\n", (unsigned)size);
 #endif
         pref.end();
         return false;
@@ -218,7 +219,7 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
     if (wlan_import_sdk(ssid, ssid_size, psk, psk_size) == true)
     {
 #if DEBUG_WLAN
-        Serial.printf("wlan: imported '%s' from the SDK station config\r\n", ssid);
+        printf("wlan: imported '%s' from the SDK station config\r\n", ssid);
 #endif
         return true;
     }
@@ -226,7 +227,7 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
     if (wlan_import_blob(ssid, ssid_size, psk, psk_size) == true)
     {
 #if DEBUG_WLAN
-        Serial.printf("wlan: imported '%s' from the AutoConnect blob\r\n", ssid);
+        printf("wlan: imported '%s' from the AutoConnect blob\r\n", ssid);
 #endif
         return true;
     }
@@ -304,9 +305,9 @@ static void wlan_ap_raise(void)
     wlan_ap_deadline = millis() + WLAN_AP_TIMEOUT;
 
 #if DEBUG_WLAN
-    Serial.printf("wlan: AP '%s' up at %s\r\n",
-                  wlan_config->item.general.hostname,
-                  WiFi.softAPIP().toString().c_str());
+    printf("wlan: AP '%s' up at %s\r\n",
+           wlan_config->item.general.hostname,
+           WiFi.softAPIP().toString().c_str());
 #endif
 }
 
@@ -320,7 +321,7 @@ static void wlan_ap_drop(void)
     wlan_ap_is_up = false;
 
 #if DEBUG_WLAN
-    Serial.println("wlan: AP down");
+    printf("wlan: AP down\r\n");
 #endif
 }
 
@@ -332,7 +333,7 @@ static void wlan_connect_begin(void)
     wlan_connect_deadline = millis() + WLAN_CONNECT_TIMEOUT;
 
 #if DEBUG_WLAN
-    Serial.printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
+    printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
 #endif
 }
 
@@ -400,7 +401,7 @@ void wlan_setup(Config *config)
     wlan_current = WLAN_PORTAL;
 
 #if DEBUG_WLAN
-    Serial.println("wlan: no credentials, waiting to be provisioned");
+    printf("wlan: no credentials, waiting to be provisioned\r\n");
 #endif
 }
 
@@ -416,7 +417,7 @@ void wlan_loop(void)
             wlan_ap_spent = false;
 
 #if DEBUG_WLAN
-            Serial.printf("wlan: online as %s\r\n", WiFi.localIP().toString().c_str());
+            printf("wlan: online as %s\r\n", WiFi.localIP().toString().c_str());
 #endif
         }
         else if (wlan_due(wlan_connect_deadline) == true)

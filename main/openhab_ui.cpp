@@ -14,6 +14,8 @@
 #include "version.h"
 #include "debug.h"
 
+#include "esp_log.h"
+
 #if (SIMULATOR != 1)
 #include <HTTPClient.h>
 #endif
@@ -695,8 +697,7 @@ static void window_item_setpoint_event_handler(lv_event_t *e)
         return;
 
 #if DEBUG_OPENHAB_UI
-    Serial.print("window_item_setpoint_event_handler: btn_text = ");
-    Serial.println(txt);
+    printf("window_item_setpoint_event_handler: btn_text = %s\r\n", txt);
 #endif
     if (strcmp(txt, LV_SYMBOL_PLUS) == 0)
     {
@@ -901,8 +902,8 @@ void update_state_widget(struct widget_context_s *ctx)
     }
 
     default:
-        Serial.print("update_state_widget: unknown or unsupported item type id: ");
-        Serial.println(ctx->item->getType());
+        ESP_LOGW("openhab_ui", "update_state_widget: unknown or unsupported item type id: %d",
+                 (int)ctx->item->getType());
         break;
     }
 }
@@ -1467,8 +1468,7 @@ void openhab_ui_loop(void)
             openhab_ui_infolabel.destroy();
             show(content);
 #if DEBUG_OPENHAB_UI && (SIMULATOR != 1)
-            Serial.print("Free Heap: ");
-            Serial.println(ESP.getFreeHeap());
+            printf("Free Heap: %u\r\n", (unsigned)ESP.getFreeHeap());
 #endif
             statistics.sitemap_success_cnt++;
         }
@@ -1545,7 +1545,7 @@ void openhab_ui_loop(void)
         update_ntp_next_timestamp = millis() + NTP_TIME_UPDATE_INTERVAL;
 
 #if DEBUG_OPENHAB_UI
-        Serial.print("openhab_ui_loop: update time using ntp");
+        printf("openhab_ui_loop: update time using ntp\r\n");
 #endif
         configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
     }
@@ -1576,7 +1576,7 @@ void openhab_ui_loop(void)
         }
 
 #if DEBUG_OPENHAB_UI
-        Serial.print("STATISTICS reset\r\n");
+        printf("STATISTICS reset\r\n");
 #endif
         statistics.update_fail_cnt = 0;
         statistics.update_success_cnt = 0;

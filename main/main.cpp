@@ -1,171 +1,447 @@
-/**
- * @file main.cpp
+#include <Arduino.h>
+//#include "lv_conf.h"
+#include <lvgl.h>
+#include "version.h"
+#include "config.hpp"
+#include "debug.h"
+
+#include "openhab_ui.hpp"
+#include "settings_fields.hpp"
+#include "ui_infolabel.hpp"
+#include "ui_settings.hpp"
+
+#if (SIMULATOR == 0)
+#include <TFT_eSPI.h>
+#if (TOUCH_DRIVER_FT6X36 == 1)
+#include <Wire.h>
+#include "TouchDrv.hpp"
+#endif
+#include "esp_wifi.h"
+#include "webui.hpp"
+#include "wlan.hpp"
+#include "WiFi.h"
+#include "driver/backlight_control.hpp"
+#include "driver/beeper_control.hpp"
+#include "openhab_sensor_main.hpp"
+#else
+#include <unistd.h>
+#define SDL_MAIN_HANDLED        /*To fix SDL's "undefined reference to WinMain" issue*/
+#include <SDL2/SDL.h>
+/* Display and input come from LVGL's own SDL driver, enabled by LV_USE_SDL in
+ * lv_conf.h. The vendored copy of the (abandoned) lv_drivers SDL backend that
+ * used to live in src/sdl is gone. */
+#include <drivers/sdl/lv_sdl_window.h>
+#include <drivers/sdl/lv_sdl_mouse.h>
+#endif
+
+#ifndef DEBUG_WLAN_STATES
+#define DEBUG_WLAN_STATES 0
+#endif
+
+#ifndef DEBUG_DISPLAY_TOUCH
+#define DEBUG_DISPLAY_TOUCH 0
+#endif
+
+#ifndef TFT_BACKLIGHT_PIN
+#define TFT_BACKLIGHT_PIN 15
+#endif
+
+#ifndef TFT_BACKLIGHT_INVERT
+#define TFT_BACKLIGHT_INVERT 0
+#endif
+
+#ifndef TFT_TOUCH_FLIP
+#define TFT_TOUCH_FLIP 0
+#endif
+
+int screenWidth = 320;
+int screenHeight = 240;
+
+#if (SIMULATOR != 1)
+BacklightControl tft_backlight;
+TFT_eSPI tft = TFT_eSPI(); // TFT instance
+#endif
+
+#if (TOUCH_DRIVER_FT6X36 == 1)
+TouchDrvFT6X36 touch_ft6x36;
+#endif
+
+#if (SIMULATOR != 1)
+/* One tenth of the screen, as before. Note this must NOT be an lv_color_t
+ * array: in LVGL v9 lv_color_t is a 3-byte {b,g,r} struct regardless of
+ * LV_COLOR_DEPTH, so sizing it that way would allocate the wrong number of
+ * bytes for an RGB565 panel. lv_display_set_buffers() takes bytes too.
+ * The simulator needs none of this: lv_sdl_window_create() brings its own. */
+static LV_ATTRIBUTE_MEM_ALIGN uint8_t draw_buf[320 * 10 * (LV_COLOR_DEPTH / 8)];
+#endif
+
+Config config;
+Infolabel infolabel;
+
+/* Re-apply every setting that does not need a reboot. Declared in
+ * settings_fields.hpp and called from both save paths -- the web form in
+ * webui.cpp and the touch settings screen in ui_settings.cpp -- so that the two
+ * agree on what a save actually does. It lives here because this is where the
+ * backlight and the beeper are owned.
  *
- * Skeleton entry point for the ESP-IDF build. The application still lives in
- * src/ and is built by platformio.ini; this file exists so that the new build
- * system can be exercised end to end -- LVGL, lodepng and ArduinoJson all link,
- * and on the linux target an SDL window actually opens -- before any
- * application code moves.
- */
+ * Everything it touches used to be read once in setup() and never again, which
+ * is why the openHAB host, the backlight levels and the beeper were effectively
+ * restart-only settings without ever saying so. The theme goes through
+ * openhab_ui_request_theme(), which only records a request: this is reachable
+ * from the web handler, where lv_timer_handler() is not being pumped and
+ * nothing may touch LVGL. Disabling the beeper needs no call at all -- the
+ * per-touch blip below reads config.item.beeper.enabled live. */
+void settings_apply_live(Config *config)
+{
+    openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#if (SIMULATOR != 1)
+    openhab_ui_connect(config->item.openhab.hostname, config->item.openhab.port,
+                       config->item.openhab.sitemap);
 
-#include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+    tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
+    tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
+    tft_backlight.setDimBrightness(config->item.backlight.dim_brightness);
 
-#include "lvgl.h"
-#include "lodepng/lodepng.h"
-#include "ArduinoJson.h"
+    if (config->item.beeper.enabled == true)
+        beeper_enable();
+#endif
+}
 
-#include "port/ohez_port.h"
+/* LVGL's tick source. Wrapping millis() is not cosmetic: lv_tick_get_cb_t
+ * returns uint32_t, while millis() returns unsigned long, which is 64 bit on
+ * the simulator host. This replaces both the v7 Ticker ISR on the device and
+ * the SDL driver's tick thread. */
+static uint32_t ui_tick_get(void)
+{
+    return (uint32_t)millis();
+}
 
-static const char *TAG = "ohez";
-
-/* lv_conf.h sets LV_LOG_PRINTF 0 because printf() from more than one task is
- * documented-unsafe on the FreeRTOS POSIX simulator. */
-static void ui_log_print(lv_log_level_t level, const char *buf)
+#if LV_USE_LOG != 0
+// Serial debugging
+static void my_print(lv_log_level_t level, const char *buf)
 {
     LV_UNUSED(level);
-    ESP_LOGI("lvgl", "%s", buf);
+    debug_printf("%s\r\n", buf);
+}
+#endif
+
+#if (SIMULATOR != 1)
+// Display flushing
+void my_disp_flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
+{
+    uint32_t w = lv_area_get_width(area);
+    uint32_t h = lv_area_get_height(area);
+
+    /* LV_COLOR_16_SWAP is gone in v9; the byte order is the driver's business.
+     * pushColors(uint16_t *, len, true) swaps as it writes, which is what the
+     * v7 code relied on -- so no lv_draw_sw_rgb565_swap() here. The cast
+     * matters: the uint8_t * overload takes a byte count and does not swap. */
+    tft.startWrite();
+    tft.setAddrWindow(area->x1, area->y1, w, h);
+    tft.pushColors((uint16_t *)px_map, w * h, true);
+    tft.endWrite();
+
+    lv_display_flush_ready(disp);
 }
 
-/* Touch each component once, so that a missing REQUIRES or a broken
- * LODEPNG_NO_COMPILE_* combination fails here rather than in a later commit. */
-static void smoke_test_components(void)
+void my_touchpad_read(lv_indev_t *indev, lv_indev_data_t *data)
 {
-    JsonDocument doc;
-    if (deserializeJson(doc, "{\"sitemap\":\"oheztouch\"}") == DeserializationError::Ok) {
-        ESP_LOGI(TAG, "ArduinoJson: sitemap=%s", doc["sitemap"].as<const char *>());
-    }
-    ESP_LOGI(TAG, "lodepng: %s", lodepng_error_text(0));
-    ESP_LOGI(TAG, "LVGL %d.%d.%d", lv_version_major(), lv_version_minor(),
-             lv_version_patch());
-}
+    static unsigned long suppress_touch_timeout;
+    static int32_t last_x = 0;
+    static int32_t last_y = 0;
 
-/* The same for the port layer. Every call here is one an application module
- * will make in a later commit; doing it now means a port that does not work is
- * found here rather than half way through moving src/. */
-static void smoke_test_port(void)
-{
-    struct tm now;
+    uint16_t touchX, touchY;
+    bool touched = false;
 
-    ESP_LOGI(TAG, "port_millis=%llu port_micros=%llu",
-             (unsigned long long)port_millis(), (unsigned long long)port_micros());
-    ESP_LOGI(TAG, "port_free_heap=%u bytes", (unsigned)port_free_heap());
-    ESP_LOGI(TAG, "port_localtime: %s",
-             port_localtime(&now) ? asctime(&now) : "not synchronised yet");
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    /* SensorLib 0.4 deprecated getPoint() in favour of getTouchPoints(); the old
+     * call was only a shim around it. The arrays are zeroed because they used to
+     * be left uninitialised when the panel reported no point at all. */
+    int16_t ftx[2] = { 0, 0 }; int16_t fty[2] = { 0, 0 };
+    const TouchPoints &ftpoints = touch_ft6x36.getTouchPoints();
 
-    if (port_storage_init() == ESP_OK)
+    for (uint8_t i = 0; (i < ftpoints.getPointCount()) && (i < 2); i++)
     {
-        /* Read data/config.json, which the device gets from the flashed spiffs
-         * image and the host from its config directory. Read-only: overwriting
-         * it here would destroy a real configuration. */
-        ssize_t size = port_storage_size("config.json");
+        ftx[i] = (int16_t)ftpoints.getPoint(i).x;
+        fty[i] = (int16_t)ftpoints.getPoint(i).y;
+    }
 
-        if (size < 0)
+    touched = (ftpoints.getPointCount() >= 1);
+#if DEBUG_DISPLAY_TOUCH
+    if (touched == true)
+        debug_printf("DISPLAY_TOUCH x[0]: %d y[0] %d  x[1]: %d y[1] %d\r\n", ftx[0], fty[0], ftx[1], fty[1]);
+#endif
+
+    touchX = (fty[0] > 0) ? (uint16_t)fty[0] : 0;
+    //touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = (ftx[0] > 0) ? (uint16_t)ftx[0] : 0;
+    touchY = screenHeight - touchY;
+    //touchY = screenHeight - (ftx[0] > 0 && ftx[0] <= screenHeight) ? ftx[0] : 0;
+#else
+    touched = tft.getTouch(&touchX, &touchY, 350);
+#endif
+
+#if TFT_TOUCH_FLIP
+    touchX = screenWidth - touchX;
+    touchY = screenHeight - touchY;
+#endif
+
+    if ((long)(millis() - suppress_touch_timeout) < 0)
+    {
+        return;
+    }
+
+#if (SIMULATOR != 1)
+    if (touched == true && tft_backlight.resetDimTimeout() == true)
+    {
+        if (config.item.beeper.enabled == true)
+            beeper_playNote(NOTE_C4, 50, 100, 0);
+        suppress_touch_timeout = millis() + 200;
+        return;
+    }
+#endif
+#if DEBUG_DISPLAY_TOUCH
+    if (touched == true)
+        debug_printf("DISPLAY_TOUCH x: %u y %u\r\n", touchX, touchY);
+#endif
+
+    if (touchX <= screenWidth && touchY <= screenHeight)
+    {
+        data->state = touched ? LV_INDEV_STATE_PRESSED : LV_INDEV_STATE_RELEASED;
+
+        // Save the state and save the pressed coordinate
+        if (data->state == LV_INDEV_STATE_PRESSED)
         {
-            ESP_LOGW(TAG, "port_storage: no config.json in the store yet");
+            last_x = touchX;
+            last_y = touchY;
+        }
+
+        // Set the coordinates (if released use the last pressed coordinates)
+        data->point.x = last_x;
+        data->point.y = last_y;
+    }
+#if DEBUG_DISPLAY_TOUCH
+    else
+    {
+        if (touched == true)
+            debug_printf("DISPLAY_TOUCH outside of expected parameters x: %u y %u\r\n", touchX, touchY);
+    }
+#endif
+
+    /* data->continue_reading defaults to false: we do not buffer, so there is
+     * never more data to read in one go. */
+}
+#endif /* #if (SIMULATOR != 1) */
+
+
+void setup()
+{
+    debug_init();
+
+    debug_printf("\r\n\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("*                        OhEzTouch                        *\r\n");
+    debug_printf("***********************************************************\r\n");
+    debug_printf("\r\nTarget:     %s\r\n", TARGET_NAME);
+    debug_printf("Version:    %u.%02u\r\n", VERSION_MAJOR, VERSION_MINOR);
+    debug_printf("GIT Hash:   %s\r\n", VERSION_GIT_HASH);
+    debug_printf("Build Time: %s %s\r\n\r\n",  __DATE__, __TIME__);
+
+    config.setup();
+    config.loadConfig("/config.json");
+
+    lv_init();
+
+#if LV_USE_LOG != 0
+    lv_log_register_print_cb(my_print); // register print function for debugging
+#endif
+
+#ifdef BEEPER_PIN
+    beeper_setup(BEEPER_PIN);
+
+    if (config.item.beeper.enabled == true)
+        beeper_enable();
+#endif
+
+#if (SIMULATOR != 1)
+    tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
+    tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
+    tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
+    tft_backlight.setup(TFT_BACKLIGHT_PIN, TFT_BACKLIGHT_INVERT);
+
+    tft.begin();        // TFT init
+    tft.fillScreen(TFT_PINK);
+    tft.setRotation(3); // Landscape orientation
+    tft.invertDisplay(false);
+#endif
+
+    /* Register the tick source before anything can ask LVGL for the time. */
+    lv_tick_set_cb(ui_tick_get);
+
+    // Initialize the display
+#if (SIMULATOR != 1)
+    lv_display_t *disp = lv_display_create(screenWidth, screenHeight);
+    lv_display_set_flush_cb(disp, my_disp_flush);
+    lv_display_set_buffers(disp, draw_buf, NULL, sizeof(draw_buf),
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
+#else // SIMULATOR
+    lv_display_t *disp = lv_sdl_window_create(screenWidth, screenHeight);
+    lv_sdl_window_set_zoom(disp, 2.0f);   // was -D SDL_ZOOM=2
+    lv_sdl_window_set_title(disp, "OhEzTouch");
+#endif
+
+#if (SIMULATOR != 1)
+#if (TOUCH_DRIVER_FT6X36 == 1)
+    if (!touch_ft6x36.begin(Wire, FT6X36_SLAVE_ADDRESS, TOUCH_FT6X36_SDA, TOUCH_FT6X36_SCL))
+    {
+        debug_printf("Failed to find FT6X36 - check your wiring!");
+    }
+#else
+    // Initialize input device touch
+    uint16_t calData[5] = {275, 3620, 264, 3532, 1};
+    tft.setTouch(calData);
+#endif
+#endif
+
+#if (SIMULATOR != 1)
+    lv_indev_t *indev = lv_indev_create();
+    lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER); // Touch pad is a pointer-like device
+    lv_indev_set_read_cb(indev, my_touchpad_read);
+    lv_indev_set_display(indev, disp);
+#else // SIMULATOR
+    lv_sdl_mouse_create();
+#endif
+    /* The hand-forked v7 theme is gone; the project styles its own widgets and
+     * only needs sane defaults underneath. */
+    lv_display_set_theme(disp, lv_theme_simple_init(disp));
+
+    /* Before the first widget of any kind, and before openhab_ui_setup(): the
+     * info label below is created on the top layer while WLAN is still coming
+     * up, and it draws on the shared styles rather than a private one of its
+     * own. lv_screen_active() is valid from the lv_display_create() above,
+     * which is what ui_style_init() needs to style the screen itself. */
+    ui_style_select(config.item.ui.theme, openhab_ui_night_active(&config));
+    ui_style_init();
+
+#if (SIMULATOR != 1)
+    infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
+    lv_timer_handler();
+
+    wlan_setup(&config);
+    webui_setup(&config);
+#endif
+
+    openhab_ui_setup(&config);
+    ui_settings_setup(&config);
+
+#if (SIMULATOR != 1)
+    openhab_sensor_main_setup(config);
+#else // SIMULATOR
+    openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
+    ui_settings_open_from_env();
+#endif
+}
+
+void loop()
+{
+#if (SIMULATOR == 1)
+    lv_timer_handler(); // let the GUI do its work
+    ui_settings_loop();
+    openhab_ui_loop();
+    SDL_Delay(5);
+#else
+    tft_backlight.loop();
+    lv_timer_handler(); // let the GUI do its work
+    /* Outside the WL_CONNECTED guard further down, unlike openhab_ui_loop():
+     * the settings screen is how a device with no credentials gets any, so its
+     * access point scan has to keep running while the station is offline. */
+    ui_settings_loop();
+    wlan_loop();
+    webui_loop();
+    infolabel.loop();
+
+    static wl_status_t wlan_status = WL_NO_SHIELD;
+
+    if (WiFi.status() != wlan_status)
+    {
+#if DEBUG_WLAN_STATES
+        debug_printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
+#endif
+        wlan_status = WiFi.status();
+
+        if (wlan_status == WL_CONNECTED)
+        {
+#if DEBUG_WLAN_STATES
+            printf("WiFi: WL_CONNECTED\r\n");
+#endif
+            infolabel.destroy();
+            openhab_ui_set_wifi_state(true);
+            openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
+            infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
         }
         else
         {
-            char    head[48];
-            ssize_t got = port_storage_read("config.json", head, sizeof(head) - 1);
-
-            if (got > 0)
-            {
-                head[got] = '\0';
-                ESP_LOGI(TAG, "port_storage: config.json is %d bytes, starts: %s",
-                         (int)size, head);
-            }
-        }
-
-        /* The write path, on a scratch name, so that both directions are
-         * proven without touching anything that matters. */
-        static const char probe[] = "written by smoke_test_port";
-
-        if (port_storage_write("probe.txt", probe, sizeof(probe) - 1) > 0)
-        {
-            char    back[64] = "";
-            ssize_t got      = port_storage_read("probe.txt", back, sizeof(back) - 1);
-
-            if (got > 0)
-            {
-                back[got] = '\0';
-                ESP_LOGI(TAG, "port_storage: read back \"%s\"", back);
-            }
-        }
-    }
-
-    /* port_kv: a boot counter proves that NVS persists across runs, which on
-     * the host is the whole point of port_flash_init(). */
-    if (port_kv_init() == ESP_OK)
-    {
-        char     value[16] = "";
-        unsigned boots     = 0;
-
-        if (port_kv_get_str("oheztouch", "boots", value, sizeof(value)) == ESP_OK)
-            boots = (unsigned)strtoul(value, NULL, 10);
-
-        snprintf(value, sizeof(value), "%u", boots + 1);
-
-        if (port_kv_set_str("oheztouch", "boots", value) == ESP_OK)
-            ESP_LOGI(TAG, "port_kv: boot %s (must increment across runs)", value);
-    }
-}
-
-static void ui_task(void *arg)
-{
-    LV_UNUSED(arg);
-
-    /* All LVGL init happens here rather than in app_main: LVGL's SDL backend
-     * pumps SDL from an lv_timer, so SDL_Init() and every SDL_PollEvent() run
-     * on whichever task calls lv_timer_handler(). SDL requires that to be one
-     * and the same thread. */
-    lv_init();
-    lv_log_register_print_cb(ui_log_print);
-    lv_tick_set_cb(port_tick_ms);
-
-#if CONFIG_IDF_TARGET_LINUX
-    lv_display_t *disp = lv_sdl_window_create(320, 240);
-    lv_sdl_window_set_zoom(disp, 2.0f);
-    lv_sdl_window_set_title(disp, "OhEzTouch");
-    lv_sdl_mouse_create();
-
-    lv_obj_t *label = lv_label_create(lv_screen_active());
-    lv_label_set_text_fmt(label, "oh-ez-touch\nESP-IDF skeleton\n%s", VERSION_GIT_HASH);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_center(label);
-#else
-    /* The esp_lcd display and esp_lcd_touch input ports arrive with the device
-     * bring-up commit; until then this target only proves that it links. */
-    ESP_LOGI(TAG, "no display port yet on this target");
+            /* There used to be a WL_IDLE_STATUS branch here that rebooted the
+             * device, because once AutoConnect's blocking begin() had given up
+             * nothing would ever start another attempt. wlan_loop() has a
+             * retry timer, so idle is now just a state we leave on a later
+             * tick -- and a momentary idle report can no longer reboot the
+             * device in the middle of an OTA upload. */
+#if DEBUG_WLAN_STATES
+            printf("WiFi: WLAN NOT CONNECTED\r\n");
 #endif
-
-    for (;;) {
-        uint32_t next = lv_timer_handler();
-        if (next == LV_NO_TIMER_READY) {
-            next = LV_DEF_REFR_PERIOD;
+            openhab_ui_set_wifi_state(false);
+            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
-        vTaskDelay(pdMS_TO_TICKS(next));
     }
-}
 
-extern "C" void app_main(void)
-{
-    ESP_LOGI(TAG, "oh-ez-touch %s starting", VERSION_GIT_HASH);
-    smoke_test_components();
-    smoke_test_port();
+    /* The setup access point is raised a little after the station gives up, so
+     * it needs a transition of its own rather than riding on the WiFi.status()
+     * one. This is the on-screen half of provisioning: with no captive portal
+     * there is nowhere else to learn the address from. Comparing the pointer
+     * is enough -- wlan_ap_ssid() returns either NULL or the one hostname. */
+    static const char *reported_ap = NULL;
 
-    xTaskCreate(ui_task, "ui", 16384, NULL, 5, NULL);
+    if (wlan_ap_ssid() != reported_ap)
+    {
+        reported_ap = wlan_ap_ssid();
 
-    /* Do not return on the linux target: FreeRTOS's linux port calls
-     * vTaskDelete(NULL) on the main task afterwards, and that trips an
-     * assertion in vTaskSwitchContext(). */
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        if (reported_ap != NULL)
+        {
+            uint32_t ip = wlan_ap_ip();
+            char     text[80];
+
+            snprintf(text, sizeof(text), "AP %s\nhttp://%u.%u.%u.%u", reported_ap,
+                     (unsigned)(ip & 0xFF), (unsigned)((ip >> 8) & 0xFF),
+                     (unsigned)((ip >> 16) & 0xFF), (unsigned)((ip >> 24) & 0xFF));
+
+            infolabel.create(infolabel.INFO, "Setup", text, 0);
+        }
+        else if (wlan_status != WL_CONNECTED)
+        {
+            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
+        }
     }
+
+    /* A pristine device: WLAN_PORTAL means no credentials are stored at all, so
+     * there is nothing to retry and nobody is coming to fix it. Bring up the
+     * settings screen on the WLAN tab, which is the only thing anyone can
+     * usefully do with the panel in that state. Once, so that closing it is
+     * respected -- and only for WLAN_PORTAL, never for a device that is merely
+     * offline and will reconnect by itself. */
+    static bool settings_shown_for_portal = false;
+
+    if (settings_shown_for_portal == false && wlan_state() == WLAN_PORTAL)
+    {
+        settings_shown_for_portal = true;
+        ui_settings_open(SETTINGS_TAB_WLAN);
+    }
+
+    if (wlan_status == WL_CONNECTED)
+    {
+        openhab_ui_loop();
+        openhab_sensor_main_loop(config);
+    }
+#endif
 }

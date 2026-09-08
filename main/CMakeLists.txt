@@ -1,5 +1,10 @@
-# The application component. src/ moves in here in a later commit; for now this
-# holds the port layer and a skeleton app_main() that exercises it.
+# The application component.
+#
+# The application sources moved in here from src/ but are not built yet: they
+# are still written against the Arduino framework, which no longer exists on
+# either target. They join SRCS module by module as the port layer grows under
+# them; selftest.cpp holds the app_main() that keeps both targets linking and
+# exercises what is already ported, and goes away with the last of them.
 
 # The platform boundary: one implementation directory per target, selected here.
 # This is what replaces platformio.ini's `build_src_filter` subtractions -- a
@@ -26,7 +31,7 @@ if(NOT CONFIG_IDF_TARGET_LINUX)
     list(APPEND OHEZ_REQUIRES spiffs esp_timer)
 endif()
 
-idf_component_register(SRCS "main.cpp"
+idf_component_register(SRCS "selftest.cpp"
                             "port/port_storage_stdio.c"
                             "port/port_kv.c"
                             ${OHEZ_PORT_SRCS}

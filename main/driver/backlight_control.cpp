@@ -1,6 +1,8 @@
 #include "backlight_control.hpp"
 #include "Arduino.h"
 
+#include <stdio.h>
+
 #ifndef DEBUG_BACKLIGHT_CONTROL
 #define DEBUG_BACKLIGHT_CONTROL 0
 #endif
@@ -8,8 +10,7 @@
 void BacklightControl::set_brightness(uint8_t percent)
 {
 #if DEBUG_BACKLIGHT_CONTROL
-    Serial.print("BacklightControl::set_brightness: ");
-    Serial.println(percent);
+    printf("BacklightControl::set_brightness: %u\r\n", (unsigned)percent);
 #endif
     BacklightControl::current_brightness = percent;
 
@@ -28,7 +29,7 @@ bool BacklightControl::resetDimTimeout()
     if (BacklightControl::current_brightness != BacklightControl::normal_brightness)
     {
 #if DEBUG_BACKLIGHT_CONTROL
-        Serial.println("BacklightControl::resetDimTimeout: wake up");
+        printf("BacklightControl::resetDimTimeout: wake up\r\n");
 #endif
 
         set_brightness(BacklightControl::normal_brightness);
@@ -62,7 +63,7 @@ void BacklightControl::loop()
         && (BacklightControl::current_brightness != BacklightControl::dim_brightness))
     {
 #if DEBUG_BACKLIGHT_CONTROL
-        Serial.println("BacklightControl::loop: activity timeout, dim display");
+        printf("BacklightControl::loop: activity timeout, dim display\r\n");
 #endif
         set_brightness(BacklightControl::dim_brightness);
     }

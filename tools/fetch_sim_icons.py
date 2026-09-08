@@ -4,7 +4,7 @@
 The simulator has no HTTP client, so it cannot fetch widget icons from an
 openHAB server the way the firmware does. This script downloads the icons it
 needs, rasterizes them to PNG and writes them out as C arrays that
-src/sim/icon_fixture.cpp picks up.
+main/sim/icon_fixture.cpp picks up.
 
 The generated header is NOT committed: the openHAB classic icon set is licensed
 under the EPL-2.0, which is incompatible with this project's GPL-3.0, so the
@@ -29,7 +29,7 @@ ICON_BASE_URL = (
     "org.openhab.ui.iconset.classic/src/main/resources/icons/"
 )
 
-# The icons referenced by src/sim/sitemap_fixture.cpp, plus the on/off variants
+# The icons referenced by main/sim/sitemap_fixture.cpp, plus the on/off variants
 # openHAB would serve for a switchable item. Numeric states (a dimmer at 40, a
 # rollershutter at 30) fall back to the base icon; openHAB itself picks the
 # nearest available step, which is not reproduced here.
@@ -52,7 +52,7 @@ ICON_NAMES = [
     "text",
 ]
 
-OUTPUT_PATH = os.path.join("src", "sim", "icon_fixture_data.h")
+OUTPUT_PATH = os.path.join("main", "sim", "icon_fixture_data.h")
 
 
 def find_rasterizer():
@@ -111,7 +111,7 @@ def main():
                         help="icon edge length in pixels (default: 32)")
     parser.add_argument("--max-bytes", type=int, default=5000,
                         help="reject icons larger than this; must stay within "
-                             "ICON_PNG_BUFFER_SIZE in src/openhab_ui.cpp "
+                             "ICON_PNG_BUFFER_SIZE in main/openhab_ui.cpp "
                              "(default: 5000)")
     parser.add_argument("--output", default=OUTPUT_PATH,
                         help="generated header (default: %s)" % OUTPUT_PATH)

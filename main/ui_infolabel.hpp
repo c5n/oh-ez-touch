@@ -3,6 +3,8 @@
 
 #include "Arduino.h"
 #include "ui_style.hpp"
+
+#include <stdio.h>
 #include <lvgl.h>
 
 #ifndef DEBUG_UI_INFOLABEL
@@ -85,7 +87,7 @@ public:
         if (il != NULL)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.println("Infolabel::destroy: Destroying label");
+            printf("Infolabel::destroy: Destroying label\r\n");
 #endif
             lv_obj_delete(il);
             il = NULL;
@@ -99,7 +101,7 @@ public:
         if (timeout_timestamp > 0 && (long)(millis() - timeout_timestamp) >= 0)
         {
 #if DEBUG_UI_INFOLABEL
-            Serial.println("Infolabel::loop: infolabel timeout reached");
+            printf("Infolabel::loop: infolabel timeout reached\r\n");
 #endif
             destroy();
             timeout_timestamp = 0;

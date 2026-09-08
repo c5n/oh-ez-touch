@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Regenerate the LVGL font sources in src/fonts/.
+# Regenerate the LVGL font sources in components/lvgl/fonts/.
 #
 # The fonts are committed, so this only has to run when a face, a size or a
 # glyph range changes. Each generated .c also records its own command line in
@@ -28,8 +28,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-OUT="src/fonts"
-FA=".pio/libdeps/linux/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
+OUT="components/lvgl/fonts"
+FA="components/lvgl/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
 ROBOTO="/usr/share/fonts/truetype/roboto/unhinted/RobotoTTF/Roboto-Regular.ttf"
 ANTONIO_URL="https://raw.githubusercontent.com/google/fonts/main/ofl/antonio/Antonio%5Bwght%5D.ttf"
 ANTONIO="${ANTONIO:-$(mktemp -t Antonio-XXXXXX.ttf)}"
@@ -42,7 +42,7 @@ ANTONIO="${ANTONIO:-$(mktemp -t Antonio-XXXXXX.ttf)}"
 FA_FULL="61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62189,62212,62810,63426,63650"
 FA_LARGE="61550,63650"
 
-[ -f "$FA" ] || { echo "FontAwesome subset not found: $FA (run 'pio run -e linux' once)" >&2; exit 1; }
+[ -f "$FA" ] || { echo "FontAwesome subset not found: $FA (run 'git submodule update --init' once)" >&2; exit 1; }
 [ -f "$ROBOTO" ] || { echo "Roboto not found: $ROBOTO (Debian/Ubuntu: fonts-roboto-unhinted)" >&2; exit 1; }
 
 if [ ! -s "$ANTONIO" ]; then
@@ -85,4 +85,4 @@ if [ "$FAMILY" = lcars ] || [ "$FAMILY" = all ]; then
     gen "$ANTONIO" custom_font_lcars_36 36 -r 0x20-0x7F -r 0xB0      -- "$FA_LARGE"
 fi
 
-echo "Done. Remember to declare new fonts in LV_FONT_CUSTOM_DECLARE (src/lv_conf.h)."
+echo "Done. Remember to declare new fonts in LV_FONT_CUSTOM_DECLARE (components/lvgl/lv_conf.h)."

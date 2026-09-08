@@ -2,6 +2,10 @@
 
 #include "Arduino.h"
 
+#include <stdio.h>
+
+#include "esp_log.h"
+
 #ifndef DEBUG_BEEPER_CONTROL
 #define DEBUG_BEEPER_CONTROL 0
 #endif
@@ -52,7 +56,7 @@ void beeper_enable(void)
 {
     xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH, sizeof(struct request_s));
     if (xRequestQueue == 0)
-        Serial.println("beeper_setup: Failed to create the queue");
+        ESP_LOGE("beeper", "beeper_setup: Failed to create the queue");
 
     xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL, 1, NULL);
 }
@@ -78,8 +82,7 @@ static void beeper_task(void *parameter)
         if (stack_free_new != stack_free)
         {
             stack_free = stack_free_new;
-            Serial.print("beeper_task: stack_free=");
-            Serial.println(stack_free);
+            printf("beeper_task: stack_free=%u\r\n", (unsigned)stack_free);
         }
 #endif
     }
