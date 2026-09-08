@@ -34,6 +34,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "esp_event.h"
 #include "esp_log.h"
 
 #if !CONFIG_IDF_TARGET_LINUX
@@ -140,6 +141,12 @@ static void ohez_setup(void)
      * firmware is running. */
     ESP_LOGI(TAG, "OhEzTouch %u.%02u (%s) on %s",
              VERSION_MAJOR, VERSION_MINOR, VERSION_GIT_HASH, TARGET_NAME);
+
+    /* esp_http_client publishes its progress to the default event loop, and
+     * logs an error per request when there is none -- three of them per icon.
+     * Nothing here subscribes; the loop exists so the publisher has somewhere
+     * to publish. esp_wifi and esp_netif will want it too. */
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
 
     if (config.setup() == false)
     {

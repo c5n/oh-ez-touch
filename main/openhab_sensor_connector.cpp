@@ -1,7 +1,8 @@
 #include "openhab_sensor_connector.hpp"
 
-#include "Arduino.h"
-#include <HTTPClient.h>
+#include <stdio.h>
+
+#include "openhab_http.hpp"
 
 #ifndef DEBUG_OPENHAB_SENSOR_CONNECTOR
 #define DEBUG_OPENHAB_SENSOR_CONNECTOR 0
@@ -20,22 +21,9 @@ void openhab_sensor_connector_publish(Config &cfg, const char* item, const char*
 
 #if DEBUG_OPENHAB_SENSOR_CONNECTOR
     printf("openhab_sensor_connector_publish: Requesting URL: %s\r\n", url);
-#endif
-
-    HTTPClient http;
-    http.begin(url);
-    http.addHeader("Content-Type", "text/plain");
-
-#if DEBUG_OPENHAB_SENSOR_CONNECTOR
     printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value);
 #endif
 
-    int httpCode = http.POST(value);
-
-    if (httpCode != HTTP_CODE_OK)
-    {
-        printf("openhab_sensor_connector_publish ERROR httpCode: %i URL: %s\r\n", httpCode, url);
-    }
-
-    http.end();
+    if (openhab_http_post_text(url, value) != 0)
+        printf("openhab_sensor_connector_publish ERROR URL: %s\r\n", url);
 }

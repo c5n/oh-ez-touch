@@ -1,26 +1,27 @@
-#include "sdkconfig.h"
-
 #include "openhab_connector.hpp"
 
 #include <ctype.h>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#if !CONFIG_IDF_TARGET_LINUX
-#include <HTTPClient.h>
-#else
+#include "openhab_http.hpp"
 #include "sim/icon_fixture.hpp"
+#include "sim/sim_offline.hpp"
 #include "sim/sitemap_fixture.hpp"
-#endif
 
 #ifndef DEBUG_OPENHAB_CONNECTOR
 #define DEBUG_OPENHAB_CONNECTOR 0
 #endif
 
-#ifndef DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
-#define DEBUG_OPENHAB_CONNECTOR_PACKETDUMP 0
-#endif
+/* The largest sitemap page that will be read. openHAB serves a page per
+ * navigation level and this firmware renders at most ITEM_COUNT_MAX (6)
+ * widgets from one, so the pages are small; the figure is the same order as
+ * the 12000 byte document capacity ArduinoJson 6 was given here before it
+ * learned to size itself. openhab_http_get() names it in the log when a page
+ * does not fit, which is the only way this is ever reached. */
+#define SITEMAP_PAGE_BUFFER_SIZE 12288
 
 /* JsonVariant::as<const char *>() yields NULL for a missing or non-string
  * value; the comparisons below want an empty string in that case. */
@@ -61,16 +62,18 @@ int Item::update(const char* link)
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::update: Requesting URL: %s\r\n", url);
 #endif
-#if !CONFIG_IDF_TARGET_LINUX
-    HTTPClient http;
-    http.begin(url);
+    /* The fixture pages carry a fixed state per item, so there is nothing to
+     * poll: leaving the item as it is keeps whatever the UI set locally, which
+     * is what makes a switch in offline mode look like it worked. */
+    if (sim_offline())
+        return 0;
 
-    int httpCode = http.GET();
+    char remote_state[STR_STATE_TEXT_LEN];
+    ssize_t body_len = openhab_http_get(url, remote_state, sizeof(remote_state) - 1, true);
 
-    if (httpCode == HTTP_CODE_OK)
+    if (body_len >= 0)
     {
-        char remote_state[STR_STATE_TEXT_LEN];
-        strlcpy(remote_state, http.getString().c_str(), sizeof(remote_state));
+        remote_state[body_len] = '\0';
 
         // State
         if (   type == ItemType::type_number
@@ -96,12 +99,10 @@ int Item::update(const char* link)
     }
     else
     {
-        printf("Item::update: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
+        printf("Item::update: ERROR URL: %s\r\n", url);
         retval = -1;
     }
 
-    http.end();
-#endif
     return retval;
 }
 
@@ -113,25 +114,19 @@ int Item::publish(const char* url)
     printf("Item::publish: Requesting URL: %s\r\n", url);
 #endif
 
-#if !CONFIG_IDF_TARGET_LINUX
-    HTTPClient http;
-    http.begin(url);
-    http.addHeader("Content-Type", "text/plain");
+    /* Nowhere to send it, and nothing that would come back changed. */
+    if (sim_offline())
+        return 0;
 
 #if DEBUG_OPENHAB_CONNECTOR
     printf("Item::publish: POST Message: %s\r\n", state_text);
 #endif
 
-    int httpCode = http.POST(state_text);
-
-    if (httpCode != HTTP_CODE_OK)
+    if (openhab_http_post_text(url, state_text) != 0)
     {
-        printf("Item::publish ERROR httpCode: %i URL: %s\r\n", httpCode, url);
+        printf("Item::publish ERROR URL: %s\r\n", url);
         retval = -1;
     }
-
-    http.end();
-#endif
 
     return retval;
 }
@@ -147,90 +142,46 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
-#if CONFIG_IDF_TARGET_LINUX
-    // No HTTP client in the simulator; use a compiled-in icon if there is one.
-    size_t fixture_size = 0;
-    const unsigned char *fixture_icon = sim_icon_fixture_get(name, state, &fixture_size);
-
-    if (fixture_icon != NULL && fixture_size <= buffer_size)
+    if (sim_offline())
     {
-        memcpy(buffer, fixture_icon, fixture_size);
-        icon_size = fixture_size;
-    }
-#else
-    HTTPClient http;
-    http.begin(url);
+        size_t fixture_size = 0;
+        const unsigned char *fixture_icon = sim_icon_fixture_get(name, state, &fixture_size);
 
-    int httpCode = http.GET();
-
-    // file found at server
-    if (httpCode == HTTP_CODE_OK)
-    {
-        // get lenght of document (is -1 when Server sends no Content-Length header)
-        int len = http.getSize();
-
-        // get tcp stream
-        WiFiClient *stream = http.getStreamPtr();
-
-        uint8_t *p_dst = buffer;
-        size_t dst_avail = buffer_size;
-
-#if DEBUG_OPENHAB_CONNECTOR
-        printf("Item::getIcon: Stream size %u\r\n", stream->available());
-#endif
-        stream->setTimeout(2);
-
-        // skip header which consists of length string terminated by CRLF
-        while (http.connected() && stream->available() && stream->find("\r\n", 2) == false)
-            ;
-
-        // read all data from server
-        while (http.connected() && (len > 0 || len == -1) && stream->available())
+        if (fixture_icon != NULL && fixture_size <= buffer_size)
         {
-            // get available data size
-            size_t size = stream->available();
+            memcpy(buffer, fixture_icon, fixture_size);
+            icon_size = fixture_size;
+        }
 
-            if (size > dst_avail)
-            {
-                // insuifficent space available. Abort.
-                icon_size = 0;
-                break;
-            }
+        return icon_size;
+    }
 
-            // size <= dst_avail here, so the whole chunk fits
-            int c = stream->readBytes(p_dst, size);
+    /* openHAB serves icons with chunked transfer encoding and no
+     * Content-Length. This used to be read off the raw socket through
+     * HTTPClient::getStreamPtr(), which meant hand-rolling the framing: a
+     * stream->find("\r\n") to skip the first chunk header, and then
+     * "icon_size -= 7" at the end to cut off the trailing CRLF "0" CRLF CRLF --
+     * a subtraction that was wrong for any icon arriving in more than one
+     * chunk, and was marked "ToDo: find a better solution". esp_http_client
+     * decodes the framing itself, so all of it is gone and what lands in the
+     * buffer is the PNG.
+     *
+     * A PNG too large for the buffer is no icon rather than a truncated one,
+     * which is what the old "insufficient space available. Abort." did. */
+    ssize_t read = openhab_http_get(url, buffer, buffer_size, false);
+
+    if (read < 0)
+    {
+        printf("Item::getIcon: ERROR URL: %s\r\n", url);
+        return 0;
+    }
+
+    icon_size = (size_t)read;
 
 #if DEBUG_OPENHAB_CONNECTOR
-            debug_printf("get_icon: %d bytes read\r\n", c);
-#if DEBUG_OPENHAB_CONNECTOR_PACKETDUMP
-            for (int i = 0; i < c; i++)
-                printf("%02x ", p_dst[i]);
-            printf("\r\n");
+    printf("Item::getIcon: %u bytes read\r\n", (unsigned)icon_size);
 #endif
-#endif
-            icon_size += c;
 
-            if (len > 0)
-                len -= c;
-
-            dst_avail -= c;
-            p_dst += c;
-
-            delay(5);
-        }
-    }
-    else // httpCode != HTTP_CODE_OK
-    {
-        printf("Item::getIcon: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
-    }
-
-    http.end(); //Free the resources
-
-    // remove footer which consists of CR LF "0" CR LF CR LF
-    // ToDo: find a better solution
-    if (icon_size > 7)
-        icon_size -= 7;
-#endif
     return icon_size;
 }
 
@@ -245,37 +196,56 @@ int Sitemap::openlink(const char* url)
     printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
 #endif
 
-#if CONFIG_IDF_TARGET_LINUX
-    // No HTTP client in the simulator; serve a compiled-in page instead.
-    const char *payload = sim_sitemap_fixture_get(url);
+    /* The page outlives the parse: ArduinoJson parses in place and keeps
+     * pointers into it, so this buffer has to stay alive until the last
+     * json_str() below. On the heap rather than the stack because the UI task
+     * has 8 KB of it on the device. */
+    const char *payload = NULL;
+    size_t payload_len = 0;
+    std::unique_ptr<char[]> page;
+
+    if (sim_offline())
+    {
+        payload = sim_sitemap_fixture_get(url);
+
+        if (payload == NULL)
+            printf("Sitemap::openlink: no fixture page for URL: %s\r\n", url);
+        else
+            payload_len = strlen(payload);
+    }
+    else
+    {
+        page.reset(new char[SITEMAP_PAGE_BUFFER_SIZE]);
+
+        ssize_t read = openhab_http_get(url, page.get(), SITEMAP_PAGE_BUFFER_SIZE, false);
+
+        if (read < 0)
+        {
+            printf("Sitemap::openlink: ERROR URL: %s\r\n", url);
+        }
+        else
+        {
+            payload = page.get();
+            payload_len = (size_t)read;
+        }
+    }
+
     bool payload_ok = (payload != NULL);
 
-    if (payload_ok == false)
-        printf("Sitemap::openlink: no fixture page for URL: %s\r\n", url);
-#else
-    HTTPClient http;
-    http.begin(url);
-
-    int httpCode = http.GET();
-    bool payload_ok = (httpCode == HTTP_CODE_OK);
-    String payload_string;
-
-    if (payload_ok == true)
-        payload_string = http.getString();
-    else
-        printf("Sitemap::openlink: ERROR httpCode: %i URL: %s\r\n", httpCode, url);
-
-    const char *payload = payload_string.c_str();
-
 #if DEBUG_OPENHAB_CONNECTOR
-    printf("Sitemap::openlink: httpCode %d, payload:\r\n%s\r\n", httpCode, payload);
-#endif
+    if (payload_ok == true)
+        printf("Sitemap::openlink: %u byte payload:\r\n%.*s\r\n",
+               (unsigned)payload_len, (int)payload_len, payload);
 #endif
 
     if (payload_ok == true)
     {
         // Parse JSON object
-        DeserializationError error = deserializeJson(doc, payload, DeserializationOption::NestingLimit(15));
+        /* The length is passed explicitly: the network payload is not
+         * terminated, and the char * overload parses in place without
+         * copying. */
+        DeserializationError error = deserializeJson(doc, payload, payload_len,
+                                                    DeserializationOption::NestingLimit(15));
 
         /* Both of these used to "return false", which is 0 and therefore the
          * success code of this function, so the caller kept the stale page and
@@ -539,10 +509,6 @@ int Sitemap::openlink(const char* url)
     {
         retval = -1;
     }
-
-#if !CONFIG_IDF_TARGET_LINUX
-    http.end();
-#endif
 
     return retval;
 }

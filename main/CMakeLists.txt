@@ -26,17 +26,22 @@ else()
         "port/esp32/port_flash.c")
 endif()
 
-# The UI, the openHAB client and the settings. Target-independent code, but it
-# only compiles where every port it needs exists, which today is the host.
+# The UI, the openHAB client and the settings. Target-independent code -- the
+# openHAB client genuinely so, since esp_http_client builds for both targets --
+# but it only compiles where every port it needs exists, which today is the
+# host.
 set(OHEZ_APP_SRCS
     "main.cpp"
     "config.cpp"
     "openhab_connector.cpp"
+    "openhab_http.cpp"
+    "openhab_sensor_connector.cpp"
     "openhab_ui.cpp"
     "settings_fields.cpp"
     "ui_settings.cpp"
     "ui_style.cpp"
     "sim/icon_fixture.cpp"
+    "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp")
 
 if(CONFIG_IDF_TARGET_LINUX)
@@ -45,7 +50,8 @@ else()
     set(OHEZ_SRCS "selftest.cpp")
 endif()
 
-set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition)
+set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
+                  esp_event)
 if(NOT CONFIG_IDF_TARGET_LINUX)
     # esp_timer is deliberately absent from the linux side: it registers
     # headers-only there, so esp_timer.h is not even includable -- which is

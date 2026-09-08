@@ -44,15 +44,22 @@ bool Config::setup()
  *
  *   OHEZ_THEME=lcars OHEZ_NIGHT=auto OHEZ_NIGHT_FROM=8 ./build/linux/oh-ez-touch.elf
  *
+ * and, since the simulator makes real requests now, which openHAB to talk to:
+ *
+ *   OHEZ_OPENHAB_HOST=openhab.lan OHEZ_SITEMAP=oheztouch ./build/linux/oh-ez-touch.elf
+ *
  * They apply on both targets, not just the simulator: the device has no
  * environment to read, so the calls are inert there rather than guarded. Only a
  * variable that is actually set overrides the file. */
 static void config_apply_env_overrides(decltype(Config::item) &item)
 {
-    const char *theme = getenv("OHEZ_THEME");
-    const char *night = getenv("OHEZ_NIGHT");
-    const char *from  = getenv("OHEZ_NIGHT_FROM");
-    const char *to    = getenv("OHEZ_NIGHT_TO");
+    const char *theme   = getenv("OHEZ_THEME");
+    const char *night   = getenv("OHEZ_NIGHT");
+    const char *from    = getenv("OHEZ_NIGHT_FROM");
+    const char *to      = getenv("OHEZ_NIGHT_TO");
+    const char *host    = getenv("OHEZ_OPENHAB_HOST");
+    const char *port    = getenv("OHEZ_OPENHAB_PORT");
+    const char *sitemap = getenv("OHEZ_SITEMAP");
 
     /* ui_theme_from_name() falls back to the first entry for a name it does not
      * know, so a typo here selects the default theme rather than nothing. */
@@ -67,6 +74,15 @@ static void config_apply_env_overrides(decltype(Config::item) &item)
 
     if (to != NULL)
         item.ui.night_to = (unsigned int)atoi(to);
+
+    if (host != NULL)
+        strlcpy(item.openhab.hostname, host, sizeof(item.openhab.hostname));
+
+    if (port != NULL)
+        item.openhab.port = atoi(port);
+
+    if (sitemap != NULL)
+        strlcpy(item.openhab.sitemap, sitemap, sizeof(item.openhab.sitemap));
 }
 
 bool Config::loadConfig(const char *name)

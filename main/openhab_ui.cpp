@@ -19,10 +19,6 @@
 
 #include "esp_log.h"
 
-#if !CONFIG_IDF_TARGET_LINUX
-#include <HTTPClient.h>
-#endif
-
 #include <lvgl.h>
 /* lv_image_cache_drop() is not reachable through lvgl.h. free_icon() needs it:
  * LVGL v9 caches decoded images by source pointer, and this UI frees the pixel
@@ -72,9 +68,6 @@
 
 extern void lodepng_free(void* ptr);
 
-#if !CONFIG_IDF_TARGET_LINUX
-HTTPClient http;
-#endif
 Infolabel openhab_ui_infolabel;
 
 static Config *current_config;

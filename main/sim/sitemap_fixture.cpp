@@ -13,11 +13,14 @@
 
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_LINUX
-
 #include "sitemap_fixture.hpp"
 
 #include <string.h>
+
+/* The pages are host-only: 8 KB of demo JSON is worth its space in a simulator
+ * and not in a firmware image, and the device has a real server to ask. The
+ * lookup is compiled either way and finds nothing there. */
+#if CONFIG_IDF_TARGET_LINUX
 
 #define FIXTURE_BASE "http://localhost:8080"
 
@@ -327,4 +330,12 @@ const char *sim_sitemap_fixture_get(const char *url)
     return NULL;
 }
 
-#endif /* #if CONFIG_IDF_TARGET_LINUX */
+#else /* !CONFIG_IDF_TARGET_LINUX */
+
+const char *sim_sitemap_fixture_get(const char *url)
+{
+    (void)url;
+    return NULL;
+}
+
+#endif /* CONFIG_IDF_TARGET_LINUX */
