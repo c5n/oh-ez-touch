@@ -32,7 +32,9 @@ if(OHEZ_LINUX)
         "port/linux/port_display.c"
         "port/linux/port_indev.c"
         "port/linux/port_backlight.c"
-        "port/linux/port_beeper.c")
+        "port/linux/port_beeper.c"
+        "port/linux/port_net.c"
+        "port/linux/port_ntp.c")
 else()
     set(OHEZ_PORT_SRCS
         "port/esp32/port_sys.c"
@@ -42,6 +44,8 @@ else()
         "port/esp32/port_indev.c"
         "port/esp32/port_backlight.c"
         "port/esp32/port_beeper.c"
+        "port/esp32/port_net.c"
+        "port/esp32/port_ntp.c"
         "port/esp32/board_i2c.c")
 endif()
 
@@ -66,6 +70,8 @@ set(OHEZ_APP_SRCS
     "settings_fields.cpp"
     "ui_settings.cpp"
     "ui_style.cpp"
+    "wlan.cpp"
+    "wlan_radio.cpp"
     "sim/icon_fixture.cpp"
     "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp")
@@ -73,7 +79,11 @@ set(OHEZ_APP_SRCS
 if(OHEZ_LINUX)
     set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 else()
-    set(OHEZ_SRCS "selftest.cpp")
+    # selftest.cpp is the entry point until the web UI and the OTA handler are
+    # ported. Everything else that already compiles for the device is built
+    # alongside it, so that it is checked now rather than all at once at the
+    # end -- these are compiled but not yet called.
+    set(OHEZ_SRCS "selftest.cpp" "config.cpp" "wlan.cpp" "wlan_radio.cpp")
 endif()
 
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
@@ -93,6 +103,8 @@ if(NOT OHEZ_LINUX)
         esp_driver_spi
         esp_driver_ledc
         esp_driver_i2c
+        esp_wifi
+        esp_netif
         espressif__esp_lcd_ili9341
         espressif__esp_lcd_touch
         espressif__esp_lcd_touch_ft5x06

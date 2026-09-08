@@ -40,11 +40,11 @@
 #include "driver/backlight_control.hpp"
 #include "driver/beeper_control.hpp"
 
-#if !CONFIG_IDF_TARGET_LINUX
-#include "esp_wifi.h"
-#include "webui.hpp"
+#include "port/port_ntp.h"
 #include "wlan.hpp"
-#include "WiFi.h"
+
+#if !CONFIG_IDF_TARGET_LINUX
+#include "webui.hpp"
 #include "openhab_sensor_main.hpp"
 #endif
 
@@ -201,11 +201,18 @@ static void ohez_setup(void)
     ui_style_select(config.item.ui.theme, openhab_ui_night_active(&config));
     ui_style_init();
 
-#if !CONFIG_IDF_TARGET_LINUX
-    infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
-    lv_timer_handler();
-
     wlan_setup(&config);
+
+    /* Only where there is something to wait for. On a host the link is up
+     * before the process starts, so announcing it would be a banner that says
+     * nothing and then goes away. */
+    if (wlan_state() != WLAN_ONLINE)
+    {
+        infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
+        lv_timer_handler();
+    }
+
+#if !CONFIG_IDF_TARGET_LINUX
     webui_setup(&config);
 #endif
 
@@ -214,10 +221,19 @@ static void ohez_setup(void)
 
 #if !CONFIG_IDF_TARGET_LINUX
     openhab_sensor_main_setup(config);
-#else /* CONFIG_IDF_TARGET_LINUX */
-    /* No radio to wait for: connect straight away. */
-    openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
-                       config.item.openhab.sitemap);
+#endif
+
+    port_ntp_setup(config.item.ntp.hostname, config.item.ntp.gmt_offset * 3600,
+                   config.item.ntp.daylightsaving ? 3600 : 0);
+
+    if (wlan_state() == WLAN_ONLINE)
+    {
+        openhab_ui_set_wifi_state(true);
+        openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
+                           config.item.openhab.sitemap);
+    }
+
+#if CONFIG_IDF_TARGET_LINUX
     ui_settings_open_from_env();
 #endif
 }
@@ -226,63 +242,62 @@ static void ohez_loop(void)
 {
     tft_backlight.loop();
 
-#if CONFIG_IDF_TARGET_LINUX
     lv_timer_handler(); // let the GUI do its work
-    ui_settings_loop();
-    openhab_ui_loop();
-    /* Was SDL_Delay(5). vTaskDelay() yields to the FreeRTOS scheduler, which is
-     * what the other tasks on the host target need in order to run at all. */
-    vTaskDelay(pdMS_TO_TICKS(5));
-#else
-    lv_timer_handler(); // let the GUI do its work
-    /* Outside the WL_CONNECTED guard further down, unlike openhab_ui_loop():
-     * the settings screen is how a device with no credentials gets any, so its
+
+    /* Outside the online guard further down, unlike openhab_ui_loop(): the
+     * settings screen is how a device with no credentials gets any, so its
      * access point scan has to keep running while the station is offline. */
     ui_settings_loop();
     wlan_loop();
+#if !CONFIG_IDF_TARGET_LINUX
     webui_loop();
+#endif
     infolabel.loop();
 
-    static wl_status_t wlan_status = WL_NO_SHIELD;
+    /* Seeded with the state at the first call rather than with a "nothing yet"
+     * value, so the state a target boots in is not announced as a change. That
+     * is what keeps the simulator -- which is online before it starts -- from
+     * flashing a "CONNECTED!" banner at nobody, without a guard here saying so.
+     *
+     * This used to poll WiFi.status(), which is why it was device-only. */
+    static enum wlan_state_e reported = wlan_state();
 
-    if (WiFi.status() != wlan_status)
+    if (wlan_state() != reported)
     {
 #if DEBUG_WLAN_STATES
-        debug_printf("WiFi: state change: %u -> %u\r\n", wlan_status, WiFi.status());
+        printf("WLAN: state change: %u -> %u\r\n", (unsigned)reported,
+               (unsigned)wlan_state());
 #endif
-        wlan_status = WiFi.status();
+        bool was_online = (reported == WLAN_ONLINE);
 
-        if (wlan_status == WL_CONNECTED)
+        reported = wlan_state();
+
+        if (reported == WLAN_ONLINE)
         {
-#if DEBUG_WLAN_STATES
-            printf("WiFi: WL_CONNECTED\r\n");
-#endif
             infolabel.destroy();
             openhab_ui_set_wifi_state(true);
-            openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port, config.item.openhab.sitemap);
+            openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
+                               config.item.openhab.sitemap);
             infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
         }
-        else
+        else if (was_online == true || reported == WLAN_RETRY_WAIT)
         {
-            /* There used to be a WL_IDLE_STATUS branch here that rebooted the
-             * device, because once AutoConnect's blocking begin() had given up
-             * nothing would ever start another attempt. wlan_loop() has a
-             * retry timer, so idle is now just a state we leave on a later
-             * tick -- and a momentary idle report can no longer reboot the
-             * device in the middle of an OTA upload. */
-#if DEBUG_WLAN_STATES
-            printf("WiFi: WLAN NOT CONNECTED\r\n");
-#endif
+            /* There used to be an idle branch here that rebooted the device,
+             * because once AutoConnect's blocking begin() had given up nothing
+             * would ever start another attempt. wlan_loop() has a retry timer,
+             * so idle is now just a state we leave on a later tick -- and a
+             * momentary idle report can no longer reboot the device in the
+             * middle of an OTA upload. */
             openhab_ui_set_wifi_state(false);
             infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
     }
 
     /* The setup access point is raised a little after the station gives up, so
-     * it needs a transition of its own rather than riding on the WiFi.status()
-     * one. This is the on-screen half of provisioning: with no captive portal
-     * there is nowhere else to learn the address from. Comparing the pointer
-     * is enough -- wlan_ap_ssid() returns either NULL or the one hostname. */
+     * it needs a transition of its own rather than riding on the one above.
+     * This is the on-screen half of provisioning: with no captive portal there
+     * is nowhere else to learn the address from. Comparing the pointer is
+     * enough -- wlan_ap_ssid() returns either NULL or the one hostname. */
     static const char *reported_ap = NULL;
 
     if (wlan_ap_ssid() != reported_ap)
@@ -300,7 +315,7 @@ static void ohez_loop(void)
 
             infolabel.create(infolabel.INFO, "Setup", text, 0);
         }
-        else if (wlan_status != WL_CONNECTED)
+        else if (wlan_state() != WLAN_ONLINE)
         {
             infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
@@ -320,12 +335,18 @@ static void ohez_loop(void)
         ui_settings_open(SETTINGS_TAB_WLAN);
     }
 
-    if (wlan_status == WL_CONNECTED)
+    if (wlan_state() == WLAN_ONLINE)
     {
         openhab_ui_loop();
+#if !CONFIG_IDF_TARGET_LINUX
         openhab_sensor_main_loop(config);
-    }
 #endif
+    }
+
+    /* Was SDL_Delay(5) in the simulator and nothing at all on the device, whose
+     * loop was never allowed to yield. vTaskDelay() is what lets the other
+     * tasks -- the beeper, and the web server on the device -- run. */
+    vTaskDelay(pdMS_TO_TICKS(5));
 }
 
 extern "C" void app_main(void)

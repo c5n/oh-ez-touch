@@ -9,12 +9,10 @@
 
 #include "lodepng/lodepng.h"
 #include "time.h"
-#if !CONFIG_IDF_TARGET_LINUX
-#include "WiFi.h"
-#include "uptime.h"
-#endif
 #include "version.h"
 #include "debug.h"
+#include "port/port_net.h"
+#include "port/port_ntp.h"
 #include "port/port_sys.h"
 
 #include "esp_log.h"
@@ -1090,15 +1088,23 @@ static void header_update()
         }
     }
 
-#if !CONFIG_IDF_TARGET_LINUX
     static uint64_t signal_last_update;
 
     if (port_millis() - signal_last_update >= HEADER_SIGNAL_UPDATE_INTERVAL)
     {
+        port_net_info_t net;
+
         signal_last_update = port_millis();
-        lv_label_set_text_fmt(header.item.signal, "%02d%%", openhab_ui_signal_quality(WiFi.RSSI()));
+        port_net_info(&net);
+
+        /* A wired link has no signal strength, and a percentage would be
+         * invented. Say "connected by wire" instead. */
+        if (net.rssi == PORT_NET_RSSI_WIRED)
+            lv_label_set_text(header.item.signal, LV_SYMBOL_SHUFFLE);
+        else
+            lv_label_set_text_fmt(header.item.signal, "%02d%%",
+                                  openhab_ui_signal_quality(net.rssi));
     }
-#endif
 }
 
 static void content_create(void)
@@ -1447,11 +1453,9 @@ void openhab_ui_loop(void)
 {
     static uint64_t refresh_retry_timeout;
     static uint64_t night_check_next_timestamp;
-#if !CONFIG_IDF_TARGET_LINUX
     static uint64_t update_ntp_next_timestamp;
     static uint64_t connection_error_handling_timestamp;
-#endif
-#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
+#if DEBUG_OPENHAB_UI
     static uint64_t statistics_timestamp;
 #endif
     openhab_ui_infolabel.loop();
@@ -1464,8 +1468,8 @@ void openhab_ui_loop(void)
             sitemap_ok = true;
             openhab_ui_infolabel.destroy();
             show(content);
-#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
-            printf("Free Heap: %u\r\n", (unsigned)ESP.getFreeHeap());
+#if DEBUG_OPENHAB_UI
+            printf("Free Heap: %u\r\n", (unsigned)port_free_heap());
 #endif
             statistics.sitemap_success_cnt++;
         }
@@ -1534,7 +1538,6 @@ void openhab_ui_loop(void)
         }
     }
 
-#if !CONFIG_IDF_TARGET_LINUX
     /* Plain comparisons: port_millis() is 64 bit, so there is no rollover to
      * be safe against. These used to be (long)(millis() - deadline) >= 0, which
      * meant wrap-safe arithmetic on the device and an ordinary comparison on
@@ -1546,9 +1549,13 @@ void openhab_ui_loop(void)
 #if DEBUG_OPENHAB_UI
         printf("openhab_ui_loop: update time using ntp\r\n");
 #endif
-        configTime(current_config->item.ntp.gmt_offset * 3600, current_config->item.ntp.daylightsaving == true ? 3600 : 0, current_config->item.ntp.hostname);
+        /* Re-applied rather than set once, which is what makes the NTP host,
+         * the offset and the DST flag live settings instead of restart-only
+         * ones -- settings_fields.cpp says so and this is why it is true. */
+        port_ntp_setup(current_config->item.ntp.hostname,
+                       current_config->item.ntp.gmt_offset * 3600,
+                       current_config->item.ntp.daylightsaving ? 3600 : 0);
     }
-#endif
 
     /* The automatic night schedule. Same deadline shape as above, and
      * free when nothing has changed: openhab_ui_request_theme() drops a request
@@ -1563,15 +1570,16 @@ void openhab_ui_loop(void)
 
     header_update();
 
-#if !CONFIG_IDF_TARGET_LINUX
     if (port_millis() - connection_error_handling_timestamp >= (CONNECTION_ERROR_TIMEOUT_S * 1000))
     {
         connection_error_handling_timestamp = port_millis();
 
         if ((statistics.update_fail_cnt > statistics.update_success_cnt) || (statistics.sitemap_fail_cnt > statistics.sitemap_success_cnt))
         {
-            // reboot device
-            ESP.restart();
+            /* More failures than successes for a minute: something is wedged
+             * that a restart has a fair chance of clearing. On the host this
+             * exits the process, which is the same statement. */
+            port_restart();
         }
 
 #if DEBUG_OPENHAB_UI
@@ -1582,18 +1590,18 @@ void openhab_ui_loop(void)
         statistics.sitemap_fail_cnt = 0;
         statistics.sitemap_success_cnt = 0;
     }
-#endif
 
-#if DEBUG_OPENHAB_UI && !CONFIG_IDF_TARGET_LINUX
+#if DEBUG_OPENHAB_UI
     if (port_millis() - statistics_timestamp >= (10 * 1000))
     {
+        unsigned long long up = (unsigned long long)(port_millis() / 1000);
+
         statistics_timestamp = port_millis();
 
-        uptime::calculateUptime();
-
-        debug_printf("STATISTICS Uptime: %lu days, %02lu:%02lu:%02lu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
-                      uptime::getDays(), uptime::getHours(), uptime::getMinutes(), uptime::getSeconds(),
-                      statistics.update_success_cnt, statistics.update_fail_cnt, statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
+        printf("STATISTICS Uptime: %llu days, %02llu:%02llu:%02llu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
+               up / 86400, (up / 3600) % 24, (up / 60) % 60, up % 60,
+               statistics.update_success_cnt, statistics.update_fail_cnt,
+               statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
     }
 #endif
 

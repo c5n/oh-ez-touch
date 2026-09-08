@@ -1,21 +1,27 @@
 /**
- * WLAN credentials.
+ * @file wlan.cpp
+ *
+ * WLAN credentials. The radio itself is wlan_radio.cpp.
  *
  * This firmware used to leave the radio and the credentials entirely to
- * AutoConnect. It keeps them itself now, in NVS rather than in
- * config.json -- the config file is overwritten whenever the filesystem image
- * is flashed, which would silently unprovision every device it is written to,
- * while NVS survives both that and an OTA.
+ * AutoConnect. It keeps them itself now, in NVS rather than in config.json --
+ * the config file is overwritten whenever the filesystem image is flashed,
+ * which would silently unprovision every device it is written to, while NVS
+ * survives both that and an OTA.
+ *
+ * Nothing here is device-only. NVS is emulated on the host, so the credential
+ * store, the AutoConnect migration and its blob parser all run and can be
+ * exercised there -- which matters, because the parser walks a format this
+ * project cannot produce any more.
  */
 
 #include "wlan.hpp"
 
-#include <Arduino.h>
-#include <Preferences.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <WiFi.h>
-#include <esp_wifi.h>
+
+#include "port/port_kv.h"
 
 #ifndef DEBUG_WLAN
 #define DEBUG_WLAN 0
@@ -31,82 +37,39 @@
 #define WLAN_AC_NVS_NAMESPACE "AC_CREDT"
 #define WLAN_AC_NVS_KEY       "AC_CREDT"
 
-/* The blob length comes out of a filesystem that can report anything when it
- * is corrupt, and it is used to size a malloc, so it needs a bound. Real
- * blobs run to a few hundred bytes: each entry is an SSID, a passphrase, a
- * BSSID and a flag. */
+/* The blob length comes out of a store that can report anything when it is
+ * corrupt, and it is used to size a malloc, so it needs a bound. Real blobs
+ * run to a few hundred bytes: each entry is an SSID, a passphrase, a BSSID and
+ * a flag. */
 #define WLAN_AC_CREDT_MAX 1024
-
-/* Fixed-width SDK fields are not guaranteed to be terminated when the value
- * fills them exactly, so they cannot be handed to strlcpy(). */
-static void wlan_copy_fixed(char *dst, size_t dst_size, const uint8_t *src, size_t src_size)
-{
-    size_t len = strnlen((const char *)src, src_size);
-
-    if (len >= dst_size)
-        len = dst_size - 1;
-
-    memcpy(dst, src, len);
-    dst[len] = '\0';
-}
 
 bool wlan_credentials_get(char *ssid, size_t ssid_size, char *psk, size_t psk_size)
 {
-    Preferences pref;
-
     ssid[0] = '\0';
     psk[0] = '\0';
 
-    /* A read-only begin() fails when the namespace has never been written,
-     * which is simply a device that has not been provisioned by us yet. */
-    if (pref.begin(WLAN_NVS_NAMESPACE, true) == false)
-        return false;
-
-    pref.getString(WLAN_NVS_KEY_SSID, ssid, ssid_size);
-    pref.getString(WLAN_NVS_KEY_PSK, psk, psk_size);
-    pref.end();
+    /* Either read may fail with ESP_ERR_NVS_NOT_FOUND, which is simply a device
+     * this firmware has not provisioned yet. port_kv clears the buffer on
+     * failure, so there is nothing to check but the result below. */
+    port_kv_get_str(WLAN_NVS_NAMESPACE, WLAN_NVS_KEY_SSID, ssid, ssid_size);
+    port_kv_get_str(WLAN_NVS_NAMESPACE, WLAN_NVS_KEY_PSK, psk, psk_size);
 
     return (ssid[0] != '\0');
 }
 
 bool wlan_credentials_set(const char *ssid, const char *psk)
 {
-    Preferences pref;
-
-    if (pref.begin(WLAN_NVS_NAMESPACE, false) == false)
+    if (port_kv_set_str(WLAN_NVS_NAMESPACE, WLAN_NVS_KEY_SSID, ssid) != ESP_OK)
     {
 #if DEBUG_WLAN
-        printf("wlan: cannot open " WLAN_NVS_NAMESPACE " for writing\r\n");
+        printf("wlan: cannot write " WLAN_NVS_NAMESPACE "/" WLAN_NVS_KEY_SSID "\r\n");
 #endif
         return false;
     }
 
-    bool ok = (pref.putString(WLAN_NVS_KEY_SSID, ssid) > 0);
-
     /* An open network has an empty passphrase, so a zero-length write is the
      * expected outcome there and must not read as a failure. */
-    pref.putString(WLAN_NVS_KEY_PSK, psk);
-    pref.end();
-
-    return ok;
-}
-
-/* The SDK's own station config. AutoConnect calls WiFi.persistent(true) and
- * its first connection attempt is a bare WiFi.begin(), so this holds the
- * credential the device actually last used -- which is the one thing its own
- * blob cannot tell us (see below). */
-static bool wlan_import_sdk(char *ssid, size_t ssid_size, char *psk, size_t psk_size)
-{
-    wifi_config_t conf;
-
-    if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK)
-        return false;
-
-    if (conf.sta.ssid[0] == '\0')
-        return false;
-
-    wlan_copy_fixed(ssid, ssid_size, conf.sta.ssid, sizeof(conf.sta.ssid));
-    wlan_copy_fixed(psk, psk_size, conf.sta.password, sizeof(conf.sta.password));
+    port_kv_set_str(WLAN_NVS_NAMESPACE, WLAN_NVS_KEY_PSK, (psk != NULL) ? psk : "");
 
     return true;
 }
@@ -128,61 +91,55 @@ static bool wlan_import_sdk(char *ssid, size_t ssid_size, char *psk, size_t psk_
  * Only the first entry is adopted, and it is not necessarily the newest:
  * AutoConnect held its credentials in a std::map keyed by SSID and
  * re-serialised them in map order, so the blob is ordered alphabetically and
- * carries no recency information whatsoever. That is exactly why the SDK
- * config above is consulted first.
+ * carries no recency information whatsoever. That is exactly why the SDK's own
+ * station config, in wlan_radio.cpp, is consulted first.
  *
  * The static-IP fields are skipped. This project has only ever been a DHCP
  * client, and adopting a static configuration from a store we are about to
  * stop using would be a surprising thing to inherit.
  */
-static bool wlan_import_blob(char *ssid, size_t ssid_size, char *psk, size_t psk_size)
+bool wlan_credentials_import_blob(char *ssid, size_t ssid_size, char *psk, size_t psk_size)
 {
-    Preferences pref;
-
-    if (pref.begin(WLAN_AC_NVS_NAMESPACE, true) == false)
-        return false;
-
-    size_t size = pref.getBytesLength(WLAN_AC_NVS_KEY);
+    ssize_t size = port_kv_blob_size(WLAN_AC_NVS_NAMESPACE, WLAN_AC_NVS_KEY);
 
     if (size < 4 || size > WLAN_AC_CREDT_MAX)
     {
 #if DEBUG_WLAN
-        if (size != 0)
+        if (size > 0)
             printf("wlan: implausible AC_CREDT blob of %u bytes\r\n", (unsigned)size);
 #endif
-        pref.end();
         return false;
     }
 
-    uint8_t *blob = (uint8_t *)malloc(size);
+    uint8_t *blob = (uint8_t *)malloc((size_t)size);
 
     if (blob == NULL)
+        return false;
+
+    if (port_kv_get_blob(WLAN_AC_NVS_NAMESPACE, WLAN_AC_NVS_KEY, blob, (size_t)size) != size)
     {
-        pref.end();
+        free(blob);
         return false;
     }
-
-    pref.getBytes(WLAN_AC_NVS_KEY, blob, size);
-    pref.end();
 
     uint8_t entries = blob[0];
     size_t  dp      = 3;
     bool    found   = false;
 
-    for (uint8_t i = 0; i < entries && dp + 1 < size; i++)
+    for (uint8_t i = 0; i < entries && dp + 1 < (size_t)size; i++)
     {
         const char *entry_ssid = (const char *)&blob[dp];
-        size_t      ssid_len   = strnlen(entry_ssid, size - dp);
+        size_t      ssid_len   = strnlen(entry_ssid, (size_t)size - dp);
 
-        if (dp + ssid_len + 1 >= size) /* unterminated: the blob is corrupt */
+        if (dp + ssid_len + 1 >= (size_t)size) /* unterminated: the blob is corrupt */
             break;
 
         dp += ssid_len + 1;
 
         const char *entry_psk = (const char *)&blob[dp];
-        size_t      psk_len   = strnlen(entry_psk, size - dp);
+        size_t      psk_len   = strnlen(entry_psk, (size_t)size - dp);
 
-        if (dp + psk_len + 1 + 6 + 1 > size)
+        if (dp + psk_len + 1 + 6 + 1 > (size_t)size)
             break;
 
         dp += psk_len + 1 + 6; /* passphrase, then the BSSID */
@@ -209,296 +166,4 @@ static bool wlan_import_blob(char *ssid, size_t ssid_size, char *psk, size_t psk
     free(blob);
 
     return found;
-}
-
-bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk_size)
-{
-    ssid[0] = '\0';
-    psk[0] = '\0';
-
-    if (wlan_import_sdk(ssid, ssid_size, psk, psk_size) == true)
-    {
-#if DEBUG_WLAN
-        printf("wlan: imported '%s' from the SDK station config\r\n", ssid);
-#endif
-        return true;
-    }
-
-    if (wlan_import_blob(ssid, ssid_size, psk, psk_size) == true)
-    {
-#if DEBUG_WLAN
-        printf("wlan: imported '%s' from the AutoConnect blob\r\n", ssid);
-#endif
-        return true;
-    }
-
-    return false;
-}
-
-/* ----------------------------------------------------------- the state machine */
-
-#ifndef WLAN_CONNECT_TIMEOUT
-#define WLAN_CONNECT_TIMEOUT (20 * 1000)
-#endif
-
-#ifndef WLAN_RETRY_INTERVAL
-#define WLAN_RETRY_INTERVAL (60 * 1000)
-#endif
-
-/* How long the access point stays up after the station connects, so that the
- * browser which just submitted the credentials gets its response. */
-#ifndef WLAN_AP_LINGER
-#define WLAN_AP_LINGER (5 * 1000)
-#endif
-
-/* How long the access point stays up per offline episode. It is an open
- * network and /update is unauthenticated, so it is not left up indefinitely
- * on a device that merely lost its WLAN -- that device keeps retrying
- * quietly instead. A device with no credentials at all is the exception: it
- * would otherwise be unreachable forever. */
-#ifndef WLAN_AP_TIMEOUT
-#define WLAN_AP_TIMEOUT (10 * 60 * 1000)
-#endif
-
-static Config           *wlan_config = NULL;
-static enum wlan_state_e wlan_current = WLAN_IDLE;
-
-static char wlan_sta_ssid_buf[WLAN_SSID_SIZE];
-static char wlan_sta_psk_buf[WLAN_PSK_SIZE];
-
-static bool wlan_ap_is_up = false;
-
-/* One access-point window per offline episode, armed again once the station
- * has been back online. */
-static bool wlan_ap_spent = false;
-
-static unsigned long wlan_connect_deadline = 0;
-static unsigned long wlan_retry_deadline = 0;
-static unsigned long wlan_ap_deadline = 0;
-static unsigned long wlan_ap_linger_deadline = 0;
-
-/* Deadlines are compared as a signed difference so that they survive the
- * millis() rollover, which is the idiom the rest of this project uses. */
-static bool wlan_due(unsigned long deadline)
-{
-    return ((long)(millis() - deadline) >= 0);
-}
-
-static void wlan_ap_raise(void)
-{
-    if (wlan_ap_is_up == true)
-        return;
-
-    /* AP_STA rather than AP: a connection attempt may well be in flight, and
-     * dropping the station would abandon it. */
-    WiFi.mode(WIFI_AP_STA);
-
-    /* Open, as AutoConnect's was (-DAUTOCONNECT_PSK='""'), and named after
-     * the host so that a rack of these is tellable apart. No softAPConfig():
-     * the core default of 192.168.4.1 is what a user expects, where
-     * AutoConnect used 172.217.28.1 -- a Google address picked to bait
-     * captive-portal detection, which is pointless without the DNS hijack we
-     * deliberately do not do. */
-    WiFi.softAP(wlan_config->item.general.hostname);
-
-    wlan_ap_is_up = true;
-    wlan_ap_deadline = millis() + WLAN_AP_TIMEOUT;
-
-#if DEBUG_WLAN
-    printf("wlan: AP '%s' up at %s\r\n",
-           wlan_config->item.general.hostname,
-           WiFi.softAPIP().toString().c_str());
-#endif
-}
-
-static void wlan_ap_drop(void)
-{
-    if (wlan_ap_is_up == false)
-        return;
-
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    wlan_ap_is_up = false;
-
-#if DEBUG_WLAN
-    printf("wlan: AP down\r\n");
-#endif
-}
-
-static void wlan_connect_begin(void)
-{
-    WiFi.begin(wlan_sta_ssid_buf, wlan_sta_psk_buf);
-
-    wlan_current = WLAN_CONNECTING;
-    wlan_connect_deadline = millis() + WLAN_CONNECT_TIMEOUT;
-
-#if DEBUG_WLAN
-    printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
-#endif
-}
-
-/* Entering an offline episode: start the retry timer, and open the access
- * point once so that a device with wrong credentials can be corrected. */
-static void wlan_go_offline(void)
-{
-    wlan_current = WLAN_RETRY_WAIT;
-    wlan_retry_deadline = millis() + WLAN_RETRY_INTERVAL;
-
-    if (wlan_ap_spent == false)
-    {
-        wlan_ap_raise();
-        wlan_ap_spent = true;
-    }
-}
-
-void wlan_setup(Config *config)
-{
-    wlan_config = config;
-
-    /* We own the credentials now, so the SDK need not write its own copy on
-     * every begin(). This also leaves AutoConnect's copy untouched, which is
-     * what lets a downgrade still find its credentials. */
-    WiFi.persistent(false);
-
-    /* Before mode(): setHostname() only records the name, which is applied
-     * when the station interface is created. AutoConnect had these the other
-     * way round, and the hostname is what tools/batchupdate.sh resolves
-     * devices by. */
-    WiFi.setHostname(config->item.general.hostname);
-
-    WiFi.mode(WIFI_STA);
-    WiFi.setSleep(false);
-    WiFi.setAutoReconnect(true);
-
-    bool have = wlan_credentials_get(wlan_sta_ssid_buf, sizeof(wlan_sta_ssid_buf),
-                                     wlan_sta_psk_buf, sizeof(wlan_sta_psk_buf));
-
-    /* Nothing of ours stored: adopt whatever AutoConnect left behind, so that
-     * a device provisioned through its portal does not have to be provisioned
-     * again. Deliberately not gated behind a "already imported" marker -- the
-     * import only runs when our own store is empty anyway, and leaving it
-     * unconditional means a device that gets downgraded and re-provisioned
-     * still migrates cleanly on the way back up. */
-    if (have == false)
-    {
-        have = wlan_credentials_import(wlan_sta_ssid_buf, sizeof(wlan_sta_ssid_buf),
-                                       wlan_sta_psk_buf, sizeof(wlan_sta_psk_buf));
-
-        if (have == true)
-            wlan_credentials_set(wlan_sta_ssid_buf, wlan_sta_psk_buf);
-    }
-
-    if (have == true)
-    {
-        wlan_connect_begin();
-        return;
-    }
-
-    /* No credentials at all. Nothing to retry, so the access point stays up
-     * without a deadline and the screen shows how to reach it. */
-    wlan_ap_raise();
-    wlan_ap_spent = true;
-    wlan_current = WLAN_PORTAL;
-
-#if DEBUG_WLAN
-    printf("wlan: no credentials, waiting to be provisioned\r\n");
-#endif
-}
-
-void wlan_loop(void)
-{
-    switch (wlan_current)
-    {
-    case WLAN_CONNECTING:
-        if (WiFi.status() == WL_CONNECTED)
-        {
-            wlan_current = WLAN_ONLINE;
-            wlan_ap_linger_deadline = millis() + WLAN_AP_LINGER;
-            wlan_ap_spent = false;
-
-#if DEBUG_WLAN
-            printf("wlan: online as %s\r\n", WiFi.localIP().toString().c_str());
-#endif
-        }
-        else if (wlan_due(wlan_connect_deadline) == true)
-        {
-            WiFi.disconnect(false);
-            wlan_go_offline();
-        }
-        break;
-
-    case WLAN_ONLINE:
-        if (WiFi.status() != WL_CONNECTED)
-            wlan_go_offline();
-        else if (wlan_ap_is_up == true && wlan_due(wlan_ap_linger_deadline) == true)
-            wlan_ap_drop();
-        break;
-
-    case WLAN_RETRY_WAIT:
-        if (wlan_ap_is_up == true && wlan_due(wlan_ap_deadline) == true)
-            wlan_ap_drop();
-
-        if (wlan_due(wlan_retry_deadline) == true)
-            wlan_connect_begin();
-        break;
-
-    case WLAN_PORTAL:
-    case WLAN_IDLE:
-    default:
-        break;
-    }
-}
-
-void wlan_reconnect(void)
-{
-    if (wlan_sta_ssid_buf[0] == '\0')
-        return;
-
-    wlan_connect_begin();
-}
-
-bool wlan_set_credentials(const char *ssid, const char *psk)
-{
-    if (ssid == NULL || ssid[0] == '\0')
-        return false;
-
-    strlcpy(wlan_sta_ssid_buf, ssid, sizeof(wlan_sta_ssid_buf));
-    strlcpy(wlan_sta_psk_buf, (psk != NULL) ? psk : "", sizeof(wlan_sta_psk_buf));
-
-    if (wlan_credentials_set(wlan_sta_ssid_buf, wlan_sta_psk_buf) == false)
-        return false;
-
-    /* The access point must survive this call: the browser that submitted the
-     * credentials is connected to it and still needs its response. It goes
-     * away on the linger timer once the station is up. */
-    wlan_ap_spent = true;
-    wlan_connect_begin();
-
-    return true;
-}
-
-enum wlan_state_e wlan_state(void)
-{
-    return wlan_current;
-}
-
-const char *wlan_ap_ssid(void)
-{
-    if (wlan_ap_is_up == false)
-        return NULL;
-
-    return wlan_config->item.general.hostname;
-}
-
-uint32_t wlan_ap_ip(void)
-{
-    if (wlan_ap_is_up == false)
-        return 0;
-
-    return (uint32_t)WiFi.softAPIP();
-}
-
-const char *wlan_sta_ssid(void)
-{
-    return wlan_sta_ssid_buf;
 }

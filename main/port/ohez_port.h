@@ -17,7 +17,7 @@
  *      implementation is an explicit, documented no-op, never an empty stub
  *      standing in for something observable.
  *
- * Ports that arrive with later commits: port_net, port_ntp, port_ota.
+ * Ports that arrive with later commits: port_ota.
  */
 #ifndef OHEZ_PORT_H
 #define OHEZ_PORT_H
@@ -27,6 +27,8 @@
 #include "port_display.h"
 #include "port_indev.h"
 #include "port_kv.h"
+#include "port_net.h"
+#include "port_ntp.h"
 #include "port_storage.h"
 #include "port_sys.h"
 

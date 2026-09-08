@@ -31,12 +31,9 @@
 #include "version.h"
 #include "wlan.hpp"
 #include "debug.h"
+#include "port/port_net.h"
 #include "port/port_sys.h"
 
-#if !CONFIG_IDF_TARGET_LINUX
-#include <WiFi.h>
-#include <uptime.h>
-#endif
 
 #include <lvgl.h>
 
@@ -330,11 +327,9 @@ static void confirm_restart_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if !CONFIG_IDF_TARGET_LINUX
-    ESP.restart();
-#else
-    overlay_close();
-#endif
+    /* Does not return on either target: the simulator exits, which is the
+     * same statement made by a process that cannot reboot itself. */
+    port_restart();
 }
 
 static void confirm_dismiss_event(lv_event_t *e)
@@ -631,7 +626,6 @@ static void scan_status_set(const char *text)
         lv_label_set_text(tab_status[SETTINGS_TAB_WLAN], text);
 }
 
-#if !CONFIG_IDF_TARGET_LINUX
 /* Keep the strongest sighting of each name and drop the rest: a mesh reports
  * the same SSID once per radio, which would otherwise fill the whole list. */
 static void scan_result_insert(const char *ssid, int8_t rssi, bool encrypted)
@@ -679,19 +673,13 @@ static void scan_results_sort(void)
         scan_results[j] = key;
     }
 }
-#endif /* #if !CONFIG_IDF_TARGET_LINUX */
 
 static void scan_start(void)
 {
-#if !CONFIG_IDF_TARGET_LINUX
     if (scan_running == true)
         return;
 
-    /* Asynchronous: a blocking scan takes seconds, during which
-     * lv_timer_handler() would not run and the panel would look dead. The
-     * connection is briefly interrupted either way, and comes back on its
-     * own -- WiFi.setAutoReconnect(true) is set in wlan_setup(). */
-    if (WiFi.scanNetworks(true) == WIFI_SCAN_FAILED)
+    if (port_net_scan_start() == false)
     {
         scan_status_set("Scan failed");
         return;
@@ -699,41 +687,18 @@ static void scan_start(void)
 
     scan_running = true;
     scan_status_set("Scanning...");
-#else
-    /* No radio on the host. A canned list, in the spirit of
-     * sim/sitemap_fixture.cpp, so the tab can be laid out and clicked through
-     * in the simulator. */
-    static const struct scan_result_s canned[] = {
-        {"FRITZ!Box 7590", -42, true},
-        {"oheztouch-lab", -55, true},
-        {"Nachbar-WLAN", -71, true},
-        {"Gastnetz", -78, false},
-        {"a-very-long-network-name-here", -88, true},
-    };
-
-    scan_result_count = 0;
-
-    for (size_t i = 0; i < sizeof(canned) / sizeof(canned[0]); i++)
-        scan_results[scan_result_count++] = canned[i];
-
-    scan_list_rebuild();
-    scan_status_set("5 networks");
-#endif
 
     BEEPER_EVENT_CHANGE();
 }
 
 static void scan_poll(void)
 {
-#if !CONFIG_IDF_TARGET_LINUX
     if (scan_running == false)
         return;
 
-    int16_t found = WiFi.scanComplete();
+    int found = port_net_scan_poll();
 
-    /* WIFI_SCAN_RUNNING until it is done; a negative value that is not that
-     * means the scan failed and there is nothing to collect. */
-    if (found == WIFI_SCAN_RUNNING)
+    if (found == PORT_NET_SCAN_RUNNING)
         return;
 
     scan_running = false;
@@ -742,15 +707,19 @@ static void scan_poll(void)
     if (found < 0)
     {
         scan_status_set("Scan failed");
-        WiFi.scanDelete();
+        port_net_scan_free();
         return;
     }
 
-    for (int16_t i = 0; i < found; i++)
-        scan_result_insert(WiFi.SSID(i).c_str(), (int8_t)WiFi.RSSI(i),
-                           WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+    for (int i = 0; i < found; i++)
+    {
+        port_net_ap_t ap;
 
-    WiFi.scanDelete();
+        if (port_net_scan_result(i, &ap) == true)
+            scan_result_insert(ap.ssid, ap.rssi, ap.encrypted);
+    }
+
+    port_net_scan_free();
     scan_results_sort();
     scan_list_rebuild();
 
@@ -758,7 +727,6 @@ static void scan_poll(void)
     snprintf(text, sizeof(text), "%u network%s", (unsigned)scan_result_count,
              (scan_result_count == 1) ? "" : "s");
     scan_status_set(text);
-#endif
 }
 
 static void scan_event(lv_event_t *e)
@@ -826,7 +794,6 @@ static void wlan_save_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if !CONFIG_IDF_TARGET_LINUX
     if (wlan_set_credentials(wlan_ssid_buf, wlan_psk_buf) == false)
     {
         status_set(SETTINGS_TAB_WLAN, "Needs an SSID");
@@ -837,9 +804,6 @@ static void wlan_save_event(lv_event_t *e)
     status_set(SETTINGS_TAB_WLAN, "Connecting...");
     BEEPER_EVENT_CHANGE();
     wlan_state_update();
-#else
-    status_set(SETTINGS_TAB_WLAN, "No radio (sim)");
-#endif
 }
 
 static void restart_event(lv_event_t *e)
@@ -859,7 +823,6 @@ static void wlan_state_update(void)
 
     char text[120];
 
-#if !CONFIG_IDF_TARGET_LINUX
     const char *state;
 
     switch (wlan_state())
@@ -885,10 +848,17 @@ static void wlan_state_update(void)
      * about five visible rows, and the RSSI and the rest of the addresses are
      * one tab away on Info. */
     if (wlan_state() == WLAN_ONLINE)
-        snprintf(text, sizeof(text), "%s: %s  %s", state, wlan_sta_ssid(),
-                 WiFi.localIP().toString().c_str());
+    {
+        port_net_info_t net;
+
+        port_net_info(&net);
+        snprintf(text, sizeof(text), "%s: %s  %s", state,
+                 (wlan_sta_ssid()[0] != '\0') ? wlan_sta_ssid() : net.ssid, net.ip);
+    }
     else
+    {
         snprintf(text, sizeof(text), "%s: %s", state, wlan_sta_ssid());
+    }
 
     /* The setup access point is the only route in on a pristine device, and
      * the banner that used to say so is hidden while this screen is up. */
@@ -903,9 +873,6 @@ static void wlan_state_update(void)
                  (unsigned)((ip >> 8) & 0xFF), (unsigned)((ip >> 16) & 0xFF),
                  (unsigned)((ip >> 24) & 0xFF));
     }
-#else
-    snprintf(text, sizeof(text), "no radio (simulator)");
-#endif
 
     lv_label_set_text(wlan_state_label, text);
 }
@@ -972,34 +939,41 @@ static void info_tab_build(lv_obj_t *rows)
     char     buffer[50];
     uint16_t row = 0;
 
-#if !CONFIG_IDF_TARGET_LINUX
-    uptime::calculateUptime();
-    snprintf(buffer, sizeof(buffer), "%lu days, %luh %lum %lus", uptime::getDays(),
-             uptime::getHours(), uptime::getMinutes(), uptime::getSeconds());
+    /* port_millis() is the uptime: it is monotonic since boot and nothing
+     * resets it, which is the whole of what the Uptime library did. */
+    unsigned long long up = (unsigned long long)(port_millis() / 1000);
+
+    snprintf(buffer, sizeof(buffer), "%llu days, %lluh %llum %llus",
+             up / 86400, (up / 3600) % 24, (up / 60) % 60, up % 60);
     row = info_row(table, row, "Uptime", buffer);
-#endif
 
     snprintf(buffer, sizeof(buffer), "%u.%02u (%s %s)", VERSION_MAJOR, VERSION_MINOR, __DATE__,
              __TIME__);
     row = info_row(table, row, "Version", buffer);
 
-#if !CONFIG_IDF_TARGET_LINUX
-    row = info_row(table, row, "Hostname", WiFi.getHostname());
-    row = info_row(table, row, "SSID", WiFi.SSID().c_str());
-    row = info_row(table, row, "BSSID", WiFi.BSSIDstr().c_str());
+    port_net_info_t net;
 
-    int8_t signal_rssi = WiFi.RSSI();
+    port_net_info(&net);
 
-    snprintf(buffer, sizeof(buffer), "%i dBm (%u %%)", signal_rssi,
-             openhab_ui_signal_quality(signal_rssi));
+    row = info_row(table, row, "Hostname", net.hostname);
+    /* "SSID" is the interface name where there is no radio. The row is worth
+     * keeping either way: it answers "which network am I on". */
+    row = info_row(table, row, "SSID", net.ssid);
+    row = info_row(table, row, "BSSID", net.bssid);
+
+    if (net.rssi == PORT_NET_RSSI_WIRED)
+        snprintf(buffer, sizeof(buffer), "wired");
+    else
+        snprintf(buffer, sizeof(buffer), "%i dBm (%u %%)", net.rssi,
+                 openhab_ui_signal_quality(net.rssi));
+
     row = info_row(table, row, "RSSI", buffer);
 
-    row = info_row(table, row, "MAC", WiFi.macAddress().c_str());
-    row = info_row(table, row, "IP Addr.", WiFi.localIP().toString().c_str());
-    row = info_row(table, row, "Mask", WiFi.subnetMask().toString().c_str());
-    row = info_row(table, row, "Gateway", WiFi.gatewayIP().toString().c_str());
-    row = info_row(table, row, "DNS", WiFi.dnsIP().toString().c_str());
-#endif
+    row = info_row(table, row, "MAC", net.mac);
+    row = info_row(table, row, "IP Addr.", net.ip);
+    row = info_row(table, row, "Mask", net.netmask);
+    row = info_row(table, row, "Gateway", net.gateway);
+    row = info_row(table, row, "DNS", net.dns);
 
     lv_table_set_row_count(table, row);
 }
@@ -1250,12 +1224,10 @@ void ui_settings_open(enum settings_tab_e tab)
 
     wlan_ssid_buf[0] = '\0';
     wlan_psk_buf[0] = '\0';
-#if !CONFIG_IDF_TARGET_LINUX
     /* The passphrase is deliberately left blank rather than prefilled, as in
      * the web form -- it is never shown back to anyone. */
     char stored_psk[WLAN_PSK_SIZE];
     wlan_credentials_get(wlan_ssid_buf, sizeof(wlan_ssid_buf), stored_psk, sizeof(stored_psk));
-#endif
 
     scan_result_count = 0;
     scan_running = false;

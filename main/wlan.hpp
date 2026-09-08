@@ -58,4 +58,8 @@ bool wlan_credentials_set(const char *ssid, const char *psk);
  * consults is the SDK's own station config. */
 bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk_size);
 
+/* The blob half of that, on its own: it is the part that does not need a radio,
+ * so it lives in wlan.cpp and runs on both targets. */
+bool wlan_credentials_import_blob(char *ssid, size_t ssid_size, char *psk, size_t psk_size);
+
 #endif // WLAN_HPP
