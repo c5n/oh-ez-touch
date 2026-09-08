@@ -9,6 +9,9 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -18,21 +21,9 @@
 #include "lodepng/lodepng.h"
 #include "ArduinoJson.h"
 
-#include <time.h>
+#include "port/ohez_port.h"
 
 static const char *TAG = "ohez";
-
-/* One tick source for both targets. esp_timer_get_time() is not available on
- * the linux target -- esp_timer registers headers-only there, so calling it is
- * a link error -- but clock_gettime(CLOCK_MONOTONIC) is implemented by IDF's
- * newlib and by glibc alike. Narrowing to 32 bit is what lv_tick_get_cb_t
- * wants, and wraps every 49 days on both targets identically. */
-static uint32_t ui_tick_get(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint32_t)((uint64_t)ts.tv_sec * 1000ULL + (uint64_t)ts.tv_nsec / 1000000ULL);
-}
 
 /* lv_conf.h sets LV_LOG_PRINTF 0 because printf() from more than one task is
  * documented-unsafe on the FreeRTOS POSIX simulator. */
@@ -55,6 +46,77 @@ static void smoke_test_components(void)
              lv_version_patch());
 }
 
+/* The same for the port layer. Every call here is one an application module
+ * will make in a later commit; doing it now means a port that does not work is
+ * found here rather than half way through moving src/. */
+static void smoke_test_port(void)
+{
+    struct tm now;
+
+    ESP_LOGI(TAG, "port_millis=%llu port_micros=%llu",
+             (unsigned long long)port_millis(), (unsigned long long)port_micros());
+    ESP_LOGI(TAG, "port_free_heap=%u bytes", (unsigned)port_free_heap());
+    ESP_LOGI(TAG, "port_localtime: %s",
+             port_localtime(&now) ? asctime(&now) : "not synchronised yet");
+
+    if (port_storage_init() == ESP_OK)
+    {
+        /* Read data/config.json, which the device gets from the flashed spiffs
+         * image and the host from its config directory. Read-only: overwriting
+         * it here would destroy a real configuration. */
+        ssize_t size = port_storage_size("config.json");
+
+        if (size < 0)
+        {
+            ESP_LOGW(TAG, "port_storage: no config.json in the store yet");
+        }
+        else
+        {
+            char    head[48];
+            ssize_t got = port_storage_read("config.json", head, sizeof(head) - 1);
+
+            if (got > 0)
+            {
+                head[got] = '\0';
+                ESP_LOGI(TAG, "port_storage: config.json is %d bytes, starts: %s",
+                         (int)size, head);
+            }
+        }
+
+        /* The write path, on a scratch name, so that both directions are
+         * proven without touching anything that matters. */
+        static const char probe[] = "written by smoke_test_port";
+
+        if (port_storage_write("probe.txt", probe, sizeof(probe) - 1) > 0)
+        {
+            char    back[64] = "";
+            ssize_t got      = port_storage_read("probe.txt", back, sizeof(back) - 1);
+
+            if (got > 0)
+            {
+                back[got] = '\0';
+                ESP_LOGI(TAG, "port_storage: read back \"%s\"", back);
+            }
+        }
+    }
+
+    /* port_kv: a boot counter proves that NVS persists across runs, which on
+     * the host is the whole point of port_flash_init(). */
+    if (port_kv_init() == ESP_OK)
+    {
+        char     value[16] = "";
+        unsigned boots     = 0;
+
+        if (port_kv_get_str("oheztouch", "boots", value, sizeof(value)) == ESP_OK)
+            boots = (unsigned)strtoul(value, NULL, 10);
+
+        snprintf(value, sizeof(value), "%u", boots + 1);
+
+        if (port_kv_set_str("oheztouch", "boots", value) == ESP_OK)
+            ESP_LOGI(TAG, "port_kv: boot %s (must increment across runs)", value);
+    }
+}
+
 static void ui_task(void *arg)
 {
     LV_UNUSED(arg);
@@ -65,7 +127,7 @@ static void ui_task(void *arg)
      * and the same thread. */
     lv_init();
     lv_log_register_print_cb(ui_log_print);
-    lv_tick_set_cb(ui_tick_get);
+    lv_tick_set_cb(port_tick_ms);
 
 #if CONFIG_IDF_TARGET_LINUX
     lv_display_t *disp = lv_sdl_window_create(320, 240);
@@ -96,6 +158,7 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "oh-ez-touch %s starting", VERSION_GIT_HASH);
     smoke_test_components();
+    smoke_test_port();
 
     xTaskCreate(ui_task, "ui", 16384, NULL, 5, NULL);
 
