@@ -15,8 +15,10 @@ void openhab_sensor_main_setup(Config &config)
 {
     if (config.item.openhab.sensors.bme280.use == true)
     {
-        openhab_sensor_bme280_setup();
-        sensor_bme280_initialized = true;
+        /* Only when one actually answered. Polling a sensor that is not there
+         * would be a hundred failed I2C transactions an hour and an item that
+         * never updates, with nothing said about why. */
+        sensor_bme280_initialized = openhab_sensor_bme280_setup();
     }
 }
 

@@ -43,9 +43,10 @@
 #include "port/port_ntp.h"
 #include "wlan.hpp"
 
+#include "openhab_sensor_main.hpp"
+
 #if !CONFIG_IDF_TARGET_LINUX
 #include "webui.hpp"
-#include "openhab_sensor_main.hpp"
 #endif
 
 #ifndef DEBUG_WLAN_STATES
@@ -219,9 +220,7 @@ static void ohez_setup(void)
     openhab_ui_setup(&config);
     ui_settings_setup(&config);
 
-#if !CONFIG_IDF_TARGET_LINUX
     openhab_sensor_main_setup(config);
-#endif
 
     port_ntp_setup(config.item.ntp.hostname, config.item.ntp.gmt_offset * 3600,
                    config.item.ntp.daylightsaving ? 3600 : 0);
@@ -338,9 +337,7 @@ static void ohez_loop(void)
     if (wlan_state() == WLAN_ONLINE)
     {
         openhab_ui_loop();
-#if !CONFIG_IDF_TARGET_LINUX
         openhab_sensor_main_loop(config);
-#endif
     }
 
     /* Was SDL_Delay(5) in the simulator and nothing at all on the device, whose

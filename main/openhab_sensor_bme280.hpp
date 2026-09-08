@@ -3,7 +3,9 @@
 
 #include "config.hpp"
 
-void openhab_sensor_bme280_setup();
+/* False when there is no sensor: no bus, nothing answering, or a chip that
+ * is not a BME280. Nothing is published in that case. */
+bool openhab_sensor_bme280_setup();
 void openhab_sensor_bme280_update(Config &cfg);
 
 #endif

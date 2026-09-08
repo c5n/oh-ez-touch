@@ -33,6 +33,7 @@ if(OHEZ_LINUX)
         "port/linux/port_indev.c"
         "port/linux/port_backlight.c"
         "port/linux/port_beeper.c"
+        "port/linux/port_bme280.c"
         "port/linux/port_net.c"
         "port/linux/port_ntp.c")
 else()
@@ -44,6 +45,7 @@ else()
         "port/esp32/port_indev.c"
         "port/esp32/port_backlight.c"
         "port/esp32/port_beeper.c"
+        "port/esp32/port_bme280.c"
         "port/esp32/port_net.c"
         "port/esp32/port_ntp.c"
         "port/esp32/board_i2c.c")
@@ -65,7 +67,9 @@ set(OHEZ_APP_SRCS
     "config.cpp"
     "openhab_connector.cpp"
     "openhab_http.cpp"
+    "openhab_sensor_bme280.cpp"
     "openhab_sensor_connector.cpp"
+    "openhab_sensor_main.cpp"
     "openhab_ui.cpp"
     "settings_fields.cpp"
     "ui_settings.cpp"
@@ -83,7 +87,9 @@ else()
     # ported. Everything else that already compiles for the device is built
     # alongside it, so that it is checked now rather than all at once at the
     # end -- these are compiled but not yet called.
-    set(OHEZ_SRCS "selftest.cpp" "config.cpp" "wlan.cpp" "wlan_radio.cpp")
+    set(OHEZ_SRCS "selftest.cpp" "config.cpp" "wlan.cpp" "wlan_radio.cpp"
+                  "openhab_http.cpp" "openhab_sensor_bme280.cpp"
+                  "openhab_sensor_connector.cpp" "openhab_sensor_main.cpp")
 endif()
 
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client

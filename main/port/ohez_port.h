@@ -23,6 +23,7 @@
 #define OHEZ_PORT_H
 
 #include "port_backlight.h"
+#include "port_bme280.h"
 #include "port_beeper.h"
 #include "port_display.h"
 #include "port_indev.h"
