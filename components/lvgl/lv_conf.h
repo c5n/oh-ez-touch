@@ -2,10 +2,11 @@
  * @file lv_conf.h
  * Configuration file for LVGL v9.5.0
  *
- * Derived from the upstream `lv_conf_template.h`. It is found through
- * `-DLV_CONF_INCLUDE_SIMPLE=1` plus `include_dir = src` / `-I ./src/` in
- * platformio.ini, and is shared by the ESP32 firmware and the SDL simulator so
- * that the two render identically.
+ * Derived from the upstream `lv_conf_template.h`. It sits next to the LVGL
+ * component's CMakeLists.txt, which puts this directory on the component's
+ * public include path and defines `LV_CONF_INCLUDE_SIMPLE=1`. It is shared by
+ * the ESP32 firmware and the SDL simulator so that the two render identically
+ * -- one config file for both targets is a hard rule of this project.
  *
  * Everything the UI does not use is switched off: the ESP32 build lives in the
  * ~1.9 MB app slot of `min_spiffs.csv`, so flash is a real budget. When adding a
@@ -17,6 +18,16 @@
 
 #ifndef LV_CONF_H
 #define LV_CONF_H
+
+/* Under ESP-IDF the CONFIG_* symbols decide which target is being built, so the
+ * simulator no longer needs a -DSIMULATOR of its own. The __has_include guard
+ * keeps the file usable from the PlatformIO build that still exists on this
+ * branch; it goes away with platformio.ini. */
+#if defined(__has_include)
+    #if __has_include("sdkconfig.h")
+        #include "sdkconfig.h"
+    #endif
+#endif
 
 /* If you need to include anything here, do it inside the `__ASSEMBLY__` guard */
 #if  0 && defined(__ASSEMBLY__)
@@ -470,8 +481,12 @@
     #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
 
     /** - 1: Print log with 'printf';
-     *  - 0: User needs to register a callback with `lv_log_register_print_cb()`. */
-    #define LV_LOG_PRINTF 1
+     *  - 0: User needs to register a callback with `lv_log_register_print_cb()`.
+     *
+     *  0 here: printf() from more than one task is documented-unsafe on the
+     *  FreeRTOS POSIX simulator, so all logging goes through esp_log via the
+     *  lv_log_register_print_cb() hook the application installs. */
+    #define LV_LOG_PRINTF 0
 
     /** Set callback to print logs.
      *  E.g `my_print`. The prototype should be `void my_print(lv_log_level_t level, const char * buf)`.
@@ -1276,7 +1291,7 @@
  *==================*/
 
 /** Use SDL to open window on PC and handle mouse and keyboard. */
-#if defined(SIMULATOR) && SIMULATOR
+#if defined(CONFIG_IDF_TARGET_LINUX) || (defined(SIMULATOR) && SIMULATOR)
     #define LV_USE_SDL          1
 #else
     #define LV_USE_SDL          0

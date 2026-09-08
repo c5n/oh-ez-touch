@@ -1,0 +1,20 @@
+# Host simulator settings for `idf.py --preview set-target linux`.
+
+# The decisive one. With lwIP disabled the application uses the *host's* IP
+# stack through host sockets: real LAN, no TAP device, no root. It also switches
+# on freertos/esp_additions/FreeRTOSSimulator_wrappers.c, whose select() wrapper
+# is what stops a socket wait from parking the cooperative scheduler.
+CONFIG_LWIP_ENABLE=n
+
+# Every tick is a SIGALRM delivered to the running thread, so a high rate means
+# a high EINTR rate in SDL, X11 and libc. 250 Hz is a compromise against
+# LV_DEF_REFR_PERIOD.
+CONFIG_FREERTOS_HZ=250
+
+# The IDF default of 3584 is far too small for a host pthread doing libc work;
+# overflowing it corrupts the FreeRTOS ready lists and surfaces as an assertion
+# in vTaskSwitchContext(), a long way from the cause.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y

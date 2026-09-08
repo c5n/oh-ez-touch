@@ -1,0 +1,14 @@
+# Settings shared by every target. Combine with sdkconfig.defaults.esp32 or
+# sdkconfig.defaults.linux via -DSDKCONFIG_DEFAULTS="a;b".
+#
+# NB: a defaults file only seeds a *new* sdkconfig. After editing one of these,
+# delete the build directory's sdkconfig and re-run set-target, or the change is
+# silently ignored.
+
+# partitions.csv is committed; see the file for why the layout matters.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# nvs_flash's CMakeLists raises a FATAL_ERROR for encryption on the linux
+# target, and the device does not use it either. Keep both targets identical.
+CONFIG_NVS_ENCRYPTION=n

@@ -1,0 +1,6 @@
+[submodule "components/lvgl/lvgl"]
+	path = components/lvgl/lvgl
+	url = https://github.com/lvgl/lvgl.git
+[submodule "components/ArduinoJson/ArduinoJson"]
+	path = components/ArduinoJson/ArduinoJson
+	url = https://github.com/bblanchon/ArduinoJson.git

@@ -1,5 +1,11 @@
-#include <Arduino.h>
+/* The allocators lodepng calls when it is built with
+ * LODEPNG_NO_COMPILE_ALLOCATORS, plus an optional chunk tracker for debugging
+ * icon-decode memory use. Freestanding on purpose: this used to include
+ * <Arduino.h>, which no longer exists on either target. */
+#include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <stddef.h>
 
 #ifndef DEBUG_LODEPNG_MALLOC
 #define DEBUG_LODEPNG_MALLOC 0
@@ -34,7 +40,7 @@ void add_ptr(void* ptr, size_t size)
         {
             mem_chunks[i].ptr = ptr;
             mem_chunks[i].size = size;
-            printf("add_ptr(0x%08x, %u)\r\n", (uint32_t)ptr, size);
+            printf("add_ptr(%p, %zu)\r\n", ptr, size);
             break;
         }
 }
@@ -45,7 +51,7 @@ void del_ptr(void* ptr)
     {
         if (mem_chunks[i].ptr == ptr)
         {
-            printf("del_ptr(0x%08x) size=%u\r\n", (uint32_t)ptr, mem_chunks[i].size);
+            printf("del_ptr(%p) size=%zu\r\n", ptr, mem_chunks[i].size);
             mem_chunks[i].ptr = NULL;
             mem_chunks[i].size = 0;
             break;
@@ -94,11 +100,11 @@ void* lodepng_malloc(size_t size)
     if (ptr != NULL)
     {
         add_ptr(ptr, size);
-        printf("lodepng_malloc: Size: %u Sum: %u Chunks: %u Free: %u MaxBlk: %u\r\n", size, get_memsize(), get_chunk_count(), ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT));
+        printf("lodepng_malloc: Size: %zu Sum: %zu Chunks: %zu\r\n", size, get_memsize(), get_chunk_count());
     }
     else
     {
-        printf("lodepng_malloc failed: Size: %u Sum: %u Chunks: %u Free: %u MaxBlk: %u\r\n", size, get_memsize(), get_chunk_count(), ESP.getFreeHeap(), heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL|MALLOC_CAP_8BIT));
+        printf("lodepng_malloc failed: Size: %zu Sum: %zu Chunks: %zu\r\n", size, get_memsize(), get_chunk_count());
     }
 #endif
 
@@ -108,7 +114,7 @@ void* lodepng_malloc(size_t size)
 void* lodepng_realloc(void* ptr, size_t new_size)
 {
  #if DEBUG_LODEPNG_MALLOC
-    printf("lodepng_realloc: Old: %u New: %u Sum: %u\r\n", get_size(ptr), new_size, get_memsize() - get_size(ptr) + new_size);
+    printf("lodepng_realloc: Old: %zu New: %zu Sum: %zu\r\n", get_size(ptr), new_size, get_memsize() - get_size(ptr) + new_size);
 
     if (ptr != NULL)
     {
@@ -135,7 +141,7 @@ void* lodepng_realloc(void* ptr, size_t new_size)
 void lodepng_free(void* ptr)
 {
 #if DEBUG_LODEPNG_MALLOC
-    printf("lodepng_free: Size: %u Sum: %u Chunks: %u Free: %u\r\n", get_size(ptr), get_memsize() - get_size(ptr), get_chunk_count(), ESP.getFreeHeap());
+    printf("lodepng_free: Size: %zu Sum: %zu Chunks: %zu\r\n", get_size(ptr), get_memsize() - get_size(ptr), get_chunk_count());
     del_ptr(ptr);
 #endif
 
