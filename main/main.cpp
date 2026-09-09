@@ -10,10 +10,18 @@
  * hal/sdl2 are gone, and there is one entry point for the device and the
  * simulator.
  *
- * Everything runs on this one task. That is deliberate and load-bearing:
- * lv_conf.h sets LV_USE_OS to LV_OS_NONE, so LVGL has no locking of its own, and
- * LVGL's SDL driver pumps SDL from an lv_timer rather than a thread. The moment
- * a second task calls lv_*, both of those have to be revisited.
+ * Everything that touches LVGL runs on this one task. That is deliberate and
+ * load-bearing: lv_conf.h sets LV_USE_OS to LV_OS_NONE, so LVGL has no locking
+ * of its own, and LVGL's SDL driver pumps SDL from an lv_timer rather than a
+ * thread. The moment a second task calls lv_*, both of those have to be
+ * revisited.
+ *
+ * Tasks that are not this one therefore hand work back rather than doing it:
+ * the web server and the MQTT client record a request that the owning loop
+ * carries out, and the openHAB client task -- which is where every HTTP
+ * request to openHAB now waits -- answers on a queue that openhab_ui_loop()
+ * drains. None of them calls lv_*. That is the whole of the arrangement, and
+ * it is what lets a page load take five seconds without the screen noticing.
  */
 
 #include "sdkconfig.h"

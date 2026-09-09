@@ -3,14 +3,16 @@
  *
  * Canned openHAB sitemap pages for the host simulator.
  *
- * The simulator has no HTTP client yet -- every HTTPClient call in
- * openhab_connector.cpp is still excluded on the linux target -- so the sitemap
- * JSON is compiled in instead. This lets the UI be developed and reviewed on
- * the development machine without an openHAB server, and gives a stable,
- * reproducible screen for comparing rendering changes.
+ * The simulator makes real requests these days, so these are a choice rather
+ * than a necessity: OHEZ_OFFLINE=1 serves them instead of going to the
+ * network, which gives a stable, reproducible screen for comparing rendering
+ * changes and lets the UI be worked on with no openHAB anywhere near. The
+ * openHAB client task decides between the two, so nothing above it can tell.
  *
  * The pages go through exactly the same parser as the responses from a real
- * server, so they also serve as a rough test vector for it.
+ * server, which is why test/host feeds them to Sitemap::parse() directly: a
+ * change that breaks the parser breaks the tests and this screen together,
+ * rather than one without the other.
  */
 
 #ifndef SITEMAP_FIXTURE_HPP

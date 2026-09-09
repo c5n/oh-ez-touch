@@ -760,7 +760,8 @@ main/config/          the settings, and the one field table that both the
                       panel's settings screen and the web form walk
 main/ui/              the LVGL user interface: the openHAB page, the settings
                       screen, the styles and themes
-main/openhab/         the openHAB client: sitemap, item state, icons, sensors
+main/openhab/         the openHAB client: the task every request waits on,
+                      and the sitemap model and parser it feeds
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -779,6 +780,41 @@ test/host/            the unit tests, as an IDF project of their own
 
 Everything above `main/port/` is shared. If a change needs a `#if` on the
 target outside that directory, it probably wants a new port instead.
+
+### The openHAB client task
+
+Generating the UI means asking openHAB for things: a sitemap page per
+navigation level, an icon per tile, and an item state per tile every five
+seconds. All of it used to happen on the task that also drives LVGL, so a
+page switch -- one page GET followed by up to six icon GETs, back to back --
+held the screen for as long as the server took, and against an unreachable
+one for the full five second timeout each. The panel was dead to the touch
+for the duration.
+
+The requests now wait on a task of their own (`main/openhab/openhab_client.cpp`).
+The UI submits a URL and carries on drawing; the answer arrives on a queue
+that `openhab_ui_loop()` takes one result from per iteration. What this looks
+like from the front is that a page appears as soon as its JSON parses, with
+every tile showing its label, its state and a placeholder watermark, and the
+icons filling in behind them over the next few frames. The clock keeps
+ticking and the touch keeps responding throughout, including while openHAB is
+unreachable.
+
+The worker calls no `lv_*`, and reads no `Item`, `Sitemap` or `Config`. URLs
+go in and bytes come back; every decision about what a body means, and every
+LVGL call, stays on the task that owns the screen. `main/openhab/openhab_connector.cpp`
+is consequently a model and a parser with no idea that a network exists, which
+is what lets the host tests cover the sitemap parser.
+
+Requests are stamped with a generation, bumped whenever a page is fetched, so
+that the icons and states belonging to a page navigated away from are dropped
+rather than applied to whatever now occupies their tile. Commands are exempt:
+one the user asked for is still worth delivering after they have moved on.
+
+There is one worker and one queue, not a pool. Two would fetch a page's icons
+faster and would also be free to deliver two taps on the same item out of
+order. The connection to openHAB is held open between requests, so a page's
+six icons share one TCP handshake.
 
 ### Contributing
 

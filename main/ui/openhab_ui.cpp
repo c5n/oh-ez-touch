@@ -1933,9 +1933,13 @@ void openhab_ui_loop(void)
     }
 #endif
 
-    /* Last in the loop on purpose: by here every request this iteration was
-     * going to make has been made, so nothing is in flight while the styles are
-     * reset and the tiles are recreated. */
+    /* Last in the loop on purpose, though no longer for the reason it once
+     * was. Requests really are in flight across iterations now, so "nothing is
+     * in flight while the styles are reset" is not something this can promise.
+     * What it can is that results are only ever applied at the top of the
+     * loop, in results_apply_one() -- so neither of the two below can be
+     * interrupted by a page arriving in the middle of recreating the tiles it
+     * is about to replace. */
     if (connect_pending == true)
     {
         connect_pending = false;
