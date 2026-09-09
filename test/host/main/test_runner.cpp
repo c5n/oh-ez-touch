@@ -29,6 +29,9 @@ extern "C" void app_main(void)
     test_ble_beacon_run();
     test_config_fields_run();
     test_item_setters_run();
+    test_item_state_run();
+    test_item_urls_run();
+    test_sitemap_parse_run();
     test_ui_theme_run();
 
     int failures = UNITY_END();
