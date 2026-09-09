@@ -25,6 +25,89 @@
 #endif
 #endif
 
+/* Split "<website>/icon/<name>?state=<state>&format=png" back into its two
+ * interesting parts.
+ *
+ * Compiled whether or not the icon data was generated, because it is pure
+ * string work and the two sim_icon_fixture_get() variants below both want it
+ * -- the one that finds nothing included, so that a URL that is not an icon
+ * URL is still rejected as one.
+ *
+ * Returns false when the URL has no "/icon/" segment. A missing state is not a
+ * failure: openHAB omits the query for an item that has none, and
+ * sim_icon_fixture_get() takes an empty state.
+ */
+static bool split_icon_url(const char *url, char *name, size_t name_size,
+                           char *state, size_t state_size)
+{
+    name[0] = '\0';
+    state[0] = '\0';
+
+    const char *segment = strstr(url, "/icon/");
+
+    if (segment == NULL)
+        return false;
+
+    const char *name_begin = segment + strlen("/icon/");
+    /* The name runs to the query string, or to the end for a URL without one. */
+    const char *name_end = strchr(name_begin, '?');
+
+    if (name_end == NULL)
+        name_end = name_begin + strlen(name_begin);
+
+    size_t name_len = (size_t)(name_end - name_begin);
+
+    if (name_len == 0 || name_len >= name_size)
+        return false;
+
+    memcpy(name, name_begin, name_len);
+    name[name_len] = '\0';
+
+    const char *state_begin = strstr(name_end, "state=");
+
+    if (state_begin != NULL)
+    {
+        state_begin += strlen("state=");
+
+        /* "&format=png" follows in every URL iconUrl() builds, but the state is
+         * the last parameter in a URL built by hand, so both endings count. */
+        const char *state_end = strchr(state_begin, '&');
+
+        if (state_end == NULL)
+            state_end = state_begin + strlen(state_begin);
+
+        size_t state_len = (size_t)(state_end - state_begin);
+
+        if (state_len >= state_size)
+            return false;
+
+        memcpy(state, state_begin, state_len);
+        state[state_len] = '\0';
+    }
+
+    return true;
+}
+
+const unsigned char *sim_icon_fixture_get_by_url(const char *url, size_t *size)
+{
+    /* The name is a sitemap icon name (STR_ICON_NAME_LEN) and the state a
+     * sitemap state (STR_STATE_TEXT_LEN); both are 32 in openhab_connector.hpp,
+     * which this file deliberately does not include -- it knows about icons,
+     * not about items. */
+    char name[32];
+    char state[32];
+
+    *size = 0;
+
+    if (url == NULL)
+        return NULL;
+
+    if (split_icon_url(url, name, sizeof(name), state, sizeof(state)) == false)
+        return NULL;
+
+    return sim_icon_fixture_get(name, state, size);
+}
+
 #ifdef SIM_ICON_FIXTURE_GENERATED
 
 static const unsigned char *find_icon(const char *name, size_t *size)

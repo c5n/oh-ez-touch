@@ -33,4 +33,23 @@
  */
 const unsigned char *sim_icon_fixture_get(const char *name, const char *state, size_t *size);
 
+/**
+ * The same lookup, keyed on the URL the firmware would have requested.
+ *
+ * The openHAB client task carries URLs and not items -- that is the whole
+ * point of it -- so offline mode has to be able to answer one. The name and
+ * the state are taken back out of
+ *
+ *     <website>/icon/<name>?state=<state>&format=png
+ *
+ * and handed to sim_icon_fixture_get() above, so the state-specific
+ * precedence lives in one place.
+ *
+ * @param url   the icon URL, as Item::iconUrl() builds it
+ * @param size  out: size of the returned PNG in bytes, 0 if none was found
+ * @return pointer to the PNG data, or NULL if the URL is not an icon URL or
+ *         no icon is available
+ */
+const unsigned char *sim_icon_fixture_get_by_url(const char *url, size_t *size);
+
 #endif /* ICON_FIXTURE_HPP */

@@ -30,6 +30,7 @@
 #include "control/beeper_control.hpp"
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
+#include "openhab/openhab_client.hpp"
 #include "openhab/openhab_sensor_main.hpp"
 #include "port/ohez_port.h"
 #include "ui/openhab_ui.hpp"
@@ -228,6 +229,12 @@ static void ohez_setup(void)
 
     openhab_ui_setup(&config);
     ui_settings_setup(&config);
+
+    /* Before openhab_ui_connect() below, which is the first thing to submit a
+     * request. Starting it while the link is still down is harmless -- it
+     * blocks on an empty queue until there is something to fetch. */
+    if (openhab_client_setup() == false)
+        ESP_LOGE(TAG, "no openHAB client task; the panel will not reach openHAB");
 
     openhab_sensor_main_setup(config);
     ohez_mqtt_setup(&config);

@@ -79,6 +79,10 @@ config OHEZ_DEBUG_OPENHAB_CONNECTOR
     bool "openHAB client: every URL requested, and the pages returned"
     default n
 
+config OHEZ_DEBUG_OPENHAB_CLIENT
+    bool "openHAB client task: every request submitted, dropped, and its stack"
+    default n
+
 config OHEZ_DEBUG_OPENHAB_SENSOR_BME280
     bool "BME280: each reading before it is published"
     default n

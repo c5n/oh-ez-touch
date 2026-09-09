@@ -73,6 +73,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_settings.cpp"
     "ui/ui_style.cpp"
 
+    "openhab/openhab_client.cpp"
     "openhab/openhab_connector.cpp"
     "openhab/openhab_http.cpp"
     "openhab/openhab_sensor_bme280.cpp"
