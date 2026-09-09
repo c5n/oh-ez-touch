@@ -140,6 +140,21 @@ void update_state_widget(struct widget_context_s *ctx);
 static void page_request(uint64_t delay_ms);
 static void widget_icon_request(size_t slot);
 
+/* Send an item's local state to openHAB.
+ *
+ * Every caller is an LVGL event handler, which is to say every caller runs
+ * inside lv_timer_handler(). Item::publish() used to do this with a blocking
+ * POST, so a tap held up the very redraw that was supposed to acknowledge it.
+ *
+ * Fire and forget, as it always effectively was: publish()'s return value was
+ * ignored at all five call sites, and the tile's own state has already been
+ * set locally -- the poll that follows is what reconciles it with the server.
+ */
+static void item_publish(struct widget_context_s *ctx)
+{
+    openhab_client_command(ctx->item->getLink(), ctx->item->getStateText());
+}
+
 /* show() pairs widget_context[i] with sitemap.getItem(i), so there must not be
  * more widgets than the sitemap holds items. */
 static_assert(WIDGET_COUNT_MAX <= ITEM_COUNT_MAX, "WIDGET_COUNT_MAX exceeds ITEM_COUNT_MAX");
@@ -358,7 +373,7 @@ static void publish_button_command(lv_event_t *e)
     debug_printf("button pressed Command: %s\r\n", command);
 #endif
     ctx->item->setStateText(command);
-    ctx->item->publish(ctx->item->getLink());
+    item_publish(ctx);
     ctx->refresh_request = true;
     BEEPER_EVENT_CHANGE();
 }
@@ -440,7 +455,7 @@ static void window_item_colorpicker_event_handler(lv_event_t *e)
     debug_printf("hsv string: %s\r\n", hsv);
 #endif
     ctx->item->setStateText(hsv);
-    ctx->item->publish(ctx->item->getLink());
+    item_publish(ctx);
     ctx->refresh_request = true;
     BEEPER_EVENT_CHANGE();
 }
@@ -629,7 +644,7 @@ static void window_item_slider_preview_event_handler(lv_event_t *e)
  * made. */
 static void window_item_slider_publish(struct widget_context_s *ctx)
 {
-    ctx->item->publish(ctx->item->getLink());
+    item_publish(ctx);
     ctx->refresh_request = true;
     BEEPER_EVENT_CHANGE();
 }
@@ -796,7 +811,7 @@ static void window_item_setpoint_event_handler(lv_event_t *e)
 
     set_label_from_pattern(ctx->state_window_widget, ctx->item, ctx->item->getStateNumber());
 
-    ctx->item->publish(ctx->item->getLink());
+    item_publish(ctx);
     ctx->refresh_request = true;
     BEEPER_EVENT_CHANGE();
 }
@@ -874,7 +889,7 @@ static void event_handler(lv_event_t *e)
         else
             ctx->item->setStateText("OFF");
 
-        ctx->item->publish(ctx->item->getLink());
+        item_publish(ctx);
         ctx->refresh_request = true;
         BEEPER_EVENT_CHANGE();
         break;

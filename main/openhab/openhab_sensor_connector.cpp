@@ -4,7 +4,7 @@
 
 #include <stdio.h>
 
-#include "openhab_http.hpp"
+#include "openhab_client.hpp"
 
 #define STR_URL_LEN     128
 
@@ -22,6 +22,12 @@ void openhab_sensor_connector_publish(Config &cfg, const char* item, const char*
     printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value);
 #endif
 
-    if (openhab_http_post_text(url, value) != 0)
-        printf("openhab_sensor_connector_publish ERROR URL: %s\r\n", url);
+    /* Through the client task, like every other request. This runs from
+     * openhab_sensor_main_loop() on the task that draws, and three blocking
+     * POSTs per sensor interval is three chances per interval for the screen
+     * to stop. Whether the reading reached openHAB is not something anything
+     * here could act on -- the next one is along in a minute either way -- so
+     * the only failure worth reporting is not managing to queue it. */
+    if (openhab_client_command(url, value) == false)
+        printf("openhab_sensor_connector_publish: not queued: %s\r\n", url);
 }

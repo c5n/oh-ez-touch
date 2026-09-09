@@ -71,8 +71,6 @@ private:
     char page_link[STR_LINK_LEN];
 
 public:
-    int publish(const char* url);
-
     /* The two URLs an item is asked for, built from its own fields rather than
      * from arguments the caller has to remember to pass. Both return false
      * when there is nothing to build or when the result did not fit, so a

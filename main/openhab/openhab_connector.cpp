@@ -7,9 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "openhab_http.hpp"
-#include "sim/sim_offline.hpp"
-
 /* JsonVariant::as<const char *>() yields NULL for a missing or non-string
  * value; the comparisons below want an empty string in that case. */
 static inline const char *json_str(JsonVariant value)
@@ -102,31 +99,6 @@ int Item::applyState(const char *text, size_t len)
 #endif
 
     return 1;
-}
-
-int Item::publish(const char* url)
-{
-    int retval = 0;
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Item::publish: Requesting URL: %s\r\n", url);
-#endif
-
-    /* Nowhere to send it, and nothing that would come back changed. */
-    if (sim_offline())
-        return 0;
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Item::publish: POST Message: %s\r\n", state_text);
-#endif
-
-    if (openhab_http_post_text(url, state_text) != 0)
-    {
-        printf("Item::publish ERROR URL: %s\r\n", url);
-        retval = -1;
-    }
-
-    return retval;
 }
 
 /* Turn a sitemap page into the title and the item array.
