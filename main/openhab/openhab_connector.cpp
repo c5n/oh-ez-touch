@@ -229,21 +229,21 @@ size_t Item::getIcon(const char* website, unsigned char *buffer, size_t buffer_s
     return icon_size;
 }
 
+/* Fetch a sitemap page and hand it to parse().
+ *
+ * The two halves are separate because only one of them has to wait: parse()
+ * is arithmetic on bytes already in memory, and this is a network round trip
+ * that can take the full OPENHAB_HTTP_TIMEOUT_MS. */
 int Sitemap::openlink(const char* url)
 {
-    int retval = 0;
-    /* ArduinoJson 7 documents size themselves, so the former fixed 12000 byte
-     * capacity is gone; the parser now grows the pool to fit the page. */
-    JsonDocument doc;
-
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
 #endif
 
     /* The page outlives the parse: ArduinoJson parses in place and keeps
-     * pointers into it, so this buffer has to stay alive until the last
-     * json_str() below. On the heap rather than the stack because the UI task
-     * has 8 KB of it on the device. */
+     * pointers into it, so this buffer has to stay alive until parse()
+     * returns. On the heap rather than the stack because the UI task has 8 KB
+     * of it on the device. */
     const char *payload = NULL;
     size_t payload_len = 0;
     std::unique_ptr<char[]> page;
@@ -253,9 +253,12 @@ int Sitemap::openlink(const char* url)
         payload = sim_sitemap_fixture_get(url);
 
         if (payload == NULL)
+        {
             printf("Sitemap::openlink: no fixture page for URL: %s\r\n", url);
-        else
-            payload_len = strlen(payload);
+            return -1;
+        }
+
+        payload_len = strlen(payload);
     }
     else
     {
@@ -266,46 +269,65 @@ int Sitemap::openlink(const char* url)
         if (read < 0)
         {
             printf("Sitemap::openlink: ERROR URL: %s\r\n", url);
+            return -1;
         }
-        else
-        {
-            payload = page.get();
-            payload_len = (size_t)read;
-        }
+
+        payload = page.get();
+        payload_len = (size_t)read;
     }
 
-    bool payload_ok = (payload != NULL);
+    int retval = parse(payload, payload_len);
+
+    if (retval != 0)
+        printf("Sitemap::openlink: unusable page at URL: %s\r\n", url);
+
+    return retval;
+}
+
+/* Turn a sitemap page into the title and the item array.
+ *
+ * `payload` need not be terminated and is not written to, but it has to stay
+ * alive for the duration of the call: ArduinoJson parses in place and the
+ * document below holds pointers into it. It does not have to survive the
+ * return -- every field extracted here goes through one of the strlcpy()
+ * setters in the header, so no Item ends up pointing into the page.
+ *
+ * Errors are reported here without the URL, which this does not know; the
+ * caller adds it, the way openhab_http.cpp and its callers already divide it
+ * up. */
+int Sitemap::parse(const char *payload, size_t payload_len)
+{
+    int retval = 0;
+    /* ArduinoJson 7 documents size themselves, so the former fixed 12000 byte
+     * capacity is gone; the parser now grows the pool to fit the page. */
+    JsonDocument doc;
+    bool payload_ok = true;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    if (payload_ok == true)
-        printf("Sitemap::openlink: %u byte payload:\r\n%.*s\r\n",
-               (unsigned)payload_len, (int)payload_len, payload);
+    printf("Sitemap::parse: %u byte payload:\r\n%.*s\r\n",
+           (unsigned)payload_len, (int)payload_len, payload);
 #endif
 
-    if (payload_ok == true)
-    {
-        // Parse JSON object
-        /* The length is passed explicitly: the network payload is not
-         * terminated, and the char * overload parses in place without
-         * copying. */
-        DeserializationError error = deserializeJson(doc, payload, payload_len,
-                                                    DeserializationOption::NestingLimit(15));
+    // Parse JSON object
+    /* The length is passed explicitly: the network payload is not terminated,
+     * and the char * overload parses in place without copying. */
+    DeserializationError error = deserializeJson(doc, payload, payload_len,
+                                                 DeserializationOption::NestingLimit(15));
 
-        /* Both of these used to "return false", which is 0 and therefore the
-         * success code of this function, so the caller kept the stale page and
-         * the HTTP client was never closed. */
-        if (error)
-        {
-            printf("Sitemap::openlink: deserializeJson() failed: %s\r\n", error.c_str());
-            payload_ok = false;
-        }
-        /* containsKey() is deprecated in ArduinoJson 7. The value is indexed as
-         * an object right below, so test for exactly that. */
-        else if (doc["error"].is<JsonObject>())
-        {
-            printf("Sitemap::openlink: json error message: %s\r\n", json_str(doc["error"]["message"]));
-            payload_ok = false;
-        }
+    /* Both of these used to "return false", which is 0 and therefore the
+     * success code of this function, so the caller kept the stale page and the
+     * HTTP client was never closed. */
+    if (error)
+    {
+        printf("Sitemap::parse: deserializeJson() failed: %s\r\n", error.c_str());
+        payload_ok = false;
+    }
+    /* containsKey() is deprecated in ArduinoJson 7. The value is indexed as an
+     * object right below, so test for exactly that. */
+    else if (doc["error"].is<JsonObject>())
+    {
+        printf("Sitemap::parse: json error message: %s\r\n", json_str(doc["error"]["message"]));
+        payload_ok = false;
     }
 
     if (payload_ok == true)
@@ -317,17 +339,12 @@ int Sitemap::openlink(const char* url)
         printf("Doc serialized size: %u\r\n", (unsigned)measureJson(doc));
 #endif
 
-        // Save current and last page urls
-        strlcpy(last_url, current_url, sizeof(last_url));
-        strlcpy(current_url, url, sizeof(current_url));
-
         if (doc["title"])
             strlcpy(title, json_str(doc["title"]), sizeof(title));
         else
             strlcpy(title, "no title", sizeof(title));
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-        printf("Sitemap::openlink(\"%s\")\r\n", url);
         printf("  title=\"%s\"\r\n", title);
 #endif
 

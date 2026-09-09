@@ -176,11 +176,24 @@ private:
     char title[STR_TITLE_LEN];
     size_t item_count;
     Item item_array[ITEM_COUNT_MAX];
-    char current_url[STR_LINK_LEN];
-    char last_url[STR_LINK_LEN];
 
 public:
+    /* Fetch the page at `url` and parse it. The two are separate below because
+     * only the fetch waits on anything. */
     int openlink(const char* url);
+
+    /* Turn a page already in memory into the title and the item array.
+     *
+     * `payload` need not be terminated -- a body off the network is not -- and
+     * has to stay alive for the duration of the call, because ArduinoJson
+     * parses in place. It does not have to survive the return: every field
+     * extracted goes through one of Item's strlcpy() setters, so no Item ends
+     * up holding a pointer into the page.
+     *
+     * @return 0, or -1 for a page that did not parse or that carries an
+     *         openHAB error object instead of widgets.
+     */
+    int parse(const char *payload, size_t payload_len);
 
     const char* getPageName() { return title; }
     size_t getItemCount() { return item_count; }
