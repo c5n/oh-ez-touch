@@ -3,8 +3,8 @@
 
 #include "sdkconfig.h"
 
-#include "config.hpp"
-#include "settings_fields.hpp"
+#include "config/config.hpp"
+#include "config/config_fields.hpp"
 
 /* The on-device settings screen: what the web interface offers, on the panel.
  *

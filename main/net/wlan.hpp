@@ -1,7 +1,7 @@
 #ifndef WLAN_HPP
 #define WLAN_HPP
 
-#include "config.hpp"
+#include "config/config.hpp"
 
 #include <stddef.h>
 #include <stdint.h>

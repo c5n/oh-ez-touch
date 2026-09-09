@@ -9,7 +9,7 @@
  * Two things keep this small. Every page is streamed through one fixed buffer
  * and is never assembled anywhere -- PageBuilder grew each page as a single
  * repeatedly-realloc'ed String, with a transient heap peak of some 8 to 12 KB.
- * And every setting is described exactly once, in settings_fields[], which one
+ * And every setting is described exactly once, in config_fields[], which one
  * loop renders and another parses; the AutoConnect version had the field list
  * written out three times, as the GET prefill, the POST parse and the echo
  * page, and they had drifted apart.
@@ -28,7 +28,7 @@
 
 #include "webui.hpp"
 
-#include "settings_fields.hpp"
+#include "config/config_fields.hpp"
 
 #include "ui/openhab_ui.hpp"
 #include "port/port_net.h"
@@ -63,7 +63,7 @@ static Config *webui_config = NULL;
 /* ------------------------------------------------------------------ fields */
 
 /* The row macros, the field table and the by-offset accessors live in
- * settings_fields.hpp: the touch settings screen walks the same rows, and a
+ * config_fields.hpp: the touch settings screen walks the same rows, and a
  * second copy of the list here is exactly the drift the table was introduced
  * to stop. What stays below is the HTML rendering and the POST parsing.
  *
@@ -251,9 +251,9 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
 
     webui_put(o, "<form method='post' action='/save'>");
 
-    for (size_t i = 0; i < settings_field_count; i++)
+    for (size_t i = 0; i < config_field_count; i++)
     {
-        const struct settings_field_s *f = &settings_fields[i];
+        const struct config_field_s *f = &config_fields[i];
 
         if (f->kind == SETTINGS_SECTION)
         {
@@ -274,7 +274,7 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
         case SETTINGS_TEXT:
             webui_putf(o, "<input type='text' name='%s' maxlength='%u' value='",
                        f->name, (unsigned)(f->size - 1));
-            webui_put_escaped(o, settings_field_text(f, &config->item));
+            webui_put_escaped(o, config_field_text(f, &config->item));
             webui_put(o, "'>");
             break;
 
@@ -282,12 +282,12 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
             /* No <br> for this one: a checkbox belongs on the same line as
              * its text, where every other kind wants its input underneath. */
             webui_putf(o, "<input type='checkbox' name='%s'%s>", f->name,
-                       settings_field_read(f, &config->item) ? " checked" : "");
+                       config_field_read(f, &config->item) ? " checked" : "");
             break;
 
         case SETTINGS_ENUM:
         {
-            int32_t selected = settings_field_read(f, &config->item);
+            int32_t selected = config_field_read(f, &config->item);
 
             webui_putf(o, "<select name='%s'>", f->name);
 
@@ -302,7 +302,7 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
         default:
             webui_putf(o, "<input type='number' name='%s' min='%ld' max='%ld' value='%ld'>",
                        f->name, (long)f->min, (long)f->max,
-                       (long)settings_field_read(f, &config->item));
+                       (long)config_field_read(f, &config->item));
             break;
         }
 
@@ -389,9 +389,9 @@ static void webui_handle_save(webui_request_t *req)
      * look atomic to a save from the panel. */
     config->lock();
 
-    for (size_t i = 0; i < settings_field_count; i++)
+    for (size_t i = 0; i < config_field_count; i++)
     {
-        const struct settings_field_s *f = &settings_fields[i];
+        const struct config_field_s *f = &config_fields[i];
         char                           value[WEBUI_VALUE_MAX];
 
         if (f->kind == SETTINGS_SECTION)
@@ -404,7 +404,7 @@ static void webui_handle_save(webui_request_t *req)
          * rather than destructive. */
         if (f->kind == SETTINGS_BOOL)
         {
-            settings_field_write(f, &config->item, webui_has_arg(req, f->name) ? 1 : 0);
+            config_field_write(f, &config->item, webui_has_arg(req, f->name) ? 1 : 0);
             continue;
         }
 
@@ -414,21 +414,21 @@ static void webui_handle_save(webui_request_t *req)
         webui_arg(req, f->name, value, sizeof(value));
 
         /* The character check, the clamp and the option lookup all live in
-         * settings_fields.cpp, so the touch screen applies the same rules to
+         * config_fields.cpp, so the touch screen applies the same rules to
          * the same rows -- a value the web form rejects is not one the panel
          * can smuggle in. */
         switch (f->kind)
         {
         case SETTINGS_TEXT:
-            settings_field_set_text(f, &config->item, value);
+            config_field_set_text(f, &config->item, value);
             break;
 
         case SETTINGS_ENUM:
-            settings_field_write(f, &config->item, settings_field_enum_from_name(f, value));
+            config_field_write(f, &config->item, config_field_enum_from_name(f, value));
             break;
 
         default:
-            settings_field_set_number(f, &config->item, strtol(value, NULL, 10));
+            config_field_set_number(f, &config->item, strtol(value, NULL, 10));
             break;
         }
     }
@@ -506,9 +506,9 @@ void webui_setup(Config *config)
      * remaining case, a row whose kind no longer matches its field's width.
      * The table is shared with the touch settings screen now, so this checks
      * that screen's rows too -- it just happens to run from here. */
-    for (size_t i = 0; i < settings_field_count; i++)
+    for (size_t i = 0; i < config_field_count; i++)
     {
-        const struct settings_field_s *f = &settings_fields[i];
+        const struct config_field_s *f = &config_fields[i];
         size_t                         width;
 
         switch (f->kind)
@@ -529,7 +529,7 @@ void webui_setup(Config *config)
             break;
         }
 
-        if (f->offset + width > sizeof(settings_item_t))
+        if (f->offset + width > sizeof(config_item_t))
             printf("settings: field '%s' runs past Config::item\r\n", f->name);
     }
 #endif

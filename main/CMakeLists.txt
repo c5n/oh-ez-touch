@@ -57,14 +57,14 @@ set(OHEZ_CONTROL_SRCS
     "control/backlight_control.cpp"
     "control/beeper_control.cpp")
 
-# The UI, the openHAB client, the settings and the web interface, one directory
-# each. main.cpp, config.* and settings_fields.* stay at the top: they are what
-# the directories below have in common -- the entry point, the settings they all
-# read, and the one table that both the settings screen and the web form walk.
+# One directory per concern. Only main.cpp stays at the top; config/ holds the
+# settings and the one field table that both the panel's settings screen and the
+# web form walk, which is what the rest of them have in common.
 set(OHEZ_APP_SRCS
     "main.cpp"
-    "config.cpp"
-    "settings_fields.cpp"
+
+    "config/config.cpp"
+    "config/config_fields.cpp"
 
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"

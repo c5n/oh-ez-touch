@@ -1562,7 +1562,7 @@ void openhab_ui_loop(void)
 #endif
         /* Re-applied rather than set once, which is what makes the NTP host,
          * the offset and the DST flag live settings instead of restart-only
-         * ones -- settings_fields.cpp says so and this is why it is true. */
+         * ones -- config_fields.cpp says so and this is why it is true. */
         port_ntp_setup(current_config->item.ntp.hostname,
                        current_config->item.ntp.gmt_offset * 3600,
                        current_config->item.ntp.daylightsaving ? 3600 : 0);

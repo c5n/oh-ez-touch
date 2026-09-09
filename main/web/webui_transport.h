@@ -4,7 +4,7 @@
  * What the web interface needs from an HTTP server, and nothing else.
  *
  * The valuable half of webui.cpp -- the chunked writer, and the one walk over
- * settings_fields[] that renders and parses every setting exactly once -- has
+ * config_fields[] that renders and parses every setting exactly once -- has
  * never had anything to do with which server delivers it. This is the seam.
  *
  * There are two servers because there have to be. The device runs

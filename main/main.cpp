@@ -20,9 +20,9 @@
 
 #include <lvgl.h>
 
-#include "config.hpp"
+#include "config/config.hpp"
 #include "debug.h"
-#include "settings_fields.hpp"
+#include "config/config_fields.hpp"
 #include "version.h"
 
 #include "control/backlight_control.hpp"
@@ -66,7 +66,7 @@ Config config;
 Infolabel infolabel;
 
 /* Re-apply every setting that does not need a reboot. Declared in
- * settings_fields.hpp and called from both save paths -- the web form in
+ * config_fields.hpp and called from both save paths -- the web form in
  * webui.cpp and the touch settings screen in ui_settings.cpp -- so that the two
  * agree on what a save actually does. It lives here because this is where the
  * backlight and the beeper are owned.

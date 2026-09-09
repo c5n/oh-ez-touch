@@ -5,7 +5,7 @@
 
 #include "port/port_sys.h"
 
-#include "config.hpp"
+#include "config/config.hpp"
 
 static bool sensor_bme280_initialized = false;
 

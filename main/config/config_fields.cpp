@@ -1,4 +1,4 @@
-#include "settings_fields.hpp"
+#include "config_fields.hpp"
 
 #include "ui/ui_theme.hpp"
 
@@ -10,8 +10,8 @@
  * pointers into a global would need dynamic initialisation and would land in
  * RAM, where this one stays in flash. Same reasoning as the uint32_t colours in
  * ui_style.hpp. */
-#define OFF(path) ((uint16_t)offsetof(settings_item_t, path))
-#define SZ(path) ((uint8_t)sizeof(((settings_item_t *)0)->path))
+#define OFF(path) ((uint16_t)offsetof(config_item_t, path))
+#define SZ(path) ((uint8_t)sizeof(((config_item_t *)0)->path))
 
 /* Shorthand, so that a row fits on one line and the table can be read against
  * the settings tables in README.md. Only SEC() names a tab; the rows under it
@@ -37,7 +37,7 @@
  * Getting this right matters more than it used to: the touch screen offers a
  * restart when a flagged field changes, and a flag on a field that is in fact
  * live would ask for a reboot on nearly every save. */
-const struct settings_field_s settings_fields[] = {
+const struct config_field_s config_fields[] = {
 
     SEC("General", SETTINGS_TAB_OTHER),
     TXT("hostname", "Hostname", general.hostname, SETTINGS_F_HOSTCHARS | SETTINGS_F_RESTART),
@@ -79,7 +79,7 @@ const struct settings_field_s settings_fields[] = {
     TXT("bme_press", "Pressure item", openhab.sensors.bme280.items.pressure, 0),
 };
 
-const size_t settings_field_count = sizeof(settings_fields) / sizeof(settings_fields[0]);
+const size_t config_field_count = sizeof(config_fields) / sizeof(config_fields[0]);
 
 /* The generic accessors below reach into Config by offset, so a field whose C
  * type stops matching its kind would corrupt its neighbours rather than fail
@@ -88,21 +88,21 @@ static_assert(sizeof(int) == sizeof(int32_t), "SETTINGS_INT width");
 static_assert(sizeof(enum ui_theme_family_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 static_assert(sizeof(enum ui_night_mode_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 
-static_assert(sizeof(settings_fields) / sizeof(settings_fields[0]) <= SETTINGS_MAX_POST_ARGS,
+static_assert(sizeof(config_fields) / sizeof(config_fields[0]) <= SETTINGS_MAX_POST_ARGS,
               "the web settings form would exceed WEBSERVER_MAX_POST_ARGS");
 
-uint8_t settings_field_tab(size_t index)
+uint8_t config_field_tab(size_t index)
 {
     /* Walk back to the nearest section rather than storing the tab on every
      * row: a section and its fields cannot then disagree. */
     for (size_t i = index + 1; i > 0; i--)
-        if (settings_fields[i - 1].kind == SETTINGS_SECTION)
-            return settings_fields[i - 1].tab;
+        if (config_fields[i - 1].kind == SETTINGS_SECTION)
+            return config_fields[i - 1].tab;
 
     return SETTINGS_TAB_OTHER;
 }
 
-int32_t settings_field_read(const struct settings_field_s *f, const settings_item_t *item)
+int32_t config_field_read(const struct config_field_s *f, const config_item_t *item)
 {
     const void *p = (const uint8_t *)item + f->offset;
 
@@ -122,7 +122,7 @@ int32_t settings_field_read(const struct settings_field_s *f, const settings_ite
     }
 }
 
-void settings_field_write(const struct settings_field_s *f, settings_item_t *item, int32_t value)
+void config_field_write(const struct config_field_s *f, config_item_t *item, int32_t value)
 {
     void *p = (uint8_t *)item + f->offset;
 
@@ -146,7 +146,7 @@ void settings_field_write(const struct settings_field_s *f, settings_item_t *ite
     }
 }
 
-const char *settings_field_text(const struct settings_field_s *f, const settings_item_t *item)
+const char *config_field_text(const struct config_field_s *f, const config_item_t *item)
 {
     if (f->kind != SETTINGS_TEXT)
         return "";
@@ -154,7 +154,7 @@ const char *settings_field_text(const struct settings_field_s *f, const settings
     return (const char *)((const uint8_t *)item + f->offset);
 }
 
-bool settings_field_set_text(const struct settings_field_s *f, settings_item_t *item, const char *value)
+bool config_field_set_text(const struct config_field_s *f, config_item_t *item, const char *value)
 {
     if (f->kind != SETTINGS_TEXT)
         return false;
@@ -166,17 +166,17 @@ bool settings_field_set_text(const struct settings_field_s *f, settings_item_t *
     return true;
 }
 
-void settings_field_set_number(const struct settings_field_s *f, settings_item_t *item, long value)
+void config_field_set_number(const struct config_field_s *f, config_item_t *item, long value)
 {
     if (value < f->min)
         value = f->min;
     if (value > f->max)
         value = f->max;
 
-    settings_field_write(f, item, (int32_t)value);
+    config_field_write(f, item, (int32_t)value);
 }
 
-int32_t settings_field_enum_from_name(const struct settings_field_s *f, const char *name)
+int32_t config_field_enum_from_name(const struct config_field_s *f, const char *name)
 {
     if (f->kind != SETTINGS_ENUM || name == NULL)
         return 0;
@@ -188,12 +188,12 @@ int32_t settings_field_enum_from_name(const struct settings_field_s *f, const ch
     return 0;
 }
 
-bool settings_restart_needed(const settings_item_t *before, const settings_item_t *after,
+bool settings_restart_needed(const config_item_t *before, const config_item_t *after,
                              const char **label_out)
 {
-    for (size_t i = 0; i < settings_field_count; i++)
+    for (size_t i = 0; i < config_field_count; i++)
     {
-        const struct settings_field_s *f = &settings_fields[i];
+        const struct config_field_s *f = &config_fields[i];
 
         if (f->kind == SETTINGS_SECTION || (f->flags & SETTINGS_F_RESTART) == 0)
             continue;
@@ -201,9 +201,9 @@ bool settings_restart_needed(const settings_item_t *before, const settings_item_
         bool changed;
 
         if (f->kind == SETTINGS_TEXT)
-            changed = strcmp(settings_field_text(f, before), settings_field_text(f, after)) != 0;
+            changed = strcmp(config_field_text(f, before), config_field_text(f, after)) != 0;
         else
-            changed = settings_field_read(f, before) != settings_field_read(f, after);
+            changed = config_field_read(f, before) != config_field_read(f, after);
 
         if (changed == true)
         {

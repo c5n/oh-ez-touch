@@ -3,7 +3,7 @@
  *
  * Everything the web interface can change, changeable on the panel. The rows of
  * the openHAB, Sensors and Other tabs are not written out here: they are one
- * pass over settings_fields[], the same table webui.cpp renders its form from,
+ * pass over config_fields[], the same table webui.cpp renders its form from,
  * so a setting cannot exist in one of the two and not the other. Only the WLAN
  * tab is hand-built, because credentials live in NVS rather than in
  * config.json, and only the Info tab is read-only.
@@ -24,7 +24,7 @@
 #include "ui_settings.hpp"
 
 #include "openhab_ui.hpp"
-#include "settings_fields.hpp"
+#include "config/config_fields.hpp"
 #include "ui_beep.hpp"
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
@@ -72,8 +72,8 @@ static Config *settings_config = NULL;
 /* The edited copy, and the values as they were when the screen opened.
  * settings_restart_needed() compares the two. Static rather than allocated:
  * about 250 bytes against 320 KB of RAM, and no allocation to fail. */
-static settings_item_t draft;
-static settings_item_t baseline;
+static config_item_t draft;
+static config_item_t baseline;
 
 static lv_obj_t *screen = NULL;
 static lv_obj_t *prev_screen = NULL;
@@ -89,9 +89,9 @@ static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
 static lv_obj_t *overlay = NULL;
 static lv_obj_t *overlay_textarea = NULL;
 
-/* What the keyboard is editing: either a row of settings_fields[] in the draft,
+/* What the keyboard is editing: either a row of config_fields[] in the draft,
  * or a raw buffer (the WLAN credentials, which are not part of Config). */
-static const struct settings_field_s *edit_field = NULL;
+static const struct config_field_s *edit_field = NULL;
 static char                          *edit_buffer = NULL;
 static size_t                         edit_buffer_size = 0;
 static lv_obj_t                      *edit_row = NULL;
@@ -162,7 +162,7 @@ static void banners_hide(bool hidden)
     for (uint32_t i = 0; i < count; i++)
         lv_obj_set_flag(lv_obj_get_child(top, i), LV_OBJ_FLAG_HIDDEN, hidden);
 }
-static void row_refresh(lv_obj_t *row, const struct settings_field_s *f);
+static void row_refresh(lv_obj_t *row, const struct config_field_s *f);
 
 /* ---------------------------------------------------------------- builders */
 
@@ -235,14 +235,14 @@ static void row_set_value(lv_obj_t *row, const char *value)
 
 /* --------------------------------------------------------------- the rows */
 
-static void field_value_text(const struct settings_field_s *f, const settings_item_t *item,
+static void field_value_text(const struct config_field_s *f, const config_item_t *item,
                              char *buffer, size_t size)
 {
     switch (f->kind)
     {
     case SETTINGS_TEXT:
     {
-        const char *text = settings_field_text(f, item);
+        const char *text = config_field_text(f, item);
 
         /* An empty item name or hostname is a legitimate value, but a blank
          * right-hand column reads as a broken row. */
@@ -251,12 +251,12 @@ static void field_value_text(const struct settings_field_s *f, const settings_it
     }
 
     case SETTINGS_BOOL:
-        snprintf(buffer, size, "%s", settings_field_read(f, item) ? "ON" : "OFF");
+        snprintf(buffer, size, "%s", config_field_read(f, item) ? "ON" : "OFF");
         break;
 
     case SETTINGS_ENUM:
     {
-        int32_t index = settings_field_read(f, item);
+        int32_t index = config_field_read(f, item);
 
         if (index < 0 || index >= (int32_t)f->count)
             index = 0;
@@ -266,12 +266,12 @@ static void field_value_text(const struct settings_field_s *f, const settings_it
     }
 
     default:
-        snprintf(buffer, size, "%ld", (long)settings_field_read(f, item));
+        snprintf(buffer, size, "%ld", (long)config_field_read(f, item));
         break;
     }
 }
 
-static void row_refresh(lv_obj_t *row, const struct settings_field_s *f)
+static void row_refresh(lv_obj_t *row, const struct config_field_s *f)
 {
     char buffer[VALUE_BUFFER_LEN];
 
@@ -381,11 +381,11 @@ static void keyboard_ready_event(lv_event_t *e)
             /* False means the value contained '/' or ':' on a row that forbids
              * them. Dropping it silently is what the web form does; the row
              * keeps its old value, which is visible straight away. */
-            settings_field_set_text(edit_field, &draft, text);
+            config_field_set_text(edit_field, &draft, text);
             break;
 
         default:
-            settings_field_set_number(edit_field, &draft, strtol(text, NULL, 10));
+            config_field_set_number(edit_field, &draft, strtol(text, NULL, 10));
             break;
         }
 
@@ -480,18 +480,18 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     BEEPER_EVENT_WINDOW();
 }
 
-static void field_edit_open(lv_obj_t *row, const struct settings_field_s *f)
+static void field_edit_open(lv_obj_t *row, const struct config_field_s *f)
 {
     char buffer[VALUE_BUFFER_LEN];
 
     if (f->kind == SETTINGS_TEXT)
     {
-        snprintf(buffer, sizeof(buffer), "%s", settings_field_text(f, &draft));
+        snprintf(buffer, sizeof(buffer), "%s", config_field_text(f, &draft));
         keyboard_open(f->label, buffer, f->size - 1, false, false);
     }
     else
     {
-        snprintf(buffer, sizeof(buffer), "%ld", (long)settings_field_read(f, &draft));
+        snprintf(buffer, sizeof(buffer), "%ld", (long)config_field_read(f, &draft));
         /* Room for the widest bound plus a sign; the value is clamped on
          * commit anyway, so this only stops absurd typing. */
         keyboard_open(f->label, buffer, 10, true, false);
@@ -517,14 +517,14 @@ static void buffer_edit_open(lv_obj_t *row, const char *title, char *buffer, siz
 
 static void field_row_event(lv_event_t *e)
 {
-    const struct settings_field_s *f =
-        (const struct settings_field_s *)lv_event_get_user_data(e);
+    const struct config_field_s *f =
+        (const struct config_field_s *)lv_event_get_user_data(e);
     lv_obj_t *row = (lv_obj_t *)lv_event_get_current_target(e);
 
     switch (f->kind)
     {
     case SETTINGS_BOOL:
-        settings_field_write(f, &draft, settings_field_read(f, &draft) ? 0 : 1);
+        config_field_write(f, &draft, config_field_read(f, &draft) ? 0 : 1);
         row_refresh(row, f);
         BEEPER_EVENT_CHANGE();
         break;
@@ -533,12 +533,12 @@ static void field_row_event(lv_event_t *e)
     {
         /* Cycled rather than picked from a list: every enum in the table has
          * three options, so a dropdown and a roller both stay compiled out. */
-        int32_t next = settings_field_read(f, &draft) + 1;
+        int32_t next = config_field_read(f, &draft) + 1;
 
         if (next >= (int32_t)f->count)
             next = 0;
 
-        settings_field_write(f, &draft, next);
+        config_field_write(f, &draft, next);
         row_refresh(row, f);
         BEEPER_EVENT_CHANGE();
         break;
@@ -1089,8 +1089,8 @@ static uint8_t tab_section_count(uint8_t tab)
 {
     uint8_t count = 0;
 
-    for (size_t i = 0; i < settings_field_count; i++)
-        if (settings_fields[i].kind == SETTINGS_SECTION && settings_field_tab(i) == tab)
+    for (size_t i = 0; i < config_field_count; i++)
+        if (config_fields[i].kind == SETTINGS_SECTION && config_field_tab(i) == tab)
             count++;
 
     return count;
@@ -1102,11 +1102,11 @@ static void field_rows_build(uint8_t tab)
     lv_obj_t *rows = tab_rows[tab];
     bool      headings = tab_section_count(tab) > 1;
 
-    for (size_t i = 0; i < settings_field_count; i++)
+    for (size_t i = 0; i < config_field_count; i++)
     {
-        const struct settings_field_s *f = &settings_fields[i];
+        const struct config_field_s *f = &config_fields[i];
 
-        if (settings_field_tab(i) != tab)
+        if (config_field_tab(i) != tab)
             continue;
 
         if (f->kind == SETTINGS_SECTION)

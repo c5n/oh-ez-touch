@@ -440,7 +440,7 @@ the WLAN tab. That is the whole setup procedure: scan, pick the network, type th
 password, Save. No second device and no browser needed.
 
 #### OpenHAB Settings
-Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```main/settings_fields.cpp```, so they cannot drift apart.
+Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```main/config/config_fields.cpp```, so they cannot drift apart.
 
 Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the backlight levels and the beeper, which used to need one without saying so.
 
@@ -525,9 +525,9 @@ I know, this is not very convenient. Finding a solution has top priority on my t
 ### Source layout
 
 ```
-main/                 main.cpp, config.*, settings_fields.* -- the entry point,
-                      the settings, and the one table both the panel's settings
-                      screen and the web form walk
+main/                 main.cpp -- the entry point
+main/config/          the settings, and the one field table that both the
+                      panel's settings screen and the web form walk
 main/ui/              the LVGL user interface: the openHAB page, the settings
                       screen, the styles and themes
 main/openhab/         the openHAB client: sitemap, item state, icons, sensors

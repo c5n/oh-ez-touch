@@ -2,7 +2,7 @@
 #ifndef OPENHAB_UI_H
 #define OPENHAB_UI_H
 
-#include "config.hpp"
+#include "config/config.hpp"
 #include "ui_theme.hpp"
 #include <lvgl.h>
 #include <stdint.h>

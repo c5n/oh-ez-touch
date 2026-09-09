@@ -1,7 +1,7 @@
 #ifndef OPENHAB_SENSOR_BME280_HPP
 #define OPENHAB_SENSOR_BME280_HPP
 
-#include "config.hpp"
+#include "config/config.hpp"
 
 /* False when there is no sensor: no bus, nothing answering, or a chip that
  * is not a BME280. Nothing is published in that case. */
