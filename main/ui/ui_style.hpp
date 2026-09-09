@@ -2,6 +2,7 @@
 #define UI_STYLE_HPP
 
 #include <lvgl.h>
+#include "ui_motion.hpp"
 #include "ui_theme.hpp"
 
 /* The shared styles of the OhEzTouch UI.
@@ -134,6 +135,10 @@ struct ui_theme_s
     const lv_font_t *font_normal; /* state lines, window headers    */
     const lv_font_t *font_large;  /* the big value labels           */
     int16_t          letter_space;
+
+    /* How this family moves. Scalars only, for the same reason the colours are
+     * uint32_t rather than lv_color_t: the table has to stay in flash. */
+    struct ui_motion_cfg_s motion;
 };
 
 void ui_style_select(enum ui_theme_family_e family, bool night);

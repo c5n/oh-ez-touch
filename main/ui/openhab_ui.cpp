@@ -6,6 +6,7 @@
 #include "ui_infolabel.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
+#include "ui_motion.hpp"
 #include "ui_style.hpp"
 
 #include "lodepng/lodepng.h"
@@ -338,6 +339,7 @@ static lv_obj_t *command_button_create(lv_obj_t *parent, struct widget_context_s
     lv_obj_t *btn = lv_button_create(parent);
 
     lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
+    ui_motion_pressable(btn);
     lv_obj_add_style(btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
     lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_user_data(btn, (void *)command);
@@ -1365,6 +1367,11 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
 
     lv_obj_add_style(wctx->container, &ui_style_tile, LV_PART_MAIN);
     lv_obj_add_style(wctx->container, &ui_style_tile_pressed, ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
+
+    /* The tile already changes colour when pressed; this is what makes the
+     * change take time and gives the plate its deformation. Added after the
+     * pressed style, so the transition governs the properties that style sets. */
+    ui_motion_pressable(wctx->container);
 
     // Create top label object
     wctx->label = lv_label_create(wctx->container);

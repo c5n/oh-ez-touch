@@ -60,6 +60,15 @@ lv_style_t ui_style_info_error;
 #define FULLO LV_OPA_COVER
 
 /*        bg        grad      dir  bg_opa  border    bw  bopa   side  radius        text     */
+/* entry, ease, duration, screen, stagger, dist,
+ * press_ease, press_in, press_out, press_hold, press_grow */
+#define MOTION(e, ea, d, sc, st, di, pe, pi, po, ph, pg)                       \
+    {                                                                          \
+        (uint8_t)(e), (uint8_t)(ea), (uint16_t)(d), (uint16_t)(sc),            \
+            (uint8_t)(st), (int8_t)(di), (uint8_t)(pe), (uint16_t)(pi),        \
+            (uint16_t)(po), (uint8_t)(ph), (int8_t)(pg)                        \
+    }
+
 #define SURF(bg, grad, dir, bgopa, bd, bw, bo, sd, rad, txt)                       \
     {                                                                              \
         (bg), (grad), (uint8_t)(dir), (int16_t)(bgopa), (bd), (int16_t)(bw),        \
@@ -114,6 +123,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0x000000, 0, 80, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
+                              UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
     },
     {
         UI_THEME_NAME_DEFAULT " Night", UI_THEME_DEFAULT, true,
@@ -137,6 +148,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0x8A8276, 255, 110, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
+                              UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
     },
 
     /* ------------------------------------------------------------------ LCARS
@@ -172,6 +185,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0xFF9900, 255, 90, 200, 70,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
+    /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
+                              UI_EASE_LINEAR, 0, 96, 48, 0),
     },
     {
         UI_THEME_NAME_LCARS " Night", UI_THEME_LCARS, true,
@@ -195,6 +210,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0xCC7700, 255, 45, 160, 60,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
+    /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
+                              UI_EASE_LINEAR, 0, 96, 48, 0),
     },
 
     /* ----------------------------------------------------------------- JARVIS
@@ -229,6 +246,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0x2E7F99, 255, 110, 180, 60,
         /* glow         */ 0x35D6FF, 8, 70,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
+                              UI_EASE_OUT_EXPO, 160, 256, 24, 0),
     },
     {
         UI_THEME_NAME_JARVIS " Night", UI_THEME_JARVIS, true,
@@ -252,6 +271,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* icon         */ 0x6A4A1A, 255, 90, 160, 55,
         /* glow         */ 0xB3762A, 6, 50,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
+                              UI_EASE_OUT_EXPO, 160, 256, 24, 0),
     },
 };
 
@@ -550,6 +571,11 @@ void ui_style_init(void)
     lv_style_set_bg_color(&ui_style_info_warning, lv_color_hex(theme->info_warning_bg));
     lv_style_set_bg_color(&ui_style_info_error, lv_color_hex(theme->info_error_bg));
 
+    /* Last, and from here rather than from its own call site, so that a theme
+     * change re-times the press feedback along with everything else it
+     * repaints. The transition descriptors it owns are what the shared press
+     * styles point at, so they have to be rebuilt whenever these are. */
+    ui_motion_styles_init();
 }
 
 void ui_style_apply(void)

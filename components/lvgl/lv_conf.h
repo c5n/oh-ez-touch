@@ -100,7 +100,12 @@
  *====================*/
 
 /** Default display refresh, input device read and animation step period. */
-#define LV_DEF_REFR_PERIOD 30      /**< [ms] */
+/* 16 rather than the stock 30. This drives the display refresh timer *and*
+ * lv_anim's own timer, so it is what decides whether a 200 ms movement is
+ * twelve frames or six. A full-screen repaint is still SPI-bound at ~31 ms and
+ * will simply be late, but no animation in this UI repaints the whole screen --
+ * they are all small-area, and small areas can hold 60 fps. */
+#define LV_DEF_REFR_PERIOD 16      /**< [ms] */
 
 /** Default Dots Per Inch. Used to initialize default sizes such as widgets sized, style paddings.
  * (Not so important, you can adjust it to modify default sizes and spaces.) */
@@ -221,7 +226,14 @@
         /** Allow buffering some shadow calculation.
          *  LV_DRAW_SW_SHADOW_CACHE_SIZE is the maximum shadow size to buffer, where shadow size is
          *  `shadow_width + radius`.  Caching has LV_DRAW_SW_SHADOW_CACHE_SIZE^2 RAM cost. */
-        #define LV_DRAW_SW_SHADOW_CACHE_SIZE 0
+        /* Sized for the largest shadow this UI draws. The key is
+         * shadow_width + radius and a hit needs the cache to be at least one
+         * larger, so 25 covers a 6 px shadow on an 18 px radius. There is only
+         * one slot, so this pays off exactly when several objects share a
+         * shadow -- six identical cards -- and does nothing for an animated
+         * shadow_width, where every frame is a new key. That is fine: the
+         * recompute at a small corner size is tens of microseconds. */
+        #define LV_DRAW_SW_SHADOW_CACHE_SIZE 25
 
         /** Set number of maximally-cached circle data.
          *  The circumference of 1/4 circle are saved for anti-aliasing.

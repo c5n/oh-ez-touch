@@ -26,6 +26,7 @@
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
 #include "ui_beep.hpp"
+#include "ui_motion.hpp"
 #include "ui_screen.hpp"
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
@@ -176,6 +177,7 @@ static lv_obj_t *button_create(lv_obj_t *parent, const char *text)
 
     lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
     lv_obj_add_style(btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
+    ui_motion_pressable(btn);
     lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
 
     lv_obj_t *label = lv_label_create(btn);
@@ -194,6 +196,7 @@ static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
 
     lv_obj_add_style(row, &ui_style_btn, LV_PART_MAIN);
     lv_obj_add_style(row, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
+    ui_motion_pressable(row);
     lv_obj_set_size(row, lv_pct(100), ROW_HEIGHT);
     lv_obj_set_style_pad_hor(row, 6, 0);
     lv_obj_set_style_pad_ver(row, 0, 0);

@@ -71,6 +71,7 @@ set(OHEZ_APP_SRCS
 
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
+    "ui/ui_motion.cpp"
     "ui/ui_screen.cpp"
     "ui/ui_style.cpp"
 
