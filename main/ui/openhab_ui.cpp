@@ -1222,7 +1222,13 @@ static void header_create(void)
 
     header.item.title = lv_label_create(header.container);
     lv_label_set_text(header.item.title, "Welcome to OhEzTouch");
-    lv_label_set_long_mode(header.item.title, LV_LABEL_LONG_SCROLL);
+    /* DOT, not SCROLL. A scrolling label re-invalidates its own box on every
+     * refresh period for the life of the device: at 160x22 that is 1.4 ms of
+     * SPI every 16 ms, 9% of the bus, spent animating a page title nobody is
+     * waiting to finish reading. It also means the panel is never idle, so no
+     * frame budget is ever really free. Truncating costs nothing and the page
+     * title is short. */
+    lv_label_set_long_mode(header.item.title, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_align(header.item.title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_flex_grow(header.item.title, 1);
 
