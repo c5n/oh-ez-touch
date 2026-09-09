@@ -1486,6 +1486,16 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
         if (reload_icons == true)
             widget_icon_request(i);
     }
+
+    /* The tiles arrive rather than appearing. Staggered, so at most three are
+     * moving at once -- six at a time would be 59,000 px of invalidation per
+     * frame, well past what a 40 MHz bus can carry -- and the family decides
+     * what "arrive" means.
+     *
+     * Indexed over the container's children rather than over the slots, so a
+     * page with gaps in it still staggers 0, 1, 2 without pauses where an
+     * unknown item was skipped. */
+    ui_motion_enter(parent);
 }
 
 void show(lv_obj_t *parent)
