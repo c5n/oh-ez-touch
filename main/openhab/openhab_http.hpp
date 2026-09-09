@@ -12,12 +12,12 @@
  * simulator makes real requests to a real openHAB instead of reading canned
  * fixtures.
  *
- * Both calls block on the task that makes them, which today is the one task
- * that also drives LVGL: a slow or unreachable openHAB stalls the UI for up to
- * the timeout below. That is not new -- HTTPClient did exactly the same on the
- * loop task -- but it is worth fixing by giving the openHAB client a task and
- * a queue of its own, which is a change to how the UI is structured rather
- * than to how it talks.
+ * Both calls block, and both are called from exactly one place: the openHAB
+ * client task in openhab_client.cpp. That used to be the task that also drives
+ * LVGL, so a slow or unreachable openHAB stalled the screen for up to the
+ * timeout below; it no longer is, and nothing here has to be thread safe
+ * because nothing else calls it. The single client handle these two share
+ * depends on that.
  */
 #ifndef OPENHAB_HTTP_HPP
 #define OPENHAB_HTTP_HPP
@@ -26,9 +26,15 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-/* Matches what HTTPClient defaulted to, so an unresponsive server stalls the
- * UI for no longer than it used to. */
+/* Matches what HTTPClient defaulted to. It no longer stalls anything the user
+ * can see -- it is how long the client task waits before reporting a failure,
+ * which the connection-error statistics then count. */
 #define OPENHAB_HTTP_TIMEOUT_MS 5000
+
+/* "scheme://host:port". The configured hostname is 32 bytes and the port five
+ * digits, so this is roomy; it only has to hold enough to tell one server from
+ * another. */
+#define STR_AUTHORITY_LEN 64
 
 /**
  * GET `url` and copy the body into `buf`.
