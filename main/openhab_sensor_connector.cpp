@@ -1,12 +1,10 @@
 #include "openhab_sensor_connector.hpp"
 
+#include "debug.h"
+
 #include <stdio.h>
 
 #include "openhab_http.hpp"
-
-#ifndef DEBUG_OPENHAB_SENSOR_CONNECTOR
-#define DEBUG_OPENHAB_SENSOR_CONNECTOR 0
-#endif
 
 #define STR_URL_LEN     128
 
@@ -19,7 +17,7 @@ void openhab_sensor_connector_publish(Config &cfg, const char* item, const char*
             cfg.item.openhab.port,
             item);
 
-#if DEBUG_OPENHAB_SENSOR_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_SENSOR_CONNECTOR
     printf("openhab_sensor_connector_publish: Requesting URL: %s\r\n", url);
     printf("openhab_sensor_connector_publish: POST Message: %s\r\n", value);
 #endif

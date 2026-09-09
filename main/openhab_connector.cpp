@@ -1,5 +1,7 @@
 #include "openhab_connector.hpp"
 
+#include "debug.h"
+
 #include <ctype.h>
 #include <memory>
 #include <stdio.h>
@@ -10,10 +12,6 @@
 #include "sim/icon_fixture.hpp"
 #include "sim/sim_offline.hpp"
 #include "sim/sitemap_fixture.hpp"
-
-#ifndef DEBUG_OPENHAB_CONNECTOR
-#define DEBUG_OPENHAB_CONNECTOR 0
-#endif
 
 /* The largest sitemap page that will be read. openHAB serves a page per
  * navigation level and this firmware renders at most ITEM_COUNT_MAX (6)
@@ -59,7 +57,7 @@ int Item::update(const char* link)
     char url[STR_LINK_LEN];
     snprintf(url, sizeof(url), "%s/state", link);
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::update: Requesting URL: %s\r\n", url);
 #endif
     /* The fixture pages carry a fixed state per item, so there is nothing to
@@ -92,7 +90,7 @@ int Item::update(const char* link)
         {
             retval = 1;
             strlcpy(state_text, remote_state, sizeof(state_text));
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  update statetext to \"%s\"\r\n", state_text);
 #endif
         }
@@ -110,7 +108,7 @@ int Item::publish(const char* url)
 {
     int retval = 0;
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::publish: Requesting URL: %s\r\n", url);
 #endif
 
@@ -118,7 +116,7 @@ int Item::publish(const char* url)
     if (sim_offline())
         return 0;
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::publish: POST Message: %s\r\n", state_text);
 #endif
 
@@ -138,7 +136,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
 
     snprintf(url, sizeof(url), "%s/icon/%s?state=%s&format=png", website, name, state);
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
 #endif
 
@@ -178,7 +176,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
 
     icon_size = (size_t)read;
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::getIcon: %u bytes read\r\n", (unsigned)icon_size);
 #endif
 
@@ -192,7 +190,7 @@ int Sitemap::openlink(const char* url)
      * capacity is gone; the parser now grows the pool to fit the page. */
     JsonDocument doc;
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
 #endif
 
@@ -232,7 +230,7 @@ int Sitemap::openlink(const char* url)
 
     bool payload_ok = (payload != NULL);
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     if (payload_ok == true)
         printf("Sitemap::openlink: %u byte payload:\r\n%.*s\r\n",
                (unsigned)payload_len, (int)payload_len, payload);
@@ -266,7 +264,7 @@ int Sitemap::openlink(const char* url)
 
     if (payload_ok == true)
     {
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
         /* ArduinoJson 7 dropped memoryUsage() -- it always returns zero. The
          * serialized size is the closest figure that still says something
          * about how big the page was. */
@@ -282,7 +280,7 @@ int Sitemap::openlink(const char* url)
         else
             strlcpy(title, "no title", sizeof(title));
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
         printf("Sitemap::openlink(\"%s\")\r\n", url);
         printf("  title=\"%s\"\r\n", title);
 #endif
@@ -302,8 +300,9 @@ int Sitemap::openlink(const char* url)
         {
             item_array[item_count].setType(ItemType::type_parent_link);
             item_array[item_count].setPageLink(doc["parent"]["link"]);
-#if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", item_count, item_array[item_count].getPageLink());
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+            printf("  idx: %u type=parent_link   link=\"%s\"\r\n", (unsigned)item_count,
+                   item_array[item_count].getPageLink());
 #endif
             item_count++;
         }
@@ -339,15 +338,15 @@ int Sitemap::openlink(const char* url)
                 item->setLabel("NO LABEL");
             }
 
-#if DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u label=\"%s\"", item_count, item->getLabel());
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+            printf("  idx: %u label=\"%s\"", (unsigned)item_count, item->getLabel());
 #endif
 
             // Icon
             if (widget["icon"])
             {
                 item->setIconName(widget["icon"]);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
                 printf("  icon=\"%s\"", item->getIconName());
 #endif
             }
@@ -398,7 +397,7 @@ int Sitemap::openlink(const char* url)
             else if (widget["type"] == "Colorpicker")
                 item->setType(ItemType::type_colorpicker);
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  type=%u", item->getType());
 #endif
 
@@ -409,7 +408,7 @@ int Sitemap::openlink(const char* url)
                 item->setMinVal(json_item["stateDescription"]["minimum"].as<float>());
             else
                 item->setMinVal(0.0f);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  minVal=%.2f", item->getMinVal());
 #endif
 
@@ -420,7 +419,7 @@ int Sitemap::openlink(const char* url)
                 item->setMaxVal(json_item["stateDescription"]["maximum"].as<float>());
             else
                 item->setMaxVal(100.0f);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  maxVal=%.2f", item->getMaxVal());
 #endif
 
@@ -431,7 +430,7 @@ int Sitemap::openlink(const char* url)
                 item->setStep(json_item["stateDescription"]["step"].as<float>());
             else
                 item->setStep(1.0f);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  step=%.2f", item->getStep());
 #endif
 
@@ -440,7 +439,7 @@ int Sitemap::openlink(const char* url)
                 item->setNumberPattern(json_item["stateDescription"]["pattern"]);
             else
                 item->setNumberPattern("%d");
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  numpat=\"%s\"", item->getNumberPattern());
 #endif
 
@@ -453,14 +452,14 @@ int Sitemap::openlink(const char* url)
                 {
                     // convert number to get rid of unit
                     item->setStateNumber(strtof(json_str(json_item["state"]), NULL));
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
                     printf("  num-statetext=\"%s\"", item->getStateText());
 #endif
                 }
                 else
                 {
                     item->setStateText(json_item["state"]);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
                     printf("  statetext=\"%s\"", item->getStateText());
 #endif
                 }
@@ -476,7 +475,7 @@ int Sitemap::openlink(const char* url)
             if (widget["linkedPage"]["link"])
             {
                 item->setPageLink(widget["linkedPage"]["link"]);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
                 printf("  page_link=\"%s\"", item->getPageLink());
 #endif
             }
@@ -484,7 +483,7 @@ int Sitemap::openlink(const char* url)
             if (json_item["link"])
             {
                 item->setLink(json_item["link"]);
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
                 printf("  link=\"%s\"", item->getLink());
 #endif
             }
@@ -495,7 +494,7 @@ int Sitemap::openlink(const char* url)
             else if (json_item["commandDescription"]["commandOptions"])
                 parse_selection(item, json_item["commandDescription"]["commandOptions"]);
 
-#if DEBUG_OPENHAB_CONNECTOR
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("\r\n");
 #endif
 

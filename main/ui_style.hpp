@@ -28,10 +28,6 @@
  * Call ui_style_select() and then ui_style_init() once, before creating any
  * widget. ui_style_apply() re-does it on a live UI. */
 
-#ifndef DEBUG_UI_STYLE
-#define DEBUG_UI_STYLE 0
-#endif
-
 /* One entry per (family, night) combination, indexed by UI_STYLE_INDEX(). */
 #define UI_THEME_COUNT (UI_THEME_FAMILY_COUNT * 2)
 #define UI_STYLE_INDEX(family, night) ((unsigned)(family) * 2u + ((night) ? 1u : 0u))

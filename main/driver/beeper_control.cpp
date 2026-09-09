@@ -1,5 +1,7 @@
 #include "beeper_control.hpp"
 
+#include "debug.h"
+
 #include <stdio.h>
 
 #include "freertos/FreeRTOS.h"
@@ -9,10 +11,6 @@
 #include "esp_log.h"
 
 #include "port/port_beeper.h"
-
-#ifndef DEBUG_BEEPER_CONTROL
-#define DEBUG_BEEPER_CONTROL 0
-#endif
 
 #define BEEPER_TASK_STACK_SIZE  2048
 
@@ -30,7 +28,7 @@ static void beeper_task(void *parameter);
 
 void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause)
 {
-#if DEBUG_BEEPER_CONTROL
+#if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
     printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
 #endif
     if (xRequestQueue != NULL)
@@ -86,7 +84,7 @@ static void beeper_task(void *parameter)
             port_beeper_tone(beep_request.note, 0);
             vTaskDelay(pdMS_TO_TICKS(beep_request.pause));
 
-#if DEBUG_BEEPER_CONTROL
+#if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
             static UBaseType_t stack_free = 0;
             UBaseType_t stack_free_new = uxTaskGetStackHighWaterMark(NULL);
 

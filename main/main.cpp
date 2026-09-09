@@ -46,10 +46,6 @@
 #include "openhab_sensor_main.hpp"
 #include "webui.hpp"
 
-#ifndef DEBUG_WLAN_STATES
-#define DEBUG_WLAN_STATES 0
-#endif
-
 /* Set by the top-level CMakeLists.txt. The fallback is what a build that has
  * not been told which board it is for reports, rather than failing to compile:
  * the device side becomes the Kconfig board choice when it runs on IDF
@@ -268,7 +264,7 @@ static void ohez_loop(void)
 
     if (wlan_state() != reported)
     {
-#if DEBUG_WLAN_STATES
+#if CONFIG_OHEZ_DEBUG_WLAN_STATES
         printf("WLAN: state change: %u -> %u\r\n", (unsigned)reported,
                (unsigned)wlan_state());
 #endif

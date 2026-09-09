@@ -1,16 +1,13 @@
 #ifndef UI_INFOLABEL_HPP
 #define UI_INFOLABEL_HPP
 
+#include "debug.h"
 #include "port/port_sys.h"
 #include "ui_style.hpp"
 
 #include <stdint.h>
 #include <stdio.h>
 #include <lvgl.h>
-
-#ifndef DEBUG_UI_INFOLABEL
-#define DEBUG_UI_INFOLABEL 0
-#endif
 
 #define STR_INFOLABEL_TEMP_BUFFER_LEN (140 + 1)
 
@@ -40,7 +37,7 @@ public:
     {
         if (il == NULL)
         {
-#if DEBUG_UI_INFOLABEL
+#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
             printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
             /* The panel used to build a private style here. It now shares the
@@ -87,7 +84,7 @@ public:
     {
         if (il != NULL)
         {
-#if DEBUG_UI_INFOLABEL
+#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
             printf("Infolabel::destroy: Destroying label\r\n");
 #endif
             lv_obj_delete(il);
@@ -101,7 +98,7 @@ public:
     {
         if (timeout_timestamp > 0 && port_millis() >= timeout_timestamp)
         {
-#if DEBUG_UI_INFOLABEL
+#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
             printf("Infolabel::loop: infolabel timeout reached\r\n");
 #endif
             destroy();

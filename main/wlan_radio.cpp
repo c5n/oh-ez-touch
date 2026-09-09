@@ -21,10 +21,6 @@
 
 #include "port/port_sys.h"
 
-#ifndef DEBUG_WLAN
-#define DEBUG_WLAN 0
-#endif
-
 static Config           *wlan_config = NULL;
 static enum wlan_state_e wlan_current = WLAN_IDLE;
 
@@ -131,7 +127,7 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
 
     if (wlan_import_sdk(ssid, ssid_size, psk, psk_size) == true)
     {
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
         printf("wlan: imported '%s' from the SDK station config\r\n", ssid);
 #endif
         return true;
@@ -139,7 +135,7 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
 
     if (wlan_credentials_import_blob(ssid, ssid_size, psk, psk_size) == true)
     {
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
         printf("wlan: imported '%s' from the AutoConnect blob\r\n", ssid);
 #endif
         return true;
@@ -187,7 +183,7 @@ static void wlan_ap_raise(void)
     wlan_ap_is_up = true;
     wlan_ap_deadline = port_millis() + WLAN_AP_TIMEOUT;
 
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
     esp_netif_ip_info_t ip = {};
     esp_netif_get_ip_info(ap_netif, &ip);
     printf("wlan: AP '%s' up at " IPSTR "\r\n",
@@ -203,7 +199,7 @@ static void wlan_ap_drop(void)
     esp_wifi_set_mode(WIFI_MODE_STA);
     wlan_ap_is_up = false;
 
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
     printf("wlan: AP down\r\n");
 #endif
 }
@@ -225,7 +221,7 @@ static void wlan_connect_begin(void)
     wlan_current = WLAN_CONNECTING;
     wlan_connect_deadline = port_millis() + WLAN_CONNECT_TIMEOUT;
 
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
     printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
 #endif
 }
@@ -307,7 +303,7 @@ void wlan_setup(Config *config)
     wlan_ap_spent = true;
     wlan_current = WLAN_PORTAL;
 
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
     printf("wlan: no credentials, waiting to be provisioned\r\n");
 #endif
 }
@@ -323,7 +319,7 @@ void wlan_loop(void)
             wlan_ap_linger_deadline = port_millis() + WLAN_AP_LINGER;
             wlan_ap_spent = false;
 
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
             esp_netif_ip_info_t ip = {};
             esp_netif_get_ip_info(sta_netif, &ip);
             printf("wlan: online as " IPSTR "\r\n", IP2STR(&ip.ip));

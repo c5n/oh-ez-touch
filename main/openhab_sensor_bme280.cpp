@@ -7,10 +7,6 @@
 
 #include "port/port_bme280.h"
 
-#ifndef DEBUG_OPENHAB_SENSOR_BME280
-#define DEBUG_OPENHAB_SENSOR_BME280 0
-#endif
-
 /* "%.3f" of a pressure in hPa is the longest value published here
  * ("1013.250"), so eight characters plus the terminator. */
 #define STR_SENSOR_VALUE_LEN 16
@@ -28,7 +24,7 @@ static void publish_reading(Config &cfg, const char *item, float value)
     char buffer[STR_SENSOR_VALUE_LEN];
     snprintf(buffer, sizeof(buffer), "%.3f", value);
 
-#if DEBUG_OPENHAB_SENSOR_BME280
+#if CONFIG_OHEZ_DEBUG_OPENHAB_SENSOR_BME280
     printf("openhab_sensor_bme280_update: %s = %s\r\n", item, buffer);
 #endif
     openhab_sensor_connector_publish(cfg, item, buffer);
@@ -45,7 +41,7 @@ void openhab_sensor_bme280_update(Config &cfg)
      * history, where it is indistinguishable from a real measurement. */
     if (port_bme280_read(&temperature, &humidity, &pressure) == false)
     {
-#if DEBUG_OPENHAB_SENSOR_BME280
+#if CONFIG_OHEZ_DEBUG_OPENHAB_SENSOR_BME280
         printf("openhab_sensor_bme280_update: no reading\r\n");
 #endif
         return;

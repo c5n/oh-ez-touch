@@ -23,10 +23,6 @@
  * data behind a descriptor it then reuses. */
 #include <misc/cache/instance/lv_image_cache.h>
 
-#ifndef DEBUG_OPENHAB_UI
-#define DEBUG_OPENHAB_UI 0
-#endif
-
 #ifndef WIDGET_COUNT_MAX
 #define WIDGET_COUNT_MAX 6
 #endif
@@ -303,7 +299,7 @@ static void publish_button_command(lv_event_t *e)
 
     const char *command = (const char *)lv_obj_get_user_data(btn);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     debug_printf("button pressed Command: %s\r\n", command);
 #endif
     ctx->item->setStateText(command);
@@ -319,7 +315,7 @@ static void header_event_handler(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("header_event_handler: LV_EVENT_CLICKED\r\n");
 #endif
 
@@ -385,7 +381,7 @@ static void window_item_colorpicker_event_handler(lv_event_t *e)
              (int)lv_slider_get_value(ctx->state_window_hsv[HSV_H]),
              (int)lv_slider_get_value(ctx->state_window_hsv[HSV_S]),
              (int)lv_slider_get_value(ctx->state_window_hsv[HSV_V]));
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     debug_printf("hsv string: %s\r\n", hsv);
 #endif
     ctx->item->setStateText(hsv);
@@ -467,14 +463,14 @@ static lv_obj_t *button_row_create(lv_obj_t *parent)
 
 void window_item_selection(struct widget_context_s *ctx)
 {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("window_item_selection()\r\n");
 #endif
     lv_obj_t *cont = button_row_create(item_window_create(ctx));
 
     for (size_t index = 0; index < ctx->item->getSelectionCount(); index++)
     {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("Label: \"%s\", State: \"%s\"\n", ctx->item->getSelectionLabel(index), ctx->item->getStateText());
 #endif
         command_button_create(cont, ctx, publish_button_command,
@@ -485,7 +481,7 @@ void window_item_selection(struct widget_context_s *ctx)
 
 void window_item_rollershutter(struct widget_context_s *ctx)
 {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("window_item_rollershutter()\n");
 #endif
     lv_obj_t *cont = button_row_create(item_window_create(ctx));
@@ -497,7 +493,7 @@ void window_item_rollershutter(struct widget_context_s *ctx)
 
 void window_item_player(struct widget_context_s *ctx)
 {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("window_item_player()\r\n");
 #endif
     lv_obj_t *cont = button_row_create(item_window_create(ctx));
@@ -553,7 +549,7 @@ static void window_item_slider_event_handler(lv_event_t *e)
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
     lv_obj_t *slider = (lv_obj_t *)lv_event_get_target(e);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("window_item_slider_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
     if (ctx == nullptr)
@@ -575,7 +571,7 @@ static void window_item_slider_preset_event_handler(lv_event_t *e)
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
     lv_obj_t *btn = (lv_obj_t *)lv_event_get_target(e);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("window_item_slider_preset_event_handler: LV_EVENT_CLICKED\n");
 #endif
     if (ctx == nullptr || ctx->state_window_slider == nullptr)
@@ -588,7 +584,7 @@ static void window_item_slider_preset_event_handler(lv_event_t *e)
 
     int32_t value = window_item_slider_preset_value(ctx->item, *percent);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     debug_printf("preset pressed: %u%% -> %d\n", *percent, (int)value);
 #endif
     /* Let the slider's own handler do the publishing, so there is one path to
@@ -683,7 +679,7 @@ static void window_item_setpoint_event_handler(lv_event_t *e)
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
     lv_obj_t *btnm = (lv_obj_t *)lv_event_get_target(e);
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("window_item_setpoint_event_handler: LV_EVENT_VALUE_CHANGED\n");
 #endif
     if (ctx == nullptr)
@@ -694,7 +690,7 @@ static void window_item_setpoint_event_handler(lv_event_t *e)
     if (txt == nullptr)
         return;
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("window_item_setpoint_event_handler: btn_text = %s\r\n", txt);
 #endif
     if (strcmp(txt, LV_SYMBOL_PLUS) == 0)
@@ -751,7 +747,7 @@ void window_item_setpoint(struct widget_context_s *ctx)
 
 static void event_handler(lv_event_t *e)
 {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("event_handler: LV_EVENT_CLICKED\r\n");
 #endif
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
@@ -768,7 +764,7 @@ static void event_handler(lv_event_t *e)
     case ItemType::type_parent_link:
     case ItemType::type_link:
     case ItemType::type_group:
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("LinkedPage Link: %s\r\n", ctx->item->getPageLink());
 #endif
         strlcpy(last_page, current_page, sizeof(last_page));
@@ -782,7 +778,7 @@ static void event_handler(lv_event_t *e)
         break;
 
     case ItemType::type_switch:
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("Link: %s ... Posting update\r\n", ctx->item->getLink());
 #endif
         if (strncmp(ctx->item->getStateText(), "OFF", 3) == 0)
@@ -827,7 +823,7 @@ static void event_handler(lv_event_t *e)
 
     default:
         BEEPER_EVENT_ERROR();
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("event_handler: unhandled item type id: %u\r\n", ctx->item->getType());
 #endif
         break;
@@ -989,7 +985,7 @@ void load_icon(struct widget_context_s *wctx)
      * are the same type on the host and different ones on the device. */
     unsigned png_width, png_height;
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("load_icon: %s ", wctx->item->getIconName());
 #endif
 
@@ -1011,8 +1007,9 @@ void load_icon(struct widget_context_s *wctx)
     wctx->img_dsc.data_size = png_width * png_height * 4;
     wctx->img_dsc.data = png_decoded;
 
-#if DEBUG_OPENHAB_UI
-    printf("size: %u x %u, data_size %u\n", png_width, png_height, wctx->img_dsc.data_size);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+    printf("size: %u x %u, data_size %u\n", png_width, png_height,
+           (unsigned)wctx->img_dsc.data_size);
 #endif
 }
 
@@ -1172,7 +1169,7 @@ static lv_obj_t *state_label_create(struct widget_context_s *wctx)
 
 void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
 {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("widget_create: type=%u\r\n", wctx->item->getType());
 #endif
 
@@ -1419,7 +1416,7 @@ static void theme_apply_pending(void)
     ui_style_select(theme_pending_family, theme_pending_night);
     ui_style_apply();
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("theme_apply_pending: %s\r\n", ui_style_name());
 #endif
 
@@ -1469,7 +1466,7 @@ void openhab_ui_loop(void)
     static uint64_t night_check_next_timestamp;
     static uint64_t update_ntp_next_timestamp;
     static uint64_t connection_error_handling_timestamp;
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     static uint64_t statistics_timestamp;
 #endif
     openhab_ui_infolabel.loop();
@@ -1482,14 +1479,14 @@ void openhab_ui_loop(void)
             sitemap_ok = true;
             openhab_ui_infolabel.destroy();
             show(content);
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
             printf("Free Heap: %u\r\n", (unsigned)port_free_heap());
 #endif
             statistics.sitemap_success_cnt++;
         }
         else
         {
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
             printf("openhab_ui_loop: openlink failed: %s\r\n", current_page);
 #endif
             sitemap_ok = false;
@@ -1560,7 +1557,7 @@ void openhab_ui_loop(void)
     {
         update_ntp_next_timestamp = port_millis() + NTP_TIME_UPDATE_INTERVAL;
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("openhab_ui_loop: update time using ntp\r\n");
 #endif
         /* Re-applied rather than set once, which is what makes the NTP host,
@@ -1596,7 +1593,7 @@ void openhab_ui_loop(void)
             port_restart();
         }
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("STATISTICS reset\r\n");
 #endif
         statistics.update_fail_cnt = 0;
@@ -1605,7 +1602,7 @@ void openhab_ui_loop(void)
         statistics.sitemap_success_cnt = 0;
     }
 
-#if DEBUG_OPENHAB_UI
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     if (port_millis() - statistics_timestamp >= (10 * 1000))
     {
         unsigned long long up = (unsigned long long)(port_millis() / 1000);
@@ -1614,8 +1611,8 @@ void openhab_ui_loop(void)
 
         printf("STATISTICS Uptime: %llu days, %02llu:%02llu:%02llu UpdSucc: %u UpdFail: %u SiteSucc: %u SiteFail: %u\r\n",
                up / 86400, (up / 3600) % 24, (up / 60) % 60, up % 60,
-               statistics.update_success_cnt, statistics.update_fail_cnt,
-               statistics.sitemap_success_cnt, statistics.sitemap_fail_cnt);
+               (unsigned)statistics.update_success_cnt, (unsigned)statistics.update_fail_cnt,
+               (unsigned)statistics.sitemap_success_cnt, (unsigned)statistics.sitemap_fail_cnt);
     }
 #endif
 

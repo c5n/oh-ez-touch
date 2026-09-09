@@ -37,3 +37,74 @@ config OHEZ_ARDUITOUCH_JTAG_PINS
         which is why it is an option here rather than a fourth board.
 
 endmenu
+
+menu "Debug output"
+
+config OHEZ_DEBUG
+    bool "Boot banner and general debug output"
+    default n
+    help
+        The banner naming the target, version, git hash and build time, and
+        everything else that goes through debug_printf().
+
+        Off by default, which is what every PlatformIO environment had -- so
+        the banner has never actually been printed by a shipped build. There
+        is an unconditional one-line version log either way.
+
+config OHEZ_DEBUG_BACKLIGHT_CONTROL
+    bool "backlight: brightness changes and the dim timeout"
+    default n
+
+config OHEZ_DEBUG_BEEPER_CONTROL
+    bool "beeper: every note queued, and the task's stack headroom"
+    default n
+
+config OHEZ_DEBUG_CONFIG_FILE
+    bool "config: the file name, and every setting as it is loaded"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_CONNECTOR
+    bool "openHAB client: every URL requested, and the pages returned"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_SENSOR_BME280
+    bool "BME280: each reading before it is published"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_SENSOR_CONNECTOR
+    bool "sensors: each value POSTed"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_SENSOR_MAIN
+    bool "sensors: the refresh timer firing"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_UI
+    bool "openHAB UI: widget events, theme changes and the poll statistics"
+    default n
+
+config OHEZ_DEBUG_UI_INFOLABEL
+    bool "info banner: creation and timeout"
+    default n
+
+config OHEZ_DEBUG_UI_SETTINGS
+    bool "settings screen: which tab opened, and what a save changed"
+    default n
+
+config OHEZ_DEBUG_UI_STYLE
+    bool "styles: which theme variant was applied"
+    default n
+
+config OHEZ_DEBUG_WEBUI
+    bool "web interface: saves, and the settings-table sanity check"
+    default n
+
+config OHEZ_DEBUG_WLAN
+    bool "WLAN: the state machine, the access point and credential imports"
+    default n
+
+config OHEZ_DEBUG_WLAN_STATES
+    bool "WLAN: only the state transitions, which is the quiet subset"
+    default n
+
+endmenu

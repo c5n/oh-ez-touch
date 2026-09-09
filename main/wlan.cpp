@@ -17,15 +17,13 @@
 
 #include "wlan.hpp"
 
+#include "debug.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "port/port_kv.h"
-
-#ifndef DEBUG_WLAN
-#define DEBUG_WLAN 0
-#endif
 
 /* Our own store. */
 #define WLAN_NVS_NAMESPACE "oheztouch"
@@ -61,7 +59,7 @@ bool wlan_credentials_set(const char *ssid, const char *psk)
 {
     if (port_kv_set_str(WLAN_NVS_NAMESPACE, WLAN_NVS_KEY_SSID, ssid) != ESP_OK)
     {
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
         printf("wlan: cannot write " WLAN_NVS_NAMESPACE "/" WLAN_NVS_KEY_SSID "\r\n");
 #endif
         return false;
@@ -104,7 +102,7 @@ bool wlan_credentials_import_blob(char *ssid, size_t ssid_size, char *psk, size_
 
     if (size < 4 || size > WLAN_AC_CREDT_MAX)
     {
-#if DEBUG_WLAN
+#if CONFIG_OHEZ_DEBUG_WLAN
         if (size > 0)
             printf("wlan: implausible AC_CREDT blob of %u bytes\r\n", (unsigned)size);
 #endif

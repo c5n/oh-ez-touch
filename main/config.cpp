@@ -18,10 +18,6 @@
 
 #include "esp_log.h"
 
-#ifndef DEBUG_CONFIG
-#define DEBUG_CONFIG 0
-#endif
-
 static const char *TAG = "config";
 
 void Config::lock()
@@ -183,7 +179,7 @@ bool Config::loadConfig(const char *name)
 
     config_apply_env_overrides(item);
 
-#if DEBUG_CONFIG
+#if CONFIG_OHEZ_DEBUG_CONFIG_FILE
     printf("Config::loadConfig: Loaded Values\r\n");
     debug_printf("  item.general.hostname: %s\r\n", item.general.hostname);
     debug_printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);

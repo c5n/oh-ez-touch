@@ -47,10 +47,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-#ifndef DEBUG_WEBUI
-#define DEBUG_WEBUI 0
-#endif
-
 /* Widest destination in Config::item is char[32]; the rest is headroom so
  * that an over-long submission is truncated here rather than rejected. */
 #define WEBUI_VALUE_MAX 80
@@ -439,7 +435,7 @@ static void webui_handle_save(webui_request_t *req)
 
     config->saveConfig();
 
-#if DEBUG_WEBUI
+#if CONFIG_OHEZ_DEBUG_WEBUI
     printf("webui: settings saved\r\n");
 #endif
 
@@ -503,7 +499,7 @@ void webui_setup(Config *config)
 {
     webui_config = config;
 
-#if DEBUG_WEBUI
+#if CONFIG_OHEZ_DEBUG_WEBUI
     /* The accessors reach into Config by offset, so a row naming a field that
      * has since moved or shrunk would quietly read and write its neighbours.
      * offsetof() keeps the offsets right by construction; this catches the

@@ -1,17 +1,15 @@
 #include "backlight_control.hpp"
 
+#include "debug.h"
+
 #include <stdio.h>
 
 #include "port/port_backlight.h"
 #include "port/port_sys.h"
 
-#ifndef DEBUG_BACKLIGHT_CONTROL
-#define DEBUG_BACKLIGHT_CONTROL 0
-#endif
-
 void BacklightControl::set_brightness(uint8_t percent)
 {
-#if DEBUG_BACKLIGHT_CONTROL
+#if CONFIG_OHEZ_DEBUG_BACKLIGHT_CONTROL
     printf("BacklightControl::set_brightness: %u\r\n", (unsigned)percent);
 #endif
     BacklightControl::current_brightness = percent;
@@ -29,7 +27,7 @@ bool BacklightControl::resetDimTimeout()
 
     if (BacklightControl::current_brightness != BacklightControl::normal_brightness)
     {
-#if DEBUG_BACKLIGHT_CONTROL
+#if CONFIG_OHEZ_DEBUG_BACKLIGHT_CONTROL
         printf("BacklightControl::resetDimTimeout: wake up\r\n");
 #endif
 
@@ -60,7 +58,7 @@ void BacklightControl::loop()
         && (port_millis() >= BacklightControl::dim_timeout_timestamp)
         && (BacklightControl::current_brightness != BacklightControl::dim_brightness))
     {
-#if DEBUG_BACKLIGHT_CONTROL
+#if CONFIG_OHEZ_DEBUG_BACKLIGHT_CONTROL
         printf("BacklightControl::loop: activity timeout, dim display\r\n");
 #endif
         set_brightness(BacklightControl::dim_brightness);

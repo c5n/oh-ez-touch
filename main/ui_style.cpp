@@ -1,5 +1,7 @@
 #include "ui_style.hpp"
 
+#include "debug.h"
+
 lv_style_t ui_style_tile;
 lv_style_t ui_style_tile_pressed;
 lv_style_t ui_style_tile_link;
@@ -398,7 +400,7 @@ void ui_style_init(void)
     static bool inited;
     static bool screen_styled;
 
-#if DEBUG_UI_STYLE
+#if CONFIG_OHEZ_DEBUG_UI_STYLE
     /* The flat table is indexed by UI_STYLE_INDEX(), so entry i has to be the
      * day or night half of family i / 2. A row pasted into the wrong place
      * would otherwise show up only as the wrong colours. */

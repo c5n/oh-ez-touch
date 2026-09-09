@@ -43,10 +43,6 @@
 #include <string.h>
 #include <strings.h> /* strcasecmp() */
 
-#ifndef DEBUG_UI_SETTINGS
-#define DEBUG_UI_SETTINGS 0
-#endif
-
 /* 320x240 leaves very little room, so the chrome is measured rather than
  * proportional -- window_create()'s vertical/5 header would eat a fifth of the
  * screen. There is no title bar here at all: the tab bar and the footer are as
@@ -775,7 +771,7 @@ static void save_event(lv_event_t *e)
     status_set(tab, "Saved");
     BEEPER_EVENT_CHANGE();
 
-#if DEBUG_UI_SETTINGS
+#if CONFIG_OHEZ_DEBUG_UI_SETTINGS
     debug_printf("ui_settings: saved, restart needed: %d\r\n", (int)restart_needed);
 #endif
 
@@ -1246,7 +1242,7 @@ void ui_settings_open(enum settings_tab_e tab)
 
     lv_screen_load(screen);
 
-#if DEBUG_UI_SETTINGS
+#if CONFIG_OHEZ_DEBUG_UI_SETTINGS
     debug_printf("ui_settings: opened on tab %u\r\n", (unsigned)tab);
 #endif
 }
