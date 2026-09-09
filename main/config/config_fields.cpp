@@ -2,6 +2,7 @@
 
 #include "ui/ui_theme.hpp"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
@@ -26,9 +27,10 @@
 
 /* The SETTINGS_F_RESTART flags say what the code actually does, which is not
  * what they used to say. settings_apply_live() re-applies the openHAB endpoint,
- * the backlight timings, the beeper and the theme; the NTP host, offset and DST
- * are live already, because openhab_ui_loop() re-issues configTime() off the
- * live Config every NTP_TIME_UPDATE_INTERVAL. That leaves two:
+ * the backlight timings, the beeper, the theme and the MQTT client; the NTP
+ * host, offset and DST are live already, because openhab_ui_loop() re-issues
+ * configTime() off the live Config every NTP_TIME_UPDATE_INTERVAL. That leaves
+ * two:
  *
  *   hostname -- WiFi.setHostname() runs before WiFi.mode() in wlan_setup(),
  *               and the name doubles as the setup access point's SSID.
@@ -71,6 +73,22 @@ const struct config_field_s config_fields[] = {
     SINT("oh_port", "Port", openhab.port, 1, 65535),
     TXT("oh_sitemap", "Sitemap", openhab.sitemap, SETTINGS_F_HOSTCHARS),
 
+    SEC("MQTT Broker", SETTINGS_TAB_MQTT),
+    CHK("mqtt_use", "Enable MQTT", mqtt.enabled, 0),
+    TXT("mqtt_host", "Host", mqtt.hostname, SETTINGS_F_HOSTCHARS),
+    SINT("mqtt_port", "Port", mqtt.port, 1, 65535),
+    TXT("mqtt_user", "User (empty: none)", mqtt.user, 0),
+    TXT("mqtt_pass", "Password", mqtt.password, SETTINGS_F_SECRET),
+
+    SEC("MQTT Publishing", SETTINGS_TAB_MQTT),
+    /* No SETTINGS_F_HOSTCHARS: a base topic of "home/panels" is a reasonable
+     * thing to want, and '/' is what makes it one. The client rejects the two
+     * characters that would actually break a topic -- '+' and '#', the
+     * subscription wildcards -- when it assembles the prefix. */
+    TXT("mqtt_topic", "Base topic", mqtt.topic, 0),
+    SINT("mqtt_interval", "Publish interval [s]", mqtt.interval, 5, 86400),
+    CHK("mqtt_retain", "Retain published values", mqtt.retain, 0),
+
     SEC("Sensors", SETTINGS_TAB_SENSORS),
     CHK("bme_use", "Use BME280 sensor", openhab.sensors.bme280.use, SETTINGS_F_RESTART),
     SINT("bme_interval", "Update interval [s]", openhab.sensors.bme280.interval, 1, 86400),
@@ -88,8 +106,8 @@ static_assert(sizeof(int) == sizeof(int32_t), "SETTINGS_INT width");
 static_assert(sizeof(enum ui_theme_family_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 static_assert(sizeof(enum ui_night_mode_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 
-static_assert(sizeof(config_fields) / sizeof(config_fields[0]) <= SETTINGS_MAX_POST_ARGS,
-              "the web settings form would exceed WEBSERVER_MAX_POST_ARGS");
+static_assert(sizeof(config_fields) / sizeof(config_fields[0]) <= SETTINGS_MAX_FIELDS,
+              "more settings rows than the settings screen and the web form are sized for");
 
 uint8_t config_field_tab(size_t index)
 {
@@ -152,6 +170,42 @@ const char *config_field_text(const struct config_field_s *f, const config_item_
         return "";
 
     return (const char *)((const uint8_t *)item + f->offset);
+}
+
+void config_field_value_text(const struct config_field_s *f, const config_item_t *item,
+                             char *buffer, size_t size)
+{
+    switch (f->kind)
+    {
+    case SETTINGS_TEXT:
+        snprintf(buffer, size, "%s", config_field_text(f, item));
+        break;
+
+    /* ON and OFF rather than 1 and 0: they are what the panel's rows have
+     * always shown, and what an openHAB Switch item takes. */
+    case SETTINGS_BOOL:
+        snprintf(buffer, size, "%s", config_field_read(f, item) ? "ON" : "OFF");
+        break;
+
+    case SETTINGS_ENUM:
+    {
+        int32_t index = config_field_read(f, item);
+
+        if (index < 0 || index >= (int32_t)f->count)
+            index = 0;
+
+        snprintf(buffer, size, "%s", f->names[index]);
+        break;
+    }
+
+    case SETTINGS_SECTION:
+        snprintf(buffer, size, "%s", "");
+        break;
+
+    default:
+        snprintf(buffer, size, "%ld", (long)config_field_read(f, item));
+        break;
+    }
 }
 
 bool config_field_set_text(const struct config_field_s *f, config_item_t *item, const char *value)

@@ -26,6 +26,7 @@ extern "C" void app_main(void)
 {
     UNITY_BEGIN();
 
+    test_config_fields_run();
     test_item_setters_run();
     test_ui_theme_run();
 

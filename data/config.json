@@ -26,6 +26,17 @@
     {
         "enabled":  1
     },
+    "mqtt":
+    {
+        "enabled":  0,
+        "hostname": "mosquitto",
+        "port":     1883,
+        "user":     "",
+        "password": "",
+        "topic":    "oheztouch",
+        "interval": 60,
+        "retain":   1
+    },
     "openhab":
     {
         "hostname": "openhabian",

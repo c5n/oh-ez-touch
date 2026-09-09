@@ -7,12 +7,15 @@
 #include "freertos/semphr.h"
 
 /* The largest config file that will be read. Sized well above what the file
- * actually needs -- the shipped data/config.json is around 900 bytes of
+ * actually needs -- the shipped data/config.json is around 1200 bytes of
  * pretty-printed JSON, and saveConfig() writes it back compacted to about half
  * that -- so that adding a setting does not silently push the file over the
  * limit and fall back to every default. It is still bounded, because the size
  * comes from the store and a corrupt SPIFFS can report anything; the buffer is
- * allocated from the real file size, not from this. */
+ * allocated from the real file size, not from this.
+ *
+ * The MQTT settings added about 130 compacted bytes, which is the scale this
+ * headroom is for. */
 #ifndef CONFIG_FILE_MAX_SIZE
 #define CONFIG_FILE_MAX_SIZE 2048
 #endif
@@ -62,6 +65,29 @@ public:
         {
             bool enabled;
         } beeper;
+        struct
+        {
+            /* Off by default: a device that has never been told about a broker
+             * must not spend every boot resolving "mosquitto" and logging the
+             * failure. */
+            bool enabled;
+            char hostname[32];
+            int  port;
+            char user[32];
+            /* 64 rather than 32, unlike every other string here: this one is
+             * only ever compared by a broker, so there is no reason to make it
+             * the shortest secret in the installation. */
+            char password[64];
+            /* The first segment of every topic. What follows it is
+             * general.hostname, so two panels with the defaults do not publish
+             * over each other -- see mqtt/ohez_mqtt.cpp. */
+            char topic[32];
+            /* Seconds between two rounds of system information. A minute is
+             * what a dashboard showing an uptime wants, and slow enough that
+             * the handful of retained topics it republishes cost nothing. */
+            int  interval;
+            bool retain;
+        } mqtt;
         struct
         {
             char hostname[32];

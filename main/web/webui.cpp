@@ -47,8 +47,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-/* Widest destination in Config::item is char[32]; the rest is headroom so
- * that an over-long submission is truncated here rather than rejected. */
+/* Widest destination in Config::item is the char[64] MQTT password; the rest is
+ * headroom so that an over-long submission is truncated here rather than
+ * rejected. */
 #define WEBUI_VALUE_MAX 80
 
 /* No HTTP authentication, which is what AutoConnect was configured for too
@@ -67,8 +68,8 @@ static Config *webui_config = NULL;
  * second copy of the list here is exactly the drift the table was introduced
  * to stop. What stays below is the HTML rendering and the POST parsing.
  *
- * The WEBSERVER_MAX_POST_ARGS guard moved there with the table, as
- * SETTINGS_MAX_POST_ARGS, where the row count is a constant expression. */
+ * The bound on the table's size lives there too, as SETTINGS_MAX_FIELDS,
+ * where the row count is a constant expression. */
 
 /* ------------------------------------------------------------------ writer */
 
@@ -272,8 +273,13 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
         switch (f->kind)
         {
         case SETTINGS_TEXT:
-            webui_putf(o, "<input type='text' name='%s' maxlength='%u' value='",
-                       f->name, (unsigned)(f->size - 1));
+            /* A SETTINGS_F_SECRET row is a password input, and is still
+             * prefilled: saving this form must not require retyping the broker
+             * password, and the page it appears in has no authentication in
+             * front of it anyway. See the flag's own comment. */
+            webui_putf(o, "<input type='%s' name='%s' maxlength='%u' value='",
+                       (f->flags & SETTINGS_F_SECRET) ? "password" : "text", f->name,
+                       (unsigned)(f->size - 1));
             webui_put_escaped(o, config_field_text(f, &config->item));
             webui_put(o, "'>");
             break;
@@ -316,10 +322,10 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
                  "<button type='submit'>Save</button></form>");
 }
 
-/* A form of its own, and not only for tidiness: WebServer stops parsing a
- * body after SETTINGS_MAX_POST_ARGS arguments, and provisioning must not depend
- * on a valid settings round-trip. The passphrase is never sent back to the
- * browser, and an empty one is submitted as an open network. */
+/* A form of its own, and not only for tidiness: provisioning must not depend on
+ * a valid settings round-trip, and a device that has just come up on its setup
+ * access point has nothing else to offer. The passphrase is never sent back to
+ * the browser, and an empty one is submitted as an open network. */
 static void webui_send_wlan_form(struct webui_out_s *o)
 {
     webui_put(o, "<form method='post' action='/wifi'>"

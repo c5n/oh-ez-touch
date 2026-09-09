@@ -12,3 +12,10 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # nvs_flash's CMakeLists raises a FATAL_ERROR for encryption on the linux
 # target, and the device does not use it either. Keep both targets identical.
 CONFIG_NVS_ENCRYPTION=n
+
+# esp-mqtt, trimmed to what the client in main/mqtt/ actually uses. It connects
+# over plain TCP, so the SSL and websocket transports are dead weight -- and on
+# the device that weight is flash in a 1920K app partition. Removing them does
+# not remove mbedtls: tcp_transport still requires esp-tls either way.
+CONFIG_MQTT_TRANSPORT_SSL=n
+CONFIG_MQTT_TRANSPORT_WEBSOCKET=n

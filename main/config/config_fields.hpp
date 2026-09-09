@@ -50,6 +50,7 @@ enum settings_tab_e
 {
     SETTINGS_TAB_WLAN = 0,
     SETTINGS_TAB_OPENHAB,
+    SETTINGS_TAB_MQTT,
     SETTINGS_TAB_SENSORS,
     SETTINGS_TAB_OTHER,
     SETTINGS_TAB_INFO,
@@ -64,6 +65,19 @@ enum settings_tab_e
  * after a restart. settings_apply_live() below is what keeps this list short --
  * only what genuinely cannot be re-applied at runtime is flagged. */
 #define SETTINGS_F_RESTART 0x02u
+/* A secret: never rendered in clear. The web form sends it as an
+ * <input type=password> and the settings screen shows the row as asterisks and
+ * edits it in a password textarea, the way the WLAN passphrase already is.
+ *
+ * "Never in clear" is as far as this goes, and it is worth being honest about
+ * how far that is. The value is still prefilled into the form, so it is in the
+ * page source of an interface that has no authentication at all -- but so is
+ * the button that would rewrite it, and anyone who can read the one can use the
+ * other. What the flag buys is that a settings page left open on a desk does
+ * not display the broker password, and that saving the form does not require
+ * retyping it. The MQTT client also refuses to publish a secret field's value
+ * to the broker; see mqtt/ohez_mqtt.cpp. */
+#define SETTINGS_F_SECRET 0x04u
 
 struct config_field_s
 {
@@ -89,17 +103,21 @@ typedef decltype(Config::item) config_item_t;
 extern const struct config_field_s config_fields[];
 extern const size_t                  config_field_count;
 
-/* Arduino WebServer stops parsing a body after WEBSERVER_MAX_POST_ARGS
- * arguments and says so only through one log_e(), so a form that outgrows the
- * cap loses fields in silence. The cap lives in the framework's Parsing.cpp
- * rather than in a header, so it cannot be asserted against directly; this
- * mirrors the framework default, and should the framework ever raise it, this
- * stays wrong in the harmless direction. Asserted in config_fields.cpp,
- * where the table's size is a constant expression.
+/* An upper bound on the table, asserted in config_fields.cpp where its size is
+ * a constant expression.
  *
- * The web form posts one argument per non-section row. The WLAN credentials
- * are a form of its own partly for this reason. */
-#define SETTINGS_MAX_POST_ARGS 32
+ * This used to be 32 because Arduino's WebServer stopped parsing a body after
+ * WEBSERVER_MAX_POST_ARGS arguments and said so only through one log_e(), so a
+ * form that outgrew the cap lost fields in silence. That framework is gone:
+ * both transports in main/web/ buffer the body themselves and webui_arg()
+ * walks it, so there is no argument count limit any more -- only a body length
+ * one, WEBUI_BODY_MAX / REQUEST_BODY_MAX, which is 4096 bytes on both.
+ *
+ * The bound is kept because the *panel* still has one that is not a number in
+ * a header: a tab of rows has to stay something a finger can scroll through.
+ * 64 rows is roughly four screens per tab, and the settings form posts around
+ * 30 bytes per row, so it also stays comfortably inside those 4096. */
+#define SETTINGS_MAX_FIELDS 64
 
 /* The tab of the section this row belongs to. Rows before the first section --
  * there are none today -- read as SETTINGS_TAB_OTHER. */
@@ -113,6 +131,17 @@ void    config_field_write(const struct config_field_s *f, config_item_t *item, 
 
 /* SETTINGS_TEXT only; returns "" for every other kind, never NULL. */
 const char *config_field_text(const struct config_field_s *f, const config_item_t *item);
+
+/* The field's current value as text: a SETTINGS_TEXT verbatim, a SETTINGS_BOOL
+ * as ON or OFF, a SETTINGS_ENUM as its option name, every numeric kind in
+ * decimal, and a SETTINGS_SECTION as "".
+ *
+ * Here rather than in either caller because there are two: the settings
+ * screen's rows and the MQTT client's config/ topics. The screen then puts its
+ * own gloss on the result -- "--" for an empty text field, asterisks for a
+ * SETTINGS_F_SECRET one -- which is presentation and stays there. */
+void config_field_value_text(const struct config_field_s *f, const config_item_t *item,
+                             char *buffer, size_t size);
 
 /* Copies at most f->size - 1 characters, so an over-long value is truncated
  * rather than rejected. Returns false, and stores nothing, when the row is

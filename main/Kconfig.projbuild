@@ -63,6 +63,10 @@ config OHEZ_DEBUG_CONFIG_FILE
     bool "config: the file name, and every setting as it is loaded"
     default n
 
+config OHEZ_DEBUG_MQTT
+    bool "MQTT: every topic published, with its value"
+    default n
+
 config OHEZ_DEBUG_OPENHAB_CONNECTOR
     bool "openHAB client: every URL requested, and the pages returned"
     default n

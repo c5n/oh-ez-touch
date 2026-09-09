@@ -30,7 +30,8 @@ if(OHEZ_LINUX)
         "port/linux/port_beeper.c"
         "port/linux/port_bme280.c"
         "port/linux/port_net.c"
-        "port/linux/port_ntp.c")
+        "port/linux/port_ntp.c"
+        "port/linux/port_esp_timer.c")
 else()
     set(OHEZ_PORT_SRCS
         "port/esp32/port_sys.c"
@@ -76,6 +77,8 @@ set(OHEZ_APP_SRCS
     "openhab/openhab_sensor_connector.cpp"
     "openhab/openhab_sensor_main.cpp"
 
+    "mqtt/ohez_mqtt.cpp"
+
     "web/webui.cpp"
     "web/webui_ota.cpp"
     "web/webui_transport.cpp"
@@ -91,14 +94,20 @@ set(OHEZ_APP_SRCS
 
 set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 
+# mqtt is in both lists: components/mqtt builds for the linux target as well,
+# and every socket wait in its transport goes through select(), which is the one
+# thing the FreeRTOS simulator wraps -- so the panel and the simulator run the
+# same MQTT client, the way they already run the same esp_http_client. The one
+# symbol it is missing there comes from port/linux/port_esp_timer.c.
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
-                  esp_event)
+                  esp_event mqtt esp_timer)
 if(NOT OHEZ_LINUX)
-    # esp_timer is deliberately absent from the linux side: it registers
-    # headers-only there, so esp_timer.h is not even includable -- which is
-    # exactly why port_sys has two implementations. spiffs likewise excludes
-    # esp_spiffs.c on linux.
-    list(APPEND OHEZ_REQUIRES spiffs esp_timer)
+    # esp_timer is in the shared list for its *header*: it registers
+    # headers-only on the linux target, so esp_timer.h is includable there but
+    # nothing in it links -- which is exactly why port_sys has two
+    # implementations, and why port/linux/port_esp_timer.c has to define the one
+    # function esp-mqtt calls. spiffs likewise excludes esp_spiffs.c on linux.
+    list(APPEND OHEZ_REQUIRES spiffs)
 
     # The panel, the touch panel and the two PWMs. The three registry drivers
     # come from main/idf_component.yml; only one panel and one touch driver is
@@ -128,6 +137,19 @@ idf_component_register(SRCS ${OHEZ_SRCS}
                        REQUIRES ${OHEZ_REQUIRES})
 
 if(OHEZ_LINUX)
+    # Force port/linux/port_esp_timer.c into the link.
+    #
+    # Without this the archive order defeats it: libmqtt.a is scanned before
+    # libmain.a, so nothing is taken from it on that pass; libmain.a then pulls
+    # in the MQTT client, which leaves esp_mqtt_client_init undefined; and the
+    # second libmqtt.a on the line satisfies that by extracting
+    # platform_esp32_idf.c.o -- whose esp_timer_get_time has, by then, no
+    # archive left to come from. `-u` puts the symbol on the undefined list
+    # before libmain.a is scanned, so the definition is loaded with everything
+    # else. The same trick IDF's own esp_timer component uses to keep
+    # esp_timer_init_include_func.
+    target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_timer_get_time")
+
     # port/linux/port_flash.c needs the partition table the build just
     # generated, to seed the emulated flash image with. Only CMake knows where
     # the build directory is.

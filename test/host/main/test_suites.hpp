@@ -11,6 +11,7 @@
 #ifndef TEST_SUITES_HPP
 #define TEST_SUITES_HPP
 
+void test_config_fields_run(void);
 void test_item_setters_run(void);
 void test_ui_theme_run(void);
 

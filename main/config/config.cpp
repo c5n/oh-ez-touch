@@ -15,6 +15,7 @@
 #include <memory>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h> /* strcasecmp(): OHEZ_MQTT takes a word, not a number */
 
 #include "esp_log.h"
 
@@ -59,18 +60,26 @@ bool Config::setup()
  *
  *   OHEZ_OPENHAB_HOST=openhab.lan OHEZ_SITEMAP=oheztouch ./build/linux/oh-ez-touch.elf
  *
+ * and, for the same reason, which broker to publish to:
+ *
+ *   OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
+ *
  * They apply on both targets, not just the simulator: the device has no
  * environment to read, so the calls are inert there rather than guarded. Only a
  * variable that is actually set overrides the file. */
 static void config_apply_env_overrides(decltype(Config::item) &item)
 {
-    const char *theme   = getenv("OHEZ_THEME");
-    const char *night   = getenv("OHEZ_NIGHT");
-    const char *from    = getenv("OHEZ_NIGHT_FROM");
-    const char *to      = getenv("OHEZ_NIGHT_TO");
-    const char *host    = getenv("OHEZ_OPENHAB_HOST");
-    const char *port    = getenv("OHEZ_OPENHAB_PORT");
-    const char *sitemap = getenv("OHEZ_SITEMAP");
+    const char *theme      = getenv("OHEZ_THEME");
+    const char *night      = getenv("OHEZ_NIGHT");
+    const char *from       = getenv("OHEZ_NIGHT_FROM");
+    const char *to         = getenv("OHEZ_NIGHT_TO");
+    const char *host       = getenv("OHEZ_OPENHAB_HOST");
+    const char *port       = getenv("OHEZ_OPENHAB_PORT");
+    const char *sitemap    = getenv("OHEZ_SITEMAP");
+    const char *mqtt       = getenv("OHEZ_MQTT");
+    const char *mqtt_host  = getenv("OHEZ_MQTT_HOST");
+    const char *mqtt_port  = getenv("OHEZ_MQTT_PORT");
+    const char *mqtt_topic = getenv("OHEZ_MQTT_TOPIC");
 
     /* ui_theme_from_name() falls back to the first entry for a name it does not
      * know, so a typo here selects the default theme rather than nothing. */
@@ -94,6 +103,21 @@ static void config_apply_env_overrides(decltype(Config::item) &item)
 
     if (sitemap != NULL)
         strlcpy(item.openhab.sitemap, sitemap, sizeof(item.openhab.sitemap));
+
+    /* Anything but "off" or "0" enables it, so OHEZ_MQTT=1, =on and =yes all
+     * work; the point of the variable is to switch the client on for one run
+     * without editing the file, not to be a second configuration language. */
+    if (mqtt != NULL)
+        item.mqtt.enabled = (strcasecmp(mqtt, "off") != 0 && strcmp(mqtt, "0") != 0);
+
+    if (mqtt_host != NULL)
+        strlcpy(item.mqtt.hostname, mqtt_host, sizeof(item.mqtt.hostname));
+
+    if (mqtt_port != NULL)
+        item.mqtt.port = atoi(mqtt_port);
+
+    if (mqtt_topic != NULL)
+        strlcpy(item.mqtt.topic, mqtt_topic, sizeof(item.mqtt.topic));
 }
 
 bool Config::loadConfig(const char *name)
@@ -168,6 +192,14 @@ bool Config::loadConfig(const char *name)
     item.backlight.normal_brightness = doc["backlight"]["normal_brightness"] | 100;
     item.backlight.dim_brightness = doc["backlight"]["dim_brightness"] | 40;
     item.beeper.enabled = doc["beeper"]["enabled"] | true;
+    item.mqtt.enabled = doc["mqtt"]["enabled"] | false;
+    strlcpy(item.mqtt.hostname, doc["mqtt"]["hostname"] | "mosquitto", sizeof(item.mqtt.hostname));
+    item.mqtt.port = doc["mqtt"]["port"] | 1883;
+    strlcpy(item.mqtt.user, doc["mqtt"]["user"] | "", sizeof(item.mqtt.user));
+    strlcpy(item.mqtt.password, doc["mqtt"]["password"] | "", sizeof(item.mqtt.password));
+    strlcpy(item.mqtt.topic, doc["mqtt"]["topic"] | "oheztouch", sizeof(item.mqtt.topic));
+    item.mqtt.interval = doc["mqtt"]["interval"] | 60;
+    item.mqtt.retain = doc["mqtt"]["retain"] | true;
     strlcpy(item.openhab.hostname, doc["openhab"]["hostname"] | "openhabian", sizeof(item.openhab.hostname));
     item.openhab.port = doc["openhab"]["port"] | 8080;
     strlcpy(item.openhab.sitemap, doc["openhab"]["sitemap"] | "setme_sitemap", sizeof(item.openhab.sitemap));
@@ -193,6 +225,15 @@ bool Config::loadConfig(const char *name)
     debug_printf("  item.backlight.normal_brightness: %u\r\n", item.backlight.normal_brightness);
     debug_printf("  item.backlight.dim_brightness: %u\r\n", item.backlight.dim_brightness);
     debug_printf("  item.beeper.enabled: %d\r\n", item.beeper.enabled);
+    debug_printf("  item.mqtt.enabled: %d\r\n", item.mqtt.enabled);
+    debug_printf("  item.mqtt.hostname: %s\r\n", item.mqtt.hostname);
+    debug_printf("  item.mqtt.port: %d\r\n", item.mqtt.port);
+    debug_printf("  item.mqtt.user: %s\r\n", item.mqtt.user);
+    /* The password is deliberately not printed. Everything else in this dump
+     * is already visible in the web form; that one is not. */
+    debug_printf("  item.mqtt.topic: %s\r\n", item.mqtt.topic);
+    debug_printf("  item.mqtt.interval: %d\r\n", item.mqtt.interval);
+    debug_printf("  item.mqtt.retain: %d\r\n", item.mqtt.retain);
     debug_printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
     debug_printf("  item.openhab.port: %d\r\n", item.openhab.port);
     debug_printf("  item.openhab.sitemap: %s\r\n", item.openhab.sitemap);
@@ -231,6 +272,15 @@ bool Config::saveConfig()
     doc["backlight"]["dim_brightness"] = item.backlight.dim_brightness;
 
     doc["beeper"]["enabled"] = item.beeper.enabled;
+
+    doc["mqtt"]["enabled"] = item.mqtt.enabled;
+    doc["mqtt"]["hostname"] = item.mqtt.hostname;
+    doc["mqtt"]["port"] = item.mqtt.port;
+    doc["mqtt"]["user"] = item.mqtt.user;
+    doc["mqtt"]["password"] = item.mqtt.password;
+    doc["mqtt"]["topic"] = item.mqtt.topic;
+    doc["mqtt"]["interval"] = item.mqtt.interval;
+    doc["mqtt"]["retain"] = item.mqtt.retain;
 
     doc["openhab"]["hostname"] = item.openhab.hostname;
     doc["openhab"]["port"] = item.openhab.port;

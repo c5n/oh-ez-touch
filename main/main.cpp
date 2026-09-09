@@ -27,6 +27,7 @@
 
 #include "control/backlight_control.hpp"
 #include "control/beeper_control.hpp"
+#include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_sensor_main.hpp"
 #include "port/ohez_port.h"
@@ -76,8 +77,10 @@ Infolabel infolabel;
  * restart-only settings without ever saying so. The theme goes through
  * openhab_ui_request_theme(), which only records a request: this is reachable
  * from the web handler, where lv_timer_handler() is not being pumped and
- * nothing may touch LVGL. Disabling the beeper needs no call at all -- the
- * per-touch blip reads config.item.beeper.enabled live. */
+ * nothing may touch LVGL. The MQTT client is asked the same way, and for the
+ * same reason -- tearing down a connection and republishing three dozen
+ * retained topics is not work for a POST handler. Disabling the beeper needs no
+ * call at all -- the per-touch blip reads config.item.beeper.enabled live. */
 void settings_apply_live(Config *config)
 {
     openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
@@ -94,6 +97,12 @@ void settings_apply_live(Config *config)
 
     if (config->item.beeper.enabled == true)
         beeper_enable();
+
+    /* Unconditional, and not only when the broker settings changed: the client
+     * decides that for itself, because it is the only thing that knows what it
+     * was started with. What every save does need is for the settings it
+     * publishes to be republished. */
+    ohez_mqtt_request_reconfigure();
 }
 
 /* Declared by port_indev.h, called from the device's pointer read on every
@@ -220,6 +229,7 @@ static void ohez_setup(void)
     ui_settings_setup(&config);
 
     openhab_sensor_main_setup(config);
+    ohez_mqtt_setup(&config);
 
     port_ntp_setup(config.item.ntp.hostname, config.item.ntp.gmt_offset * 3600,
                    config.item.ntp.daylightsaving ? 3600 : 0);
@@ -335,6 +345,12 @@ static void ohez_loop(void)
     {
         openhab_ui_loop();
         openhab_sensor_main_loop(config);
+
+        /* Inside the guard, which is what defers the first connection until
+         * there is a network to make it on: esp-mqtt would otherwise spend the
+         * whole of the association failing to resolve the broker's name, once a
+         * second, with a log line each time. */
+        ohez_mqtt_loop(config);
     }
 
     /* Was SDL_Delay(5) in the simulator and nothing at all on the device, whose

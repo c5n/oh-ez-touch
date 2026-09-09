@@ -53,9 +53,11 @@
 #define FOOTER_HEIGHT 34
 #define ROW_HEIGHT 30
 
-/* Enough for the widest value a row shows: a 31 character text field, or
- * "Activity timeout" as a number. */
-#define VALUE_BUFFER_LEN 48
+/* Enough for the widest text field in Config, which is the 63 character MQTT
+ * password, plus room for the numbers. This buffer is not only what a row
+ * *shows* -- field_edit_open() prefills the keyboard from it, so a value too
+ * long for it would be truncated on the way in and then saved truncated. */
+#define VALUE_BUFFER_LEN 80
 
 /* More than a home has, and a hard bound on what a scan may return. */
 #define SCAN_RESULT_MAX 16
@@ -121,15 +123,21 @@ static uint64_t wlan_state_refresh_deadline = 0;
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
 
-/* Symbols, not words: the tab bar is five buttons across 320 px, and the
- * condensed LCARS face at 16 px still cannot fit "openHAB" and "Sensors" into
- * 64 px each. The footer names the active tab instead, which is more legible
- * than a clipped label would be. */
+/* Symbols, not words: the tab bar is six buttons across 320 px, and the
+ * condensed LCARS face at 16 px cannot fit "openHAB" or "Sensors" into 53 px
+ * each -- it could not fit them into the 64 the five tabs before MQTT had. The
+ * footer names the active tab instead, which is more legible than a clipped
+ * label would be.
+ *
+ * LV_SYMBOL_UPLOAD for MQTT, because a panel's side of a broker is almost all
+ * publishing. It is one of the codepoints tools/build_fonts.sh puts in the 16
+ * and 22 px faces; a symbol outside that list renders as a box. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
-    LV_SYMBOL_WIFI, LV_SYMBOL_HOME, LV_SYMBOL_EYE_OPEN, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
+    LV_SYMBOL_WIFI,     LV_SYMBOL_HOME,     LV_SYMBOL_UPLOAD,
+    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
 
 static const char *const tab_title[SETTINGS_TAB_COUNT] = {
-    "WLAN", "openHAB", "Sensors", "Other", "Info"};
+    "WLAN", "openHAB", "MQTT", "Sensors", "Other", "Info"};
 
 static void screen_build(uint8_t tab);
 static void wlan_state_update(void);
@@ -235,39 +243,26 @@ static void row_set_value(lv_obj_t *row, const char *value)
 
 /* --------------------------------------------------------------- the rows */
 
+/* config_field_value_text() plus the two substitutions that belong to a row and
+ * not to the value: the placeholder that keeps an empty field from reading as a
+ * broken row, and the asterisks that keep a secret off the screen. */
 static void field_value_text(const struct config_field_s *f, const config_item_t *item,
                              char *buffer, size_t size)
 {
-    switch (f->kind)
-    {
-    case SETTINGS_TEXT:
-    {
-        const char *text = config_field_text(f, item);
+    config_field_value_text(f, item, buffer, size);
 
+    if (f->kind != SETTINGS_TEXT)
+        return;
+
+    if (buffer[0] == '\0')
+    {
         /* An empty item name or hostname is a legitimate value, but a blank
          * right-hand column reads as a broken row. */
-        snprintf(buffer, size, "%s", (text[0] == '\0') ? "--" : text);
-        break;
+        snprintf(buffer, size, "%s", "--");
     }
-
-    case SETTINGS_BOOL:
-        snprintf(buffer, size, "%s", config_field_read(f, item) ? "ON" : "OFF");
-        break;
-
-    case SETTINGS_ENUM:
+    else if (f->flags & SETTINGS_F_SECRET)
     {
-        int32_t index = config_field_read(f, item);
-
-        if (index < 0 || index >= (int32_t)f->count)
-            index = 0;
-
-        snprintf(buffer, size, "%s", f->names[index]);
-        break;
-    }
-
-    default:
-        snprintf(buffer, size, "%ld", (long)config_field_read(f, item));
-        break;
+        snprintf(buffer, size, "%s", "*****");
     }
 }
 
@@ -486,8 +481,16 @@ static void field_edit_open(lv_obj_t *row, const struct config_field_s *f)
 
     if (f->kind == SETTINGS_TEXT)
     {
+        bool secret = (f->flags & SETTINGS_F_SECRET) != 0;
+
+        /* A secret is prefilled like any other field, and hidden by the
+         * textarea's password mode rather than by being withheld: this row is
+         * how it is corrected, and a field that empties itself every time it is
+         * opened cannot be edited, only retyped. The WLAN passphrase does
+         * withhold, but that one is not a Config field and is not stored here
+         * -- buffer_edit_open() is its path. */
         snprintf(buffer, sizeof(buffer), "%s", config_field_text(f, &draft));
-        keyboard_open(f->label, buffer, f->size - 1, false, false);
+        keyboard_open(f->label, buffer, f->size - 1, false, secret);
     }
     else
     {
@@ -1186,6 +1189,7 @@ static void screen_build(uint8_t tab)
 
     wlan_tab_build(tab_rows[SETTINGS_TAB_WLAN]);
     field_rows_build(SETTINGS_TAB_OPENHAB);
+    field_rows_build(SETTINGS_TAB_MQTT);
     field_rows_build(SETTINGS_TAB_SENSORS);
     field_rows_build(SETTINGS_TAB_OTHER);
     info_tab_build(tab_rows[SETTINGS_TAB_INFO]);

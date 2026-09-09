@@ -18,3 +18,11 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 
 CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# esp-mqtt's client runs in a task of its own, and its 6144 byte default is a
+# device figure. Same reason as CONFIG_ESP_MAIN_TASK_STACK_SIZE above: a host
+# pthread doing libc and socket work needs far more, and overflowing a FreeRTOS
+# stack here corrupts the ready lists and surfaces as an assertion in
+# vTaskSwitchContext(), a long way from the cause.
+CONFIG_MQTT_USE_CUSTOM_CONFIG=y
+CONFIG_MQTT_TASK_STACK_SIZE=32768
