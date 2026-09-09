@@ -3,7 +3,6 @@
 #include "debug.h"
 
 #include <ctype.h>
-#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,15 +10,6 @@
 #include "openhab_http.hpp"
 #include "sim/icon_fixture.hpp"
 #include "sim/sim_offline.hpp"
-#include "sim/sitemap_fixture.hpp"
-
-/* The largest sitemap page that will be read. openHAB serves a page per
- * navigation level and this firmware renders at most ITEM_COUNT_MAX (6)
- * widgets from one, so the pages are small; the figure is the same order as
- * the 12000 byte document capacity ArduinoJson 6 was given here before it
- * learned to size itself. openhab_http_get() names it in the log when a page
- * does not fit, which is the only way this is ever reached. */
-#define SITEMAP_PAGE_BUFFER_SIZE 12288
 
 /* JsonVariant::as<const char *>() yields NULL for a missing or non-string
  * value; the comparisons below want an empty string in that case. */
@@ -227,61 +217,6 @@ size_t Item::getIcon(const char* website, unsigned char *buffer, size_t buffer_s
 #endif
 
     return icon_size;
-}
-
-/* Fetch a sitemap page and hand it to parse().
- *
- * The two halves are separate because only one of them has to wait: parse()
- * is arithmetic on bytes already in memory, and this is a network round trip
- * that can take the full OPENHAB_HTTP_TIMEOUT_MS. */
-int Sitemap::openlink(const char* url)
-{
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Sitemap::openlink: Requesting URL: %s\r\n", url);
-#endif
-
-    /* The page outlives the parse: ArduinoJson parses in place and keeps
-     * pointers into it, so this buffer has to stay alive until parse()
-     * returns. On the heap rather than the stack because the UI task has 8 KB
-     * of it on the device. */
-    const char *payload = NULL;
-    size_t payload_len = 0;
-    std::unique_ptr<char[]> page;
-
-    if (sim_offline())
-    {
-        payload = sim_sitemap_fixture_get(url);
-
-        if (payload == NULL)
-        {
-            printf("Sitemap::openlink: no fixture page for URL: %s\r\n", url);
-            return -1;
-        }
-
-        payload_len = strlen(payload);
-    }
-    else
-    {
-        page.reset(new char[SITEMAP_PAGE_BUFFER_SIZE]);
-
-        ssize_t read = openhab_http_get(url, page.get(), SITEMAP_PAGE_BUFFER_SIZE, false);
-
-        if (read < 0)
-        {
-            printf("Sitemap::openlink: ERROR URL: %s\r\n", url);
-            return -1;
-        }
-
-        payload = page.get();
-        payload_len = (size_t)read;
-    }
-
-    int retval = parse(payload, payload_len);
-
-    if (retval != 0)
-        printf("Sitemap::openlink: unusable page at URL: %s\r\n", url);
-
-    return retval;
 }
 
 /* Turn a sitemap page into the title and the item array.

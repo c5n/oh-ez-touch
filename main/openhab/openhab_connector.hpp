@@ -178,10 +178,6 @@ private:
     Item item_array[ITEM_COUNT_MAX];
 
 public:
-    /* Fetch the page at `url` and parse it. The two are separate below because
-     * only the fetch waits on anything. */
-    int openlink(const char* url);
-
     /* Turn a page already in memory into the title and the item array.
      *
      * `payload` need not be terminated -- a body off the network is not -- and

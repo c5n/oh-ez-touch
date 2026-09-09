@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 
 #include "openhab_ui.hpp"
+#include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
 #include "ui_infolabel.hpp"
 #include "ui_beep.hpp"
@@ -33,6 +34,19 @@
 
 #ifndef GET_SITEMAP_RETRY_INTERVAL
 #define GET_SITEMAP_RETRY_INTERVAL 5000
+#endif
+
+/* How long a submitted page fetch is waited for before it is written off and
+ * asked for again. Three times the client's own per-request timeout, because a
+ * page queued behind a few icons has to be given time to reach the front.
+ *
+ * The client task answers every request it does not drop, so this should never
+ * fire. It exists because the one way the asynchronous shape can fail that the
+ * synchronous one could not is by waiting forever -- and a page that never
+ * loads and never retries is a blank screen that the connection-error watchdog
+ * further down never notices, because nothing is counting. */
+#ifndef GET_SITEMAP_ANSWER_TIMEOUT
+#define GET_SITEMAP_ANSWER_TIMEOUT 15000
 #endif
 
 #ifndef NTP_TIME_UPDATE_INTERVAL
@@ -113,15 +127,45 @@ struct widget_context_s widget_context[WIDGET_COUNT_MAX];
 struct statistics_s statistics;
 
 void update_state_widget(struct widget_context_s *ctx);
+static void page_request(uint64_t delay_ms);
 
 /* show() pairs widget_context[i] with sitemap.getItem(i), so there must not be
  * more widgets than the sitemap holds items. */
 static_assert(WIDGET_COUNT_MAX <= ITEM_COUNT_MAX, "WIDGET_COUNT_MAX exceeds ITEM_COUNT_MAX");
 
-static bool refresh_page;
-/* Whether the tile page currently reflects a sitemap. A theme change rebuilds
- * the tiles, which is only meaningful once there is something to rebuild. */
-static bool sitemap_ok;
+/* Where the tile page is in the cycle of asking for a sitemap and getting one.
+ *
+ * PAGE_READY is what "the tile page currently reflects a sitemap" used to be
+ * told by sitemap_ok, and it is still what a theme change tests before
+ * rebuilding tiles there is no sitemap behind. What is new is the state
+ * between wanting a page and having one: the fetch no longer happens inside a
+ * single call, so there has to be somewhere to be while it is outstanding.
+ *
+ *   PAGE_IDLE     nothing wanted -- before the first openhab_ui_connect()
+ *   PAGE_REQUEST  wanted, and due to be submitted at refresh_retry_timeout
+ *   PAGE_WAITING  submitted; a result is expected
+ *   PAGE_READY    parsed, and the tiles on screen are its
+ */
+enum page_state_e
+{
+    PAGE_IDLE,
+    PAGE_REQUEST,
+    PAGE_WAITING,
+    PAGE_READY,
+};
+
+static enum page_state_e page_state;
+/* Stamped on every icon and state request, so that the answers can be told
+ * apart from the answers to a page that has since been navigated away from.
+ * Handed out by openhab_client_request_page(). */
+static uint32_t page_generation;
+/* When a submitted page fetch is written off. The worker answers every request
+ * it does not drop, so reaching this means something is wrong that a retry has
+ * a better chance with than waiting does. */
+static uint64_t page_request_deadline;
+/* When the next submit is due. A file static rather than a local of the loop,
+ * because page_request() is called from a tile's event handler as well. */
+static uint64_t page_retry_timeout;
 /* The item or systeminfo window on screen, if any. Kept so that a theme change
  * can close it -- and, incidentally, so that a second tap on the header cannot
  * stack a second systeminfo window on the first. */
@@ -802,7 +846,7 @@ static void event_handler(lv_event_t *e)
 #endif
         strlcpy(last_page, current_page, sizeof(last_page));
         strlcpy(current_page, ctx->item->getPageLink(), sizeof(current_page));
-        refresh_page = true;
+        page_request(0);
 
         if (ctx->item->getType() == ItemType::type_parent_link)
             BEEPER_EVENT_LINK_BACK()
@@ -1464,7 +1508,7 @@ static void theme_apply_pending(void)
      * snapshot -- none of which a style refresh can redo. */
     ui_settings_rebuild();
 
-    if (sitemap_ok == true)
+    if (page_state == PAGE_READY)
         page_rebuild(content, false);
 }
 
@@ -1490,12 +1534,137 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
                (unsigned)sizeof(current_page), current_page);
     }
 
-    refresh_page = true;
+    page_request(0);
+}
+
+/* Ask for current_page, `delay_ms` from now.
+ *
+ * Recording a want, not making a request. The submit happens in
+ * page_submit_if_due() from the loop, so that the one place that talks to the
+ * client task is inside the loop -- a tap on a link tile runs inside
+ * lv_timer_handler(), and the web handler that reconnects runs on the server's
+ * task, and neither is a place to be starting a fetch. */
+static void page_request(uint64_t delay_ms)
+{
+    page_state = PAGE_REQUEST;
+    page_retry_timeout = port_millis() + delay_ms;
+}
+
+static void page_submit_if_due(void)
+{
+    if (page_state != PAGE_REQUEST || port_millis() < page_retry_timeout)
+        return;
+
+    uint32_t generation = openhab_client_request_page(current_page);
+
+    if (generation == 0)
+    {
+        /* No client task, or a request queue that is already full. Counted,
+         * because a wedged client is exactly what the connection-error
+         * watchdog restarts the panel for, and there is no other way for it to
+         * find out. */
+        statistics.sitemap_fail_cnt++;
+        page_retry_timeout = port_millis() + GET_SITEMAP_RETRY_INTERVAL;
+        return;
+    }
+
+    /* Everything issued for the previous page went stale at that call. The
+     * generation it handed back is what the icon and state requests for this
+     * page will carry. */
+    page_generation = generation;
+    page_state = PAGE_WAITING;
+    page_request_deadline = port_millis() + GET_SITEMAP_ANSWER_TIMEOUT;
+}
+
+static void page_timeout_check(void)
+{
+    if (page_state != PAGE_WAITING || port_millis() < page_request_deadline)
+        return;
+
+    printf("openhab_ui_loop: no answer for the page at: %s\r\n", current_page);
+
+    statistics.sitemap_fail_cnt++;
+    page_request(GET_SITEMAP_RETRY_INTERVAL);
+}
+
+static void page_result_apply(struct openhab_result_s *res)
+{
+    if (   res->ok == true
+        && res->payload != NULL
+        && sitemap.parse(res->payload, res->payload_len) == 0)
+    {
+        /* Let go of the page before building the tiles rather than after. It
+         * is up to 12 KB, show() is about to create six widgets and decode six
+         * icons, and the parse has already copied everything it needed out of
+         * it. */
+        openhab_client_result_release(res);
+
+        page_state = PAGE_READY;
+        openhab_ui_infolabel.destroy();
+        show(content);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+        printf("Free Heap: %u\r\n", (unsigned)port_free_heap());
+#endif
+        statistics.sitemap_success_cnt++;
+        return;
+    }
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+    printf("openhab_ui_loop: no usable page at: %s\r\n", current_page);
+#endif
+    openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
+    page_request(GET_SITEMAP_RETRY_INTERVAL);
+
+    statistics.sitemap_fail_cnt++;
+}
+
+/* Take one finished request off the client task's queue and act on it.
+ *
+ * One, not all of them. This runs every few milliseconds, so a page's worth of
+ * answers is absorbed in well under a frame either way, and taking one at a
+ * time bounds what a single iteration can cost at one JSON parse or one PNG
+ * decode. Draining the queue would put all of them in the same frame, which is
+ * the stutter this whole change exists to remove, just moved. */
+static void results_apply_one(void)
+{
+    struct openhab_result_s res;
+
+    if (openhab_client_poll(&res) == false)
+        return;
+
+    /* Every request but a command is scoped to the page it was issued for. One
+     * that outlived its page has nowhere to go: its slot may hold a different
+     * item now, and free_icon() may already have released the pixels behind
+     * it. So this is checked before anything below reads widget_context[]. */
+    if (   res.generation != OPENHAB_CLIENT_GENERATION_ALWAYS
+        && res.generation != page_generation)
+    {
+        openhab_client_result_release(&res);
+        return;
+    }
+
+    switch (res.type)
+    {
+    case OPENHAB_REQ_PAGE:
+        page_result_apply(&res);
+        break;
+
+    case OPENHAB_REQ_ICON:
+    case OPENHAB_REQ_STATE:
+    case OPENHAB_REQ_COMMAND:
+    default:
+        /* Nothing submits these yet; the commits after this one do, one
+         * caller at a time. */
+        break;
+    }
+
+    /* Idempotent, so the page arm above having already let go of a 12 KB
+     * payload before creating the tiles is not a double free. */
+    openhab_client_result_release(&res);
 }
 
 void openhab_ui_loop(void)
 {
-    static uint64_t refresh_retry_timeout;
     static uint64_t night_check_next_timestamp;
     static uint64_t update_ntp_next_timestamp;
     static uint64_t connection_error_handling_timestamp;
@@ -1504,33 +1673,11 @@ void openhab_ui_loop(void)
 #endif
     openhab_ui_infolabel.loop();
 
-    if (refresh_page == true && port_millis() >= refresh_retry_timeout)
-    {
-        if (sitemap.openlink(current_page) == 0)
-        {
-            refresh_page = false;
-            sitemap_ok = true;
-            openhab_ui_infolabel.destroy();
-            show(content);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-            printf("Free Heap: %u\r\n", (unsigned)port_free_heap());
-#endif
-            statistics.sitemap_success_cnt++;
-        }
-        else
-        {
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-            printf("openhab_ui_loop: openlink failed: %s\r\n", current_page);
-#endif
-            sitemap_ok = false;
-            openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
-            refresh_retry_timeout = port_millis() + GET_SITEMAP_RETRY_INTERVAL;
+    results_apply_one();
+    page_submit_if_due();
+    page_timeout_check();
 
-            statistics.sitemap_fail_cnt++;
-        }
-    }
-
-    if (sitemap_ok == true)
+    if (page_state == PAGE_READY)
     {
         for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
         {
