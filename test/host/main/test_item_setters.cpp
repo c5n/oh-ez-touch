@@ -8,8 +8,8 @@
  * down the strlcpy() behaviour that replaced it.
  *
  * Host-only; the setters are inline in openhab_connector.hpp, so nothing from
- * src/ needs to be linked. Run with:
- *   pio test -e linux
+ * main/ needs to be linked. Run with:
+ *   cd test/host && idf.py build && ./build/oh-ez-touch-host-test.elf
  */
 
 #include <unity.h>
@@ -246,17 +246,19 @@ static void test_all_mapping_slots_hold_their_own_value(void)
     check_canary(probe);
 }
 
-void setUp(void) {}
-void tearDown(void) {}
+#include "test_suites.hpp"
 
-int main(void)
+void test_item_setters_run(void)
 {
-    UNITY_BEGIN();
+    /* Unity records the file from the UNITY_BEGIN() call site, which is the
+     * runner, while RUN_TEST records the line from here -- so without this a
+     * failure would be reported against the wrong file. */
+    Unity.TestFile = __FILE__;
+
     RUN_TEST(test_over_long_values_truncate_and_terminate);
     RUN_TEST(test_short_values_are_copied_verbatim);
     RUN_TEST(test_exact_fit_values_are_copied_verbatim);
     RUN_TEST(test_values_of_exactly_capacity_still_terminate);
     RUN_TEST(test_over_long_mapping_does_not_read_into_next_slot);
     RUN_TEST(test_all_mapping_slots_hold_their_own_value);
-    return UNITY_END();
 }

@@ -9,8 +9,8 @@
  * result. So the fallback is load-bearing, and these tests pin it down.
  *
  * Host-only; ui_theme.hpp is header-only and depends on nothing, so nothing
- * from src/ needs to be linked. Run with:
- *   pio test -e linux
+ * from main/ needs to be linked. Run with:
+ *   cd test/host && idf.py build && ./build/oh-ez-touch-host-test.elf
  */
 
 #include <unity.h>
@@ -93,12 +93,15 @@ static void test_out_of_range_ids_name_the_default(void)
                              ui_night_mode_name((enum ui_night_mode_e)UI_NIGHT_MODE_COUNT));
 }
 
-void setUp(void) {}
-void tearDown(void) {}
+#include "test_suites.hpp"
 
-int main(void)
+void test_ui_theme_run(void)
 {
-    UNITY_BEGIN();
+    /* Unity records the file from the UNITY_BEGIN() call site, which is the
+     * runner, while RUN_TEST records the line from here -- so without this a
+     * failure would be reported against the wrong file. */
+    Unity.TestFile = __FILE__;
+
     RUN_TEST(test_every_theme_name_round_trips);
     RUN_TEST(test_every_night_mode_name_round_trips);
     RUN_TEST(test_name_lookup_ignores_case);
@@ -106,5 +109,4 @@ int main(void)
     RUN_TEST(test_null_name_falls_back_to_the_first_entry);
     RUN_TEST(test_zero_is_the_default_variant);
     RUN_TEST(test_out_of_range_ids_name_the_default);
-    return UNITY_END();
 }

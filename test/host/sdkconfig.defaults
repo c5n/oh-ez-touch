@@ -1,0 +1,5 @@
+# The linux target, and the one setting it genuinely needs: the 3584-byte
+# default main-task stack is not enough for a host pthread running libc, and
+# the failure is silent memory corruption rather than an overflow report.
+CONFIG_IDF_TARGET="linux"
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
