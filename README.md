@@ -211,8 +211,18 @@ The clock follows the *configured* GMT offset rather than the host's timezone,
 because that is what the panel would show -- including an offset the user got
 wrong. `OHEZ_NIGHT=auto` can be watched crossing its boundary.
 
+`OHEZ_MQTT`, `OHEZ_MQTT_HOST`, `OHEZ_MQTT_PORT` and `OHEZ_MQTT_TOPIC` point the
+MQTT client at a broker for one run, which is the quickest way to watch what it
+publishes:
+
+```bash
+OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
+```
+
+`OHEZ_MQTT` takes `on` or `off`; anything that is not `off` or `0` enables it.
+
 `OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
-`wlan`, `openhab`, `sensors`, `other` or `info`:
+`wlan`, `openhab`, `mqtt`, `sensors`, `other` or `info`:
 
 ```bash
 OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
@@ -255,8 +265,17 @@ through them -- the config file, the web form, the environment overrides and the
 compiled-in defaults -- none of which checks the result, so the fallback to the
 default theme has to hold for a typo, an empty string and a NULL alike.
 
-Both suites cover header-only code, so nothing from `main/` has to be linked,
-which is what keeps the test app worth having.
+`test_config_fields` covers the settings table in `main/config/config_fields.cpp`
+-- the one description of every setting, walked by the web form, the panel's
+settings screen and the MQTT client alike. What it pins down is the table rather
+than the accessors: that no two rows share a name, that a name is usable both as
+a POST argument and as an MQTT topic segment, that every tab has rows on it, and
+that the rows flagged as needing a restart are the ones that really do.
+
+That last suite is also the only one that links anything out of `main/`, and
+only the one file: `config_fields.cpp` touches neither LVGL nor the network,
+which is what makes the table testable at all. The other two cover header-only
+code and link nothing, which is what keeps the test app worth having.
 
 ### Upload
 
@@ -411,8 +430,8 @@ Route            | Purpose
 None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
 
 #### Settings on the screen
-Touching the upper bar opens the settings screen. It has five tabs, and the
-buttons across the top carry a symbol each rather than a name -- five words do
+Touching the upper bar opens the settings screen. It has six tabs, and the
+buttons across the top carry a symbol each rather than a name -- six words do
 not fit 320 pixels -- so the bar along the bottom names the tab you are on. That
 bar also holds the tab's buttons and the **X** that leaves the screen; there is
 no title bar, so that all of the 240 pixels that are not chrome go to settings.
@@ -421,6 +440,7 @@ Tab                     | Contents
 ----------------------- | --------
 WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
 openHAB (house symbol)  | Host, port and sitemap
+MQTT (upload symbol)    | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
 Sensors (eye symbol)    | The BME280 rows
 Other (gear symbol)     | Hostname, NTP, appearance, backlight and beeper
 Info (list symbol)      | The Systeminfo table -- uptime, version, and the IP your DHCP server handed out -- and a **Restart** button
@@ -442,7 +462,7 @@ password, Save. No second device and no browser needed.
 #### OpenHAB Settings
 Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```main/config/config_fields.cpp```, so they cannot drift apart.
 
-Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the backlight levels and the beeper, which used to need one without saying so.
+Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the MQTT broker, the backlight levels and the beeper, which used to need one without saying so.
 
 ##### General
 
@@ -494,15 +514,107 @@ Host            | openhabian    | Hostname of the OpenHAB server
 Port            | 8080          | Port
 Sitemap         | oheztouch     | Name of the sitemap you've setup for this ArduiTouch device
 
+##### MQTT Broker
+
+Setting         | Default       | Description
+--------------- | ------------- | -------------
+Enable MQTT     | off           | Connect to the broker below and publish to it
+Host            | mosquitto     | Hostname of the MQTT broker
+Port            | 1883          | Port. Plain TCP only -- there is no TLS support
+User            |               | Leave empty for an anonymous broker
+Password        |               | Sent with the user name. Never shown in clear, and never published
+
+##### MQTT Publishing
+
+Setting            | Default   | Description
+------------------ | --------- | -------------
+Base topic         | oheztouch | First segment of every topic; the hostname follows it
+Publish interval   | 60        | Seconds between two rounds of system information
+Retain published values | On   | Publish with the retain flag, so a subscriber that connects later sees the current values at once
+
+The MQTT settings all take effect as soon as they are saved: the client
+reconnects itself, and does so only when something it is actually using
+changed.
+
 ##### Sensors
 
 Setting                 | Default | Description
 ----------------------- | ------- | -------------
-Use BME280 sensor ```*```| off     | Read the optional BME280 and publish it to OpenHAB
+Use BME280 sensor ```*```| off     | Read the optional BME280 and publish it to OpenHAB and, if it is enabled, to MQTT
 Update interval         | 180     | Seconds between two readings
 Temperature item        |         | Name of the OpenHAB item the temperature is sent to
 Humidity item           |         | Name of the OpenHAB item the humidity is sent to
 Pressure item           |         | Name of the OpenHAB item the pressure is sent to
+
+### MQTT
+
+The client publishes what the panel knows about itself and subscribes to one
+wildcard through which every setting can be written. It is off by default; the
+settings are on the ```MQTT``` tab of the settings screen and in the web
+interface.
+
+Every topic starts with ```<base topic>/<hostname>```, so with the defaults that
+is ```oheztouch/oheztouch-new```. Two segments rather than one because the
+default has to be safe: a second panel out of the box would otherwise publish
+over the first.
+
+Topic                        | Published        | Value
+---------------------------- | ---------------- | -----
+```status```                 | on connect       | ```online```, and ```offline``` as the last will
+```system/name```            | on connect       | The hostname
+```system/target```          | on connect       | Which board this firmware is for, e.g. ```ArduiTouch```
+```system/version```         | on connect       | e.g. ```0.20```
+```system/build```           | on connect       | Compiler date and time
+```system/git```             | on connect       | The commit this firmware was built from
+```system/uptime```          | every interval   | Seconds since boot
+```system/heap```            | every interval   | Free heap in bytes
+```system/ip```              | every interval   | The station address
+```system/ssid```            | every interval   | The network, or the interface name on the simulator
+```system/rssi```            | every interval   | dBm. Absent where there is no radio
+```system/quality```         | every interval   | The same as a percentage, on the scale the status bar uses
+```ui/night```               | every interval   | ```ON``` while the night variant is in effect
+```sensor/temperature```     | on each reading  | Degrees Celsius
+```sensor/humidity```        | on each reading  | Percent relative humidity
+```sensor/pressure```        | on each reading  | hPa
+```config/<setting>```       | on connect, and after every save | One topic per setting
+
+Everything is published at QoS 0, and retained unless ```Retain published
+values``` is turned off. Nothing here is an event -- every topic carries the
+current value of something -- so a subscriber that missed an update wants the
+newest one and not the one it missed, which is what retain gives it.
+
+The sensor topics need ```Use BME280 sensor``` turned on, and appear alongside
+whatever the OpenHAB item names are set to: one reading goes to both.
+
+#### Writing a setting
+
+```config/<setting>/set``` writes the setting and saves it. The ```<setting>```
+names are the POST argument names in ```main/config/config_fields.cpp``` --
+```theme```, ```night_mode```, ```bl_normal```, ```oh_host``` and so on -- which
+is the same list the web form posts, because it is the same table.
+
+```bash
+mosquitto_pub -t oheztouch/oheztouch-new/config/theme/set -m LCARS
+mosquitto_pub -t oheztouch/oheztouch-new/config/night_mode/set -m auto
+mosquitto_pub -t oheztouch/oheztouch-new/config/bl_dim/set -m 20
+```
+
+The ranges, the character rules and the option names are the ones the settings
+screen and the web form already enforce: a number outside its range is clamped,
+a host name containing ```/``` or ```:``` is dropped, and an option name that
+does not exist selects the first one. A checkbox takes ```ON```, ```true```,
+```yes``` or ```1```; anything else is off.
+
+Two exceptions. The broker password is never published and cannot be set this
+way -- it has no business travelling through the broker it authenticates to. And
+a setting marked ```*``` above is stored and saved, but only takes effect after
+a restart, exactly as it does from the web form.
+
+Nothing is written to flash when the value did not change, so a broker replaying
+a retained command on every reconnect costs nothing.
+
+There is no authentication in front of any of this, which is also true of the
+web interface. Both belong on a network you trust.
 
 ### Fix icons
 
@@ -531,6 +643,8 @@ main/config/          the settings, and the one field table that both the
 main/ui/              the LVGL user interface: the openHAB page, the settings
                       screen, the styles and themes
 main/openhab/         the openHAB client: sitemap, item state, icons, sensors
+main/mqtt/            the MQTT client: what the panel tells a broker, and the
+                      one way the broker can talk back
 main/web/             the web interface: one renderer, one transport per target
 main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
@@ -573,6 +687,9 @@ Contact: c5n AT posteo DOT de
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [ ] sensors: Sensors should submit update instead of command
 - [ ] sensors: Support DS18B20 onewire sensors
+- [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
+- [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.
+- [ ] mqtt: Home Assistant style discovery, so the topics above do not have to be wired up by hand
 
 ## License
 [GNU General Public License v3.0](LICENSE.md)
