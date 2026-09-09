@@ -365,8 +365,9 @@ void ohez_mqtt_publish_bme280(float temperature_c, float humidity_pct, float pre
     if (mqtt_client == NULL || mqtt_online == false)
         return;
 
-    /* "%.3f", the same as openhab_sensor_bme280.cpp POSTs to openHAB, so the
-     * two sinks cannot disagree about a reading they were given together. */
+    /* "%.3f": three decimals is past what the chip resolves in any of the
+     * three, and the broker is the only sink now, so this is the one place a
+     * reading is formatted. */
     snprintf(value, sizeof(value), "%.3f", temperature_c);
     publish("sensor/temperature", value);
 

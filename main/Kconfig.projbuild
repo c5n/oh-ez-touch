@@ -83,15 +83,11 @@ config OHEZ_DEBUG_OPENHAB_CLIENT
     bool "openHAB client task: every request submitted, dropped, and its stack"
     default n
 
-config OHEZ_DEBUG_OPENHAB_SENSOR_BME280
+config OHEZ_DEBUG_SENSOR_BME280
     bool "BME280: each reading before it is published"
     default n
 
-config OHEZ_DEBUG_OPENHAB_SENSOR_CONNECTOR
-    bool "sensors: each value POSTed"
-    default n
-
-config OHEZ_DEBUG_OPENHAB_SENSOR_MAIN
+config OHEZ_DEBUG_SENSOR_MAIN
     bool "sensors: the refresh timer firing"
     default n
 

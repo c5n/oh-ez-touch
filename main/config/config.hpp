@@ -116,21 +116,19 @@ public:
             char hostname[32];
             int port;
             char sitemap[32];
+        } openhab;
+        /* Not under openhab: a reading is published to the MQTT broker and
+         * nowhere else, so the sensors owe openHAB nothing. An installation
+         * that wants the values as items subscribes to the topics through its
+         * own MQTT binding -- see peripherals/sensor_main.cpp. */
+        struct
+        {
             struct
             {
-                struct
-                {
-                    bool use;
-                    int interval;
-                    struct
-                    {
-                        char temperature[32];
-                        char humidity[32];
-                        char pressure[32];
-                    } items;
-                } bme280;
-            } sensors;
-        } openhab;
+                bool use;
+                int interval;
+            } bme280;
+        } sensors;
     } item;
 
     /** Mount the config store. Must succeed before loadConfig() is worth

@@ -34,7 +34,7 @@
  *
  *   hostname -- WiFi.setHostname() runs before WiFi.mode() in wlan_setup(),
  *               and the name doubles as the setup access point's SSID.
- *   bme_use  -- honoured only in openhab_sensor_main_setup().
+ *   bme_use  -- honoured only in sensor_main_setup().
  *   ble_use  -- honoured only in ble_scan_setup(), and for a harder reason
  *               than the other two: bringing the Bluetooth controller up
  *               claims tens of kilobytes of RAM that stopping it does not
@@ -95,11 +95,8 @@ const struct config_field_s config_fields[] = {
     CHK("mqtt_retain", "Retain published values", mqtt.retain, 0),
 
     SEC("Sensors", SETTINGS_TAB_SENSORS),
-    CHK("bme_use", "Use BME280 sensor", openhab.sensors.bme280.use, SETTINGS_F_RESTART),
-    SINT("bme_interval", "Update interval [s]", openhab.sensors.bme280.interval, 1, 86400),
-    TXT("bme_temp", "Temperature item", openhab.sensors.bme280.items.temperature, 0),
-    TXT("bme_hum", "Humidity item", openhab.sensors.bme280.items.humidity, 0),
-    TXT("bme_press", "Pressure item", openhab.sensors.bme280.items.pressure, 0),
+    CHK("bme_use", "Use BME280 sensor", sensors.bme280.use, SETTINGS_F_RESTART),
+    SINT("bme_interval", "Update interval [s]", sensors.bme280.interval, 1, 86400),
 
     /* On the Sensors tab rather than a tab of its own. A beacon scanner is a
      * presence sensor, which is what this tab is for, and six tab buttons is

@@ -50,20 +50,14 @@
     {
         "hostname": "openhabian",
         "port":     8080,
-        "sitemap":  "oheztouch",
-        "sensors":
+        "sitemap":  "oheztouch"
+    },
+    "sensors":
+    {
+        "bme280":
         {
-            "bme280":
-            {
-                "use":      0,
-                "interval": 180,
-                "items":
-                {
-                    "temperature":  "",
-                    "humidity":     "",
-                    "pressure":     ""
-                }
-            }
+            "use":      0,
+            "interval": 180
         }
     }
 }

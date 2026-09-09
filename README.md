@@ -568,11 +568,17 @@ changed.
 
 Setting                 | Default | Description
 ----------------------- | ------- | -------------
-Use BME280 sensor ```*```| off     | Read the optional BME280 and publish it to OpenHAB and, if it is enabled, to MQTT
+Use BME280 sensor ```*```| off     | Read the optional BME280 and publish it to MQTT
 Update interval         | 180     | Seconds between two readings
-Temperature item        |         | Name of the OpenHAB item the temperature is sent to
-Humidity item           |         | Name of the OpenHAB item the humidity is sent to
-Pressure item           |         | Name of the OpenHAB item the pressure is sent to
+
+A reading goes to the broker and nowhere else -- see
+[Published topics](#published-topics). There is nothing to configure per value
+because there is nothing to name: an OpenHAB installation that wants the
+readings as items subscribes to the three topics through its own MQTT binding,
+which is a binding it almost certainly already has, and which gives it
+persistence, units and item metadata that a POST from the panel never could.
+Turning MQTT off therefore turns the sensor into something only the panel's own
+debug output sees.
 
 ##### Bluetooth LE Beacons
 
@@ -622,8 +628,8 @@ values``` is turned off. Nothing here is an event -- every topic carries the
 current value of something -- so a subscriber that missed an update wants the
 newest one and not the one it missed, which is what retain gives it.
 
-The sensor topics need ```Use BME280 sensor``` turned on, and appear alongside
-whatever the OpenHAB item names are set to: one reading goes to both.
+The sensor topics need ```Use BME280 sensor``` turned on, and are the only
+place a reading goes.
 
 #### Writing a setting
 
@@ -766,6 +772,8 @@ main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
                       the table of what is in range
+main/peripherals/     the sensors: the BME280, and the timer that decides when
+                      the next reading is taken
 main/web/             the web interface: one renderer, one transport per target
 main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
@@ -841,7 +849,6 @@ Contact: c5n AT posteo DOT de
 - [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
-- [ ] sensors: Sensors should submit update instead of command
 - [ ] sensors: Support DS18B20 onewire sensors
 - [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
 - [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.

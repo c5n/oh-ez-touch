@@ -209,11 +209,8 @@ bool Config::loadConfig(const char *name)
     strlcpy(item.openhab.hostname, doc["openhab"]["hostname"] | "openhabian", sizeof(item.openhab.hostname));
     item.openhab.port = doc["openhab"]["port"] | 8080;
     strlcpy(item.openhab.sitemap, doc["openhab"]["sitemap"] | "setme_sitemap", sizeof(item.openhab.sitemap));
-    item.openhab.sensors.bme280.use = doc["openhab"]["sensors"]["bme280"]["use"] | false;
-    item.openhab.sensors.bme280.interval = doc["openhab"]["sensors"]["bme280"]["interval"] | 180;
-    strlcpy(item.openhab.sensors.bme280.items.temperature, doc["openhab"]["sensors"]["bme280"]["items"]["temperature"] | "", sizeof(item.openhab.sensors.bme280.items.temperature));
-    strlcpy(item.openhab.sensors.bme280.items.humidity, doc["openhab"]["sensors"]["bme280"]["items"]["humidity"] | "", sizeof(item.openhab.sensors.bme280.items.humidity));
-    strlcpy(item.openhab.sensors.bme280.items.pressure, doc["openhab"]["sensors"]["bme280"]["items"]["pressure"] | "", sizeof(item.openhab.sensors.bme280.items.pressure));
+    item.sensors.bme280.use = doc["sensors"]["bme280"]["use"] | false;
+    item.sensors.bme280.interval = doc["sensors"]["bme280"]["interval"] | 180;
 
     config_apply_env_overrides(item);
 
@@ -249,11 +246,8 @@ bool Config::loadConfig(const char *name)
     debug_printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
     debug_printf("  item.openhab.port: %d\r\n", item.openhab.port);
     debug_printf("  item.openhab.sitemap: %s\r\n", item.openhab.sitemap);
-    debug_printf("  item.openhab.sensors.bme280.use: %d\r\n", item.openhab.sensors.bme280.use);
-    debug_printf("  item.openhab.sensors.bme280.interval: %d\r\n", item.openhab.sensors.bme280.interval);
-    debug_printf("  item.openhab.sensors.bme280.items.temperature: %s\r\n", item.openhab.sensors.bme280.items.temperature);
-    debug_printf("  item.openhab.sensors.bme280.items.humidity: %s\r\n", item.openhab.sensors.bme280.items.humidity);
-    debug_printf("  item.openhab.sensors.bme280.items.pressure: %s\r\n", item.openhab.sensors.bme280.items.pressure);
+    debug_printf("  item.sensors.bme280.use: %d\r\n", item.sensors.bme280.use);
+    debug_printf("  item.sensors.bme280.interval: %d\r\n", item.sensors.bme280.interval);
 #endif
 
     return from_file;
@@ -305,11 +299,8 @@ bool Config::saveConfig()
     doc["openhab"]["port"] = item.openhab.port;
     doc["openhab"]["sitemap"] = item.openhab.sitemap;
 
-    doc["openhab"]["sensors"]["bme280"]["use"] = item.openhab.sensors.bme280.use;
-    doc["openhab"]["sensors"]["bme280"]["interval"] = item.openhab.sensors.bme280.interval;
-    doc["openhab"]["sensors"]["bme280"]["items"]["temperature"] = item.openhab.sensors.bme280.items.temperature;
-    doc["openhab"]["sensors"]["bme280"]["items"]["humidity"] = item.openhab.sensors.bme280.items.humidity;
-    doc["openhab"]["sensors"]["bme280"]["items"]["pressure"] = item.openhab.sensors.bme280.items.pressure;
+    doc["sensors"]["bme280"]["use"] = item.sensors.bme280.use;
+    doc["sensors"]["bme280"]["interval"] = item.sensors.bme280.interval;
 
     /* port_storage replaces a blob whole, so the document is serialized into
      * memory first rather than streamed into an open File as it used to be.

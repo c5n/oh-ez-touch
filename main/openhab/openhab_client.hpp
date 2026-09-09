@@ -49,9 +49,8 @@
 #define OPENHAB_CLIENT_ICON_BUFFER_SIZE 5000
 
 /* Deep enough for everything one page can have outstanding at once -- six
- * icons and six states -- with room for a tap and a sensor reading arriving in
- * the middle of it. A submit that does not fit is reported to the caller
- * rather than waited on. */
+ * icons and six states -- with room for a tap arriving in the middle of it. A
+ * submit that does not fit is reported to the caller rather than waited on. */
 #define OPENHAB_CLIENT_REQUEST_QUEUE_DEPTH 12
 
 /* Shallow on purpose. The UI takes one result per iteration of a loop that

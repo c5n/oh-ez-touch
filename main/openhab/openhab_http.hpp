@@ -4,9 +4,9 @@
  * The two HTTP requests this firmware makes, over esp_http_client.
  *
  * Everything it asks of openHAB is either "GET this and give me the body" or
- * "POST this string and tell me it worked", in four places: an item's state, a
- * sitemap page, a widget icon, and a sensor reading. So the transport lives
- * here once rather than four times, and -- this is the point of moving off
+ * "POST this string and tell me it worked", in three places: an item's state, a
+ * sitemap page, and a widget icon. So the transport lives here once rather than
+ * three times, and -- this is the point of moving off
  * HTTPClient -- it is the *same* transport on both targets. esp_http_client
  * builds for the linux target against the host's own socket API, so the
  * simulator makes real requests to a real openHAB instead of reading canned

@@ -39,7 +39,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
-#include "openhab/openhab_sensor_main.hpp"
+#include "peripherals/sensor_main.hpp"
 #include "port/ohez_port.h"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_infolabel.hpp"
@@ -244,7 +244,7 @@ static void ohez_setup(void)
     if (openhab_client_setup() == false)
         ESP_LOGE(TAG, "no openHAB client task; the panel will not reach openHAB");
 
-    openhab_sensor_main_setup(config);
+    sensor_main_setup(config);
     ohez_mqtt_setup(&config);
 
     /* After the MQTT client, which is where its findings go, and last of the
@@ -364,7 +364,7 @@ static void ohez_loop(void)
     if (wlan_state() == WLAN_ONLINE)
     {
         openhab_ui_loop();
-        openhab_sensor_main_loop(config);
+        sensor_main_loop(config);
 
         /* Inside the guard, which is what defers the first connection until
          * there is a network to make it on: esp-mqtt would otherwise spend the

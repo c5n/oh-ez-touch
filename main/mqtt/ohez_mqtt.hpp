@@ -45,8 +45,8 @@ void ohez_mqtt_request_reconfigure(void);
  * One fresh BME280 reading.
  *
  * Pushed rather than polled: a reading exists for as long as it takes to
- * publish it, and openhab/openhab_sensor_main.cpp is the one place that knows
- * a new one was just taken. Silently does nothing when there is no connection.
+ * publish it, and peripherals/sensor_main.cpp is the one place that knows a new
+ * one was just taken. Silently does nothing when there is no connection.
  */
 void ohez_mqtt_publish_bme280(float temperature_c, float humidity_pct, float pressure_hpa);
 
