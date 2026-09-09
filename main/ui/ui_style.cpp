@@ -398,7 +398,6 @@ const struct ui_theme_s *ui_style_theme(void)
 void ui_style_init(void)
 {
     static bool inited;
-    static bool screen_styled;
 
 #if CONFIG_OHEZ_DEBUG_UI_STYLE
     /* The flat table is indexed by UI_STYLE_INDEX(), so entry i has to be the
@@ -551,13 +550,6 @@ void ui_style_init(void)
     lv_style_set_bg_color(&ui_style_info_warning, lv_color_hex(theme->info_warning_bg));
     lv_style_set_bg_color(&ui_style_info_error, lv_color_hex(theme->info_error_bg));
 
-    if (screen_styled == false)
-    {
-        /* Added after lv_theme_simple's own screen style, so this one wins.
-         * Only once: re-adding it on every ui_style_apply() would stack. */
-        screen_styled = true;
-        lv_obj_add_style(lv_screen_active(), &ui_style_screen, LV_PART_MAIN);
-    }
 }
 
 void ui_style_apply(void)

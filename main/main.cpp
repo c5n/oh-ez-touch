@@ -43,6 +43,7 @@
 #include "port/ohez_port.h"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_infolabel.hpp"
+#include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
 #include "web/webui.hpp"
@@ -217,8 +218,11 @@ static void ohez_setup(void)
     /* Before the first widget of any kind, and before openhab_ui_setup(): the
      * info label below is created on the top layer while WLAN is still coming
      * up, and it draws on the shared styles rather than a private one of its
-     * own. lv_screen_active() is valid from port_display_init() onwards, which
-     * is what ui_style_init() needs to style the screen itself. */
+     * own. ui_screen_setup() comes first of all, because it is what claims the
+     * display's screen as the root and puts the theme's background on it --
+     * ui_style_init() no longer touches lv_screen_active() itself. */
+    ui_screen_setup();
+
     ui_style_select(config.item.ui.theme, openhab_ui_night_active(&config));
     ui_style_init();
 
@@ -276,6 +280,7 @@ static void ohez_loop(void)
      * settings screen is how a device with no credentials gets any, so its
      * access point scan has to keep running while the station is offline. */
     ui_settings_loop();
+    ui_screen_loop();
     wlan_loop();
     webui_loop();
     infolabel.loop();

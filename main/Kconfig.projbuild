@@ -99,6 +99,10 @@ config OHEZ_DEBUG_UI_INFOLABEL
     bool "info banner: creation and timeout"
     default n
 
+config OHEZ_DEBUG_UI_SCREEN
+    bool "screens: pushes, pops and their transitions"
+    default n
+
 config OHEZ_DEBUG_UI_SETTINGS
     bool "settings screen: which tab opened, and what a save changed"
     default n

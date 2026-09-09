@@ -26,6 +26,7 @@
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
 #include "ui_beep.hpp"
+#include "ui_screen.hpp"
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
 #include "version.h"
@@ -49,6 +50,12 @@
  * much chrome as 240 px can carry, and a third bar holding only a title and a
  * close button spent a row of settings on what the footer says and does just
  * as well. */
+/* The one place in the UI that animates a whole screen. It costs a full-screen
+ * repaint per frame -- about 30 ms at 40 MHz -- so seven frames is all this is,
+ * and the visible stepping is the point: it reads as "somewhere else" rather
+ * than as part of the page. Everything else staggers its contents instead. */
+#define SETTINGS_ANIM_MS 240
+
 #define TAB_BAR_HEIGHT 32
 #define FOOTER_HEIGHT 34
 #define ROW_HEIGHT 30
@@ -78,7 +85,6 @@ static config_item_t draft;
 static config_item_t baseline;
 
 static lv_obj_t *screen = NULL;
-static lv_obj_t *prev_screen = NULL;
 static lv_obj_t *tabview = NULL;
 
 /* One per tab: the scrollable list of rows, and the footer's message label. */
@@ -143,33 +149,6 @@ static void screen_build(uint8_t tab);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
 
-/* Keep the Infolabel banners off this screen.
- *
- * They live on lv_layer_top() so that a page rebuild cannot delete them, and
- * LVGL keeps its layers in the display's screen array -- so the centred "WLAN
- * NOT CONNECTED" warning, which is created with no timeout and never expires,
- * would sit on top of these tabs. Precisely the case that matters most, since
- * the screen opens by itself on a device that has no credentials.
- *
- * The children get the flag rather than the layer: lv_obj_remove_flag() reacts
- * to LV_OBJ_FLAG_HIDDEN by marking the object's *parent* layout dirty, with no
- * NULL check, and a layer has no parent. Hiding one works by luck --
- * lv_obj_add_flag() only touches the parent when the object's participation in
- * a layout changed, which for a parentless layer it never does -- and unhiding
- * it segfaults. A banner is a plain child of the layer and has a parent, so the
- * flag behaves on it.
- *
- * Re-applied from ui_settings_loop() because main.cpp raises a banner on any
- * WLAN state change, including while these tabs are up. lv_obj_add_flag()
- * returns immediately when the flag is already set, so repeating it is free. */
-static void banners_hide(bool hidden)
-{
-    lv_obj_t *top = lv_layer_top();
-    uint32_t  count = lv_obj_get_child_count(top);
-
-    for (uint32_t i = 0; i < count; i++)
-        lv_obj_set_flag(lv_obj_get_child(top, i), LV_OBJ_FLAG_HIDDEN, hidden);
-}
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f);
 
 /* ---------------------------------------------------------------- builders */
@@ -1232,19 +1211,11 @@ void ui_settings_open(enum settings_tab_e tab)
     scan_result_count = 0;
     scan_running = false;
 
-    prev_screen = lv_screen_active();
-
-    screen = lv_obj_create(NULL);
-    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_style(screen, &ui_style_screen, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(screen, 0, 0);
-    lv_obj_set_style_pad_gap(screen, 0, 0);
+    screen = ui_screen_create();
 
     screen_build(tab);
 
-    banners_hide(true);
-
-    lv_screen_load(screen);
+    ui_screen_push(screen, UI_SCREEN_SETTINGS, SETTINGS_ANIM_MS);
 
 #if CONFIG_OHEZ_DEBUG_UI_SETTINGS
     debug_printf("ui_settings: opened on tab %u\r\n", (unsigned)tab);
@@ -1258,13 +1229,9 @@ void ui_settings_close(void)
 
     overlay_close();
 
-    banners_hide(false);
-
-    lv_screen_load(prev_screen);
-
-    /* Deferred: this is reached from an event on one of the screen's own
-     * descendants, the same reason window_close_event_handler() defers. */
-    lv_obj_delete_async(screen);
+    /* ui_screen_pop() owns the delete: it is reached from an event on one of
+     * this screen's own descendants, so the object has to outlive the handler. */
+    ui_screen_pop(SETTINGS_ANIM_MS);
 
     screen = NULL;
     tabview = NULL;
@@ -1337,9 +1304,6 @@ void ui_settings_loop(void)
 {
     if (screen == NULL)
         return;
-
-    /* A banner raised since the screen opened has to be caught too. */
-    banners_hide(true);
 
     if (rebuild_pending == true && overlay == NULL)
         ui_settings_rebuild();
