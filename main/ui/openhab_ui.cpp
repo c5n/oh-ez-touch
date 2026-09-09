@@ -1658,6 +1658,20 @@ static void page_submit_if_due(void)
     page_generation = generation;
     page_state = PAGE_WAITING;
     page_request_deadline = port_millis() + GET_SITEMAP_ANSWER_TIMEOUT;
+
+    /* And with it, every tile stops waiting for an answer it will never get.
+     *
+     * A stale request produces no result at all -- the worker drops it, or
+     * results_apply_one() does -- so nothing else would ever clear these, and
+     * a tile whose icon was in flight when the page changed would refuse to
+     * ask for its new one and stay blank for good. Here rather than in
+     * page_rebuild(), because a rebuild also happens for a theme change, which
+     * keeps the generation and must keep the flags with it. */
+    for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+    {
+        widget_context[i].icon_pending = false;
+        widget_context[i].state_pending = false;
+    }
 }
 
 static void page_timeout_check(void)
