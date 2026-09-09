@@ -21,6 +21,16 @@
 #define STR_LINK_LEN 128
 #define STR_TITLE_LEN 32
 
+/* Every URL this client builds, at one width.
+ *
+ * The widest of the three is the icon:
+ *   <website>/icon/<icon_name>?state=<state_text>&format=png
+ * which with the fields above needs 128 + 6 + 32 + 7 + 32 + 12 = 217. It used
+ * to be built into a STR_LINK_LEN buffer, so a long host and a long state
+ * truncated it silently -- and a truncated URL fails every request, which is
+ * what the connection-error watchdog counts before it reboots the panel. */
+#define STR_URL_LEN 256
+
 
 enum ItemType
 {
@@ -61,8 +71,32 @@ private:
     char page_link[STR_LINK_LEN];
 
 public:
-    int update(const char* link);
+    int update();
     int publish(const char* url);
+
+    /* The two URLs an item is asked for, built from its own fields rather than
+     * from arguments the caller has to remember to pass. Both return false
+     * when there is nothing to build or when the result did not fit, so a
+     * doomed request is never made in the first place.
+     *
+     * const because they only read: it is what lets a caller hold the item by
+     * const pointer and still address it. */
+    bool stateUrl(char *out, size_t out_size) const;
+    bool iconUrl(const char *website, char *out, size_t out_size) const;
+
+    /* Fold the body of a "<link>/state" GET into state_text.
+     *
+     * The second half of update(), split out so that the half that waits on a
+     * network and the half that decides what changed can run on different
+     * tasks.
+     *
+     * @param len is explicit because a body straight off the network is not
+     *   terminated. Over-long states are truncated, which is what
+     *   HTTPClient::getString() plus strlcpy() did.
+     * @return 1 if the state changed, 0 if it did not. There is no error
+     *   return: a request that failed never reaches here.
+     */
+    int applyState(const char *text, size_t len);
 
     void cleanItem()
     {
@@ -74,7 +108,7 @@ public:
         link[0] = 0;
     }
 
-    size_t getIcon(const char* website, const char* name, const char* state, unsigned char *buffer, size_t buffer_size);
+    size_t getIcon(const char* website, unsigned char *buffer, size_t buffer_size);
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
     const char* getLabel() { return label; }

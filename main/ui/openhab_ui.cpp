@@ -1002,7 +1002,7 @@ void load_icon(struct widget_context_s *wctx)
 
     static uint8_t iconbuffer[ICON_PNG_BUFFER_SIZE] = {0};
 
-    size_t iconsize = wctx->item->getIcon(current_website, wctx->item->getIconName(), wctx->item->getStateText(), iconbuffer, sizeof(iconbuffer));
+    size_t iconsize = wctx->item->getIcon(current_website, iconbuffer, sizeof(iconbuffer));
 
     if (iconsize == 0)
     {
@@ -1561,7 +1561,7 @@ void openhab_ui_loop(void)
                     // update widget from current remote openhab state
                     widget_context[i].update_timestamp = port_millis();
                     widget_context[i].refresh_request = false;
-                    int result = widget_context[i].item->update(widget_context[i].item->getLink());
+                    int result = widget_context[i].item->update();
                     if (result > 0)
                     {
                         // item value changed

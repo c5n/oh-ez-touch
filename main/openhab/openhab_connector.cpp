@@ -50,12 +50,80 @@ static void parse_selection(Item *item, JsonVariant array_value)
     item->setSelectionCount(count);
 }
 
-int Item::update(const char* link)
+bool Item::stateUrl(char *out, size_t out_size) const
 {
-    int retval = 0;
+    /* Without a link there is no item endpoint to append "/state" to, and the
+     * URL that would come out of it -- "/state" -- resolves to something else
+     * entirely. Link and group widgets often carry only a page link. */
+    if (link[0] == '\0')
+        return false;
 
-    char url[STR_LINK_LEN];
-    snprintf(url, sizeof(url), "%s/state", link);
+    int len = snprintf(out, out_size, "%s/state", link);
+
+    return (len > 0 && (size_t)len < out_size);
+}
+
+bool Item::iconUrl(const char *website, char *out, size_t out_size) const
+{
+    /* No icon name is not a failure to report anywhere -- plenty of widgets
+     * have none. It just means there is nothing to fetch, and asking openHAB
+     * for "/icon/?state=..." would be a 404 per poll. */
+    if (icon_name[0] == '\0')
+        return false;
+
+    int len = snprintf(out, out_size, "%s/icon/%s?state=%s&format=png",
+                       website, icon_name, state_text);
+
+    return (len > 0 && (size_t)len < out_size);
+}
+
+int Item::applyState(const char *text, size_t len)
+{
+    char remote_state[STR_STATE_TEXT_LEN];
+
+    /* Copied out rather than used in place: the caller's buffer is a network
+     * payload and carries no terminator, and the numeric branch below has to
+     * rewrite the value anyway. Truncating to the field width is what
+     * HTTPClient::getString() plus strlcpy() did. */
+    if (len >= sizeof(remote_state))
+        len = sizeof(remote_state) - 1;
+
+    memcpy(remote_state, text, len);
+    remote_state[len] = '\0';
+
+    if (   type == ItemType::type_number
+        || type == ItemType::type_setpoint
+        || type == ItemType::type_slider)
+    {
+        /* Strip the unit openHAB appends ("21.5 degC"), and re-print with the
+         * same format setStateNumber() uses so that the comparison below sees
+         * identical text for an unchanged value. Going via a local keeps the
+         * source and destination of snprintf() apart. */
+        float remote_value = strtof(remote_state, NULL);
+        snprintf(remote_state, sizeof(remote_state), "%f", remote_value);
+    }
+
+    if (strcmp(state_text, remote_state) == 0)
+        return 0;
+
+    strlcpy(state_text, remote_state, sizeof(state_text));
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  update statetext to \"%s\"\r\n", state_text);
+#endif
+
+    return 1;
+}
+
+int Item::update()
+{
+    char url[STR_URL_LEN];
+
+    if (stateUrl(url, sizeof(url)) == false)
+    {
+        printf("Item::update: no state URL for link: %s\r\n", link);
+        return -1;
+    }
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::update: Requesting URL: %s\r\n", url);
@@ -69,39 +137,13 @@ int Item::update(const char* link)
     char remote_state[STR_STATE_TEXT_LEN];
     ssize_t body_len = openhab_http_get(url, remote_state, sizeof(remote_state) - 1, true);
 
-    if (body_len >= 0)
-    {
-        remote_state[body_len] = '\0';
-
-        // State
-        if (   type == ItemType::type_number
-            || type == ItemType::type_setpoint
-            || type == ItemType::type_slider)
-        {
-            /* Strip the unit openHAB appends ("21.5 degC"), and re-print with
-             * the same format setStateNumber() uses so that the comparison
-             * below sees identical text for an unchanged value. Going via a
-             * local keeps the source and destination of snprintf() apart. */
-            float remote_value = strtof(remote_state, NULL);
-            snprintf(remote_state, sizeof(remote_state), "%f", remote_value);
-        }
-
-        if (strcmp(state_text, remote_state) != 0)
-        {
-            retval = 1;
-            strlcpy(state_text, remote_state, sizeof(state_text));
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  update statetext to \"%s\"\r\n", state_text);
-#endif
-        }
-    }
-    else
+    if (body_len < 0)
     {
         printf("Item::update: ERROR URL: %s\r\n", url);
-        retval = -1;
+        return -1;
     }
 
-    return retval;
+    return applyState(remote_state, (size_t)body_len);
 }
 
 int Item::publish(const char* url)
@@ -129,12 +171,16 @@ int Item::publish(const char* url)
     return retval;
 }
 
-size_t Item::getIcon(const char* website, const char* name, const char* state, unsigned char *buffer, size_t buffer_size)
+size_t Item::getIcon(const char* website, unsigned char *buffer, size_t buffer_size)
 {
     size_t icon_size = 0;
-    char url[STR_LINK_LEN];
+    char url[STR_URL_LEN];
 
-    snprintf(url, sizeof(url), "%s/icon/%s?state=%s&format=png", website, name, state);
+    /* The name and the state used to be passed in, which meant every caller
+     * repeated getIconName() and getStateText() and the URL was built into a
+     * buffer one field too narrow to hold it. */
+    if (iconUrl(website, url, sizeof(url)) == false)
+        return 0;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("Item::getIcon: Requesting URL: %s\r\n", url);
@@ -143,7 +189,7 @@ size_t Item::getIcon(const char* website, const char* name, const char* state, u
     if (sim_offline())
     {
         size_t fixture_size = 0;
-        const unsigned char *fixture_icon = sim_icon_fixture_get(name, state, &fixture_size);
+        const unsigned char *fixture_icon = sim_icon_fixture_get(icon_name, state_text, &fixture_size);
 
         if (fixture_icon != NULL && fixture_size <= buffer_size)
         {
