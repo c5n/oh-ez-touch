@@ -12,8 +12,9 @@ Usage:
 
     -p              Parallel multi process update
 
-    -t <target>     Target should be one of the available build targets.
-                    e.g. ArduiTouchMOD
+    -t <target>     Name of a build directory under build/, which is what
+                    identifies a board now that each one is a separate
+                    ESP-IDF build. e.g. arduitouch28
 
     -l <listfile>   Text file with list of target and hostnames.
                     Each line has target hostname, separated by tabs or spaces.
@@ -21,8 +22,17 @@ EOF
 }
 
 function update_process() {
+    local image="build/${1}/oh-ez-touch.bin"
+
+    if [ ! -f "$image" ]; then
+        echo -e "${RED}No image${NC} at $image -- build it first"
+        return 1
+    fi
+
     echo "Updating ${2}..."
-    curl --silent -F "name=@.pio/build/${1}/firmware.bin" http://${2}/update -o /dev/null
+    # The field name is ignored by the handler, as it was by the one this
+    # replaced; the path and the method are what matter.
+    curl --silent --fail -F "name=@${image}" http://${2}/update -o /dev/null
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed${NC} to update ${2}"
     else

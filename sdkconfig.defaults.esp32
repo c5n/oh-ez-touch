@@ -10,6 +10,12 @@ CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# -Os. The PlatformIO build was -O0 across LVGL, TFT_eSPI, the Arduino
+# libraries and the application -- about 400 KB of text compiled with no
+# optimisation at all, against prebuilt ESP-IDF archives that were already
+# -Os. See the README for what it actually saved.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
 # The XPT2046 driver's own conversion is a full-scale map with no offset, which

@@ -9,8 +9,6 @@
 #include <stdio.h>
 #include <lvgl.h>
 
-#define STR_INFOLABEL_TEMP_BUFFER_LEN (140 + 1)
-
 /* A transient banner shown over the UI, e.g. for WLAN state changes.
  *
  * Under LVGL v7 this was an lv_msgbox used purely as a styled text panel. The
@@ -68,9 +66,12 @@ public:
         else if (type == ERROR)
             lv_obj_add_style(il, &ui_style_info_error, LV_PART_MAIN);
 
-        char buffer[STR_INFOLABEL_TEMP_BUFFER_LEN];
-        snprintf(buffer, sizeof(buffer), "%s\n%s", topic, text);
-        lv_label_set_text(label, buffer);
+        /* Formatted straight into the label rather than through a fixed
+         * buffer of our own. One caller passes a sitemap URL as the text, which
+         * is longer than any buffer worth putting on this stack -- so the copy
+         * truncated, deliberately, and -Wformat-truncation was right to say so.
+         * LVGL sizes its own. */
+        lv_label_set_text_fmt(label, "%s\n%s", topic, text);
 
         lv_obj_align(il, LV_ALIGN_CENTER, 0, 0);
 

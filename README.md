@@ -23,137 +23,242 @@ The touch buttons and graphics are dynamically generated. The structure is defin
 
 ## Installation
 
-This projekt uses PlatformIO to build and upload the firmware.
+This project is built with [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v5.4.4/esp32/),
+which is also what builds the desktop simulator.
 
 For now, only Linux instructions are available.
 
 ### Prerequisites
-In order to build and upload this project, PlatformIO is required.
+
+ESP-IDF **v5.4.4**. The version is pinned rather than "recent enough": the
+`linux` target the simulator uses is officially a preview feature, so an IDF
+upgrade is a change to verify rather than a routine update.
+
+```bash
+mkdir -p ~/esp
+git -C ~/esp clone -b v5.4.4 --depth 1 --recursive https://github.com/espressif/esp-idf.git
+~/esp/esp-idf/install.sh esp32
+```
+
+`. ~/esp/esp-idf/export.sh` puts `idf.py` on the PATH, and has to be run once
+per shell.
 
 #### Debian/Ubuntu based distributions
+
 ```bash
-sudo apt install python3-pip
-sudo pip install -U platformio
+sudo apt install libsdl2-dev libbsd-dev pkg-config ninja-build
 ```
+
+`libsdl2-dev` is the simulator's window. `libbsd-dev` is not optional and its
+absence is not obvious: IDF's own `components/linux/linux_include/string.h`
+includes `<bsd/string.h>` unconditionally, so without it every translation
+unit of the simulator fails to compile -- and IDF's CMake only warns about it.
 
 ### Get code
+
+The two libraries this project vendors are submodules, so clone recursively:
+
+```bash
+git clone --recurse-submodules https://github.com/c5n/oh-ez-touch.git
 ```
-git clone https://github.com/c5n/oh-ez-touch.git
-```
+
+In an existing working copy, `git submodule update --init --recursive`.
 
 ### Configuration
-Defaults for the hostname, NTP, appearance, backlight, beeper and the OpenHAB server can be set before compilation in ```data/config.json```. They are the values a pristine device starts with; everything there can also be changed later in the web interface.
 
-WLAN credentials are not part of that file. They are kept in the ESP32's NVS, which survives both an OTA update and ```pio run -t uploadfs``` -- a config file would be overwritten by the latter. Credentials stored by older firmware, which used AutoConnect, are migrated automatically on the first boot of this one.
+Defaults for the hostname, NTP, appearance, backlight, beeper and the OpenHAB
+server can be set before compilation in ```data/config.json```. They are the
+values a pristine device starts with; everything there can also be changed
+later in the web interface. `idf.py flash` writes that file to the device's
+filesystem along with the firmware -- there is no separate upload step any
+more.
 
-A device with no credentials raises an open access point named after its hostname and shows that name and its address on screen. You can connect to it with a phone. See chapter [Usage](#usage) for more details.
+The built-in defaults in `Config::loadConfig()` apply to anything the file does
+not mention, so a partial `config.json` is fine and a missing one leaves a
+complete, working configuration.
+
+WLAN credentials are not part of that file. They are kept in the ESP32's NVS,
+which survives both an OTA update and a filesystem reflash -- a config file
+would be overwritten by the latter. Credentials stored by older firmware, which
+used AutoConnect, are migrated automatically on the first boot of this one.
+
+A device with no credentials raises an open access point named after its
+hostname and shows that name and its address on screen. You can connect to it
+with a phone. See chapter [Usage](#usage) for more details.
 
 ### Build
-```
+
+Each board is a build of its own, selected by a defaults file. The build
+directory is what identifies it afterwards, including to the update tool.
+
+```bash
 cd oh-ez-touch
-pio run
+. ~/esp/esp-idf/export.sh
+
+idf.py -B build/arduitouch -DSDKCONFIG=build/arduitouch/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch" \
+       set-target esp32
+idf.py -B build/arduitouch build
 ```
+
+The three boards are `sdkconfig.defaults.arduitouch` (2.4"),
+`sdkconfig.defaults.arduitouch28` (2.8") and `sdkconfig.defaults.lanbon`
+(Lanbon L8). Omitting the board file gives the ArduiTouch 2.4", which is the
+Kconfig default.
+
+`-DSDKCONFIG` is not optional when more than one target is in play: `idf.py`
+otherwise writes the generated `sdkconfig` to the project root, where the
+builds overwrite each other's and the second one refuses to start. Keeping it
+inside the build directory means `-B` alone identifies a build.
+
+Note that a defaults file only seeds a **new** `sdkconfig`. After editing one,
+delete that build's `sdkconfig` -- or the whole build directory -- and re-run
+`set-target`.
+
+`idf.py -B build/arduitouch menuconfig` reaches everything else, including the
+board choice, the JTAG pin remap and the per-module debug output under
+**OhEzTouch**.
 
 ### Simulator
 
 The user interface can also be built and run on the development machine, in an
 SDL2 window, without any hardware. This is handy for working on the layout and
-the styling.
+the styling -- and, since it is the same code, for working on the openHAB
+client and the web interface too.
 
-Additional prerequisite (Debian/Ubuntu):
 ```bash
-sudo apt install libsdl2-dev
-```
-
-Build and run:
-```bash
-pio run -e linux -t exec
+idf.py -B build/linux -DSDKCONFIG=build/linux/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linux" \
+       --preview set-target linux
+idf.py -B build/linux build
+./build/linux/oh-ez-touch.elf
 ```
 
 An "OhEzTouch" window opens showing a 320x240 screen at double size
-(`lv_sdl_window_set_zoom()` in `src/main.cpp`). Mouse clicks act as touch input;
-closing the window ends the program.
+(`port_display_init()` in `main/port/linux/port_display.c`). Mouse clicks act as
+touch input; closing the window ends the program.
 
-The simulator uses the same LVGL version, `lv_conf.h`, fonts and styles as the
-firmware; the display and mouse come from LVGL's own SDL driver, enabled by
-`LV_USE_SDL`. Everything hardware specific (WLAN, SPIFFS, TFT_eSPI, beeper,
-backlight, sensors, OTA) is excluded via the `SIMULATOR` build flag; the small
-Arduino compatibility layer it needs instead lives in `hal/sdl2`.
+The simulator is not a separate build of a reduced program. It is the same
+sources, the same LVGL version, the same `lv_conf.h`, fonts and styles; what
+differs is confined to `main/port/`, which has one implementation per target.
+So the panel really does fetch its sitemap over HTTP, really does serve its
+web interface, and really does store its settings.
 
-Since there is no HTTP client on the host, the sitemap is not fetched from a
-server but comes from a canned fixture in `src/sim/sitemap_fixture.cpp`. It
-provides a small demo sitemap -- a home page with two sub pages -- covering
-every widget type the UI supports, and goes through the very same parser as a
-real server response. Edit that file to reproduce a particular sitemap.
+- **openHAB**: set the server with the config file, or with
+  `OHEZ_OPENHAB_HOST`, `OHEZ_OPENHAB_PORT` and `OHEZ_SITEMAP`. Operating a
+  widget POSTs a command, exactly as the panel does.
+- **Web interface**: on port 8080 rather than 80, since an unprivileged process
+  cannot bind 80. `OHEZ_WEBUI_PORT` overrides that.
+- **Settings**: stored in `$XDG_CONFIG_HOME/oh-ez-touch/config.json` (or
+  `~/.config/oh-ez-touch/config.json`), which is a real file that can be edited
+  by hand. `OHEZ_CONFIG_DIR` moves it.
+- **WLAN credentials**: stored in an emulated NVS image under
+  `$XDG_STATE_HOME/oh-ez-touch/flash.bin`. `OHEZ_STATE_DIR` moves it. Two
+  simulator instances cannot share one, and the second to start says so rather
+  than corrupting it.
+- **No radio, no backlight, no buzzer, no sensor and no OTA.** These report
+  "there is none" rather than pretending: the WLAN tab's **Scan** answers from a
+  canned list, the sensor publishes nothing, and `POST /update` answers 501.
 
-Item states are read from the fixture and are not written back, so operating a
-widget changes it locally only.
+#### Offline mode
 
-There is no config file and no web server on the host either, so the theme comes
-from the environment. That means all six variants can be compared without a
-rebuild:
+`OHEZ_OFFLINE=1` serves the sitemap and the widget icons from compiled-in
+fixtures instead of the network. That gives a stable, reproducible screen for
+comparing rendering changes, and lets the UI be worked on with no openHAB
+anywhere:
+
 ```bash
-OHEZ_THEME=lcars pio run -e linux -t exec
-OHEZ_THEME=jarvis OHEZ_NIGHT=on pio run -e linux -t exec
+OHEZ_OFFLINE=1 ./build/linux/oh-ez-touch.elf
 ```
-`OHEZ_THEME` takes `default`, `lcars` or `jarvis` and `OHEZ_NIGHT` takes `off`,
-`on` or `auto`; anything unrecognised, and an unset variable, means the default.
-`OHEZ_NIGHT_FROM` and `OHEZ_NIGHT_TO` set the hours the `auto` window spans
-(22 and 6 by default). Unlike the firmware, the simulator answers
-`getLocalTime()` from the host clock (`hal/sdl2`), so the header shows the real
-time and `OHEZ_NIGHT=auto` can be watched crossing its boundary.
 
-`OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
-`wlan`, `openhab`, `sensors`, `other` or `info`:
-```bash
-OHEZ_SETTINGS=wlan pio run -e linux -t exec
-```
-Touching the status bar opens it here too, but on the host there is no radio to
-leave unconfigured, so the screen never comes up on its own the way it does on a
-pristine device. The WLAN tab's **Scan** answers from a canned list of networks,
-next to the canned sitemap; `Save` stores nothing, since there is no filesystem.
+The fixture in `main/sim/sitemap_fixture.cpp` is a small demo sitemap -- a home
+page with two sub pages -- covering every widget type the UI supports, and it
+goes through the very same parser as a real server response. Edit that file to
+reproduce a particular sitemap. Item states are read from it and not written
+back, so operating a widget changes it locally only.
 
-Widget icons are fetched from openHAB over HTTP by the firmware, which the
-simulator cannot do either, so they are compiled in as well. They are not part
-of this repository -- the openHAB classic icon set is licensed under the
-EPL-2.0, which is incompatible with this project's GPL-3.0 -- so fetch them
-once into your working copy:
+The widget icons are not part of this repository -- the openHAB classic icon set
+is licensed under the EPL-2.0, which is incompatible with this project's
+GPL-3.0 -- so fetch them once into your working copy:
+
 ```bash
 tools/fetch_sim_icons.py
 ```
+
 This downloads the icons the demo sitemap uses, rasterizes them and writes
-`src/sim/icon_fixture_data.h`, which is ignored by git. It needs network access
-and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run the
-simulator draws the widgets without icons, just as the firmware does when an
+`main/sim/icon_fixture_data.h`, which is ignored by git. It needs network access
+and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run,
+offline mode draws the widgets without icons, just as the firmware does when an
 icon request fails.
+
+#### Environment overrides
+
+The `OHEZ_*` variables are applied after the config file, so it can be inspected
+without being edited. They work on the device too, which simply has no
+environment to read them from.
+
+```bash
+OHEZ_THEME=lcars ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=jarvis OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
+```
+
+`OHEZ_THEME` takes `default`, `lcars` or `jarvis` and `OHEZ_NIGHT` takes `off`,
+`on` or `auto`; anything unrecognised means the default. `OHEZ_NIGHT_FROM` and
+`OHEZ_NIGHT_TO` set the hours the `auto` window spans (22 and 6 by default).
+
+The clock follows the *configured* GMT offset rather than the host's timezone,
+because that is what the panel would show -- including an offset the user got
+wrong. `OHEZ_NIGHT=auto` can be watched crossing its boundary.
+
+`OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
+`wlan`, `openhab`, `sensors`, `other` or `info`:
+
+```bash
+OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
+```
+
+Touching the status bar opens it here too, but on the host there is no radio to
+leave unconfigured, so the screen never comes up on its own the way it does on a
+pristine device.
 
 ### Fonts
 
-The LVGL font sources in `src/fonts/` are generated and committed, so a normal
-build needs no font tooling. Regenerate them with `tools/build_fonts.sh` after
-changing a face, a size or a glyph range; it needs `lv_font_conv` (an npm tool)
-and, for the LCARS face, network access to fetch Antonio from Google Fonts.
+The LVGL font sources in `components/lvgl/fonts/` are generated and committed,
+so a normal build needs no font tooling. Regenerate them with
+`tools/build_fonts.sh` after changing a face, a size or a glyph range; it needs
+`lv_font_conv` (an npm tool) and, for the LCARS face, network access to fetch
+Antonio from Google Fonts.
 
 ### Tests
-The unit tests run on the host, in the same `linux` environment as the
-simulator, so they need the SDL2 development files too:
-```bash
-pio test -e linux
-```
-`test/test_item_setters` covers the string setters of `Item`, which copy
-labels, states, patterns and mappings of unknown length straight out of the
-sitemap JSON that openHAB serves. Those copies have to truncate cleanly, and
-the tests place a canary after the object to catch one that does not. They are
-host-only because the setters are inline in `src/openhab_connector.hpp`,
-so nothing from `src/` has to be linked.
 
-`test/test_ui_theme` covers the theme name lookups in `src/ui_theme.hpp`. They
-are the only funnel between a theme's name and its enum, and four callers pass
-through them -- the config file, the web form, the simulator's environment and
-the compiled-in defaults -- none of which checks the result, so the fallback to
-the default theme has to hold for a typo, an empty string and a NULL alike.
+The unit tests are an ESP-IDF project of their own, on the same `linux` target
+as the simulator:
+
+```bash
+cd test/host
+idf.py --preview set-target linux
+idf.py build && ./build/oh-ez-touch-host-test.elf
+```
+
+It exits with the number of failures, so it can be used in a script as it
+reads.
+
+`test_item_setters` covers the string setters of `Item`, which copy labels,
+states, patterns and mappings of unknown length straight out of the sitemap
+JSON that openHAB serves. Those copies have to truncate cleanly, and the tests
+place a canary after the object to catch one that does not.
+
+`test_ui_theme` covers the theme name lookups in `main/ui_theme.hpp`. They are
+the only funnel between a theme's name and its enum, and four callers pass
+through them -- the config file, the web form, the environment overrides and the
+compiled-in defaults -- none of which checks the result, so the fallback to the
+default theme has to hold for a typo, an empty string and a NULL alike.
+
+Both suites cover header-only code, so nothing from `main/` has to be linked,
+which is what keeps the test app worth having.
 
 ### Upload
+
 Example for Connecting UART TTL Adapters for flashing works for me: 
 - Put UART TTL Adapter on 5V with jumper
 - UART VCC connection to ESP32 5V 
@@ -168,31 +273,23 @@ Use following Command after connecting to identify just connected adapters
 dmesg | grep /dev/ttyUSB
 ```
 
-2 files have to be uploaded: The filesystem image and the firmware.
+If you have no user rights to access the /dev/ttyUSB device, one option is to
+add a ```sudo```. Another would be to add
+[udev rules](https://docs.espressif.com/projects/esp-idf/en/v5.4.4/esp32/get-started/establish-serial-connection.html)
+to allow user access.
 
-If you have no user rights to access the /dev/ttyUSB device, one option is to add a ```sudo```. Another would be to [add udev rules](https://docs.platformio.org/en/latest/faq.html#platformio-udev-rules) to allow user access.
+One command uploads everything -- the bootloader, the partition table, the
+firmware and the filesystem image built from ```data/```:
 
-Execute the following command to upload firmware.
-Upon the output of ```Connecting........_____``` press and hold BOOT button on ESP32 until the upload process starts.
+```bash
+idf.py -B build/arduitouch -p /dev/ttyUSB0 flash monitor
+```
+
+Upon the output of ```Connecting........_____``` press and hold the BOOT button
+on the ESP32 until the upload process starts.
 !! In some circumstances (don't know why) the RST needs to be pushed short time to connect instead of BOOT !!
 
-Upload the filesystem image.
-
-```
-pio run -t uploadfs --upload-port /dev/ttyUSB0
-```
-
-#### ArduiTouch
-For the version with the 2.4" display.
-```
-pio run -t upload -e ArduiTouch --upload-port /dev/ttyUSB0
-```
-
-#### ArduiTouch 2.8"
-For the version with the 2.8" display.
-```
-pio run -t upload -e ArduiTouch28 --upload-port /dev/ttyUSB0
-```
+`monitor` is optional and shows the serial log; `Ctrl-]` leaves it.
 
 ### Update tool
 To update one or more devices over the air, a simple script is provided in the tools folder.
@@ -204,8 +301,9 @@ Usage:
 
     -p              Parallel multi process update
 
-    -t <target>     Target should be one of the available build targets.
-                    e.g. ArduiTouch28
+    -t <target>     Name of a build directory under build/, which is what
+                    identifies a board now that each one is a separate
+                    ESP-IDF build. e.g. arduitouch28
 
     -l <listfile>   Text file with list of target and hostnames.
                     Each line has target hostname, separated by tabs or spaces.
@@ -215,9 +313,9 @@ If you have more than one ArduiTouch device, it makes sense to create a ```listf
 
 Example ```myOhEzTouchDevices.txt```:
 ```
-ArduiTouch      oheztouch-01
-ArduiTouch28    oheztouch-02
-ArduiTouch      oheztouch-03
+arduitouch      oheztouch-01
+arduitouch28    oheztouch-02
+arduitouch      oheztouch-03
 ```
 !!! Please be aware of, a Carriage Return after last device in list is needed !!!
 
@@ -225,11 +323,12 @@ It is possible to update all devices in parallel by using the ```-p``` option.
 
 #### Update project folder
 ```
-git pull
+git pull --recurse-submodules
 ```
 #### Rebuild targets
 ```
-pio run
+idf.py -B build/arduitouch build
+idf.py -B build/arduitouch28 build
 ```
 #### Roll out update
 Example for update of all of your devices by using the listfile:
@@ -340,7 +439,7 @@ the WLAN tab. That is the whole setup procedure: scan, pick the network, type th
 password, Save. No second device and no browser needed.
 
 #### OpenHAB Settings
-Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```src/settings_fields.cpp```, so they cannot drift apart.
+Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```main/settings_fields.cpp```, so they cannot drift apart.
 
 Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the backlight levels and the beeper, which used to need one without saying so.
 
@@ -442,8 +541,9 @@ Contact: c5n AT posteo DOT de
 - [ ] main: Add screen calibration
 - [x] main: Add setup wizard with WLAN credential input instead of portal procedure -- on the panel too, see [Settings on the screen](#settings-on-the-screen)
 - [ ] doc: Retake the web interface screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages
-- [ ] build: Replace ```-O0``` in ```[common] build_flags```. It applies to about 402 KB of compiled text (LVGL, TFT_eSPI, the Arduino libraries, ```src/```) while the prebuilt ESP-IDF archives are already ```-Os```; ```-Os``` should free 100-150 KB, and ```-fno-exceptions``` a slice of the 70 KB of exception tables in those units. Measure before believing it.
+- [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
+- [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [ ] sensors: Sensors should submit update instead of command
 - [ ] sensors: Support DS18B20 onewire sensors
 
@@ -453,12 +553,19 @@ Contact: c5n AT posteo DOT de
 ## Greetings to 3rd party projects and libraries
 This project was created using the following projects and libraries. A big thank you to all of them and the ones I missed:
 
-- https://platformio.org/
+- https://docs.espressif.com/projects/esp-idf/
 - https://lvgl.io/
 - https://arduinojson.org/
-- https://github.com/Hieromon/AutoConnect (origin of ```src/ota/HTTPUpdateServer.*```, the OTA update handler)
+- https://lodev.org/lodepng/
+
+No longer used, but this project was built on them for a long time and would
+not exist without them:
+
+- https://platformio.org/
+- https://github.com/Hieromon/AutoConnect (origin of the OTA update handler)
 - https://github.com/Bodmer/TFT_eSPI
 - https://github.com/YiannisBourkelis/Uptime-Library
+- https://github.com/adafruit/Adafruit_BME280_Library
 
 Embedded fonts:
 - [Roboto](https://fonts.google.com/specimen/Roboto) (Apache-2.0), the default UI face
