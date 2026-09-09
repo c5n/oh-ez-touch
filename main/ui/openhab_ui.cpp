@@ -65,8 +65,6 @@
  * prompt at the boundary. */
 #define NIGHT_CHECK_INTERVAL (30 * 1000)
 
-#define ICON_PNG_BUFFER_SIZE 5000
-
 
 // Holds "http://<hostname>:<port>/rest/sitemaps/<sitemap>/<sitemap>?type=json".
 // With the 32 byte hostname and sitemap fields of Config that needs 133 bytes,
@@ -100,6 +98,12 @@ struct widget_context_s
 {
     uint64_t update_timestamp = 0;
     bool refresh_request = false;
+    /* An icon request for this tile is in flight. Stops a second one going out
+     * for a state that changes faster than openHAB answers, and -- unlike
+     * refresh_request and update_timestamp -- is deliberately *not* cleared by
+     * widget_destroy(): a theme change destroys and recreates every tile, and
+     * clearing it there would duplicate a request that is still outstanding. */
+    bool icon_pending = false;
     lv_obj_t *container = NULL;
     lv_obj_t *label = NULL;
     lv_obj_t *img_obj = NULL;
@@ -128,6 +132,7 @@ struct statistics_s statistics;
 
 void update_state_widget(struct widget_context_s *ctx);
 static void page_request(uint64_t delay_ms);
+static void widget_icon_request(size_t slot);
 
 /* show() pairs widget_context[i] with sitemap.getItem(i), so there must not be
  * more widgets than the sitemap holds items. */
@@ -1000,6 +1005,18 @@ static void convert_color_depth(uint8_t *img, uint32_t px_cnt)
     }
 }
 
+/* Release a tile's decoded pixels.
+ *
+ * The sweep at the end is not paranoia: two tiles showing the same icon share
+ * one decoded block, so a descriptor that still points at it has to be blanked
+ * or the next redraw walks freed memory.
+ *
+ * Icons are fetched asynchronously now, so this can run while a request for
+ * the page being torn down is still in flight. What makes that safe is not
+ * anything here -- it is results_apply_one() dropping a result whose
+ * generation has been superseded before it touches widget_context[] at all. A
+ * page rebuild is always preceded by a new generation.
+ */
 void free_icon(lv_image_dsc_t *pdsc)
 {
     if (pdsc->data == NULL)
@@ -1024,50 +1041,102 @@ void free_icon(lv_image_dsc_t *pdsc)
     }
 }
 
-void load_icon(struct widget_context_s *wctx)
+/* The placeholder a tile shows while it has no icon.
+ *
+ * This used to mean an icon that had failed. It is now also every tile for the
+ * moment between the page appearing and its icons arriving, so it has to be
+ * something a bitmap can cleanly replace -- which is why the two halves are
+ * paired functions rather than a branch inside widget_create().
+ *
+ * ui_style_label_large and the local text_opa are what make a symbol font
+ * render at icon size. text_opa is set locally, not shared: it is not
+ * inheritable and the two fallbacks want different values. A theme change
+ * recreates the tiles, so these follow it that way rather than by a refresh.
+ */
+static void widget_icon_set_fallback(struct widget_context_s *wctx)
 {
-    // free old image data
-    if (wctx->img_dsc.data != NULL)
-    {
-        lv_image_cache_drop(&wctx->img_dsc);
-        free((void *)wctx->img_dsc.data);
-    }
+    bool back = (wctx->item->getType() == ItemType::type_parent_link);
 
-    // reset image descriptor
-    wctx->img_dsc.header.w = 0;
-    wctx->img_dsc.header.h = 0;
-    wctx->img_dsc.header.stride = 0;
-    wctx->img_dsc.data_size = 0;
-    wctx->img_dsc.data = NULL;
+    lv_obj_add_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
+    lv_image_set_src(wctx->img_obj, back ? LV_SYMBOL_NEW_LINE : LV_SYMBOL_EYE_OPEN);
+    lv_obj_set_style_text_opa(wctx->img_obj,
+                              back ? ui_style_theme()->symbol_opa
+                                   : ui_style_theme()->symbol_dim_opa, 0);
+}
 
-    wctx->img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-    wctx->img_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
-    wctx->img_dsc.header.flags = 0;
+/* Put the decoded pixels on the tile, and undo what the placeholder left.
+ *
+ * Taking the style and the local opacity back off is not housekeeping. They
+ * are inert for an image source only for as long as nothing consults them, and
+ * every tile now passes through the placeholder on its way to an icon rather
+ * than only the ones whose icon failed -- so "should be inert" would be
+ * load-bearing on every page instead of never.
+ */
+static void widget_icon_set_bitmap(struct widget_context_s *wctx)
+{
+    lv_obj_remove_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
+    lv_obj_remove_local_style_prop(wctx->img_obj, LV_STYLE_TEXT_OPA, 0);
 
-    static uint8_t iconbuffer[ICON_PNG_BUFFER_SIZE] = {0};
+    /* Clearing the source first is not redundant: LVGL compares the src
+     * pointer and would skip the update, since the descriptor is reused with
+     * fresh pixels behind it. */
+    lv_image_set_src(wctx->img_obj, NULL);
+    lv_image_set_src(wctx->img_obj, &wctx->img_dsc);
+}
 
-    size_t iconsize = wctx->item->getIcon(current_website, iconbuffer, sizeof(iconbuffer));
+/* Ask the client task for this tile's icon.
+ *
+ * Submitting, not fetching: the answer arrives at results_apply_one() some
+ * frames later and lands in widget_icon_decode_and_show(). This is what used
+ * to be load_icon()'s blocking half, and calling it six times in a row is what
+ * used to hold the screen for the length of six HTTP requests.
+ */
+static void widget_icon_request(size_t slot)
+{
+    struct widget_context_s *wctx = &widget_context[slot];
+    char url[STR_URL_LEN];
 
-    if (iconsize == 0)
-    {
-        // No icon available -- the simulator has no HTTP client at all, and on
-        // the device the request may simply have failed. Leave the widget
-        // without an icon instead of running the PNG decoder on nothing.
+    if (wctx->item == NULL)
         return;
-    }
 
-    // Decode the PNG image
+    /* The back tile draws a symbol and never an icon: a sitemap's parent link
+     * carries no icon name of its own. page_rebuild() made the same exemption
+     * around load_icon(). */
+    if (wctx->item->getType() == ItemType::type_parent_link)
+        return;
+
+    if (wctx->icon_pending == true)
+        return;
+
+    if (wctx->item->iconUrl(current_website, url, sizeof(url)) == false)
+        return;
+
+    if (openhab_client_request_icon(url, (uint8_t)slot, page_generation) == true)
+        wctx->icon_pending = true;
+}
+
+/* Decode a PNG that has arrived and show it. load_icon()'s other half.
+ *
+ * The decode stays on this task deliberately. It is single-digit milliseconds
+ * against the hundreds the fetch can take, it keeps what is in flight down to
+ * the size of the PNG rather than the size of the pixels, and it keeps the
+ * malloc and the free of a block LVGL will hold a pointer to on one task.
+ */
+static void widget_icon_decode_and_show(struct widget_context_s *wctx,
+                                        const void *png, size_t png_len)
+{
     unsigned char *png_decoded;
     /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and the two
      * are the same type on the host and different ones on the device. */
     unsigned png_width, png_height;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("load_icon: %s ", wctx->item->getIconName());
+    printf("widget_icon: %s ", wctx->item != NULL ? wctx->item->getIconName() : "?");
 #endif
 
     // Decode the loaded image in ARGB8888
-    unsigned int error = lodepng_decode32(&png_decoded, &png_width, &png_height, iconbuffer, iconsize);
+    unsigned int error = lodepng_decode32(&png_decoded, &png_width, &png_height,
+                                          (const unsigned char *)png, png_len);
 
     if (error)
     {
@@ -1077,7 +1146,20 @@ void load_icon(struct widget_context_s *wctx)
 
     convert_color_depth(png_decoded, png_width * png_height);
 
+    /* The old pixels go only now that there are new ones to put in their
+     * place. load_icon() freed them up front and so left the tile blank when
+     * the fetch or the decode then failed; a refresh that does not arrive now
+     * leaves the icon that is already there. */
+    if (wctx->img_dsc.data != NULL)
+    {
+        lv_image_cache_drop(&wctx->img_dsc);
+        free((void *)wctx->img_dsc.data);
+    }
+
     // Initialize an image descriptor for LVGL with the decoded image
+    wctx->img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    wctx->img_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    wctx->img_dsc.header.flags = 0;
     wctx->img_dsc.header.w = png_width;
     wctx->img_dsc.header.h = png_height;
     wctx->img_dsc.header.stride = png_width * 4;
@@ -1088,20 +1170,9 @@ void load_icon(struct widget_context_s *wctx)
     printf("size: %u x %u, data_size %u\n", png_width, png_height,
            (unsigned)wctx->img_dsc.data_size);
 #endif
-}
 
-void update_icon(struct widget_context_s *wctx)
-{
-    load_icon(wctx);
-
-    if (wctx->img_dsc.data_size > 0 && wctx->img_obj != NULL)
-    {
-        /* Clearing the source first is not redundant: LVGL compares the src
-         * pointer and would skip the update, since load_icon() reuses the same
-         * descriptor with fresh pixels behind it. */
-        lv_image_set_src(wctx->img_obj, NULL);
-        lv_image_set_src(wctx->img_obj, &wctx->img_dsc);
-    }
+    if (wctx->img_obj != NULL)
+        widget_icon_set_bitmap(wctx);
 }
 
 #define HEADER_HEIGHT (LV_DPI_DEF / 3)
@@ -1286,25 +1357,13 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
      * and state line that sit in front of them. */
     lv_obj_add_style(wctx->img_obj, &ui_style_icon, LV_PART_MAIN);
 
+    /* A tile is created before its icon is asked for, so the placeholder is
+     * what almost every tile starts as -- and, for a theme change, which keeps
+     * the decoded pixels, almost none of them. */
     if (wctx->img_dsc.data_size > 0)
-    {
-        lv_image_set_src(wctx->img_obj, &wctx->img_dsc);
-    }
-    else if (wctx->item->getType() == ItemType::type_parent_link)
-    {
-        lv_obj_add_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
-        lv_image_set_src(wctx->img_obj, LV_SYMBOL_NEW_LINE);
-        /* A local style, not a shared one: text_opa is not inheritable and the
-         * two symbol fallbacks want different values. A theme change recreates
-         * the tiles, so these follow it that way rather than by a refresh. */
-        lv_obj_set_style_text_opa(wctx->img_obj, ui_style_theme()->symbol_opa, 0);
-    }
+        widget_icon_set_bitmap(wctx);
     else
-    {
-        lv_obj_add_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
-        lv_image_set_src(wctx->img_obj, LV_SYMBOL_EYE_OPEN);
-        lv_obj_set_style_text_opa(wctx->img_obj, ui_style_theme()->symbol_dim_opa, 0);
-    }
+        widget_icon_set_fallback(wctx);
 
     lv_obj_move_background(wctx->img_obj);
     lv_obj_align(wctx->img_obj, LV_ALIGN_CENTER, 0, 0);
@@ -1380,14 +1439,18 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
     {
         widget_context[i].item = sitemap.getItem(i);
 
-        if (widget_context[i].item->getType() != ItemType::type_unknown)
-        {
-            if (reload_icons == true && widget_context[i].item->getType() != ItemType::type_parent_link)
-                load_icon(&widget_context[i]);
+        if (widget_context[i].item->getType() == ItemType::type_unknown)
+            continue;
 
-            widget_create(parent, &widget_context[i]);
-            update_state_widget(&widget_context[i]);
-        }
+        /* The tile goes up first and its icon lands whenever it lands. That
+         * inversion is the whole of what this looks like from the outside: the
+         * six icon GETs that used to happen here, one after another and before
+         * anything was drawn, are six submissions that cost nothing. */
+        widget_create(parent, &widget_context[i]);
+        update_state_widget(&widget_context[i]);
+
+        if (reload_icons == true)
+            widget_icon_request(i);
     }
 }
 
@@ -1643,6 +1706,17 @@ static void results_apply_one(void)
         return;
     }
 
+    /* Everything below indexes widget_context[] with it. The slot comes off
+     * our own queue, so this can only fail if the two ever disagree about how
+     * many tiles there are -- which is exactly when an out-of-bounds write
+     * would be hardest to find. */
+    if (res.type != OPENHAB_REQ_PAGE && res.type != OPENHAB_REQ_COMMAND
+        && res.slot >= WIDGET_COUNT_MAX)
+    {
+        openhab_client_result_release(&res);
+        return;
+    }
+
     switch (res.type)
     {
     case OPENHAB_REQ_PAGE:
@@ -1650,6 +1724,15 @@ static void results_apply_one(void)
         break;
 
     case OPENHAB_REQ_ICON:
+        widget_context[res.slot].icon_pending = false;
+
+        /* A failed or missing icon is not counted, and never was: getIcon()
+         * returning 0 was silent. Counting it would let a panel whose openHAB
+         * has no icon set drive itself into a restart every three minutes. */
+        if (res.ok == true && res.payload != NULL)
+            widget_icon_decode_and_show(&widget_context[res.slot], res.payload, res.payload_len);
+        break;
+
     case OPENHAB_REQ_STATE:
     case OPENHAB_REQ_COMMAND:
     default:
@@ -1698,8 +1781,8 @@ void openhab_ui_loop(void)
                     // update widget from local state
                     widget_context[i].update_timestamp = port_millis();
                     widget_context[i].refresh_request = false;
-                    update_icon(&widget_context[i]);
                     update_state_widget(&widget_context[i]);
+                    widget_icon_request(i);
                     statistics.update_success_cnt++;
                 }
 
@@ -1712,8 +1795,8 @@ void openhab_ui_loop(void)
                     if (result > 0)
                     {
                         // item value changed
-                        update_icon(&widget_context[i]);
                         update_state_widget(&widget_context[i]);
+                        widget_icon_request(i);
                         statistics.update_success_cnt++;
                     }
                     else if (result == 0)

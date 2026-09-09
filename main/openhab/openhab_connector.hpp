@@ -108,8 +108,6 @@ public:
         link[0] = 0;
     }
 
-    size_t getIcon(const char* website, unsigned char *buffer, size_t buffer_size);
-
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
     const char* getLabel() { return label; }
 

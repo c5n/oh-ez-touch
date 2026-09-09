@@ -8,7 +8,6 @@
 #include <string.h>
 
 #include "openhab_http.hpp"
-#include "sim/icon_fixture.hpp"
 #include "sim/sim_offline.hpp"
 
 /* JsonVariant::as<const char *>() yields NULL for a missing or non-string
@@ -159,64 +158,6 @@ int Item::publish(const char* url)
     }
 
     return retval;
-}
-
-size_t Item::getIcon(const char* website, unsigned char *buffer, size_t buffer_size)
-{
-    size_t icon_size = 0;
-    char url[STR_URL_LEN];
-
-    /* The name and the state used to be passed in, which meant every caller
-     * repeated getIconName() and getStateText() and the URL was built into a
-     * buffer one field too narrow to hold it. */
-    if (iconUrl(website, url, sizeof(url)) == false)
-        return 0;
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Item::getIcon: Requesting URL: %s\r\n", url);
-#endif
-
-    if (sim_offline())
-    {
-        size_t fixture_size = 0;
-        const unsigned char *fixture_icon = sim_icon_fixture_get(icon_name, state_text, &fixture_size);
-
-        if (fixture_icon != NULL && fixture_size <= buffer_size)
-        {
-            memcpy(buffer, fixture_icon, fixture_size);
-            icon_size = fixture_size;
-        }
-
-        return icon_size;
-    }
-
-    /* openHAB serves icons with chunked transfer encoding and no
-     * Content-Length. This used to be read off the raw socket through
-     * HTTPClient::getStreamPtr(), which meant hand-rolling the framing: a
-     * stream->find("\r\n") to skip the first chunk header, and then
-     * "icon_size -= 7" at the end to cut off the trailing CRLF "0" CRLF CRLF --
-     * a subtraction that was wrong for any icon arriving in more than one
-     * chunk, and was marked "ToDo: find a better solution". esp_http_client
-     * decodes the framing itself, so all of it is gone and what lands in the
-     * buffer is the PNG.
-     *
-     * A PNG too large for the buffer is no icon rather than a truncated one,
-     * which is what the old "insufficient space available. Abort." did. */
-    ssize_t read = openhab_http_get(url, buffer, buffer_size, false);
-
-    if (read < 0)
-    {
-        printf("Item::getIcon: ERROR URL: %s\r\n", url);
-        return 0;
-    }
-
-    icon_size = (size_t)read;
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Item::getIcon: %u bytes read\r\n", (unsigned)icon_size);
-#endif
-
-    return icon_size;
 }
 
 /* Turn a sitemap page into the title and the item array.
