@@ -544,14 +544,17 @@ static void window_item_slider_refresh_presets(struct widget_context_s *ctx)
     }
 }
 
-static void window_item_slider_event_handler(lv_event_t *e)
+/* Dragging only moves the label and the preset marks.
+ *
+ * The same split, and the same reason, as the colour picker above: this used to
+ * publish on every LV_EVENT_VALUE_CHANGED, and each of those was a blocking
+ * HTTP POST, so one drag was a dozen round trips and the knob lagged the
+ * finger. The blocking call was also the only thing throttling them. */
+static void window_item_slider_preview_event_handler(lv_event_t *e)
 {
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
     lv_obj_t *slider = (lv_obj_t *)lv_event_get_target(e);
 
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("window_item_slider_event_handler: LV_EVENT_VALUE_CHANGED\n");
-#endif
     if (ctx == nullptr)
         return;
 
@@ -560,10 +563,33 @@ static void window_item_slider_event_handler(lv_event_t *e)
     set_label_from_pattern(ctx->state_window_widget, ctx->item, ctx->item->getStateNumber());
 
     window_item_slider_refresh_presets(ctx);
+}
 
+/* Send what the slider now shows.
+ *
+ * A function rather than only an event handler, because the preset buttons need
+ * it too. They move the slider and then have to publish, and the way to make
+ * that happen is to call this -- sending the slider a synthetic
+ * LV_EVENT_RELEASED would be reporting a press that the input device never
+ * made. */
+static void window_item_slider_publish(struct widget_context_s *ctx)
+{
     ctx->item->publish(ctx->item->getLink());
     ctx->refresh_request = true;
     BEEPER_EVENT_CHANGE();
+}
+
+static void window_item_slider_event_handler(lv_event_t *e)
+{
+    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+    printf("window_item_slider_event_handler: LV_EVENT_RELEASED\n");
+#endif
+    if (ctx == nullptr)
+        return;
+
+    window_item_slider_publish(ctx);
 }
 
 static void window_item_slider_preset_event_handler(lv_event_t *e)
@@ -587,10 +613,14 @@ static void window_item_slider_preset_event_handler(lv_event_t *e)
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     debug_printf("preset pressed: %u%% -> %d\n", *percent, (int)value);
 #endif
-    /* Let the slider's own handler do the publishing, so there is one path to
-     * openHAB. */
+    /* Move the slider, then take the two halves of a drag-and-release in turn:
+     * the synthetic LV_EVENT_VALUE_CHANGED updates the label and the preset
+     * marks exactly as dragging would, and the publish is called directly. It
+     * used to be the one event, back when the value-changed handler also
+     * published. */
     lv_slider_set_value(ctx->state_window_slider, value, LV_ANIM_OFF);
     lv_obj_send_event(ctx->state_window_slider, LV_EVENT_VALUE_CHANGED, NULL);
+    window_item_slider_publish(ctx);
 }
 
 void window_item_slider(struct widget_context_s *ctx)
@@ -622,7 +652,10 @@ void window_item_slider(struct widget_context_s *ctx)
     lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
     lv_obj_set_width(slider, lv_pct(95));
     lv_obj_set_height(slider, LV_DPI_DEF / 3);
-    lv_obj_add_event_cb(slider, window_item_slider_event_handler, LV_EVENT_VALUE_CHANGED, ctx);
+    lv_obj_add_event_cb(slider, window_item_slider_preview_event_handler,
+                        LV_EVENT_VALUE_CHANGED, ctx);
+    lv_obj_add_event_cb(slider, window_item_slider_event_handler,
+                        LV_EVENT_RELEASED, ctx);
 
     // Add the minimum and maximum value labels below the slider
     lv_obj_t *minmax_row = plain_container(content);
