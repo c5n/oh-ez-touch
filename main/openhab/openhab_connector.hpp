@@ -71,7 +71,6 @@ private:
     char page_link[STR_LINK_LEN];
 
 public:
-    int update();
     int publish(const char* url);
 
     /* The two URLs an item is asked for, built from its own fields rather than

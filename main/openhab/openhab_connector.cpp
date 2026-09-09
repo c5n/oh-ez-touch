@@ -104,37 +104,6 @@ int Item::applyState(const char *text, size_t len)
     return 1;
 }
 
-int Item::update()
-{
-    char url[STR_URL_LEN];
-
-    if (stateUrl(url, sizeof(url)) == false)
-    {
-        printf("Item::update: no state URL for link: %s\r\n", link);
-        return -1;
-    }
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-    printf("Item::update: Requesting URL: %s\r\n", url);
-#endif
-    /* The fixture pages carry a fixed state per item, so there is nothing to
-     * poll: leaving the item as it is keeps whatever the UI set locally, which
-     * is what makes a switch in offline mode look like it worked. */
-    if (sim_offline())
-        return 0;
-
-    char remote_state[STR_STATE_TEXT_LEN];
-    ssize_t body_len = openhab_http_get(url, remote_state, sizeof(remote_state) - 1, true);
-
-    if (body_len < 0)
-    {
-        printf("Item::update: ERROR URL: %s\r\n", url);
-        return -1;
-    }
-
-    return applyState(remote_state, (size_t)body_len);
-}
-
 int Item::publish(const char* url)
 {
     int retval = 0;

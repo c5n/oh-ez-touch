@@ -104,6 +104,12 @@ struct widget_context_s
      * widget_destroy(): a theme change destroys and recreates every tile, and
      * clearing it there would duplicate a request that is still outstanding. */
     bool icon_pending = false;
+    /* And the same for a state poll. This one also decides the poll interval's
+     * meaning: update_timestamp now marks when a poll was *submitted*, so
+     * without this a server slower than ITEM_UPDATE_INTERVAL would put another
+     * request in the queue every five seconds for a tile that already has one
+     * outstanding. */
+    bool state_pending = false;
     lv_obj_t *container = NULL;
     lv_obj_t *label = NULL;
     lv_obj_t *img_obj = NULL;
@@ -1734,10 +1740,38 @@ static void results_apply_one(void)
         break;
 
     case OPENHAB_REQ_STATE:
+    {
+        struct widget_context_s *wctx = &widget_context[res.slot];
+
+        wctx->state_pending = false;
+
+        if (res.ok == false)
+        {
+            statistics.update_fail_cnt++;
+            break;
+        }
+
+        statistics.update_success_cnt++;
+
+        /* A NULL payload is offline mode reporting that there was nothing to
+         * fetch. Leaving the item alone is what keeps a switch toggled locally
+         * looking like it worked -- the fixture pages carry a fixed state per
+         * item, so a poll could only undo it. */
+        if (res.payload == NULL || wctx->item == NULL)
+            break;
+
+        if (wctx->item->applyState(res.payload, res.payload_len) > 0)
+        {
+            // item value changed
+            update_state_widget(wctx);
+            widget_icon_request(res.slot);
+        }
+        break;
+    }
+
     case OPENHAB_REQ_COMMAND:
     default:
-        /* Nothing submits these yet; the commits after this one do, one
-         * caller at a time. */
+        /* The commands move in the commit after this one. */
         break;
     }
 
@@ -1786,26 +1820,31 @@ void openhab_ui_loop(void)
                     statistics.update_success_cnt++;
                 }
 
-                if (port_millis() - widget_context[i].update_timestamp >= ITEM_UPDATE_INTERVAL)
+                if (   widget_context[i].state_pending == false
+                    && port_millis() - widget_context[i].update_timestamp >= ITEM_UPDATE_INTERVAL)
                 {
-                    // update widget from current remote openhab state
+                    // ask openhab for the current remote state
+                    char url[STR_URL_LEN];
+
+                    /* Stamped at the submit and not at the answer, so the
+                     * interval stays submit-to-submit as it was when the call
+                     * blocked here. */
                     widget_context[i].update_timestamp = port_millis();
                     widget_context[i].refresh_request = false;
-                    int result = widget_context[i].item->update();
-                    if (result > 0)
+
+                    if (   widget_context[i].item->stateUrl(url, sizeof(url)) == false
+                        || openhab_client_request_state(url, (uint8_t)i, page_generation) == false)
                     {
-                        // item value changed
-                        update_state_widget(&widget_context[i]);
-                        widget_icon_request(i);
-                        statistics.update_success_cnt++;
-                    }
-                    else if (result == 0)
-                    {
-                        statistics.update_success_cnt++;
+                        /* A URL that would not build, or a queue that would
+                         * not take it. Counted here rather than nowhere: every
+                         * poll still produces exactly one success or one
+                         * failure, so the watchdog below counts what it always
+                         * counted. */
+                        statistics.update_fail_cnt++;
                     }
                     else
                     {
-                        statistics.update_fail_cnt++;
+                        widget_context[i].state_pending = true;
                     }
                 }
             }
