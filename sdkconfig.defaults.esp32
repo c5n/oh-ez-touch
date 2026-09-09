@@ -22,3 +22,41 @@ CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 # cannot express this panel's calibration -- see main/port/esp32/port_indev.c.
 # port_indev supplies a process_coordinates callback instead.
 CONFIG_XPT2046_CONVERT_ADC_TO_COORDS=n
+
+# Bluetooth, for the beacon scanner in main/ble/. NimBLE rather than Bluedroid
+# because its roles can be compiled out one at a time, and a scanner needs
+# exactly one of the four: observer. Leaving central, peripheral and broadcaster
+# in would cost flash and RAM for GATT, advertising and connection handling that
+# nothing here calls.
+#
+# The controller is BLE-only (the ESP32's classic Bluetooth is another 200 KB
+# and this project has no use for it), and WiFi/BT software coexistence comes on
+# by its own default once both are enabled -- which is what makes the scan and
+# the openHAB polling share one radio without either stopping.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+
+# Central stays on, which looks wrong for a receiver and is not a choice. On the
+# ESP32, esp_nimble_cfg.h hard-codes BLE_HOST_BASED_PRIVACY to 1 -- the Kconfig
+# option for it is a no-op on this target -- so the host-side address resolver
+# is always compiled. It calls the security manager, and the security manager is
+# compiled only when a role that can connect is on. Observer alone does not
+# link, and the error is an undefined ble_sm_alg_encrypt a long way from the
+# cause. Central is the cheaper of the two connect roles: peripheral would add
+# the GATT server, the advertising path and the GAP service on top. Nothing in
+# this firmware ever connects to anything.
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+
+# What makes room for the controller. With the WiFi library's hot paths in IRAM
+# and Bluetooth enabled, IRAM comes out at 98.4% full -- 2 KB left, which is no
+# headroom at all for a target nobody here can flash and test. Moving them to
+# flash brings it to 79%. IDF makes the same choice by itself when BT and PSRAM
+# are both on; this board has no PSRAM, so it has to be said here. The cost is
+# WiFi throughput, which for a panel polling a sitemap every second is not a
+# cost worth having a scanner without.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n

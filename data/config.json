@@ -37,6 +37,15 @@
         "interval": 60,
         "retain":   1
     },
+    "ble":
+    {
+        "enabled":      0,
+        "interval":     30,
+        "window":       5,
+        "rssi_min":     -90,
+        "expire":       120,
+        "publish_all":  0
+    },
     "openhab":
     {
         "hostname": "openhabian",

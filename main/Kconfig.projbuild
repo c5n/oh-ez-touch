@@ -59,6 +59,14 @@ config OHEZ_DEBUG_BEEPER_CONTROL
     bool "beeper: every note queued, and the task's stack headroom"
     default n
 
+config OHEZ_DEBUG_BLE
+    bool "BLE: every advertisement heard, and each scan window"
+    default n
+    help
+        One line per advertisement, which in a populated room is a few
+        hundred a second. Useful for finding out what a particular tag
+        actually broadcasts; not something to leave on.
+
 config OHEZ_DEBUG_CONFIG_FILE
     bool "config: the file name, and every setting as it is loaded"
     default n

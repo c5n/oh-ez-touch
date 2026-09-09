@@ -200,6 +200,12 @@ bool Config::loadConfig(const char *name)
     strlcpy(item.mqtt.topic, doc["mqtt"]["topic"] | "oheztouch", sizeof(item.mqtt.topic));
     item.mqtt.interval = doc["mqtt"]["interval"] | 60;
     item.mqtt.retain = doc["mqtt"]["retain"] | true;
+    item.ble.enabled = doc["ble"]["enabled"] | false;
+    item.ble.interval = doc["ble"]["interval"] | 30;
+    item.ble.window = doc["ble"]["window"] | 5;
+    item.ble.rssi_min = doc["ble"]["rssi_min"] | -90;
+    item.ble.expire = doc["ble"]["expire"] | 120;
+    item.ble.publish_all = doc["ble"]["publish_all"] | false;
     strlcpy(item.openhab.hostname, doc["openhab"]["hostname"] | "openhabian", sizeof(item.openhab.hostname));
     item.openhab.port = doc["openhab"]["port"] | 8080;
     strlcpy(item.openhab.sitemap, doc["openhab"]["sitemap"] | "setme_sitemap", sizeof(item.openhab.sitemap));
@@ -234,6 +240,12 @@ bool Config::loadConfig(const char *name)
     debug_printf("  item.mqtt.topic: %s\r\n", item.mqtt.topic);
     debug_printf("  item.mqtt.interval: %d\r\n", item.mqtt.interval);
     debug_printf("  item.mqtt.retain: %d\r\n", item.mqtt.retain);
+    debug_printf("  item.ble.enabled: %d\r\n", item.ble.enabled);
+    debug_printf("  item.ble.interval: %d\r\n", item.ble.interval);
+    debug_printf("  item.ble.window: %d\r\n", item.ble.window);
+    debug_printf("  item.ble.rssi_min: %d\r\n", item.ble.rssi_min);
+    debug_printf("  item.ble.expire: %d\r\n", item.ble.expire);
+    debug_printf("  item.ble.publish_all: %d\r\n", item.ble.publish_all);
     debug_printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
     debug_printf("  item.openhab.port: %d\r\n", item.openhab.port);
     debug_printf("  item.openhab.sitemap: %s\r\n", item.openhab.sitemap);
@@ -281,6 +293,13 @@ bool Config::saveConfig()
     doc["mqtt"]["topic"] = item.mqtt.topic;
     doc["mqtt"]["interval"] = item.mqtt.interval;
     doc["mqtt"]["retain"] = item.mqtt.retain;
+
+    doc["ble"]["enabled"] = item.ble.enabled;
+    doc["ble"]["interval"] = item.ble.interval;
+    doc["ble"]["window"] = item.ble.window;
+    doc["ble"]["rssi_min"] = item.ble.rssi_min;
+    doc["ble"]["expire"] = item.ble.expire;
+    doc["ble"]["publish_all"] = item.ble.publish_all;
 
     doc["openhab"]["hostname"] = item.openhab.hostname;
     doc["openhab"]["port"] = item.openhab.port;

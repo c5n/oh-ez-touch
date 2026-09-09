@@ -25,6 +25,7 @@
 #include "config/config_fields.hpp"
 #include "version.h"
 
+#include "ble/ble_scan.hpp"
 #include "control/backlight_control.hpp"
 #include "control/beeper_control.hpp"
 #include "mqtt/ohez_mqtt.hpp"
@@ -231,6 +232,10 @@ static void ohez_setup(void)
     openhab_sensor_main_setup(config);
     ohez_mqtt_setup(&config);
 
+    /* After the MQTT client, which is where its findings go, and last of the
+     * three because it is the one that claims a radio. */
+    ble_scan_setup(config);
+
     port_ntp_setup(config.item.ntp.hostname, config.item.ntp.gmt_offset * 3600,
                    config.item.ntp.daylightsaving ? 3600 : 0);
 
@@ -351,6 +356,11 @@ static void ohez_loop(void)
          * whole of the association failing to resolve the broker's name, once a
          * second, with a log line each time. */
         ohez_mqtt_loop(config);
+
+        /* Inside it too, though for a weaker reason: the scanner has somewhere
+         * to publish only while the link is up, and scanning with nowhere to
+         * send the result would spend radio share the WiFi wants. */
+        ble_scan_loop(config);
     }
 
     /* Was SDL_Delay(5) in the simulator and nothing at all on the device, whose

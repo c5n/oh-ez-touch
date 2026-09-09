@@ -29,7 +29,12 @@
  *   <prefix>/sensor/pressure
  *   <prefix>/config/<field>          one topic per settings field
  *
- * and one subscription:
+ * plus a `<prefix>/ble/...` subtree that is not a fixed list and so is not
+ * described here: it is one group of topics per BLE advertiser in range, and
+ * ble/ble_scan.cpp owns both its shape and its lifetime through
+ * ohez_mqtt_publish_value() and ohez_mqtt_clear_value().
+ *
+ * And one subscription:
  *
  *   <prefix>/config/<field>/set      write that field
  *
@@ -248,12 +253,12 @@ static void topics_build(const struct mqtt_applied_s &a)
  * redeliver them, and a reading redelivered a minute late is worse than one
  * dropped -- it is indistinguishable from a fresh one.
  */
-static void publish(const char *suffix, const char *value)
+static bool publish_raw(const char *suffix, const char *value, bool retain)
 {
     char topic[MQTT_TOPIC_MAX];
 
     if (mqtt_client == NULL)
-        return;
+        return false;
 
     snprintf(topic, sizeof(topic), "%s/%s", mqtt_prefix, suffix);
 
@@ -261,9 +266,21 @@ static void publish(const char *suffix, const char *value)
     printf("ohez_mqtt: %s = %s\r\n", topic, value);
 #endif
 
-    if (esp_mqtt_client_publish(mqtt_client, topic, value, 0, 0,
-                                applied.mqtt.retain ? 1 : 0) < 0)
+    /* A length of 0 tells esp-mqtt to take strlen(), which for the empty
+     * string a clear sends is a genuinely zero-length payload -- the thing
+     * that removes a retained message. */
+    if (esp_mqtt_client_publish(mqtt_client, topic, value, 0, 0, retain ? 1 : 0) < 0)
+    {
         ESP_LOGW(TAG, "cannot publish %s", topic);
+        return false;
+    }
+
+    return true;
+}
+
+static void publish(const char *suffix, const char *value)
+{
+    publish_raw(suffix, value, applied.mqtt.retain);
 }
 
 /* The settings, as the browser and the panel show them. Secrets excluded --
@@ -358,6 +375,27 @@ void ohez_mqtt_publish_bme280(float temperature_c, float humidity_pct, float pre
 
     snprintf(value, sizeof(value), "%.3f", pressure_hpa);
     publish("sensor/pressure", value);
+}
+
+bool ohez_mqtt_connected(void)
+{
+    return mqtt_client != NULL && mqtt_online;
+}
+
+bool ohez_mqtt_publish_value(const char *suffix, const char *value)
+{
+    if (mqtt_online == false)
+        return false;
+
+    return publish_raw(suffix, value, applied.mqtt.retain);
+}
+
+bool ohez_mqtt_clear_value(const char *suffix)
+{
+    if (mqtt_online == false)
+        return false;
+
+    return publish_raw(suffix, "", true);
 }
 
 /* ------------------------------------------------------------------ commands */

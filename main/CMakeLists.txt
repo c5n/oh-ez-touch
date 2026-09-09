@@ -31,6 +31,7 @@ if(OHEZ_LINUX)
         "port/linux/port_bme280.c"
         "port/linux/port_net.c"
         "port/linux/port_ntp.c"
+        "port/linux/port_ble.c"
         "port/linux/port_esp_timer.c")
 else()
     set(OHEZ_PORT_SRCS
@@ -44,6 +45,7 @@ else()
         "port/esp32/port_bme280.c"
         "port/esp32/port_net.c"
         "port/esp32/port_ntp.c"
+        "port/esp32/port_ble.c"
         "port/esp32/board_i2c.c")
 endif()
 
@@ -79,6 +81,9 @@ set(OHEZ_APP_SRCS
 
     "mqtt/ohez_mqtt.cpp"
 
+    "ble/ble_beacon.cpp"
+    "ble/ble_scan.cpp"
+
     "web/webui.cpp"
     "web/webui_ota.cpp"
     "web/webui_transport.cpp"
@@ -108,6 +113,13 @@ if(NOT OHEZ_LINUX)
     # implementations, and why port/linux/port_esp_timer.c has to define the one
     # function esp-mqtt calls. spiffs likewise excludes esp_spiffs.c on linux.
     list(APPEND OHEZ_REQUIRES spiffs)
+
+    # The Bluetooth controller and the NimBLE host. Device only: there is no
+    # controller on a desktop that port_ble could drive, so the linux side gets
+    # the fixture implementation in port/linux/port_ble.c instead. The roles are
+    # trimmed as far as they go in sdkconfig.defaults.esp32, which is what keeps
+    # the stack down to something that fits beside LVGL.
+    list(APPEND OHEZ_REQUIRES bt)
 
     # The panel, the touch panel and the two PWMs. The three registry drivers
     # come from main/idf_component.yml; only one panel and one touch driver is

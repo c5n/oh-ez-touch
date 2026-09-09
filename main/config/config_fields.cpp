@@ -35,6 +35,11 @@
  *   hostname -- WiFi.setHostname() runs before WiFi.mode() in wlan_setup(),
  *               and the name doubles as the setup access point's SSID.
  *   bme_use  -- honoured only in openhab_sensor_main_setup().
+ *   ble_use  -- honoured only in ble_scan_setup(), and for a harder reason
+ *               than the other two: bringing the Bluetooth controller up
+ *               claims tens of kilobytes of RAM that stopping it does not
+ *               give back, so a panel that is not scanning must never have
+ *               started it.
  *
  * Getting this right matters more than it used to: the touch screen offers a
  * restart when a flagged field changes, and a flag on a field that is in fact
@@ -95,6 +100,17 @@ const struct config_field_s config_fields[] = {
     TXT("bme_temp", "Temperature item", openhab.sensors.bme280.items.temperature, 0),
     TXT("bme_hum", "Humidity item", openhab.sensors.bme280.items.humidity, 0),
     TXT("bme_press", "Pressure item", openhab.sensors.bme280.items.pressure, 0),
+
+    /* On the Sensors tab rather than a tab of its own. A beacon scanner is a
+     * presence sensor, which is what this tab is for, and six tab buttons is
+     * already what fits across 320 px. */
+    SEC("Bluetooth LE Beacons", SETTINGS_TAB_SENSORS),
+    CHK("ble_use", "Scan for BLE beacons", ble.enabled, SETTINGS_F_RESTART),
+    SINT("ble_interval", "Scan every [s]", ble.interval, 5, 3600),
+    SINT("ble_window", "Scan for [s]", ble.window, 1, 60),
+    SINT("ble_rssi", "Ignore weaker than [dBm]", ble.rssi_min, -100, 0),
+    SINT("ble_expire", "Forget after [s]", ble.expire, 10, 86400),
+    CHK("ble_all", "Publish non-beacon devices", ble.publish_all, 0),
 };
 
 const size_t config_field_count = sizeof(config_fields) / sizeof(config_fields[0]);

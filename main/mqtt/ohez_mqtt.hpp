@@ -50,4 +50,33 @@ void ohez_mqtt_request_reconfigure(void);
  */
 void ohez_mqtt_publish_bme280(float temperature_c, float humidity_pct, float pressure_hpa);
 
+/** Whether there is a broker connection right now.
+ *
+ * For a caller that keeps state about what it has already published and has to
+ * throw that away when a new session begins: a reconnected broker holds none of
+ * the last session's retained messages. ble/ble_scan.cpp watches the edge. */
+bool ohez_mqtt_connected(void);
+
+/**
+ * Publish one value under this device's prefix, e.g. "ble/aabbccddeeff/rssi".
+ *
+ * The seam for a module that owns a subtree of the topic tree rather than a
+ * fixed handful of topics -- the beacon scanner, whose topics are one per
+ * advertiser in range and cannot be a list in this file. Retained according to
+ * the setting, QoS 0, like everything else here.
+ *
+ * @return false when there is no connection, in which case nothing was sent.
+ *   Callers that track what the broker holds need to know the difference.
+ */
+bool ohez_mqtt_publish_value(const char *suffix, const char *value);
+
+/**
+ * Remove a retained topic: a zero-length payload, published retained, which is
+ * how MQTT deletes a broker's stored message.
+ *
+ * Retained whatever the setting says -- a clear that is not retained deletes
+ * nothing -- and harmless on a topic that was never retained.
+ */
+bool ohez_mqtt_clear_value(const char *suffix);
+
 #endif // OHEZ_MQTT_HPP

@@ -90,6 +90,29 @@ public:
         } mqtt;
         struct
         {
+            /* Read once, in ble_scan_setup(): the Bluetooth controller costs
+             * tens of kilobytes of RAM that cannot be handed back, so a panel
+             * that is not scanning must never have started it. Hence
+             * SETTINGS_F_RESTART on this one and on nothing else here. */
+            bool enabled;
+            /* Seconds between the starts of two scan windows, and how long
+             * each one lasts. Not continuous, because the radio is shared with
+             * WiFi -- see ble/ble_scan.cpp. */
+            int  interval;
+            int  window;
+            /* Advertisements weaker than this are dropped, which is what keeps
+             * the beacon table to things in the same room. */
+            int  rssi_min;
+            /* Seconds of silence before an advertiser is forgotten and its
+             * topics are cleared. */
+            int  expire;
+            /* Publish plain BLE devices as well as recognised beacons. Off by
+             * default: a room's worth of phones and watches is a great many
+             * topics nobody asked for. */
+            bool publish_all;
+        } ble;
+        struct
+        {
             char hostname[32];
             int port;
             char sitemap[32];
