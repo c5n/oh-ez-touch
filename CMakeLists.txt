@@ -26,9 +26,26 @@
 # A defaults file only seeds a *new* sdkconfig, so after editing one, delete
 # that build's sdkconfig (or the whole build directory) and re-run set-target.
 #
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22.1)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+# Simulator only: expand requirements from main instead of from every component
+# in the IDF tree, the way IDF's own linux host tests do. From IDF v6.1 the full
+# set does not resolve on this target -- esp_driver_ana_cmpr requires
+# esp_hal_ana_cmpr unconditionally, while esp_hal_ana_cmpr's CMakeLists returns
+# early on linux, so configuring fails on a component the simulator never uses.
+# Everything main needs still comes in through REQUIRES, partition_table
+# included (esp_partition takes it as a private requirement here, which is what
+# keeps generating the partition-table.bin that port/linux/port_flash.c reads).
+#
+# Not done for the device builds: there the whole tree resolves, and trimming
+# would risk dropping a component that is reached by a flash or image target
+# rather than by REQUIRES. IDF_TARGET is set by __target_init inside the include
+# above, so it is known here but CONFIG_* is not yet.
+if(IDF_TARGET STREQUAL "linux")
+    set(COMPONENTS main)
+endif()
 
 project(oh-ez-touch)
 

@@ -99,13 +99,18 @@ set(OHEZ_APP_SRCS
 
 set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 
-# mqtt is in both lists: components/mqtt builds for the linux target as well,
+# espressif__mqtt is in both lists: esp-mqtt builds for the linux target as well,
 # and every socket wait in its transport goes through select(), which is the one
 # thing the FreeRTOS simulator wraps -- so the panel and the simulator run the
 # same MQTT client, the way they already run the same esp_http_client. The one
 # symbol it is missing there comes from port/linux/port_esp_timer.c.
+#
+# The `espressif__` prefix is not decoration. IDF v6.0 removed components/mqtt
+# from the tree, so esp-mqtt now arrives through main/idf_component.yml like the
+# panel drivers do, and a managed component is registered under
+# <namespace>__<name>. Same code and same API as the in-tree component was.
 set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
-                  esp_event mqtt esp_timer)
+                  esp_event espressif__mqtt esp_timer)
 if(NOT OHEZ_LINUX)
     # esp_timer is in the shared list for its *header*: it registers
     # headers-only on the linux target, so esp_timer.h is includable there but
@@ -151,15 +156,14 @@ idf_component_register(SRCS ${OHEZ_SRCS}
 if(OHEZ_LINUX)
     # Force port/linux/port_esp_timer.c into the link.
     #
-    # Without this the archive order defeats it: libmqtt.a is scanned before
-    # libmain.a, so nothing is taken from it on that pass; libmain.a then pulls
-    # in the MQTT client, which leaves esp_mqtt_client_init undefined; and the
-    # second libmqtt.a on the line satisfies that by extracting
-    # platform_esp32_idf.c.o -- whose esp_timer_get_time has, by then, no
-    # archive left to come from. `-u` puts the symbol on the undefined list
-    # before libmain.a is scanned, so the definition is loaded with everything
-    # else. The same trick IDF's own esp_timer component uses to keep
-    # esp_timer_init_include_func.
+    # Without this the archive order defeats it: libespressif__mqtt.a is scanned
+    # before libmain.a, so nothing is taken from it on that pass; libmain.a then
+    # pulls in the MQTT client, which leaves esp_mqtt_client_init undefined; and
+    # the second libespressif__mqtt.a on the line satisfies that by extracting
+    # platform.c.o -- whose esp_timer_get_time has, by then, no archive left to
+    # come from. `-u` puts the symbol on the undefined list before libmain.a is
+    # scanned, so the definition is loaded with everything else. The same trick
+    # IDF's own esp_timer component uses to keep esp_timer_init_include_func.
     target_link_libraries(${COMPONENT_LIB} INTERFACE "-u esp_timer_get_time")
 
     # port/linux/port_flash.c needs the partition table the build just

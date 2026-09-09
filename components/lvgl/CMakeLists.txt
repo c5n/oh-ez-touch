@@ -4,7 +4,7 @@
 # does `PRIV_REQUIRES esp_timer log` and hard-codes the FreeRTOS include path of
 # an Xtensa build, so it cannot be used for the `linux` target. Registering the
 # sources ourselves is both shorter and target-agnostic.
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.22.1)
 
 set(LVGL_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}/lvgl")
 if(NOT EXISTS "${LVGL_ROOT_DIR}/lvgl.h")
@@ -49,5 +49,27 @@ if(CONFIG_IDF_TARGET_LINUX)
 endif()
 
 # Upstream code, built with this project's warning flags; do not police it.
-set_source_files_properties(${LVGL_SOURCES} PROPERTIES
-    COMPILE_OPTIONS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-format")
+#
+# Split by language because -Wno-error=discarded-qualifiers is a C-only option
+# and gcc complains when it is handed to g++ -- which, under IDF v6's -Werror,
+# is itself an error. Twenty of the globbed sources are C++ (the gltf and
+# thorvg-adjacent ones, and the two Arduino fsdrv files), so the flag cannot go
+# on the whole list.
+#
+# What needs it: lv_strchr() and its neighbours in src/stdlib/clib/lv_string_clib.c
+# return strchr()'s char * from a const char * argument. IDF v6.0 changed
+# CONFIG_COMPILER_DISABLE_DEFAULT_ERRORS to default n, which swaps -Werror=all
+# for plain -Werror; discarded-qualifiers is outside the -Wall group, so what was
+# a warning up to v5.4 fails the build from v6.0 on. Kept as a warning rather
+# than silenced, so it still shows up when LVGL is next updated.
+set(LVGL_WARNING_OPTIONS "-Wno-unused-parameter;-Wno-sign-compare;-Wno-format")
+
+set(LVGL_C_SOURCES ${LVGL_SOURCES})
+list(FILTER LVGL_C_SOURCES INCLUDE REGEX "\\.c$")
+set(LVGL_CXX_SOURCES ${LVGL_SOURCES})
+list(FILTER LVGL_CXX_SOURCES INCLUDE REGEX "\\.cpp$")
+
+set_source_files_properties(${LVGL_C_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "${LVGL_WARNING_OPTIONS};-Wno-error=discarded-qualifiers")
+set_source_files_properties(${LVGL_CXX_SOURCES} PROPERTIES
+    COMPILE_OPTIONS "${LVGL_WARNING_OPTIONS}")

@@ -62,7 +62,6 @@ void port_backlight_init(void)
         .gpio_num   = OHEZ_BACKLIGHT_PIN,
         .speed_mode = BACKLIGHT_MODE,
         .channel    = BACKLIGHT_CHANNEL,
-        .intr_type  = LEDC_INTR_DISABLE,
         .timer_sel  = BACKLIGHT_TIMER,
         .duty       = 0,
         .hpoint     = 0,

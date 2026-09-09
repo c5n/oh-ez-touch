@@ -23,20 +23,20 @@ The touch buttons and graphics are dynamically generated. The structure is defin
 
 ## Installation
 
-This project is built with [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v5.4.4/esp32/),
+This project is built with [ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/),
 which is also what builds the desktop simulator.
 
 For now, only Linux instructions are available.
 
 ### Prerequisites
 
-ESP-IDF **v5.4.4**. The version is pinned rather than "recent enough": the
+ESP-IDF **v6.1**. The version is pinned rather than "recent enough": the
 `linux` target the simulator uses is officially a preview feature, so an IDF
 upgrade is a change to verify rather than a routine update.
 
 ```bash
 mkdir -p ~/esp
-git -C ~/esp clone -b v5.4.4 --depth 1 --recursive https://github.com/espressif/esp-idf.git
+git -C ~/esp clone -b v6.1 --depth 1 --recursive https://github.com/espressif/esp-idf.git
 ~/esp/esp-idf/install.sh esp32
 ```
 
@@ -323,7 +323,7 @@ dmesg | grep /dev/ttyUSB
 
 If you have no user rights to access the /dev/ttyUSB device, one option is to
 add a ```sudo```. Another would be to add
-[udev rules](https://docs.espressif.com/projects/esp-idf/en/v5.4.4/esp32/get-started/establish-serial-connection.html)
+[udev rules](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32/get-started/establish-serial-connection.html)
 to allow user access.
 
 One command uploads everything -- the bootloader, the partition table, the

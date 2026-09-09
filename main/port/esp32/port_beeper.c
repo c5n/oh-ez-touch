@@ -59,7 +59,6 @@ bool port_beeper_init(void)
         .gpio_num   = OHEZ_BEEPER_PIN,
         .speed_mode = BEEPER_MODE,
         .channel    = BEEPER_CHANNEL,
-        .intr_type  = LEDC_INTR_DISABLE,
         .timer_sel  = BEEPER_TIMER,
         .duty       = 0,
         .hpoint     = 0,

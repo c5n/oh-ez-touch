@@ -1,12 +1,26 @@
-## Registry dependencies for the device build.
+## Registry dependencies.
 ##
-## Not for the linux target: none of these has a linux branch, and the
+## esp-mqtt is the one that is not device-only. It left the IDF tree in v6.0 --
+## components/mqtt no longer exists -- and is a registry component now, needed by
+## both targets: see the note on OHEZ_REQUIRES in CMakeLists.txt for why the
+## panel and the simulator run the same MQTT client.
+##
+## The three drivers below are device-only: none has a linux branch, and the
 ## simulator's display and pointer come from LVGL's SDL driver instead. The
-## `rules` below are the only conditioning the component manager offers -- it
-## cannot key on a Kconfig symbol -- so all three panel and touch drivers are
-## fetched for every board and the linker drops the two that are not used.
+## `rules` are the only conditioning the component manager offers -- it cannot
+## key on a Kconfig symbol -- so all three panel and touch drivers are fetched
+## for every board and the linker drops the two that are not used.
 dependencies:
-  idf: ">=5.2"
+  ## Not "recent enough": v6 is where the mqtt and json components moved out of
+  ## the tree, so an IDF that still has them cannot build this. The upper bound
+  ## is real too -- v7.0 removes the legacy driver/i2c.h that is only EOL in v6.
+  ## The README pins the exact version; this is the machine-checked floor.
+  idf: "^6.1"
+
+  ## Was the in-tree `mqtt` component up to IDF v5.x. Same code, same API and
+  ## the same CONFIG_MQTT_* symbols; what changed is the name, which is
+  ## `espressif__mqtt` in REQUIRES.
+  espressif/mqtt: "^1.1.0"
 
   ## ILI9341 has no in-tree driver; ST7789 is part of esp_lcd itself.
   espressif/esp_lcd_ili9341:

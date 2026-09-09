@@ -1,10 +1,16 @@
 # Host simulator settings for `idf.py --preview set-target linux`.
 
-# The decisive one. With lwIP disabled the application uses the *host's* IP
-# stack through host sockets: real LAN, no TAP device, no root. It also switches
-# on freertos/esp_additions/FreeRTOSSimulator_wrappers.c, whose select() wrapper
-# is what stops a socket wait from parking the cooperative scheduler.
-CONFIG_LWIP_ENABLE=n
+# No lwIP on this target, which is the decisive property: the application uses
+# the *host's* IP stack through host sockets -- real LAN, no TAP device, no root
+# -- and freertos/esp_additions/FreeRTOSSimulator_wrappers.c is compiled in,
+# whose select() wrapper is what stops a socket wait from parking the
+# cooperative scheduler.
+#
+# There is deliberately no CONFIG_LWIP_ENABLE=n here any more. IDF's own Kconfig
+# already has `default n if IDF_TARGET_LINUX`, and the `set(COMPONENTS main)` in
+# CMakeLists.txt means lwip is not in this build's component set at all -- so the
+# symbol is undefined and assigning it is rejected as unknown. Being outside the
+# component set is the stronger guarantee of the two.
 
 # Every tick is a SIGALRM delivered to the running thread, so a high rate means
 # a high EINTR rate in SDL, X11 and libc. 250 Hz is a compromise against
