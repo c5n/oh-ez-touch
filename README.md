@@ -221,6 +221,20 @@ OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
 
 `OHEZ_MQTT` takes `on` or `off`; anything that is not `off` or `0` enables it.
 
+`OHEZ_BLE_FIXTURE=1` serves four compiled-in BLE advertisements -- an iBeacon,
+an Eddystone-UID, an Eddystone-TLM frame from the same advertiser, and a plain
+named device -- instead of the Bluetooth the host does not have. They go through
+the very same parsers a real advertisement does, so the beacon table, the
+averaging, the expiry and the topics can all be watched on a desktop:
+
+```bash
+OHEZ_BLE_FIXTURE=1 ./build/linux/oh-ez-touch.elf
+```
+
+Off by default, for the reason the BME280 invents nothing on the host: these
+readings are published to a broker, and a simulator that quietly wrote fiction
+into someone's presence history would be worse than one that did nothing.
+
 `OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
 `wlan`, `openhab`, `mqtt`, `sensors`, `other` or `info`:
 
@@ -272,10 +286,24 @@ than the accessors: that no two rows share a name, that a name is usable both as
 a POST argument and as an MQTT topic segment, that every tab has rows on it, and
 that the rows flagged as needing a restart are the ones that really do.
 
-That last suite is also the only one that links anything out of `main/`, and
-only the one file: `config_fields.cpp` touches neither LVGL nor the network,
-which is what makes the table testable at all. The other two cover header-only
-code and link nothing, which is what keeps the test app worth having.
+`test_ble_beacon` covers the advertisement parsers in
+`main/ble/ble_beacon.cpp`, and is the suite that earns its keep most easily. The
+iBeacon and Eddystone layouts are specified by Apple and by Google and cannot be
+checked by reading the code that consumes them; the bytes arrive off the air
+from devices nobody here wrote, so malformed input is the normal case rather than
+the exception; and there is nowhere else to exercise any of it, because a desktop
+has no Bluetooth and the device firmware has never been run on hardware. So the
+suite walks a valid advertisement truncated at every possible length, feeds it
+lengths that run past the end of the payload, and pins down each format's
+identity, reference power and telemetry byte by byte. It found two bugs in its
+own fixtures and one in the URL character ranges on the first run.
+
+Those two suites are also the only ones that link anything out of `main/`, and
+only the two files: `config_fields.cpp` and `ble_beacon.cpp` touch neither LVGL
+nor the network. For the beacon parsers that is not a happy accident but the
+reason `main/port/port_ble.h` yields raw advertisement bytes and leaves the
+parsing above the port layer. The other two suites cover header-only code and
+link nothing, which is what keeps the test app worth having.
 
 ### Upload
 
@@ -441,7 +469,7 @@ Tab                     | Contents
 WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
 openHAB (house symbol)  | Host, port and sitemap
 MQTT (upload symbol)    | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
-Sensors (eye symbol)    | The BME280 rows
+Sensors (eye symbol)    | The BME280 rows, and the BLE beacon scanner
 Other (gear symbol)     | Hostname, NTP, appearance, backlight and beeper
 Info (list symbol)      | The Systeminfo table -- uptime, version, and the IP your DHCP server handed out -- and a **Restart** button
 
@@ -546,6 +574,17 @@ Temperature item        |         | Name of the OpenHAB item the temperature is 
 Humidity item           |         | Name of the OpenHAB item the humidity is sent to
 Pressure item           |         | Name of the OpenHAB item the pressure is sent to
 
+##### Bluetooth LE Beacons
+
+Setting                       | Default | Description
+----------------------------- | ------- | -------------
+Scan for BLE beacons ```*```  | off     | Listen for BLE advertisements and publish them over MQTT -- see [Bluetooth LE beacons](#bluetooth-le-beacons)
+Scan every                    | 30      | Seconds between the starts of two scan windows
+Scan for                      | 5       | Seconds each window lasts. Not continuous, because the radio is shared with WiFi
+Ignore weaker than            | -90     | Advertisements below this RSSI are dropped, which is what keeps the table to things nearby
+Forget after                  | 120     | Seconds of silence before a beacon is dropped and its topics cleared
+Publish non-beacon devices    | off     | Publish plain BLE devices too, not only recognised beacons
+
 ### MQTT
 
 The client publishes what the panel knows about itself and subscribes to one
@@ -616,6 +655,85 @@ a retained command on every reconnect costs nothing.
 There is no authentication in front of any of this, which is also true of the
 web interface. Both belong on a network you trust.
 
+### Bluetooth LE beacons
+
+Off by default. With ```Scan for BLE beacons``` turned on the panel listens for
+BLE advertisements and publishes what it hears to the same broker the MQTT
+client uses, under a ```ble/``` subtree. It is a receiver only: nothing is
+advertised, nothing is connected to, and no pairing is possible.
+
+Turning it on needs a restart, and it is the one setting where that is not just
+a matter of where it is read: bringing the Bluetooth controller up claims tens
+of kilobytes of RAM that stopping it does not give back, so a panel that is not
+scanning must never have started it.
+
+#### Topics
+
+Under the MQTT prefix, so with the defaults these read
+```oheztouch/oheztouch-new/ble/...```. The key is the advertiser's hardware
+address, lower case hex, no separators.
+
+Topic                       | Published        | Value
+--------------------------- | ---------------- | -----
+```count```                 | every window     | How many advertisers are currently published
+```dropped```               | every window     | Reports lost to a full queue since boot -- normally 0
+```<addr>/type```           | on discovery     | ```iBeacon```, ```Eddystone-UID```, ```Eddystone-URL``` or ```device```
+```<addr>/id```             | on discovery     | The beacon's own identity, or empty for a device that has none
+```<addr>/name```           | on discovery     | The advertised name, when there is one
+```<addr>/power```          | on discovery     | dBm: the power at one metre a beacon declares, or a plain device's transmit power
+```<addr>/rssi```           | every window     | dBm, averaged over the window
+```<addr>/distance```       | every window     | Metres, estimated. Beacons only -- see below
+```<addr>/battery```        | every window     | mV, Eddystone-TLM only
+```<addr>/temperature```    | every window     | Degrees Celsius, Eddystone-TLM only
+
+Three formats are recognised, which is what a beacon is in practice: **iBeacon**
+(identity is the proximity UUID, the major and the minor), **Eddystone-UID**
+(a namespace and an instance) and **Eddystone-URL**. **Eddystone-TLM** is not an
+identity but telemetry, and beacons interleave it between their identity frames,
+so its battery and temperature are merged onto the entry the identity frames
+built. Anything else in range -- a phone, a watch, a thermostat -- is a
+```device```, with whatever name and transmit power it advertised, and is only
+published when ```Publish non-beacon devices``` is on.
+
+When an advertiser has not been heard for ```Forget after``` seconds, all of its
+topics are cleared with a zero-length retained publish, which is how a retained
+message is removed. Without that a beacon carried out of the building would sit
+in the broker at its last RSSI forever.
+
+#### Two things to know before wiring it up
+
+**The address is the key, and the identity is a value**, which is the other way
+round from how it is usually drawn. It has to be: an iBeacon's UUID is shared on
+purpose -- a shop's hundred tags carry one UUID and differ only in the minor --
+so it is not unique, while the address always is. The consequence is that a
+beacon which randomises its address, as most phones and many tags do for exactly
+the privacy reason that makes this awkward, will come and go under a new key
+every few minutes. A beacon meant to be tracked advertises a stable address.
+
+**The distance is an estimate and reads short.** It is the log-distance path loss
+model with the exponent at 2.0, which is free space; indoors it is nearer 3, so
+walls and furniture make it optimistic. It is published because "about two
+metres or about twenty" is useful and a raw RSSI is not, and it should not be
+read more precisely than that. It is published *only* for beacons, because only
+a beacon states a power calibrated at a known distance -- a plain device's
+transmit power says how loudly its radio speaks, not how loud it is a metre
+away, and treating one as the other puts something three metres off at a hundred
+and forty.
+
+#### What it costs
+
+Bluetooth is NimBLE in observer role, with the roles trimmed as far as they go.
+It costs about 185 KB of flash, which leaves the app partition 22% free, and it
+moves the WiFi library's hot paths out of IRAM to make room for the controller
+-- without that IRAM comes out at 98.4% full with nothing left over. The RAM the
+controller allocates is claimed at start-up and only when the setting is on.
+
+The radio is shared with WiFi. Software coexistence interleaves them, so neither
+stops working, but a scan takes airtime from the openHAB polling and the web
+interface for as long as it runs -- which is why the scan is a window every
+thirty seconds rather than a continuous one. A beacon advertises several times a
+second, so five seconds is many reports from everything in range.
+
 ### Fix icons
 
 Some of the original openhab-webui icons are exceptionally large for no reason. Since the ESP32 has limited RAM resources, we have to take file sizes into account. Re-encoding of the PNG graphic files using '''convert''' is the solution for now.
@@ -645,6 +763,8 @@ main/ui/              the LVGL user interface: the openHAB page, the settings
 main/openhab/         the openHAB client: sitemap, item state, icons, sensors
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
+main/ble/             the BLE beacon scanner: the advertisement parsers, and
+                      the table of what is in range
 main/web/             the web interface: one renderer, one transport per target
 main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
@@ -690,6 +810,9 @@ Contact: c5n AT posteo DOT de
 - [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
 - [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.
 - [ ] mqtt: Home Assistant style discovery, so the topics above do not have to be wired up by hand
+- [x] ble: Scan for BLE beacons and publish them over MQTT -- iBeacon, Eddystone UID/URL/TLM, see [Bluetooth LE beacons](#bluetooth-le-beacons)
+- [ ] ble: Show the beacons in range on the panel. The table is there; nothing draws it yet.
+- [ ] ble: The BLE scanner has not been run on hardware either. The NimBLE port is checked against the IDF observer examples and the parsers against the format specifications, not against a real tag.
 
 ## License
 [GNU General Public License v3.0](LICENSE.md)
