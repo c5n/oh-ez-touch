@@ -22,29 +22,25 @@
 
 #include "config.hpp"
 #include "debug.h"
-#include "port/ohez_port.h"
+#include "settings_fields.hpp"
 #include "version.h"
 
-#include "openhab_ui.hpp"
-#include "settings_fields.hpp"
-#include "ui_infolabel.hpp"
-#include "ui_settings.hpp"
-#include "ui_style.hpp"
+#include "control/backlight_control.hpp"
+#include "control/beeper_control.hpp"
+#include "net/wlan.hpp"
+#include "openhab/openhab_sensor_main.hpp"
+#include "port/ohez_port.h"
+#include "ui/openhab_ui.hpp"
+#include "ui/ui_infolabel.hpp"
+#include "ui/ui_settings.hpp"
+#include "ui/ui_style.hpp"
+#include "web/webui.hpp"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
 #include "esp_event.h"
 #include "esp_log.h"
-
-#include "driver/backlight_control.hpp"
-#include "driver/beeper_control.hpp"
-
-#include "port/port_ntp.h"
-#include "wlan.hpp"
-
-#include "openhab_sensor_main.hpp"
-#include "webui.hpp"
 
 /* Set by the top-level CMakeLists.txt. The fallback is what a build that has
  * not been told which board it is for reports, rather than failing to compile:

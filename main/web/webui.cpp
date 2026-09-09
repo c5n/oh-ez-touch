@@ -30,13 +30,13 @@
 
 #include "settings_fields.hpp"
 
-#include "openhab_ui.hpp"
+#include "ui/openhab_ui.hpp"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "webui_ota.hpp"
 #include "webui_transport.h"
-#include "wlan.hpp"
-#include "ui_theme.hpp"
+#include "net/wlan.hpp"
+#include "ui/ui_theme.hpp"
 #include "version.h"
 #include "debug.h"
 

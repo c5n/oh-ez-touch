@@ -8,8 +8,9 @@
 #   idf.py -B build/arduitouch build flash monitor
 #
 # sdkconfig.defaults.arduitouch28 and sdkconfig.defaults.lanbon are the other
-# two. Omitting the board file gives the ArduiTouch 2.4", which is the Kconfig
-# default.
+# two, and sdkconfig.defaults.arduitouch_jtag is the 2.4" with the pins an
+# attached esp-prog needs moved. Omitting the board file gives the ArduiTouch
+# 2.4", which is the Kconfig default.
 #
 # Build the host simulator:
 #   idf.py -B build/linux -DSDKCONFIG=build/linux/sdkconfig \

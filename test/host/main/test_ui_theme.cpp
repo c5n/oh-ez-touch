@@ -15,7 +15,8 @@
 
 #include <unity.h>
 
-#include "ui_theme.hpp"
+#include "ui/ui_theme.hpp"
+#include "test_suites.hpp"
 
 static void test_every_theme_name_round_trips(void)
 {
@@ -92,8 +93,6 @@ static void test_out_of_range_ids_name_the_default(void)
     TEST_ASSERT_EQUAL_STRING(UI_NIGHT_NAME_OFF,
                              ui_night_mode_name((enum ui_night_mode_e)UI_NIGHT_MODE_COUNT));
 }
-
-#include "test_suites.hpp"
 
 void test_ui_theme_run(void)
 {

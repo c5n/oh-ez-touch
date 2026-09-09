@@ -49,30 +49,42 @@ endif()
 # Policy that sits directly on the port layer and is worth running on both
 # targets: when to dim the display, and a queue that plays a chime without
 # blocking the screen for its duration.
-set(OHEZ_DRIVER_SRCS
-    "driver/backlight_control.cpp"
-    "driver/beeper_control.cpp")
+#
+# The directory is control/ rather than driver/ because IDF has a component of
+# that name: with main/ on the include path, `#include "driver/ledc.h"` would
+# look here first.
+set(OHEZ_CONTROL_SRCS
+    "control/backlight_control.cpp"
+    "control/beeper_control.cpp")
 
-# The UI, the openHAB client, the settings and the web interface.
+# The UI, the openHAB client, the settings and the web interface, one directory
+# each. main.cpp, config.* and settings_fields.* stay at the top: they are what
+# the directories below have in common -- the entry point, the settings they all
+# read, and the one table that both the settings screen and the web form walk.
 set(OHEZ_APP_SRCS
     "main.cpp"
     "config.cpp"
-    "openhab_connector.cpp"
-    "openhab_http.cpp"
-    "openhab_sensor_bme280.cpp"
-    "openhab_sensor_connector.cpp"
-    "openhab_sensor_main.cpp"
-    "openhab_ui.cpp"
     "settings_fields.cpp"
-    "ui_settings.cpp"
-    "ui_style.cpp"
-    "webui.cpp"
-    "webui_ota.cpp"
-    "webui_transport.cpp"
-    "webui_transport_esp32.cpp"
-    "webui_transport_linux.cpp"
-    "wlan.cpp"
-    "wlan_radio.cpp"
+
+    "ui/openhab_ui.cpp"
+    "ui/ui_settings.cpp"
+    "ui/ui_style.cpp"
+
+    "openhab/openhab_connector.cpp"
+    "openhab/openhab_http.cpp"
+    "openhab/openhab_sensor_bme280.cpp"
+    "openhab/openhab_sensor_connector.cpp"
+    "openhab/openhab_sensor_main.cpp"
+
+    "web/webui.cpp"
+    "web/webui_ota.cpp"
+    "web/webui_transport.cpp"
+    "web/webui_transport_esp32.cpp"
+    "web/webui_transport_linux.cpp"
+
+    "net/wlan.cpp"
+    "net/wlan_radio.cpp"
+
     "sim/icon_fixture.cpp"
     "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp")
@@ -107,7 +119,7 @@ if(NOT OHEZ_LINUX)
 endif()
 
 idf_component_register(SRCS ${OHEZ_SRCS}
-                            ${OHEZ_DRIVER_SRCS}
+                            ${OHEZ_CONTROL_SRCS}
                             "port/port_storage_stdio.c"
                             "port/port_kv.c"
                             ${OHEZ_PORT_SRCS}

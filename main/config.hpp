@@ -1,7 +1,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
-#include "ui_theme.hpp"
+#include "ui/ui_theme.hpp"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"

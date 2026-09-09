@@ -29,7 +29,7 @@
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
 #include "version.h"
-#include "wlan.hpp"
+#include "net/wlan.hpp"
 #include "debug.h"
 #include "port/port_net.h"
 #include "port/port_sys.h"

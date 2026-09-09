@@ -14,7 +14,8 @@
 
 #include <unity.h>
 
-#include "openhab_connector.hpp"
+#include "openhab/openhab_connector.hpp"
+#include "test_suites.hpp"
 
 #include <stddef.h>
 #include <string.h>
@@ -245,8 +246,6 @@ static void test_all_mapping_slots_hold_their_own_value(void)
 
     check_canary(probe);
 }
-
-#include "test_suites.hpp"
 
 void test_item_setters_run(void)
 {

@@ -1,7 +1,7 @@
 #include "sdkconfig.h"
 
 #include "openhab_ui.hpp"
-#include "openhab_connector.hpp"
+#include "openhab/openhab_connector.hpp"
 #include "ui_infolabel.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"

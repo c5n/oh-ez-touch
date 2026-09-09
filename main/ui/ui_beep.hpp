@@ -13,7 +13,7 @@
  * makes no sound, which costs nothing and keeps the guards out of the UI.
  */
 
-#include "driver/beeper_control.hpp"
+#include "control/beeper_control.hpp"
 
 #ifndef BEEPER_VOLUME
 #define BEEPER_VOLUME 50

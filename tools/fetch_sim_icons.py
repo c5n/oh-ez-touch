@@ -111,7 +111,7 @@ def main():
                         help="icon edge length in pixels (default: 32)")
     parser.add_argument("--max-bytes", type=int, default=5000,
                         help="reject icons larger than this; must stay within "
-                             "ICON_PNG_BUFFER_SIZE in main/openhab_ui.cpp "
+                             "ICON_PNG_BUFFER_SIZE in main/ui/openhab_ui.cpp "
                              "(default: 5000)")
     parser.add_argument("--output", default=OUTPUT_PATH,
                         help="generated header (default: %s)" % OUTPUT_PATH)

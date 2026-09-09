@@ -1,6 +1,6 @@
 #include "settings_fields.hpp"
 
-#include "ui_theme.hpp"
+#include "ui/ui_theme.hpp"
 
 #include <stdlib.h>
 #include <string.h>

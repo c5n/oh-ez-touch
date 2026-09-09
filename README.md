@@ -104,7 +104,8 @@ idf.py -B build/arduitouch build
 The three boards are `sdkconfig.defaults.arduitouch` (2.4"),
 `sdkconfig.defaults.arduitouch28` (2.8") and `sdkconfig.defaults.lanbon`
 (Lanbon L8). Omitting the board file gives the ArduiTouch 2.4", which is the
-Kconfig default.
+Kconfig default. `sdkconfig.defaults.arduitouch_jtag` is the 2.4" with the two
+pins an attached esp-prog needs moved out of its way.
 
 `-DSDKCONFIG` is not optional when more than one target is in play: `idf.py`
 otherwise writes the generated `sdkconfig` to the project root, where the
@@ -248,7 +249,7 @@ states, patterns and mappings of unknown length straight out of the sitemap
 JSON that openHAB serves. Those copies have to truncate cleanly, and the tests
 place a canary after the object to catch one that does not.
 
-`test_ui_theme` covers the theme name lookups in `main/ui_theme.hpp`. They are
+`test_ui_theme` covers the theme name lookups in `main/ui/ui_theme.hpp`. They are
 the only funnel between a theme's name and its enum, and four callers pass
 through them -- the config file, the web form, the environment overrides and the
 compiled-in defaults -- none of which checks the result, so the fallback to the
@@ -520,6 +521,32 @@ Move the files from ```output``` folder to your ```openhab2-conf/icons/classic/`
 I know, this is not very convenient. Finding a solution has top priority on my todo list.
 
 ## Development
+
+### Source layout
+
+```
+main/                 main.cpp, config.*, settings_fields.* -- the entry point,
+                      the settings, and the one table both the panel's settings
+                      screen and the web form walk
+main/ui/              the LVGL user interface: the openHAB page, the settings
+                      screen, the styles and themes
+main/openhab/         the openHAB client: sitemap, item state, icons, sensors
+main/web/             the web interface: one renderer, one transport per target
+main/net/             WLAN credentials, and the radio state machine
+main/control/         policy on top of the port layer: when to dim, and the
+                      queue that plays a chime
+main/sim/             the simulator's offline fixtures
+main/port/            the platform boundary -- one implementation directory per
+                      target, and the whole of what differs between a panel and
+                      a desktop
+components/           LVGL and ArduinoJson as submodules, lodepng vendored
+test/host/            the unit tests, as an IDF project of their own
+```
+
+Everything above `main/port/` is shared. If a change needs a `#if` on the
+target outside that directory, it probably wants a new port instead.
+
+### Contributing
 
 The project is still under development, but is already very usable.
 
