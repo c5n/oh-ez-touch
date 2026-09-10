@@ -2,8 +2,11 @@
 #define UI_STYLE_HPP
 
 #include <lvgl.h>
+#include "ui_geometry.hpp"
 #include "ui_motion.hpp"
 #include "ui_theme.hpp"
+
+struct ui_frame_ops_s;
 
 /* The shared styles of the OhEzTouch UI.
  *
@@ -139,6 +142,14 @@ struct ui_theme_s
     /* How this family moves. Scalars only, for the same reason the colours are
      * uint32_t rather than lv_color_t: the table has to stay in flash. */
     struct ui_motion_cfg_s motion;
+
+    /* The chrome it wears, and where it lets the tile grid sit. A pointer to a
+     * const vtable of static functions -- link-time address constants, so the
+     * table is still .rodata. */
+    const struct ui_frame_ops_s *frame;
+
+    /* How the tiles pack into whatever rectangle the frame leaves. */
+    struct ui_grid_s grid;
 };
 
 void ui_style_select(enum ui_theme_family_e family, bool night);

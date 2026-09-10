@@ -6,6 +6,7 @@
 #include "ui_infolabel.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
+#include "frames/ui_frame.hpp"
 #include "items/item_screen.hpp"
 #include "ui_screen.hpp"
 #include "ui_motion.hpp"
@@ -81,21 +82,11 @@ Infolabel openhab_ui_infolabel;
 
 static Config *current_config;
 
-struct header_s
-{
-    lv_obj_t *container = nullptr;
-    struct
-    {
-        lv_obj_t *clock = nullptr;
-        lv_obj_t *title = nullptr;
-        lv_obj_t *wifi = nullptr;
-        lv_obj_t *signal = nullptr;
-    } item;
-};
-
-static struct header_s header;
-
 static lv_obj_t *content = nullptr;
+
+/* What the frame is told about the link. Kept because the RSSI poll and the
+ * WLAN state change arrive separately and each has to redraw both halves. */
+static bool wifi_online;
 
 struct widget_context_s
 {
@@ -595,58 +586,47 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
         widget_icon_set_bitmap(wctx);
 }
 
-#define HEADER_HEIGHT (LV_DPI_DEF / 3)
-
-static void header_create(void)
+/* The page's chrome comes from the theme's frame now, so what is left here is
+ * only the container the tiles live in -- positioned wherever that family says
+ * the grid may go. */
+static void chrome_create(void)
 {
-    /* A flex row of clock, title, signal and wifi. The v7 version aligned the
-     * four labels to the container's edges by hand; SPACE_BETWEEN with the
-     * title growing into the slack gives the same arrangement without the pixel
-     * offsets. The height is fixed rather than LV_SIZE_CONTENT, because
-     * centring children inside a content-sized parent would be circular. */
-    header.container = plain_container(lv_screen_active());
-    lv_obj_set_size(header.container, lv_pct(100), HEADER_HEIGHT);
-    lv_obj_set_pos(header.container, 0, 0);
-    lv_obj_set_style_pad_hor(header.container, LV_DPI_DEF / 10, 0);
-    lv_obj_set_style_pad_column(header.container, LV_DPI_DEF / 20, 0);
-    lv_obj_set_flex_flow(header.container, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header.container, LV_FLEX_ALIGN_SPACE_BETWEEN,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    const struct ui_frame_ops_s *frame = ui_style_theme()->frame;
 
-    lv_obj_add_flag(header.container, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(header.container, header_event_handler, LV_EVENT_CLICKED, NULL);
+    frame->build(ui_screen_root());
 
-    header.item.clock = lv_label_create(header.container);
-    lv_label_set_text(header.item.clock, "--:--");
+    lv_area_t a = frame->content_area();
 
-    header.item.title = lv_label_create(header.container);
-    lv_label_set_text(header.item.title, "Welcome to OhEzTouch");
-    /* DOT, not SCROLL. A scrolling label re-invalidates its own box on every
-     * refresh period for the life of the device: at 160x22 that is 1.4 ms of
-     * SPI every 16 ms, 9% of the bus, spent animating a page title nobody is
-     * waiting to finish reading. It also means the panel is never idle, so no
-     * frame budget is ever really free. Truncating costs nothing and the page
-     * title is short. */
-    lv_label_set_long_mode(header.item.title, LV_LABEL_LONG_DOT);
-    lv_obj_set_style_text_align(header.item.title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_flex_grow(header.item.title, 1);
+    content = plain_container(ui_screen_root());
+    lv_obj_set_pos(content, a.x1, a.y1);
+    lv_obj_set_size(content, lv_area_get_width(&a), lv_area_get_height(&a));
 
-    header.item.signal = lv_label_create(header.container);
-    lv_label_set_text(header.item.signal, "  %");
-
-    header.item.wifi = lv_label_create(header.container);
-    lv_label_set_text(header.item.wifi, LV_SYMBOL_POWER);
+    /* No layout: the tiles are placed from the family's grid rather than
+     * flowed, because three families want three different margins and gutters
+     * and a wrapping flex can express only one of them. */
+    lv_obj_update_layout(content);
 }
 
-static void header_set_title(const char* text)
+static void chrome_destroy(void)
 {
-    lv_label_set_text(header.item.title, text);
+    if (content != NULL)
+    {
+        lv_obj_delete(content);
+        content = NULL;
+    }
+
+    ui_style_theme()->frame->destroy();
 }
 
-static void header_update()
+static void header_set_title(const char *text)
+{
+    ui_style_theme()->frame->set_title(text);
+}
+
+static void header_update(void)
 {
     static int last_second;
-    struct tm timeinfo;
+    struct tm  timeinfo;
 
     /* Not device-only: port_localtime() answers from the host clock in the
      * simulator, so it shows the real time here and the night schedule can be
@@ -656,12 +636,15 @@ static void header_update()
     {
         if (timeinfo.tm_sec != last_second)
         {
+            char text[8];
+
             last_second = timeinfo.tm_sec;
 
-            if (timeinfo.tm_sec % 2 == 0)
-                lv_label_set_text_fmt(header.item.clock, "%02d:%02d", timeinfo.tm_hour, timeinfo.tm_min);
-            else
-                lv_label_set_text_fmt(header.item.clock, "%02d %02d", timeinfo.tm_hour, timeinfo.tm_min);
+            /* The blinking colon is the caller's business rather than the
+             * frame's: it is a matter of taste and the families differ on it. */
+            lv_snprintf(text, sizeof(text), (timeinfo.tm_sec % 2 == 0) ? "%02d:%02d" : "%02d %02d",
+                        timeinfo.tm_hour, timeinfo.tm_min);
+            ui_style_theme()->frame->set_clock(text);
         }
     }
 
@@ -674,31 +657,11 @@ static void header_update()
         signal_last_update = port_millis();
         port_net_info(&net);
 
-        /* A wired link has no signal strength, and a percentage would be
-         * invented. Say "connected by wire" instead. */
-        if (net.rssi == PORT_NET_RSSI_WIRED)
-            lv_label_set_text(header.item.signal, LV_SYMBOL_SHUFFLE);
-        else
-            lv_label_set_text_fmt(header.item.signal, "%02d%%",
-                                  openhab_ui_signal_quality(net.rssi));
+        ui_style_theme()->frame->set_link(wifi_online,
+                                          (net.rssi == PORT_NET_RSSI_WIRED)
+                                              ? -1
+                                              : openhab_ui_signal_quality(net.rssi));
     }
-}
-
-static void content_create(void)
-{
-    int32_t hres = lv_display_get_horizontal_resolution(NULL);
-    int32_t vres = lv_display_get_vertical_resolution(NULL);
-
-    content = plain_container(lv_screen_active());
-
-    lv_obj_set_size(content, hres, vres - HEADER_HEIGHT);
-    lv_obj_set_pos(content, 0, HEADER_HEIGHT);
-
-    /* LV_LAYOUT_PRETTY_MID with six tiles sized to a third of the width and
-     * half the height: wrapping flex, spaced evenly on both axes. */
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_EVENLY);
 }
 
 void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
@@ -735,7 +698,7 @@ static lv_obj_t *state_label_create(struct widget_context_s *wctx)
     return state_label;
 }
 
-void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
+void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot)
 {
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("widget_create: type=%u\r\n", wctx->item->getType());
@@ -748,13 +711,22 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx)
      * That is a layout being fought rather than used, so the tile now has no
      * layout at all and the three alignments below stand on their own -- in v9
      * lv_obj_align() is sticky and re-applies whenever the tile is resized. */
+    /* Placed from the family's grid rather than flowed. The size used to be
+     * `lv_obj_get_width(parent) / 3 - 2`, which is fine while there is one
+     * layout; there are three now and they differ in margin and gutter as well
+     * as in where their content rectangle starts. */
+    struct ui_geom_rect_s cell;
+
+    if (ui_grid_cell(&ui_style_theme()->grid, (int16_t)lv_obj_get_width(parent),
+                     (int16_t)lv_obj_get_height(parent), slot, &cell) == false)
+        return;
+
     wctx->container = lv_obj_create(parent);
     lv_obj_remove_flag(wctx->container, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(wctx->container, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(wctx->container, event_handler, LV_EVENT_CLICKED, wctx);
-    lv_obj_set_size(wctx->container,
-                    lv_obj_get_width(parent) / 3 - 2,
-                    lv_obj_get_height(parent) / 2 - 2);
+    lv_obj_set_pos(wctx->container, cell.x, cell.y);
+    lv_obj_set_size(wctx->container, cell.w, cell.h);
 
     lv_obj_add_style(wctx->container, &ui_style_tile, LV_PART_MAIN);
     lv_obj_add_style(wctx->container, &ui_style_tile_pressed, ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
@@ -871,8 +843,14 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
          * inversion is the whole of what this looks like from the outside: the
          * six icon GETs that used to happen here, one after another and before
          * anything was drawn, are six submissions that cost nothing. */
-        widget_create(parent, &widget_context[i]);
+        widget_create(parent, &widget_context[i], (uint8_t)i);
         update_state_widget(&widget_context[i]);
+
+        /* Whatever the family adds that a style cannot reach. */
+        if (ui_style_theme()->frame->decorate_tile != NULL)
+            ui_style_theme()->frame->decorate_tile(widget_context[i].container,
+                                                   widget_context[i].item->getType(),
+                                                   (uint8_t)i);
 
         if (reload_icons == true)
             widget_icon_request(i);
@@ -918,8 +896,7 @@ void openhab_ui_setup(Config *config)
      * created on the top layer long before this function runs, and it draws on
      * the shared styles rather than a private one of its own. */
 
-    header_create();
-    content_create();
+    chrome_create();
 }
 
 /* Whether the night variant should be in effect right now.
@@ -1013,6 +990,16 @@ static void theme_apply_pending(void)
 
     item_screen_dismiss();
 
+    /* Everything the *outgoing* family built comes down first, while its own
+     * frame ops are still the ones ui_style_theme() answers with. Doing this
+     * after ui_style_select() would hand the old family's objects to the new
+     * family's destroy(). Tiles before the chrome, because the chrome owns the
+     * container they live in. */
+    for (size_t i = 0; i < WIDGET_COUNT_MAX; i++)
+        widget_destroy(content, &widget_context[i]);
+
+    chrome_destroy();
+
     ui_style_select(theme_pending_family, theme_pending_night);
     ui_style_apply();
 
@@ -1025,23 +1012,31 @@ static void theme_apply_pending(void)
      * snapshot -- none of which a style refresh can redo. */
     ui_settings_rebuild();
 
+    chrome_create();
+
+    header_set_title(sitemap.getPageName());
+    ui_style_theme()->frame->set_link(wifi_online, -1);
+
+    /* reload_icons stays false: the decoded pixels are still the right ones,
+     * page_generation is untouched so anything already in flight still lands,
+     * and the two pending flags keep their meaning. */
     if (page_state == PAGE_READY)
         page_rebuild(content, false);
 
     /* Put back what was open. The user did not navigate -- the theme changed
      * under them, and on the automatic night schedule they may not have touched
-     * the panel at all -- so this reopens on the same item and lets the
-     * builder's own entrance play. */
+     * the panel at all -- so this reopens on the same item. */
     if (reopen != ItemType::type_unknown && reopen_slot < WIDGET_COUNT_MAX)
         item_screen_open(widget_context[reopen_slot].item, reopen_slot);
 }
 
 void openhab_ui_set_wifi_state(bool wifi_state)
 {
-    if (wifi_state == true)
-        lv_label_set_text(header.item.wifi, LV_SYMBOL_WIFI);
-    else
-        lv_label_set_text(header.item.wifi, LV_SYMBOL_REFRESH);
+    wifi_online = wifi_state;
+
+    /* Straight through as well as remembered: the RSSI poll below only runs
+     * every few seconds and a link that just came up should say so now. */
+    ui_style_theme()->frame->set_link(wifi_online, -1);
 }
 
 void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)

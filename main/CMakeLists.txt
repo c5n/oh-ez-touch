@@ -71,6 +71,7 @@ set(OHEZ_APP_SRCS
 
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
+    "ui/frames/ui_frame_common.cpp"
     "ui/items/item_screen.cpp"
     "ui/items/item_slider.cpp"
     "ui/items/item_setpoint.cpp"
