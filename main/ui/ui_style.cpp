@@ -195,7 +195,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0),
     },
     {
         UI_THEME_NAME_LCARS " Night", UI_THEME_LCARS, true,
@@ -221,7 +221,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0),
     },
 
     /* ----------------------------------------------------------------- JARVIS
