@@ -66,13 +66,13 @@
 #define FOOTER_HEIGHT 40
 #define ROW_HEIGHT    48
 
-/* The index: six sections as a 2 x 3 grid rather than a scrolling list, so
- * every one of them is on screen at once. Six 48 px rows would not fit the
- * 184 px below the bar and the two you could not see would be the two nobody
- * ever found. */
+/* A menu is two columns and as many rows as its entries need, rather than a
+ * scrolling list, so every entry is on screen at once. Six 48 px rows would
+ * not fit the 184 px below the bar, and the two you could not see would be
+ * the two nobody ever found. */
 #define INDEX_COLS   2
-#define INDEX_ROWS   3
 #define INDEX_GAP    6
+#define INDEX_ROWS(n) (uint8_t)(((n) + INDEX_COLS - 1) / INDEX_COLS)
 
 /* Enough for the widest text field in Config, which is the 63 character MQTT
  * password, plus room for the numbers. This buffer is not only what a row
@@ -154,14 +154,19 @@ static bool rebuild_pending = false;
  * explain. LV_SYMBOL_UPLOAD for MQTT, because a panel's side of a broker is
  * almost all publishing; LV_SYMBOL_GPS for Sensors, which is both a
  * thermometer and a beacon scanner and so is really about what is around the
- * panel. Every one of these is a codepoint tools/build_fonts.sh puts in the
- * 16 and 22 px faces; a symbol outside that list renders as a box. */
+ * panel; LV_SYMBOL_REFRESH for Time, because what that page configures is not
+ * a clock but where the clock is fetched from. Every one of these is a
+ * codepoint tools/build_fonts.sh puts in the 16 and 22 px faces; a symbol
+ * outside that list renders as a box. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
-    LV_SYMBOL_WIFI,     LV_SYMBOL_HOME,       LV_SYMBOL_UPLOAD,   LV_SYMBOL_GPS,
-    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
+    LV_SYMBOL_WIFI,    LV_SYMBOL_HOME,     LV_SYMBOL_UPLOAD,
+    LV_SYMBOL_GPS,     LV_SYMBOL_EDIT,     LV_SYMBOL_REFRESH,
+    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_LIST};
 
 static const char *const tab_title[SETTINGS_TAB_COUNT] = {
-    "WLAN", "openHAB", "MQTT", "Sensors", "Theme", "Audio", "Other", "Info"};
+    "WLAN",   "openHAB", "MQTT",
+    "Sensors", "Device",  "Time",
+    "Theme",  "Audio",   "Info"};
 
 /* ------------------------------------------------------------- the menus */
 
@@ -171,10 +176,11 @@ static const char *const tab_title[SETTINGS_TAB_COUNT] = {
  * it a menu. MENU_ROOT is deliberately equal to SETTINGS_TAB_COUNT, which is
  * what ui_settings_open() has always taken to mean "the index".
  *
- * The four pages that configure something outside the panel -- the network it
- * is on, the servers it talks to, the hardware it reads -- are behind System,
- * because they are set once at installation and then never again. What is
- * left on the root menu is what someone might actually walk over to change. */
+ * The pages that configure the installation -- the network the panel is on,
+ * the servers it talks to, the hardware it reads, its name and where it gets
+ * the time from -- are behind System, because they are set once when it goes
+ * on the wall and then never again. What is left on the root menu is what
+ * someone might actually walk over to the panel to change. */
 #define MENU_ROOT       ((uint8_t)(SETTINGS_TAB_COUNT + 0))
 #define MENU_SYSTEM     ((uint8_t)(SETTINGS_TAB_COUNT + 1))
 #define MENU_COUNT      2
@@ -182,11 +188,11 @@ static const char *const tab_title[SETTINGS_TAB_COUNT] = {
 #define MENU_AT(target) (&menus[(target) - SETTINGS_TAB_COUNT])
 
 static constexpr uint8_t menu_root_entries[] = {SETTINGS_TAB_THEME, SETTINGS_TAB_AUDIO,
-                                                MENU_SYSTEM, SETTINGS_TAB_OTHER,
-                                                SETTINGS_TAB_INFO};
+                                                MENU_SYSTEM, SETTINGS_TAB_INFO};
 
-static constexpr uint8_t menu_system_entries[] = {SETTINGS_TAB_WLAN, SETTINGS_TAB_OPENHAB,
-                                                  SETTINGS_TAB_MQTT, SETTINGS_TAB_SENSORS};
+static constexpr uint8_t menu_system_entries[] = {SETTINGS_TAB_WLAN,   SETTINGS_TAB_OPENHAB,
+                                                  SETTINGS_TAB_MQTT,   SETTINGS_TAB_SENSORS,
+                                                  SETTINGS_TAB_DEVICE, SETTINGS_TAB_TIME};
 
 struct menu_s
 {
@@ -201,10 +207,7 @@ struct menu_s
 
 static constexpr struct menu_s menus[MENU_COUNT] = {
     {"Settings", NULL, ENTRIES(menu_root_entries), MENU_ROOT},
-    /* A folder rather than a gear: it is the one cell on the root menu that
-     * opens another menu instead of a list of settings, and the pictogram is
-     * the only warning of that. */
-    {"System", LV_SYMBOL_DIRECTORY, ENTRIES(menu_system_entries), MENU_ROOT},
+    {"System", LV_SYMBOL_SETTINGS, ENTRIES(menu_system_entries), MENU_ROOT},
 };
 
 /* Every section on exactly one menu. Without this a tab added to
@@ -1202,10 +1205,11 @@ static void index_event(lv_event_t *e)
  * fingertip. This replaces a bar of six symbol-only tab buttons 32 px tall,
  * which had to be read as pictograms and hit as a sixth of the screen width.
  *
- * The grid is three rows whatever the entry count, so stepping into System
- * does not resize every cell under the finger that is already moving. Five
- * entries therefore leave one hole and four leave two, which costs nothing:
- * 53 px is already well over the 44 px floor. */
+ * The row count follows the entry count rather than being fixed at three, so
+ * a menu fills its screen instead of leaving a blank third at the bottom.
+ * That does mean the cells change size between the two menus -- 151 x 89 on
+ * the root's four, 151 x 53 on System's six -- which is the price of neither
+ * screen looking half-finished. Both are well over the 44 px floor. */
 static void screen_show_menu(uint8_t menu)
 {
     const struct menu_s *m;
@@ -1241,7 +1245,7 @@ static void screen_show_menu(uint8_t menu)
 
     /* The same solver the tile grid uses, and for the same reason: reading the
      * container back would give zero, because v9 has not laid it out yet. */
-    struct ui_grid_s layout = {INDEX_COLS, INDEX_ROWS, INDEX_GAP, 0};
+    struct ui_grid_s layout = {INDEX_COLS, INDEX_ROWS(m->count), INDEX_GAP, 0};
     int16_t          area_w = (int16_t)(hres - 2 * INDEX_GAP);
     int16_t          area_h = (int16_t)(vres - BAR_HEIGHT - 2 * INDEX_GAP);
 

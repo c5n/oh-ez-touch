@@ -46,18 +46,13 @@
  * live would ask for a reboot on nearly every save. */
 const struct config_field_s config_fields[] = {
 
-    SEC("General", SETTINGS_TAB_OTHER),
+    SEC("Device", SETTINGS_TAB_DEVICE),
     TXT("hostname", "Hostname", general.hostname, SETTINGS_F_HOSTCHARS | SETTINGS_F_RESTART),
 
-    SEC("NTP Time", SETTINGS_TAB_OTHER),
+    SEC("NTP Time", SETTINGS_TAB_TIME),
     TXT("ntp_host", "Host", ntp.hostname, SETTINGS_F_HOSTCHARS),
     SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, -12, 14),
     CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, 0),
-
-    SEC("LCD Backlight Dimming", SETTINGS_TAB_OTHER),
-    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
-    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
-    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
 
     SEC("Appearance", SETTINGS_TAB_THEME),
     /* The option names come straight from ui_theme.hpp, so the dropdown, the
@@ -69,6 +64,11 @@ const struct config_field_s config_fields[] = {
     SEL("night_mode", "Night mode", ui.night_mode, ui_night_mode_names, UI_NIGHT_MODE_COUNT),
     UINT("night_from", "Night from [h]", ui.night_from, 0, 23),
     UINT("night_to", "Night to [h]", ui.night_to, 0, 23),
+
+    SEC("LCD Backlight Dimming", SETTINGS_TAB_THEME),
+    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
+    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
+    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, 0),
@@ -129,7 +129,7 @@ uint8_t config_field_tab(size_t index)
         if (config_fields[i - 1].kind == SETTINGS_SECTION)
             return config_fields[i - 1].tab;
 
-    return SETTINGS_TAB_OTHER;
+    return SETTINGS_TAB_COUNT;
 }
 
 int32_t config_field_read(const struct config_field_s *f, const config_item_t *item)

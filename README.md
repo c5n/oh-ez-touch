@@ -239,8 +239,8 @@ readings are published to a broker, and a simulator that quietly wrote fiction
 into someone's presence history would be worse than one that did nothing.
 
 `OHEZ_SETTINGS` opens the settings screen at boot, on the page it names --
-a section (`theme`, `audio`, `other`, `info`, `wlan`, `openhab`, `mqtt`,
-`sensors`) or a menu (`settings`, also spelled `index`, and `system`):
+a section (`theme`, `audio`, `info`, `wlan`, `openhab`, `mqtt`, `sensors`,
+`device`, `time`) or a menu (`settings`, also spelled `index`, and `system`):
 
 ```bash
 OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
@@ -508,14 +508,15 @@ they apply -- are in a bar along the bottom.
 
 Page                    | Contents
 ----------------------- | --------
-Theme (eye symbol)      | Theme family, and the night variant and its schedule
+Theme (eye symbol)      | Theme family, the night variant and its schedule, and the backlight levels and dim timeout
 Audio (speaker symbol)  | The beeper
-System (folder symbol)  | A menu of the four below, which are set once when the panel is installed and then left alone
-&nbsp;&nbsp;WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
-&nbsp;&nbsp;openHAB (house symbol)  | Host, port and sitemap
-&nbsp;&nbsp;MQTT (upload symbol)    | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
+System (gear symbol)    | A menu of the six below, which are set once when the panel goes on the wall and then left alone
+&nbsp;&nbsp;WLAN                      | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
+&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap
+&nbsp;&nbsp;MQTT (upload symbol)      | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
 &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner
-Other (gear symbol)     | Hostname, NTP and the backlight
+&nbsp;&nbsp;Device (pencil symbol)    | The hostname, which is also the name of the setup access point
+&nbsp;&nbsp;Time (sync symbol)        | The NTP host, the GMT offset and daylight saving
 Info (list symbol)      | The Systeminfo table -- uptime, version, and the IP your DHCP server handed out -- and a **Restart** button
 
 Touching a row opens an on-screen keyboard for the text and number settings, and
@@ -537,7 +538,7 @@ Open ```http://<hostname>/``` -- everything is on that one page: a status block,
 
 Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the MQTT broker, the backlight levels and the beeper, which used to need one without saying so.
 
-##### General
+##### Device
 
 Setting         | Default       | Description
 --------------- | --------------| -----------
@@ -552,14 +553,6 @@ Host            | pool.ntp.org  | Host which serves the time. e.g. pool.ntp.org 
 GMT Offset      | 1             | Offset of your timezone from Greenwich Mean Time
 Daylight Saving | 0             | Daylight saving +1 hour
 
-##### LCD Backlight Dimming
-
-Setting           | Default     | Description
------------------ | ----------- | -------------
-Activity timeout  | 60          | After the timeout defined in seconds since last touch the display will dim down
-Normal Brightness | 100         | Normal brightness level in percent
-Dim Brightness    | 40          | Dim brightness level in percent
-
 ##### Appearance
 
 Setting         | Default       | Description
@@ -572,6 +565,14 @@ Night to        | 6             | Hour the night variant ends, when night mode i
 The theme takes effect as soon as it is saved, on the screen as well as in the
 browser. ```auto``` needs the clock, so it only starts working once NTP has
 answered.
+
+##### LCD Backlight Dimming
+
+Setting           | Default     | Description
+----------------- | ----------- | -------------
+Activity timeout  | 60          | After the timeout defined in seconds since last touch the display will dim down
+Normal Brightness | 100         | Normal brightness level in percent
+Dim Brightness    | 40          | Dim brightness level in percent
 
 ##### Beeper
 

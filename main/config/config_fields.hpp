@@ -58,9 +58,10 @@ enum settings_tab_e
     SETTINGS_TAB_OPENHAB,
     SETTINGS_TAB_MQTT,
     SETTINGS_TAB_SENSORS,
+    SETTINGS_TAB_DEVICE,
+    SETTINGS_TAB_TIME,
     SETTINGS_TAB_THEME,
     SETTINGS_TAB_AUDIO,
-    SETTINGS_TAB_OTHER,
     SETTINGS_TAB_INFO,
     SETTINGS_TAB_COUNT
 };
@@ -128,7 +129,9 @@ extern const size_t                  config_field_count;
 #define SETTINGS_MAX_FIELDS 64
 
 /* The tab of the section this row belongs to. Rows before the first section --
- * there are none today -- read as SETTINGS_TAB_OTHER. */
+ * there are none today, and test_config_fields pins that down -- read as
+ * SETTINGS_TAB_COUNT, which is no page at all: better a row that renders
+ * nowhere than one that turns up under a heading it has nothing to do with. */
 uint8_t config_field_tab(size_t index);
 
 /* The numeric kinds, read and written through one int32_t so that callers do

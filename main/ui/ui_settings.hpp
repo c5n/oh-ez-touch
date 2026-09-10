@@ -40,7 +40,7 @@ void ui_settings_loop(void);
 
 #if CONFIG_IDF_TARGET_LINUX
 /* Open the screen at boot, on the page OHEZ_SETTINGS names -- any section
- * (wlan, openhab, mqtt, sensors, theme, audio, other, info) or either menu
+ * (wlan, openhab, mqtt, sensors, device, time, theme, audio, info) or either menu
  * (settings, which "index" also names, and system); anything else, including
  * an unset variable, leaves it closed. On the device the screen is reached by
  * tapping the status bar, or comes up by itself when there are no
