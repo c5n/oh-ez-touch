@@ -23,6 +23,14 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap);
 void openhab_ui_request_connect(const char *host, uint16_t port, const char *sitemap);
 void openhab_ui_loop(void);
 
+#if CONFIG_IDF_TARGET_LINUX
+/* Arm OHEZ_ITEM: a dot-separated path of tile indices that the simulator walks
+ * once the first page arrives, opening the control it ends on. The sibling of
+ * ui_settings_open_from_env(), and there so that a screen three taps deep can
+ * be reached from a script. */
+void openhab_ui_open_item_from_env(void);
+#endif
+
 /* Whether the configured night mode says the night variant applies right now.
  * For UI_NIGHT_AUTO this reads the clock, so it can change between calls. */
 bool openhab_ui_night_active(Config *config);

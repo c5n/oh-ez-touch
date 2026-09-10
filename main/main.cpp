@@ -266,6 +266,7 @@ static void ohez_setup(void)
     }
 
 #if CONFIG_IDF_TARGET_LINUX
+    openhab_ui_open_item_from_env();
     ui_settings_open_from_env();
 #endif
 }

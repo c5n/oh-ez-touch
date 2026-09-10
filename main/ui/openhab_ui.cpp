@@ -6,6 +6,8 @@
 #include "ui_infolabel.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
+#include "items/item_screen.hpp"
+#include "ui_screen.hpp"
 #include "ui_motion.hpp"
 #include "ui_style.hpp"
 
@@ -116,10 +118,8 @@ struct widget_context_s
     lv_obj_t *img_obj = NULL;
     lv_image_dsc_t img_dsc;
     lv_obj_t *state_widget = NULL;
-    lv_obj_t *state_window_widget = NULL;
-    lv_obj_t *state_window_hsv[3] = { NULL, NULL, NULL };
-    lv_obj_t *state_window_slider = NULL;
-    lv_obj_t *state_window_preset_row = NULL;
+    /* The open control's widgets used to hang off here as five more pointers.
+     * They live in the item screen now -- see main/ui/items/. */
     Item *item = NULL;
 };
 
@@ -193,10 +193,6 @@ static uint64_t page_request_deadline;
 /* When the next submit is due. A file static rather than a local of the loop,
  * because page_request() is called from a tile's event handler as well. */
 static uint64_t page_retry_timeout;
-/* The item or systeminfo window on screen, if any. Kept so that a theme change
- * can close it -- and, incidentally, so that a second tap on the header cannot
- * stack a second systeminfo window on the first. */
-static lv_obj_t *open_window;
 /* A requested variant, applied from openhab_ui_loop(). */
 static bool theme_pending;
 static bool connect_pending;
@@ -217,20 +213,6 @@ uint8_t openhab_ui_signal_quality(int8_t rssi)
         return 100;
     else
         return 2 * (rssi + 100);
-}
-
-/* The window is carried as the close button's event user data: v9 has no
- * lv_win_get_from_btn(), and the deletion has to be deferred because we are
- * inside an event of one of the window's own descendants. */
-static void window_close_event_handler(lv_event_t *e)
-{
-    lv_obj_t *win = (lv_obj_t *)lv_event_get_user_data(e);
-
-    if (win == open_window)
-        open_window = NULL;
-
-    lv_obj_delete_async(win);
-    BEEPER_EVENT_WINDOW_CLOSE();
 }
 
 /* The item's pattern comes straight from openHAB and is applied to the item's
@@ -262,144 +244,23 @@ static lv_obj_t *plain_container(lv_obj_t *parent)
     return obj;
 }
 
-/* Common frame of every window: a coloured header row carrying the title and a
- * close button, with the content area below it. This is hand-rolled rather than
- * lv_win so that LV_USE_WIN can stay off and the header keeps the one-fifth
- * height the v7 UI gave it.
- *
- * Returns the content area -- every caller only ever adds children to that. */
-static lv_obj_t *window_create(const char *title)
-{
-    lv_obj_t *win = lv_obj_create(lv_screen_active());
-
-    lv_obj_remove_flag(win, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(win, lv_pct(100), lv_pct(100));
-    lv_obj_set_style_pad_all(win, 0, 0);
-    lv_obj_set_style_pad_gap(win, 0, 0);
-    /* The background, radius and border come from the theme: without a style of
-     * its own the window would keep lv_theme_simple's white. */
-    lv_obj_add_style(win, &ui_style_window, LV_PART_MAIN);
-    lv_obj_set_flex_flow(win, LV_FLEX_FLOW_COLUMN);
-
-    lv_obj_t *header = lv_obj_create(win);
-    lv_obj_remove_flag(header, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(header, lv_pct(100), lv_display_get_vertical_resolution(NULL) / 5);
-    lv_obj_add_style(header, &ui_style_win_header, LV_PART_MAIN);
-    lv_obj_set_flex_flow(header, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *title_label = lv_label_create(header);
-    lv_label_set_text(title_label, title);
-    lv_label_set_long_mode(title_label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(title_label, 1);
-
-    lv_obj_t *close_btn = lv_button_create(header);
-    lv_obj_add_style(close_btn, &ui_style_btn, LV_PART_MAIN);
-    lv_obj_set_size(close_btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_add_event_cb(close_btn, window_close_event_handler, LV_EVENT_CLICKED, win);
-    lv_obj_t *close_label = lv_label_create(close_btn);
-    lv_label_set_text(close_label, LV_SYMBOL_CLOSE);
-
-    lv_obj_t *content = plain_container(win);
-    lv_obj_set_width(content, lv_pct(100));
-    lv_obj_set_flex_grow(content, 1);
-
-    /* Whatever the theme wants to add to the header bar itself. */
-    ui_style_decorate_window(header);
-
-    open_window = win;
-
-    return content;
-}
-
-/* Common frame of every item window. */
-static lv_obj_t *item_window_create(struct widget_context_s *ctx)
-{
-    return window_create(ctx->item->getLabel());
-}
-
-/* Un-mark every button of a container, so that the one just pressed can be
- * marked as the active choice. */
-static void release_all_buttons(lv_obj_t *parent)
-{
-    for (uint32_t i = 0; i < lv_obj_get_child_count(parent); i++)
-        lv_obj_remove_state(lv_obj_get_child(parent, i), LV_STATE_CHECKED);
-}
-
-/* A button that publishes a fixed command when clicked. The command string is
- * kept on the button, which is where the shared handler reads it back from;
- * the widget context arrives as the event's user data.
- *
- * The buttons are deliberately NOT LV_OBJ_FLAG_CHECKABLE: they behave as a
- * radio group, so LV_STATE_CHECKED is managed here rather than toggled by
- * LVGL, which would let a second click clear the active choice. */
-static lv_obj_t *command_button_create(lv_obj_t *parent, struct widget_context_s *ctx,
-                                       lv_event_cb_t handler, const char *symbol, const char *command)
-{
-    lv_obj_t *btn = lv_button_create(parent);
-
-    lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
-    ui_motion_pressable(btn);
-    lv_obj_add_style(btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
-    lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_user_data(btn, (void *)command);
-    lv_obj_add_event_cb(btn, handler, LV_EVENT_CLICKED, ctx);
-
-    lv_obj_t *label = lv_label_create(btn);
-    lv_label_set_text(label, symbol);
-    lv_obj_center(label);
-
-    if (strcmp(ctx->item->getStateText(), command) == 0)
-        lv_obj_add_state(btn, LV_STATE_CHECKED);
-
-    return btn;
-}
-
-/* Publish the command that the clicked button carries. Shared by the selection,
- * rollershutter and player windows, which differ only in which buttons they
- * offer. */
-static void publish_button_command(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-    lv_obj_t *btn = (lv_obj_t *)lv_event_get_target(e);
-
-    if (ctx == nullptr)
-        return;
-
-    release_all_buttons(lv_obj_get_parent(btn));
-    lv_obj_add_state(btn, LV_STATE_CHECKED);
-
-    const char *command = (const char *)lv_obj_get_user_data(btn);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    debug_printf("button pressed Command: %s\r\n", command);
-#endif
-    ctx->item->setStateText(command);
-    item_publish(ctx);
-    ctx->refresh_request = true;
-    BEEPER_EVENT_CHANGE();
-}
-
-/* The status bar opens the settings screen, on the tab it has always led to:
- * the Systeminfo table, which is now that screen's Info tab. Everything that
- * table used to be built from moved to ui_settings.cpp with it. */
+/* Touching the status bar is how the settings screen is reached. */
 static void header_event_handler(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("header_event_handler: LV_EVENT_CLICKED\r\n");
-#endif
-
-    BEEPER_EVENT_WINDOW();
-
-    ui_settings_open(SETTINGS_TAB_INFO);
+    if (ui_settings_is_open() == false)
+    {
+        BEEPER_EVENT_WINDOW();
+        ui_settings_open(SETTINGS_TAB_INFO);
+    }
 }
 
+/* openHAB sends a colorpicker's state as "h,s,v": degrees, then two percents. */
 lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
 {
     const char *ptr = hsvstring;
-    char *endptr;
+    char       *endptr;
 
     lv_color_hsv_t hsvcolor;
 
@@ -407,447 +268,7 @@ lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
     hsvcolor.s = strtol(endptr + 1, &endptr, 10);
     hsvcolor.v = strtol(endptr + 1, &endptr, 10);
 
-    debug_printf("HSV String: %s -> H=%u S=%u V=%u", hsvstring, hsvcolor.h, hsvcolor.s, hsvcolor.v);
-
     return hsvcolor;
-}
-
-/* The three sliders that replace the LVGL v7 colour disc. v9 has no colour
- * wheel widget at all: lv_cpicker went in v8 and its successor lv_colorwheel
- * was dropped in v9, with nothing in core taking its place. */
-enum { HSV_H, HSV_S, HSV_V };
-
-static void colorpicker_preview(struct widget_context_s *ctx)
-{
-    if (ctx->state_window_widget == NULL)
-        return;
-
-    lv_color_t color = lv_color_hsv_to_rgb((uint16_t)lv_slider_get_value(ctx->state_window_hsv[HSV_H]),
-                                           (uint8_t)lv_slider_get_value(ctx->state_window_hsv[HSV_S]),
-                                           (uint8_t)lv_slider_get_value(ctx->state_window_hsv[HSV_V]));
-
-    lv_obj_set_style_bg_color(ctx->state_window_widget, color, 0);
-}
-
-/* Dragging only repaints the swatch. */
-static void window_item_colorpicker_preview_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-
-    if (ctx != nullptr)
-        colorpicker_preview(ctx);
-}
-
-/* Publishing happens on release rather than on every drag step. The v7 code
- * issued a blocking HTTP PUT per step of the saturation and value sliders,
- * which is what made dragging lag; with three sliders that would triple. */
-static void window_item_colorpicker_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-
-    if (ctx == nullptr)
-        return;
-
-    char hsv[STR_STATE_TEXT_LEN];
-    snprintf(hsv, sizeof(hsv), "%d,%d,%d",
-             (int)lv_slider_get_value(ctx->state_window_hsv[HSV_H]),
-             (int)lv_slider_get_value(ctx->state_window_hsv[HSV_S]),
-             (int)lv_slider_get_value(ctx->state_window_hsv[HSV_V]));
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    debug_printf("hsv string: %s\r\n", hsv);
-#endif
-    ctx->item->setStateText(hsv);
-    item_publish(ctx);
-    ctx->refresh_request = true;
-    BEEPER_EVENT_CHANGE();
-}
-
-/* One labelled slider row of the colour picker. */
-static lv_obj_t *colorpicker_slider_create(lv_obj_t *parent, struct widget_context_s *ctx,
-                                           const char *name, int32_t max, int32_t value)
-{
-    lv_obj_t *row = plain_container(parent);
-    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(row, 8, 0);
-
-    lv_obj_t *label = lv_label_create(row);
-    lv_label_set_text(label, name);
-    lv_obj_set_width(label, LV_DPI_DEF / 3);
-
-    lv_obj_t *slider = lv_slider_create(row);
-    lv_obj_add_style(slider, &ui_style_slider, LV_PART_MAIN);
-    lv_obj_add_style(slider, &ui_style_slider_indicator, LV_PART_INDICATOR);
-    lv_obj_add_style(slider, &ui_style_slider_knob, LV_PART_KNOB);
-    lv_obj_set_flex_grow(slider, 1);
-    lv_slider_set_range(slider, 0, max);
-    lv_slider_set_value(slider, value, LV_ANIM_OFF);
-    lv_obj_add_event_cb(slider, window_item_colorpicker_preview_event_handler,
-                        LV_EVENT_VALUE_CHANGED, ctx);
-    lv_obj_add_event_cb(slider, window_item_colorpicker_event_handler,
-                        LV_EVENT_RELEASED, ctx);
-
-    return slider;
-}
-
-void window_item_colorpicker(struct widget_context_s *ctx)
-{
-    lv_obj_t *content = item_window_create(ctx);
-
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(content, 6, 0);
-    lv_obj_set_style_pad_row(content, 4, 0);
-
-    lv_color_hsv_t color_hsv = hsvCStringToLVColor(ctx->item->getStateText());
-
-    /* The swatch shows the colour the three sliders currently describe, which
-     * is the feedback the colour disc used to give. */
-    lv_obj_t *swatch = lv_obj_create(content);
-    lv_obj_remove_flag(swatch, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(swatch, lv_pct(100), LV_DPI_DEF / 4);
-    lv_obj_add_style(swatch, &ui_style_swatch, LV_PART_MAIN);
-    ctx->state_window_widget = swatch;
-
-    ctx->state_window_hsv[HSV_H] = colorpicker_slider_create(content, ctx, "H", 359, color_hsv.h);
-    ctx->state_window_hsv[HSV_S] = colorpicker_slider_create(content, ctx, "S", 100, color_hsv.s);
-    ctx->state_window_hsv[HSV_V] = colorpicker_slider_create(content, ctx, "V", 100, color_hsv.v);
-
-    colorpicker_preview(ctx);
-}
-
-/* Layout shared by the three windows that are just a row of command buttons.
- * LV_LAYOUT_PRETTY_MID had no direct v9 equivalent; wrapping flex with
- * SPACE_EVENLY on both axes is what it did. */
-static lv_obj_t *button_row_create(lv_obj_t *parent)
-{
-    lv_obj_t *cont = plain_container(parent);
-
-    lv_obj_set_size(cont, lv_pct(100), lv_pct(100));
-    lv_obj_set_flex_flow(cont, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(cont, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_SPACE_EVENLY);
-
-    return cont;
-}
-
-void window_item_selection(struct widget_context_s *ctx)
-{
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-        printf("window_item_selection()\r\n");
-#endif
-    lv_obj_t *cont = button_row_create(item_window_create(ctx));
-
-    for (size_t index = 0; index < ctx->item->getSelectionCount(); index++)
-    {
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-        printf("Label: \"%s\", State: \"%s\"\n", ctx->item->getSelectionLabel(index), ctx->item->getStateText());
-#endif
-        command_button_create(cont, ctx, publish_button_command,
-                              ctx->item->getSelectionLabel(index),
-                              ctx->item->getSelectionCommand(index));
-    }
-}
-
-void window_item_rollershutter(struct widget_context_s *ctx)
-{
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-        printf("window_item_rollershutter()\n");
-#endif
-    lv_obj_t *cont = button_row_create(item_window_create(ctx));
-
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_UP, "UP");
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_STOP, "STOP");
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_DOWN, "DOWN");
-}
-
-void window_item_player(struct widget_context_s *ctx)
-{
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-        printf("window_item_player()\r\n");
-#endif
-    lv_obj_t *cont = button_row_create(item_window_create(ctx));
-
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_PREV, "PREVIOUS");
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_PAUSE, "PAUSE");
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_PLAY, "PLAY");
-    command_button_create(cont, ctx, publish_button_command, LV_SYMBOL_NEXT, "NEXT");
-}
-
-/* Quick presets below the slider. The percentages are of the item's range, so
- * they read literally for a Dimmer (0..100) and still make sense for a Slider
- * that openHAB gave a narrower range. */
-static const uint8_t slider_preset_percent[] = { 0, 25, 50, 75, 100 };
-
-#define SLIDER_PRESET_COUNT (sizeof(slider_preset_percent) / sizeof(slider_preset_percent[0]))
-
-static int16_t window_item_slider_preset_value(Item *item, uint8_t percent)
-{
-    float min_val = item->getMinVal();
-    float max_val = item->getMaxVal();
-
-    return (int16_t)(min_val + (max_val - min_val) * percent / 100.0f);
-}
-
-/* Show which preset the slider currently sits on, the way the player window
- * marks the active transport button. Values between two presets leave all of
- * them unmarked, which is the common case while dragging. */
-static void window_item_slider_refresh_presets(struct widget_context_s *ctx)
-{
-    if (ctx->state_window_preset_row == nullptr || ctx->state_window_slider == nullptr)
-        return;
-
-    int32_t value = lv_slider_get_value(ctx->state_window_slider);
-
-    for (uint32_t i = 0; i < lv_obj_get_child_count(ctx->state_window_preset_row); i++)
-    {
-        lv_obj_t *btn = lv_obj_get_child(ctx->state_window_preset_row, i);
-        const uint8_t *percent = (const uint8_t *)lv_obj_get_user_data(btn);
-
-        if (percent == nullptr)
-            continue;
-
-        if (window_item_slider_preset_value(ctx->item, *percent) == value)
-            lv_obj_add_state(btn, LV_STATE_CHECKED);
-        else
-            lv_obj_remove_state(btn, LV_STATE_CHECKED);
-    }
-}
-
-/* Dragging only moves the label and the preset marks.
- *
- * The same split, and the same reason, as the colour picker above: this used to
- * publish on every LV_EVENT_VALUE_CHANGED, and each of those was a blocking
- * HTTP POST, so one drag was a dozen round trips and the knob lagged the
- * finger. The blocking call was also the only thing throttling them. */
-static void window_item_slider_preview_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-    lv_obj_t *slider = (lv_obj_t *)lv_event_get_target(e);
-
-    if (ctx == nullptr)
-        return;
-
-    ctx->item->setStateNumber(lv_slider_get_value(slider));
-
-    set_label_from_pattern(ctx->state_window_widget, ctx->item, ctx->item->getStateNumber());
-
-    window_item_slider_refresh_presets(ctx);
-}
-
-/* Send what the slider now shows.
- *
- * A function rather than only an event handler, because the preset buttons need
- * it too. They move the slider and then have to publish, and the way to make
- * that happen is to call this -- sending the slider a synthetic
- * LV_EVENT_RELEASED would be reporting a press that the input device never
- * made. */
-static void window_item_slider_publish(struct widget_context_s *ctx)
-{
-    item_publish(ctx);
-    ctx->refresh_request = true;
-    BEEPER_EVENT_CHANGE();
-}
-
-static void window_item_slider_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("window_item_slider_event_handler: LV_EVENT_RELEASED\n");
-#endif
-    if (ctx == nullptr)
-        return;
-
-    window_item_slider_publish(ctx);
-}
-
-static void window_item_slider_preset_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-    lv_obj_t *btn = (lv_obj_t *)lv_event_get_target(e);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("window_item_slider_preset_event_handler: LV_EVENT_CLICKED\n");
-#endif
-    if (ctx == nullptr || ctx->state_window_slider == nullptr)
-        return;
-
-    const uint8_t *percent = (const uint8_t *)lv_obj_get_user_data(btn);
-
-    if (percent == nullptr)
-        return;
-
-    int32_t value = window_item_slider_preset_value(ctx->item, *percent);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    debug_printf("preset pressed: %u%% -> %d\n", *percent, (int)value);
-#endif
-    /* Move the slider, then take the two halves of a drag-and-release in turn:
-     * the synthetic LV_EVENT_VALUE_CHANGED updates the label and the preset
-     * marks exactly as dragging would, and the publish is called directly. It
-     * used to be the one event, back when the value-changed handler also
-     * published. */
-    lv_slider_set_value(ctx->state_window_slider, value, LV_ANIM_OFF);
-    lv_obj_send_event(ctx->state_window_slider, LV_EVENT_VALUE_CHANGED, NULL);
-    window_item_slider_publish(ctx);
-}
-
-void window_item_slider(struct widget_context_s *ctx)
-{
-    lv_obj_t *content = item_window_create(ctx);
-
-    /* The v7 version aligned the labels to the slider and relied on
-     * lv_obj_set_auto_realign() to keep up as the text changed. A flex column
-     * expresses the same stacking directly, and re-runs on every layout pass. */
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(content, 6, 0);
-    lv_obj_set_style_pad_row(content, 4, 0);
-
-    // Add state label on top
-    lv_obj_t *state_label = lv_label_create(content);
-    set_label_from_pattern(state_label, ctx->item, ctx->item->getStateNumber());
-    lv_obj_add_style(state_label, &ui_style_label_large, LV_PART_MAIN);
-    lv_obj_set_width(state_label, lv_pct(100));
-    lv_obj_set_style_text_align(state_label, LV_TEXT_ALIGN_CENTER, 0);
-
-    // Add slider
-    lv_obj_t *slider = lv_slider_create(content);
-    lv_obj_add_style(slider, &ui_style_slider, LV_PART_MAIN);
-    lv_obj_add_style(slider, &ui_style_slider_indicator, LV_PART_INDICATOR);
-    lv_obj_add_style(slider, &ui_style_slider_knob, LV_PART_KNOB);
-    lv_slider_set_range(slider, ctx->item->getMinVal(), ctx->item->getMaxVal());
-    lv_slider_set_value(slider, ctx->item->getStateNumber(), LV_ANIM_OFF);
-    lv_obj_set_width(slider, lv_pct(95));
-    lv_obj_set_height(slider, LV_DPI_DEF / 3);
-    lv_obj_add_event_cb(slider, window_item_slider_preview_event_handler,
-                        LV_EVENT_VALUE_CHANGED, ctx);
-    lv_obj_add_event_cb(slider, window_item_slider_event_handler,
-                        LV_EVENT_RELEASED, ctx);
-
-    // Add the minimum and maximum value labels below the slider
-    lv_obj_t *minmax_row = plain_container(content);
-    lv_obj_set_size(minmax_row, lv_pct(95), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(minmax_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(minmax_row, LV_FLEX_ALIGN_SPACE_BETWEEN,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_t *min_value_label = lv_label_create(minmax_row);
-    set_label_from_pattern(min_value_label, ctx->item, ctx->item->getMinVal());
-    lv_obj_add_style(min_value_label, &ui_style_label_state, LV_PART_MAIN);
-
-    lv_obj_t *max_value_label = lv_label_create(minmax_row);
-    set_label_from_pattern(max_value_label, ctx->item, ctx->item->getMaxVal());
-    lv_obj_add_style(max_value_label, &ui_style_label_state, LV_PART_MAIN);
-
-    // Add a row of preset buttons along the bottom. lv_obj_set_flex_grow()
-    // replaces the hand-computed button width the v7 code needed.
-    lv_obj_t *preset_row = plain_container(content);
-    lv_obj_set_size(preset_row, lv_pct(100), LV_DPI_DEF / 3);
-    lv_obj_set_flex_flow(preset_row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(preset_row, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(preset_row, LV_DPI_DEF / 25, 0);
-
-    for (size_t i = 0; i < SLIDER_PRESET_COUNT; i++)
-    {
-        lv_obj_t *preset_btn = lv_button_create(preset_row);
-        lv_obj_add_style(preset_btn, &ui_style_btn, LV_PART_MAIN);
-        lv_obj_add_style(preset_btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
-        lv_obj_set_flex_grow(preset_btn, 1);
-        lv_obj_set_height(preset_btn, lv_pct(100));
-        lv_obj_set_style_pad_all(preset_btn, 0, 0);
-        // The handler reads the percentage back from here.
-        lv_obj_set_user_data(preset_btn, (void *)&slider_preset_percent[i]);
-        lv_obj_add_event_cb(preset_btn, window_item_slider_preset_event_handler,
-                            LV_EVENT_CLICKED, ctx);
-
-        lv_obj_t *preset_label = lv_label_create(preset_btn);
-        lv_label_set_text_fmt(preset_label, "%u%%", slider_preset_percent[i]);
-        lv_obj_add_style(preset_label, &ui_style_label, LV_PART_MAIN);
-        lv_obj_center(preset_label);
-    }
-
-    ctx->state_window_widget = state_label;
-    ctx->state_window_slider = slider;
-    ctx->state_window_preset_row = preset_row;
-
-    window_item_slider_refresh_presets(ctx);
-}
-
-static void window_item_setpoint_event_handler(lv_event_t *e)
-{
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-    lv_obj_t *btnm = (lv_obj_t *)lv_event_get_target(e);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("window_item_setpoint_event_handler: LV_EVENT_VALUE_CHANGED\n");
-#endif
-    if (ctx == nullptr)
-        return;
-
-    const char *txt = lv_buttonmatrix_get_button_text(btnm, lv_buttonmatrix_get_selected_button(btnm));
-
-    if (txt == nullptr)
-        return;
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("window_item_setpoint_event_handler: btn_text = %s\r\n", txt);
-#endif
-    if (strcmp(txt, LV_SYMBOL_PLUS) == 0)
-    {
-        ctx->item->setStateNumber(ctx->item->getStateNumber() + ctx->item->getStep());
-        if (ctx->item->getStateNumber() > ctx->item->getMaxVal())
-            ctx->item->setStateNumber(ctx->item->getMaxVal());
-    }
-    else if (strcmp(txt, LV_SYMBOL_MINUS) == 0)
-    {
-        ctx->item->setStateNumber(ctx->item->getStateNumber() - ctx->item->getStep());
-        if (ctx->item->getStateNumber() < ctx->item->getMinVal())
-            ctx->item->setStateNumber(ctx->item->getMinVal());
-    }
-
-    set_label_from_pattern(ctx->state_window_widget, ctx->item, ctx->item->getStateNumber());
-
-    item_publish(ctx);
-    ctx->refresh_request = true;
-    BEEPER_EVENT_CHANGE();
-}
-
-void window_item_setpoint(struct widget_context_s *ctx)
-{
-    lv_obj_t *content = item_window_create(ctx);
-
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_SPACE_EVENLY,
-                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(content, 6, 0);
-
-    lv_obj_t *state_label = lv_label_create(content);
-    lv_label_set_long_mode(state_label, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(state_label, lv_pct(100));
-    lv_obj_set_style_text_align(state_label, LV_TEXT_ALIGN_CENTER, 0);
-    set_label_from_pattern(state_label, ctx->item, ctx->item->getStateNumber());
-    lv_obj_add_style(state_label, &ui_style_label_large, LV_PART_MAIN);
-
-    static const char *btnm_map[] = {LV_SYMBOL_MINUS, LV_SYMBOL_PLUS, ""};
-    lv_obj_t *btnm1 = lv_buttonmatrix_create(content);
-    lv_buttonmatrix_set_map(btnm1, btnm_map);
-    /* The matrix itself is a panel inside the window, and would otherwise keep
-     * lv_theme_simple's white behind the two buttons. */
-    lv_obj_add_style(btnm1, &ui_style_window, LV_PART_MAIN);
-    lv_obj_add_style(btnm1, &ui_style_btn, LV_PART_ITEMS);
-    lv_obj_set_width(btnm1, lv_pct(100));
-    lv_obj_set_height(btnm1, lv_pct(40));
-    /* LV_EVENT_VALUE_CHANGED, not CLICKED: it is the button matrix event that
-     * reports which button was activated. */
-    lv_obj_add_event_cb(btnm1, window_item_setpoint_event_handler, LV_EVENT_VALUE_CHANGED, ctx);
-
-    ctx->state_window_widget = state_label;
 }
 
 static void event_handler(lv_event_t *e)
@@ -857,13 +278,14 @@ static void event_handler(lv_event_t *e)
 #endif
     struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
 
-    if (ctx == nullptr)
+    if (ctx == nullptr || ctx->item == nullptr)
         return;
 
     switch (ctx->item->getType())
     {
     case ItemType::type_string:
-        // Nothing to do; the state is already on the widget.
+    case ItemType::type_number:
+        /* Nothing to open: the state is already on the tile. */
         break;
 
     case ItemType::type_parent_link:
@@ -886,6 +308,8 @@ static void event_handler(lv_event_t *e)
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("Link: %s ... Posting update\r\n", ctx->item->getLink());
 #endif
+        /* The one control that needs no screen of its own: a switch has two
+         * states and the tile is already big enough to be the button. */
         if (strncmp(ctx->item->getStateText(), "OFF", 3) == 0)
             ctx->item->setStateText("ON");
         else
@@ -896,41 +320,14 @@ static void event_handler(lv_event_t *e)
         BEEPER_EVENT_CHANGE();
         break;
 
-    case ItemType::type_setpoint:
-        BEEPER_EVENT_WINDOW();
-        window_item_setpoint(ctx);
-        break;
-
-    case ItemType::type_slider:
-        BEEPER_EVENT_WINDOW();
-        window_item_slider(ctx);
-        break;
-
-    case ItemType::type_selection:
-        BEEPER_EVENT_WINDOW();
-        window_item_selection(ctx);
-        break;
-
-    case ItemType::type_rollershutter:
-        BEEPER_EVENT_WINDOW();
-        window_item_rollershutter(ctx);
-        break;
-
-    case ItemType::type_player:
-        BEEPER_EVENT_WINDOW();
-        window_item_player(ctx);
-        break;
-
-    case ItemType::type_colorpicker:
-        BEEPER_EVENT_WINDOW();
-        window_item_colorpicker(ctx);
-        break;
-
     default:
-        BEEPER_EVENT_ERROR();
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-        printf("event_handler: unhandled item type id: %u\r\n", ctx->item->getType());
-#endif
+        /* Everything else is a screen. item_screen_open() looks the type up in
+         * its own registry and does nothing for one it has no entry for, which
+         * is what the switch's default arm used to say with a beep. */
+        if (item_screen_find(ctx->item->getType()) != NULL)
+            item_screen_open(ctx->item, (uint8_t)(ctx - widget_context));
+        else
+            BEEPER_EVENT_ERROR();
         break;
     }
 }
@@ -1316,12 +713,6 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
     wctx->label = NULL;
     wctx->img_obj = NULL;
     wctx->state_widget = NULL;
-    wctx->state_window_widget = NULL;
-    wctx->state_window_hsv[0] = NULL;
-    wctx->state_window_hsv[1] = NULL;
-    wctx->state_window_hsv[2] = NULL;
-    wctx->state_window_slider = NULL;
-    wctx->state_window_preset_row = NULL;
     wctx->item = NULL;
 
     wctx->update_timestamp = 0;
@@ -1506,9 +897,21 @@ void show(lv_obj_t *parent)
 //////////////////////////////////////////////////////////////////////////////
 // exported
 
+/* An item screen changed the item under it. Marking the tile is all the page
+ * has to do: the loop re-renders it, re-requests its icon (openHAB icons are
+ * state-dependent) and counts the update. Registered rather than called
+ * directly so that widget_context_s stays private to this file. */
+static void item_changed(uint8_t slot)
+{
+    if (slot < WIDGET_COUNT_MAX)
+        widget_context[slot].refresh_request = true;
+}
+
 void openhab_ui_setup(Config *config)
 {
     current_config = config;
+
+    item_screen_set_changed_cb(item_changed);
 
     /* ui_style_select() and ui_style_init() used to be called here. They now run
      * in main.cpp, before the first widget of any kind: the info label is
@@ -1597,18 +1000,25 @@ static void theme_apply_pending(void)
 {
     theme_pending = false;
 
+    /* Before anything is deleted: a screen-load animation owns two screens at
+     * once, and what follows is about to delete one of them. */
+    ui_screen_settle();
+
+    /* An item screen is built by its type's builder, not restyled by one, so a
+     * theme change rebuilds it from nothing. This is the generalisation of what
+     * the old code did by deleting open_window here: some of what a family
+     * contributes is objects, and a style refresh cannot reach an object. */
+    ItemType reopen = item_screen_open_type();
+    uint8_t  reopen_slot = item_screen_open_slot();
+
+    item_screen_dismiss();
+
     ui_style_select(theme_pending_family, theme_pending_night);
     ui_style_apply();
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("theme_apply_pending: %s\r\n", ui_style_name());
 #endif
-
-    if (open_window != NULL)
-    {
-        lv_obj_delete(open_window);
-        open_window = NULL;
-    }
 
     /* Same reason, on the other screen: the settings tab bar and keyboard set
      * some styles locally at creation, and the Info table's cells are a
@@ -1617,6 +1027,13 @@ static void theme_apply_pending(void)
 
     if (page_state == PAGE_READY)
         page_rebuild(content, false);
+
+    /* Put back what was open. The user did not navigate -- the theme changed
+     * under them, and on the automatic night schedule they may not have touched
+     * the panel at all -- so this reopens on the same item and lets the
+     * builder's own entrance play. */
+    if (reopen != ItemType::type_unknown && reopen_slot < WIDGET_COUNT_MAX)
+        item_screen_open(widget_context[reopen_slot].item, reopen_slot);
 }
 
 void openhab_ui_set_wifi_state(bool wifi_state)
@@ -1708,6 +1125,71 @@ static void page_timeout_check(void)
     page_request(GET_SITEMAP_RETRY_INTERVAL);
 }
 
+#if CONFIG_IDF_TARGET_LINUX
+/* OHEZ_ITEM walks the simulator to one control and opens it.
+ *
+ * A sibling of OHEZ_SETTINGS, and there for the same reason: the item screens
+ * are three taps deep on a sub page, which makes "show me the setpoint screen
+ * in LCARS night" a tedious thing to ask for by hand and an impossible thing to
+ * ask for from a script.
+ *
+ * The value is a dot-separated path of tile indices: every step but the last
+ * follows that tile's linked page, and the last opens that tile's control. So
+ * OHEZ_ITEM=5 opens the sixth tile of the home page, and OHEZ_ITEM=0.4 follows
+ * the first tile and then opens the fifth tile of the page behind it.
+ *
+ * One step per page load, driven from the point where a page becomes ready,
+ * because each step needs the page the previous one asked for. */
+static const char *item_path;
+
+static void item_path_step(void)
+{
+    if (item_path == NULL || *item_path == '\0')
+        return;
+
+    char *end;
+    long  slot = strtol(item_path, &end, 10);
+
+    if (end == item_path || slot < 0 || slot >= WIDGET_COUNT_MAX)
+    {
+        printf("openhab_ui: OHEZ_ITEM: \"%s\" is not a tile index\r\n", item_path);
+        item_path = NULL;
+        return;
+    }
+
+    Item *item = widget_context[slot].item;
+
+    if (item == NULL || item->getType() == ItemType::type_unknown)
+    {
+        printf("openhab_ui: OHEZ_ITEM: tile %ld is empty\r\n", slot);
+        item_path = NULL;
+        return;
+    }
+
+    item_path = (*end == '.') ? end + 1 : NULL;
+
+    if (item_path != NULL)
+    {
+        /* An intermediate step: follow the link, and the next page load takes
+         * the step after it. */
+        strlcpy(last_page, current_page, sizeof(last_page));
+        strlcpy(current_page, item->getPageLink(), sizeof(current_page));
+        page_request(0);
+        return;
+    }
+
+    if (item_screen_find(item->getType()) != NULL)
+        item_screen_open(item, (uint8_t)slot);
+    else
+        printf("openhab_ui: OHEZ_ITEM: tile %ld has no control screen\r\n", slot);
+}
+
+void openhab_ui_open_item_from_env(void)
+{
+    item_path = getenv("OHEZ_ITEM");
+}
+#endif /* CONFIG_IDF_TARGET_LINUX */
+
 static void page_result_apply(struct openhab_result_s *res)
 {
     if (   res->ok == true
@@ -1723,6 +1205,9 @@ static void page_result_apply(struct openhab_result_s *res)
         page_state = PAGE_READY;
         openhab_ui_infolabel.destroy();
         show(content);
+#if CONFIG_IDF_TARGET_LINUX
+        item_path_step();
+#endif
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("Free Heap: %u\r\n", (unsigned)port_free_heap());
 #endif
@@ -1816,6 +1301,12 @@ static void results_apply_one(void)
         {
             // item value changed
             update_state_widget(wctx);
+
+            /* And the control looking at it, if one is open. The old windows
+             * never followed the server: a dimmer changed from a phone left a
+             * stale number on the glass until the window was closed. */
+            item_screen_refresh(res.slot);
+
             widget_icon_request(res.slot);
         }
         break;
