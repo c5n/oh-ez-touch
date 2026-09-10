@@ -89,12 +89,13 @@ lv_obj_t *item_screen_button(lv_obj_t *parent, const char *text);
 /* Apply the item's openHAB display pattern to a numeric value. */
 void item_screen_set_pattern(lv_obj_t *label, Item *item, float value);
 
-/* Make a button's label as large as it can be while still rendering.
+/* Set a button's label in the large face.
  *
- * Not the large font: tools/build_fonts.sh builds the 36 px faces with
- * FA_LARGE, which is two codepoints, so every LV_SYMBOL_* except those two is a
- * placeholder box at that size. The 16 and 22 px faces carry all 57. A control
- * whose entire content is a glyph therefore gets the 22 px one. */
+ * For a control whose entire content is one glyph, which is most of them here.
+ * This used to have to settle for the 22 px face: the 36 px fonts were built
+ * with FA_LARGE at two codepoints, so every other LV_SYMBOL_* was a
+ * placeholder box at that size. FA_LARGE now carries the twelve a control can
+ * be, so a plus sign on a 106 px pad is finally the size of the pad. */
 void item_screen_glyph(lv_obj_t *btn);
 
 /* The minimum anything may be on its short axis: 44 px is about 6.7 mm on the

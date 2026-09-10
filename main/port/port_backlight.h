@@ -29,6 +29,20 @@ void port_backlight_init(void);
  */
 void port_backlight_set(uint8_t percent);
 
+/**
+ * Ramp to `percent` over `ms`, returning at once.
+ *
+ * The dim and the wake are the only two brightness changes a user ever sees,
+ * and stepping straight to the new duty is what makes a panel look like a
+ * relay rather than a screen. On the device this is the LEDC peripheral's own
+ * fade, so the ramp costs no CPU, no redraws and no SPI -- it is the one piece
+ * of motion in this UI that is free.
+ *
+ * A duration of 0 is exactly port_backlight_set(). Where there is no
+ * backlight, so is everything else.
+ */
+void port_backlight_fade(uint8_t percent, uint16_t ms);
+
 #ifdef __cplusplus
 }
 #endif

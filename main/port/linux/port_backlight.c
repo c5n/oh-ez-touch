@@ -19,3 +19,9 @@ void port_backlight_set(uint8_t percent)
 {
     (void)percent;
 }
+
+void port_backlight_fade(uint8_t percent, uint16_t ms)
+{
+    (void)percent;
+    (void)ms;
+}

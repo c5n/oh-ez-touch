@@ -17,7 +17,10 @@ private:
     uint8_t current_brightness;
     uint8_t normal_brightness;
     uint8_t dim_brightness;
-    void set_brightness(uint8_t percent);
+
+    /* fade_ms of 0 steps straight there, which is what the first call at boot
+     * wants and what a board with no backlight gets regardless. */
+    void set_brightness(uint8_t percent, uint16_t fade_ms);
 
 public:
     void setDimTimeout(unsigned long timeout) { dim_timeout = timeout; };

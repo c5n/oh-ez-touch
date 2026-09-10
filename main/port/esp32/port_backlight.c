@@ -76,6 +76,44 @@ void port_backlight_init(void)
              OHEZ_BACKLIGHT_ACTIVE_LOW ? "active low" : "active high");
 }
 
+/* Installed lazily, because it allocates and only the fade path needs it. The
+ * flags argument is 0: no ISR of our own, LEDC drives the ramp itself. */
+static bool fade_ready;
+
+void port_backlight_fade(uint8_t percent, uint16_t ms)
+{
+    if (ms == 0)
+    {
+        port_backlight_set(percent);
+        return;
+    }
+
+    if (backlight_ready == false)
+        port_backlight_init();
+
+    if (fade_ready == false)
+    {
+        if (ledc_fade_func_install(0) != ESP_OK)
+        {
+            /* No fade service, so no ramp -- but still the right brightness. */
+            port_backlight_set(percent);
+            return;
+        }
+
+        fade_ready = true;
+    }
+
+    if (percent > 100)
+        percent = 100;
+
+    uint32_t duty = ((uint32_t)percent * BACKLIGHT_MAX_DUTY) / 100;
+
+    /* The hardware walks the duty for us and the call returns immediately, so
+     * the loop that asked for this carries straight on drawing. */
+    ESP_ERROR_CHECK(ledc_set_fade_with_time(BACKLIGHT_MODE, BACKLIGHT_CHANNEL, duty, ms));
+    ESP_ERROR_CHECK(ledc_fade_start(BACKLIGHT_MODE, BACKLIGHT_CHANNEL, LEDC_FADE_NO_WAIT));
+}
+
 void port_backlight_set(uint8_t percent)
 {
     if (backlight_ready == false)

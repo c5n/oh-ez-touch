@@ -99,7 +99,7 @@ void item_screen_glyph(lv_obj_t *btn)
     lv_obj_t *label = lv_obj_get_child(btn, 0);
 
     if (label != NULL)
-        lv_obj_set_style_text_font(label, ui_style_theme()->font_normal, 0);
+        lv_obj_set_style_text_font(label, ui_style_theme()->font_large, 0);
 }
 
 void item_screen_set_pattern(lv_obj_t *label, Item *item, float value)
