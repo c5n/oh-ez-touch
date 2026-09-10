@@ -63,6 +63,10 @@
 
 #define HEADER_SIGNAL_UPDATE_INTERVAL 5000
 
+/* The breathing room inside a tile. Shared by the caption and the value so
+ * that the two cannot drift apart. */
+#define TILE_PAD 4
+
 /* How often the automatic night schedule is compared against the clock. The
  * comparison is cheap and openhab_ui_request_theme() drops a request that
  * changes nothing, so this only has to be fine enough that the switch looks
@@ -129,6 +133,7 @@ struct widget_context_s widget_context[WIDGET_COUNT_MAX];
 struct statistics_s statistics;
 
 void update_state_widget(struct widget_context_s *ctx);
+static void state_label_fit(lv_obj_t *label);
 static void page_request(uint64_t delay_ms);
 static void widget_icon_request(size_t slot);
 
@@ -385,14 +390,20 @@ void update_state_widget(struct widget_context_s *ctx)
     {
         lv_color_hsv_t hsv = hsvCStringToLVColor(ctx->item->getStateText());
         lv_obj_set_style_bg_color(ctx->state_widget, lv_color_hsv_to_rgb(hsv.h, hsv.s, hsv.v), 0);
-        break;
+        return;
     }
 
     default:
         ESP_LOGW("openhab_ui", "update_state_widget: unknown or unsupported item type id: %d",
                  (int)ctx->item->getType());
-        break;
+        return;
     }
+
+    /* After the text, not before: the size that fits depends on what was just
+     * written. The colorpicker's swatch is an object rather than a label and
+     * returns above rather than falling through to here. */
+    if (lv_obj_check_type(ctx->state_widget, &lv_label_class))
+        state_label_fit(ctx->state_widget);
 }
 
 /**
@@ -684,16 +695,71 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
 
 /* The state line along the bottom edge of a widget button. Every item type
  * that shows one uses the same label; only the button border differs. */
+/* The value is the point of the tile, so it gets the largest face it can be
+ * read in and still fit on one line.
+ *
+ * Measured rather than counted: "1013" and "3.5 °C" are both six characters
+ * and are not the same width, and the three families are set in faces of
+ * different widths. Falling back a size is much better than the alternatives,
+ * which are wrapping into the caption -- what used to happen -- or dotting
+ * away the end of a reading.
+ *
+ * Cheap enough to do on every change: lv_text_get_size() over a handful of
+ * glyphs, at most three times, against a five-second poll interval. */
+static void state_label_fit(lv_obj_t *label)
+{
+    const struct ui_theme_s *t = ui_style_theme();
+    const lv_font_t         *sizes[] = {t->font_large, t->font_normal, t->font_small};
+    const char              *text = lv_label_get_text(label);
+    lv_obj_t                *tile = lv_obj_get_parent(label);
+
+    /* v9 defers layout, so a tile that was sized a moment ago still reports a
+     * width of zero -- the same trap the colour swatch works around by using a
+     * percentage. Here a percentage will not do, because the answer has to be
+     * in pixels to measure text against, so the layout is forced instead. */
+    lv_obj_update_layout(tile);
+
+    /* The label's own width, not the tile's: the label is a percentage of the
+     * tile's *content* area, and the tile has padding of its own. Measuring
+     * against the outer width overestimates the room by twice that padding,
+     * which is exactly enough to let a value that does not fit be chosen. */
+    int32_t avail = lv_obj_get_width(label);
+
+    if (avail <= 0)
+        return;
+
+    for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
+    {
+        lv_point_t size;
+
+        lv_text_get_size(&size, text, sizes[i], t->letter_space, 0, LV_COORD_MAX,
+                         LV_TEXT_FLAG_NONE);
+
+        if (size.x <= avail || i == sizeof(sizes) / sizeof(sizes[0]) - 1)
+        {
+            lv_obj_set_style_text_font(label, sizes[i], 0);
+            /* Pinned to one line of whatever was chosen. LV_LABEL_LONG_DOT
+             * only dots once it has run out of *height*; left to size itself
+             * it grows upward out of a bottom-aligned label and back through
+             * the caption. */
+            lv_obj_set_height(label, lv_font_get_line_height(sizes[i]));
+            return;
+        }
+    }
+}
+
 static lv_obj_t *state_label_create(struct widget_context_s *wctx)
 {
     lv_obj_t *state_label = lv_label_create(wctx->container);
 
     lv_obj_set_style_text_align(state_label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_label_set_long_mode(state_label, LV_LABEL_LONG_WRAP);
+    /* One line, and dotted if even the smallest face cannot hold it. Wrapping
+     * is what used to put a two-line caption through the middle of a reading. */
+    lv_label_set_long_mode(state_label, LV_LABEL_LONG_DOT);
     lv_obj_add_style(state_label, &ui_style_label_state, LV_PART_MAIN);
     lv_obj_move_foreground(state_label);
     lv_obj_set_width(state_label, lv_pct(100));
-    lv_obj_align(state_label, LV_ALIGN_BOTTOM_MID, 0, -3);
+    lv_obj_align(state_label, LV_ALIGN_BOTTOM_MID, 0, -TILE_PAD);
 
     return state_label;
 }
@@ -739,12 +805,17 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
     // Create top label object
     wctx->label = lv_label_create(wctx->container);
     lv_obj_add_style(wctx->label, &ui_style_label, LV_PART_MAIN);
-    lv_label_set_long_mode(wctx->label, LV_LABEL_LONG_WRAP);
+    /* One line. A wrapping caption is what put "Outside Temperatur/e" through
+     * the middle of "3.5 °C": at 84 to 104 px a two-line caption and a value
+     * cannot both have the tile. The name is context, the reading is the
+     * point, so the name is the one that gets truncated. */
+    lv_label_set_long_mode(wctx->label, LV_LABEL_LONG_DOT);
     lv_label_set_text(wctx->label, wctx->item->getLabel());
     lv_obj_set_width(wctx->label, lv_pct(100));
+    lv_obj_set_height(wctx->label, lv_font_get_line_height(ui_style_theme()->font_small));
     lv_obj_set_style_text_align(wctx->label, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_move_foreground(wctx->label);
-    lv_obj_align(wctx->label, LV_ALIGN_TOP_MID, 0, 3);
+    lv_obj_align(wctx->label, LV_ALIGN_TOP_MID, 0, TILE_PAD);
 
     // Create center image object
     wctx->img_obj = lv_image_create(wctx->container);
@@ -771,6 +842,10 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
     {
         lv_obj_add_style(wctx->container, &ui_style_tile_link, LV_PART_MAIN);
         lv_obj_add_style(wctx->label, &ui_style_label_state, LV_PART_MAIN);
+        /* A navigation tile has no reading to protect, so its name is welcome
+         * to take the middle of the tile and two lines of it. */
+        lv_label_set_long_mode(wctx->label, LV_LABEL_LONG_WRAP);
+        lv_obj_set_height(wctx->label, LV_SIZE_CONTENT);
         lv_obj_align(wctx->label, LV_ALIGN_CENTER, 0, 0);
     }
     else if (   wctx->item->getType() == ItemType::type_string
