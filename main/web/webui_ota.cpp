@@ -8,12 +8,14 @@
  * script calls it "name", the browser form below calls it "image", and neither
  * matters).
  *
- * The multipart body is scanned here rather than by the server, for the same
- * reason the transport has a streaming route at all: it is a megabyte, and
- * neither target has a megabyte to buffer it in. The scanner is small because
- * the shape it has to handle is small -- one part, and the boundary is the
- * first line of the body, so it does not even have to be parsed out of the
- * Content-Type header.
+ * The multipart body is scanned rather than handed to the server's form
+ * parser, for the same reason the transport has a streaming route at all: it
+ * is a megabyte, and neither target has a megabyte to buffer it in. The
+ * scanner itself is multipart.c, which knows nothing about firmware; what is
+ * left here is the OTA partition it writes into and the restart afterwards.
+ * That split is what makes the boundary arithmetic reachable from
+ * test/host -- it is the one code path in this firmware that can leave a
+ * panel unbootable, and the only one that parses bytes a stranger chose.
  *
  * Unauthenticated, as it has always been. Worth knowing before exposing one of
  * these outside a home network -- and worth knowing that the setup access
@@ -31,14 +33,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "multipart.h"
 #include "port/port_sys.h"
 #include "webui_transport.h"
 
 static const char *TAG = "webui_ota";
-
-/* Long enough for any boundary a client will generate (RFC 2046 caps them at
- * 70 characters) plus the two leading dashes and the CRLF. */
-#define BOUNDARY_MAX 80
 
 /* Read in pieces this size. Large enough that the flash writes are efficient,
  * small enough to sit on a task stack alongside everything else. */
@@ -64,37 +63,20 @@ void webui_ota_handle_form(webui_request_t *req)
 
 #include "esp_ota_ops.h"
 
-/* Where the multipart scanner is in the body. */
-enum scan_state_e
-{
-    SCAN_BOUNDARY,  /* still collecting the first line                     */
-    SCAN_HEADERS,   /* the part's own headers, up to a blank line          */
-    SCAN_DATA,      /* the firmware, until the boundary comes round again  */
-    SCAN_DONE,
-};
-
+/* What the multipart scanner writes into. The scanning itself is in
+ * multipart.c, which knows nothing about firmware -- that split is what makes
+ * the part with the boundary arithmetic in it reachable from test/host. */
 struct upload_s
 {
-    enum scan_state_e state;
-    char              boundary[BOUNDARY_MAX];
-    size_t            boundary_len;
-    char              head[BOUNDARY_MAX + 8]; /* the line being collected  */
-    size_t            head_len;
-
-    /* The last boundary_len + 2 bytes seen are held back rather than written:
-     * they may turn out to be the start of the terminating boundary, and a
-     * firmware image with those bytes appended does not verify. */
-    char   tail[BOUNDARY_MAX + 4];
-    size_t tail_len;
-
-    esp_ota_handle_t ota;
+    esp_ota_handle_t       ota;
     const esp_partition_t *partition;
-    size_t written;
-    bool   failed;
+    size_t                 written;
 };
 
-static bool ota_begin(struct upload_s *up)
+static bool ota_begin(void *ctx)
 {
+    struct upload_s *up = (struct upload_s *)ctx;
+
     up->partition = esp_ota_get_next_update_partition(NULL);
 
     if (up->partition == NULL)
@@ -116,8 +98,10 @@ static bool ota_begin(struct upload_s *up)
     return true;
 }
 
-static bool ota_write(struct upload_s *up, const char *data, size_t len)
+static bool ota_write(void *ctx, const char *data, size_t len)
 {
+    struct upload_s *up = (struct upload_s *)ctx;
+
     if (len == 0)
         return true;
 
@@ -135,107 +119,32 @@ static bool ota_write(struct upload_s *up, const char *data, size_t len)
     return true;
 }
 
-/* Give the scanner one more byte of the body. */
-static void feed(struct upload_s *up, char c)
-{
-    switch (up->state)
-    {
-    case SCAN_BOUNDARY:
-        /* The first line is "--BOUNDARY". Keeping it verbatim means the
-         * Content-Type header never has to be read. */
-        if (c == '\r')
-            break;
-
-        if (c == '\n')
-        {
-            up->head[up->head_len] = '\0';
-            up->boundary_len = up->head_len;
-            memcpy(up->boundary, up->head, up->head_len + 1);
-            up->head_len = 0;
-            up->state = SCAN_HEADERS;
-            break;
-        }
-
-        if (up->head_len + 1 < sizeof(up->head))
-            up->head[up->head_len++] = c;
-        break;
-
-    case SCAN_HEADERS:
-        /* The part's own headers, ended by a blank line. Nothing in them is
-         * needed: the field name is ignored and so is the filename. */
-        if (c == '\r')
-            break;
-
-        if (c == '\n')
-        {
-            if (up->head_len == 0)
-            {
-                up->state = SCAN_DATA;
-
-                if (ota_begin(up) == false)
-                {
-                    up->failed = true;
-                    up->state = SCAN_DONE;
-                }
-            }
-
-            up->head_len = 0;
-            break;
-        }
-
-        if (up->head_len + 1 < sizeof(up->head))
-            up->head[up->head_len++] = c;
-        break;
-
-    case SCAN_DATA:
-    {
-        /* Hold back as much as the terminator could be: CRLF plus the
-         * boundary. Anything older than that cannot be part of it, so it is
-         * safe to write. */
-        size_t hold = up->boundary_len + 2;
-
-        up->tail[up->tail_len++] = c;
-
-        if (up->tail_len > hold)
-        {
-            size_t spill = up->tail_len - hold;
-
-            if (ota_write(up, up->tail, spill) == false)
-            {
-                up->failed = true;
-                up->state = SCAN_DONE;
-                break;
-            }
-
-            memmove(up->tail, up->tail + spill, hold);
-            up->tail_len = hold;
-        }
-
-        /* "\r\n--BOUNDARY" means the image has ended; what is held back is
-         * exactly that and is discarded. */
-        if (   up->tail_len == hold
-            && up->tail[0] == '\r' && up->tail[1] == '\n'
-            && memcmp(up->tail + 2, up->boundary, up->boundary_len) == 0)
-        {
-            up->tail_len = 0;
-            up->state = SCAN_DONE;
-        }
-        break;
-    }
-
-    case SCAN_DONE:
-    default:
-        break;
-    }
-}
+/* How many reads in a row may come back empty before the upload is written
+ * off.
+ *
+ * The esp32 transport maps a socket timeout to 0, and the loop below cannot
+ * treat that as the end of the body -- a slow client is normal on a panel
+ * sharing its radio with a scan. But it cannot ignore it either: `remaining`
+ * does not move, so a client that sends a Content-Length and then stops
+ * talking used to hold the server's task in that loop for good, with the OTA
+ * handle open and the partition half written. Each empty read is a full
+ * socket timeout, so a handful of them is already a long wait. */
+#define UPLOAD_MAX_IDLE_READS 8
 
 void webui_ota_handle_upload(webui_request_t *req)
 {
-    static struct upload_s up; /* 200 bytes, and the handler task's stack is 4 K */
-    char                   chunk[UPLOAD_CHUNK];
-    size_t                 remaining = webui_body_length(req);
+    /* Static, not on the stack: together they are around 200 bytes and the
+     * handler task has 4 K. esp_http_server serves one request at a time, so
+     * there is never a second upload to collide with. */
+    static struct upload_s    up;
+    static struct multipart_s mp;
+
+    char     chunk[UPLOAD_CHUNK];
+    size_t   remaining = webui_body_length(req);
+    unsigned idle = 0;
 
     memset(&up, 0, sizeof(up));
+    multipart_init(&mp, ota_begin, ota_write, &up);
 
     ESP_LOGI(TAG, "upload of %u bytes starting", (unsigned)remaining);
 
@@ -246,20 +155,35 @@ void webui_ota_handle_upload(webui_request_t *req)
         if (n < 0)
         {
             ESP_LOGE(TAG, "connection lost after %u bytes", (unsigned)up.written);
-            up.failed = true;
             break;
         }
 
         if (n == 0)
+        {
+            if (++idle >= UPLOAD_MAX_IDLE_READS)
+            {
+                ESP_LOGE(TAG, "upload stalled after %u bytes, %u still expected",
+                         (unsigned)up.written, (unsigned)remaining);
+                break;
+            }
+
             continue;
+        }
 
-        remaining -= (size_t)n;
+        idle = 0;
 
-        for (int i = 0; i < n && up.failed == false; i++)
-            feed(&up, chunk[i]);
+        /* Never below zero: a transport that answered with more than was
+         * asked for would otherwise wrap this and run the loop for four
+         * billion more bytes. */
+        remaining -= ((size_t)n < remaining) ? (size_t)n : remaining;
+
+        multipart_feed_block(&mp, chunk, (size_t)n);
+
+        if (multipart_failed(&mp) == true)
+            break;
     }
 
-    if (up.failed == false && up.state == SCAN_DONE && up.written > 0)
+    if (multipart_complete(&mp) == true && up.written > 0)
     {
         esp_err_t err = esp_ota_end(up.ota);
 

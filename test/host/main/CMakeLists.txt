@@ -18,6 +18,13 @@
 # only two modules with no other front end at all -- no widget, no setting --
 # so a test is the only place their behaviour is written down twice.
 #
+# web/multipart.c joined them when the firmware upload's scanner was split out
+# of webui_ota.cpp. That file called esp_ota_begin() and esp_ota_write()
+# directly, which made all of it device-only, so the one path in this firmware
+# that can leave a panel unbootable -- and the only one that parses bytes a
+# stranger chose, with no authentication in front of it -- had no test at all.
+# The scanner writes into a sink now; test_multipart.cpp supplies a buffer.
+#
 # config.cpp joined them when loadConfig() and saveConfig() stopped naming
 # settings: what they do now is read the JSON path and the default off each row
 # of config_fields[], which makes the *file format* a property of that table
@@ -31,6 +38,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_config_fields.cpp"
                             "test_config_file.cpp"
                             "test_item_setters.cpp"
+                            "test_multipart.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
                             "test_outputs.cpp"
@@ -44,6 +52,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."

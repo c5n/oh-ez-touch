@@ -105,6 +105,7 @@ set(OHEZ_APP_SRCS
     "ble/ble_beacon.cpp"
     "ble/ble_scan.cpp"
 
+    "web/multipart.c"
     "web/webui.cpp"
     "web/webui_ota.cpp"
     "web/webui_transport.cpp"
