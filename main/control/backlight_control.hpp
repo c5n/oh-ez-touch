@@ -22,10 +22,36 @@ private:
      * wants and what a board with no backlight gets regardless. */
     void set_brightness(uint8_t percent, uint16_t fade_ms);
 
+    /* True once setup() has run. The two setters above are called from
+     * settings_apply_live(), which runs before setup() on the boot path, and
+     * driving the pin before port_backlight_init() is not something to ask
+     * of a board. */
+    bool ready = false;
+
+    /* Which of the two levels the display is meant to be showing.
+     *
+     * Tracked rather than derived from current_brightness, because the two
+     * levels may be equal -- a panel configured to dim to 100% is a perfectly
+     * ordinary way of saying "never dim visibly" -- and then comparing
+     * brightnesses cannot tell the states apart. Only the setters use it;
+     * resetDimTimeout() still answers "did this wake the display" by
+     * comparing brightness, so a tap on a panel where the two levels are
+     * equal is not swallowed for a change nobody can see. */
+    bool dimmed = false;
+
 public:
     void setDimTimeout(unsigned long timeout) { dim_timeout = timeout; };
-    void setNormalBrightness(uint8_t percent) { normal_brightness = percent; };
-    void setDimBrightness(uint8_t percent) { dim_brightness = percent; };
+
+    /* Both of these take effect at once where the display is already showing
+     * that level, rather than at the next dim or wake. They are offered as
+     * live settings by both front ends -- settings_apply_live() calls them on
+     * every save -- and until this they were not: a panel sat at its old
+     * brightness until something happened to move it, which for the normal
+     * level means until the dim timeout expired and a finger woke it again.
+     * Sliding a brightness and seeing nothing change reads as a broken
+     * setting. */
+    void setNormalBrightness(uint8_t percent);
+    void setDimBrightness(uint8_t percent);
 
     /* Wake the display and restart the timeout. True when this call was what
      * woke it, which the touch handler uses to swallow the tap. */

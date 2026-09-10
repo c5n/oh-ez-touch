@@ -30,9 +30,35 @@ void BacklightControl::set_brightness(uint8_t percent, uint16_t fade_ms)
     port_backlight_fade(percent, fade_ms);
 }
 
+void BacklightControl::setNormalBrightness(uint8_t percent)
+{
+    BacklightControl::normal_brightness = percent;
+
+    /* Only while the display is awake: changing the normal level must not
+     * light up a panel that has dimmed itself. */
+    if (   BacklightControl::ready == true
+        && BacklightControl::dimmed == false
+        && BacklightControl::current_brightness != percent)
+        set_brightness(percent, WAKE_FADE_MS);
+}
+
+void BacklightControl::setDimBrightness(uint8_t percent)
+{
+    BacklightControl::dim_brightness = percent;
+
+    /* The mirror of it: only while it is actually dimmed, so this never dims
+     * a panel somebody is standing in front of. */
+    if (   BacklightControl::ready == true
+        && BacklightControl::dimmed == true
+        && BacklightControl::current_brightness != percent)
+        set_brightness(percent, DIM_FADE_MS);
+}
+
 bool BacklightControl::resetDimTimeout()
 {
     bool woken_up = false;
+
+    BacklightControl::dimmed = false;
 
     if (BacklightControl::current_brightness != BacklightControl::normal_brightness)
     {
@@ -56,6 +82,9 @@ void BacklightControl::setup()
 {
     port_backlight_init();
 
+    BacklightControl::ready = true;
+    BacklightControl::dimmed = false;
+
     /* No ramp here: this is the first time the panel is lit at all, and there
      * is nothing to ramp away from. */
     set_brightness(BacklightControl::normal_brightness, 0);
@@ -74,4 +103,11 @@ void BacklightControl::loop()
 #endif
         set_brightness(BacklightControl::dim_brightness, DIM_FADE_MS);
     }
+
+    /* Outside the guard above, which also tests the brightness: with the two
+     * levels set equal there is nothing to fade, but the display has still
+     * reached the point where the dim level is the one in effect. */
+    if (   BacklightControl::dim_timeout_timestamp != 0
+        && port_millis() >= BacklightControl::dim_timeout_timestamp)
+        BacklightControl::dimmed = true;
 }
