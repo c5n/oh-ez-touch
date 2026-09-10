@@ -11,6 +11,7 @@
 #include "ui/ui_motion.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_style.hpp"
+#include "ui/ui_widgets.hpp"
 
 #include <stdio.h>
 #include <string.h>
@@ -64,46 +65,18 @@ void item_screen_publish(struct item_view_s *v)
 
 lv_obj_t *item_screen_container(lv_obj_t *parent)
 {
-    lv_obj_t *obj = lv_obj_create(parent);
-
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_set_style_pad_gap(obj, 0, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    lv_obj_set_style_radius(obj, 0, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
-
-    return obj;
+    /* The shared one, under the name the builders in this directory use. */
+    return ui_plain_container(parent);
 }
 
 lv_obj_t *item_screen_button(lv_obj_t *parent, const char *text)
 {
-    lv_obj_t *btn = lv_button_create(parent);
+    lv_obj_t *btn = ui_themed_button(parent, text);
 
-    lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
-
-    /* The same surface answers for both states, as it does on a tile, where
-     * ui_style_tile_pressed is both the press and the mark of an active item.
-     *
-     * Without the pressed selector a button's only feedback is the plate
-     * deformation from ui_style_press_active, and only Slate asks for one:
-     * LCARS and JARVIS both set press_grow to 0 because they mean to
-     * acknowledge a press by changing colour -- which nothing but the tile
-     * ever had a style saying. So on those two a transport or a blind button
-     * acknowledged nothing at all. */
-    lv_obj_add_style(btn, &ui_style_btn_checked,
-                     ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
-    lv_obj_add_style(btn, &ui_style_btn_checked,
-                     ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
-
-    /* After the pressed style, so the transition governs what it sets. */
-    ui_motion_pressable(btn);
-
-    lv_obj_t *label = lv_label_create(btn);
-
-    lv_label_set_text(label, text);
-    lv_obj_add_style(label, &ui_style_label, LV_PART_MAIN);
-    lv_obj_center(label);
+    /* The one thing these want that a settings button does not: the caption
+     * face on the label, which item_screen_glyph() then replaces with the
+     * large one on the controls whose whole content is a symbol. */
+    lv_obj_add_style(lv_obj_get_child(btn, 0), &ui_style_label, LV_PART_MAIN);
 
     return btn;
 }
@@ -134,48 +107,6 @@ static void back_event(lv_event_t *e)
 {
     LV_UNUSED(e);
     item_screen_close();
-}
-
-/* A bar across the whole top edge, and all of it is the way back.
- *
- * Edge-anchored and full width, so it is the easiest thing on the screen to
- * hit -- the opposite of the glyph-sized close button it replaces. 56 px is
- * about 8.5 mm on the 2.4" panel. */
-static lv_obj_t *back_bar_create(lv_obj_t *screen, const char *title)
-{
-    lv_obj_t *bar = lv_obj_create(screen);
-
-    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(bar, lv_pct(100), ITEM_BAR_H);
-    lv_obj_set_pos(bar, 0, 0);
-    lv_obj_add_style(bar, &ui_style_win_header, LV_PART_MAIN);
-    lv_obj_set_style_radius(bar, 0, 0);
-    lv_obj_set_style_pad_hor(bar, 10, 0);
-    lv_obj_set_style_pad_ver(bar, 0, 0);
-    lv_obj_set_style_pad_column(bar, 10, 0);
-    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-
-    lv_obj_add_flag(bar, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(bar, back_event, LV_EVENT_CLICKED, NULL);
-    ui_motion_pressable(bar);
-
-    lv_obj_t *chevron = lv_label_create(bar);
-
-    lv_label_set_text(chevron, LV_SYMBOL_LEFT);
-
-    lv_obj_t *label = lv_label_create(bar);
-
-    lv_label_set_text(label, title);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(label, 1);
-
-    /* The bar's children must not eat the tap: the whole bar is the target. */
-    lv_obj_remove_flag(chevron, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
-
-    return bar;
 }
 
 /* Swipe right to go back, as well as the bar.
@@ -214,7 +145,8 @@ void item_screen_open(Item *item, uint8_t slot)
 
     lv_obj_add_event_cb(view.screen, gesture_event, LV_EVENT_GESTURE, NULL);
 
-    back_bar_create(view.screen, item->getLabel());
+    /* Always a chevron: there is always a page under an item screen. */
+    ui_back_bar(view.screen, LV_SYMBOL_LEFT, item->getLabel(), back_event);
 
     view.body = item_screen_container(view.screen);
     lv_obj_set_size(view.body, lv_pct(100),
@@ -234,7 +166,12 @@ void item_screen_open(Item *item, uint8_t slot)
     ui_motion_enter(view.body);
 }
 
-void item_screen_close(void)
+/* Take the open screen down. The two callers differ only in whether this is
+ * something the user did, and so in whether it makes a sound.
+ *
+ * ui_screen_pop() owns the delete -- close() is reached from an event on one
+ * of the screen's own descendants, which has to outlive its handler. */
+static void view_teardown(void)
 {
     if (view.screen == NULL)
         return;
@@ -242,26 +179,26 @@ void item_screen_close(void)
     if (view.dsc != NULL && view.dsc->destroy != NULL)
         view.dsc->destroy(&view);
 
-    /* ui_screen_pop() owns the delete -- this is reached from an event on one of
-     * the screen's own descendants. */
     ui_screen_pop(0);
 
     memset(&view, 0, sizeof(view));
+}
+
+void item_screen_close(void)
+{
+    if (view.screen == NULL)
+        return;
+
+    view_teardown();
 
     BEEPER_EVENT_WINDOW_CLOSE();
 }
 
 void item_screen_dismiss(void)
 {
-    if (view.screen == NULL)
-        return;
-
-    if (view.dsc != NULL && view.dsc->destroy != NULL)
-        view.dsc->destroy(&view);
-
-    ui_screen_pop(0);
-
-    memset(&view, 0, sizeof(view));
+    /* No sound: a theme change is not a gesture, and the screen is about to
+     * be built again from nothing. */
+    view_teardown();
 }
 
 void item_screen_refresh(uint8_t slot)

@@ -8,19 +8,13 @@
 #include "ui/ui_beep.hpp"
 #include "ui/ui_motion.hpp"
 #include "ui/ui_settings.hpp"
+#include "ui/ui_widgets.hpp"
 
 lv_obj_t *ui_frame_container(lv_obj_t *parent)
 {
-    lv_obj_t *obj = lv_obj_create(parent);
-
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_set_style_pad_gap(obj, 0, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    lv_obj_set_style_radius(obj, 0, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
-
-    return obj;
+    /* The shared one. Kept under this name because it is what the frame
+     * interface offers its implementations. */
+    return ui_plain_container(parent);
 }
 
 static void settings_event(lv_event_t *e)

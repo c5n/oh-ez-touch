@@ -11,6 +11,7 @@
 #include "ui_screen.hpp"
 #include "ui_motion.hpp"
 #include "ui_style.hpp"
+#include "ui_widgets.hpp"
 
 #include "lodepng/lodepng.h"
 #include "time.h"
@@ -228,22 +229,6 @@ static void set_label_from_pattern(lv_obj_t *label, Item *item, float value)
         lv_label_set_text_fmt(label, pattern, (uint16_t)value);
     else
         lv_label_set_text_fmt(label, pattern, value);
-}
-
-/* A plain container: v9's lv_obj_create() comes with theme background, border,
- * radius, padding and scrolling, none of which the v7 lv_cont it replaces had. */
-static lv_obj_t *plain_container(lv_obj_t *parent)
-{
-    lv_obj_t *obj = lv_obj_create(parent);
-
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_set_style_pad_gap(obj, 0, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    lv_obj_set_style_radius(obj, 0, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
-
-    return obj;
 }
 
 static void event_handler(lv_event_t *e)
@@ -607,7 +592,7 @@ static void chrome_create(void)
 
     lv_area_t a = frame->content_area();
 
-    content = plain_container(ui_screen_root());
+    content = ui_plain_container(ui_screen_root());
     lv_obj_set_pos(content, a.x1, a.y1);
     lv_obj_set_size(content, lv_area_get_width(&a), lv_area_get_height(&a));
 

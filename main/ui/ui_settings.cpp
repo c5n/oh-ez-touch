@@ -31,6 +31,7 @@
 #include "ui_screen.hpp"
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
+#include "ui_widgets.hpp"
 #include "version.h"
 #include "net/wlan.hpp"
 #include "debug.h"
@@ -62,7 +63,7 @@
  * screens wear, and rows sized for the finger this panel is operated with.
  * ROW_HEIGHT was 30, which is four and a half millimetres on a 167 dpi panel;
  * 48 is a little over seven. */
-#define BAR_HEIGHT    56
+#define BAR_HEIGHT    UI_BAR_H
 #define FOOTER_HEIGHT 40
 #define ROW_HEIGHT    48
 
@@ -284,65 +285,58 @@ static void keyboard_cancel_event(lv_event_t *e);
 
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f);
 
+/* Forget every pointer into the widget tree.
+ *
+ * Called wherever that tree stops existing: both screen_show_*() begin with
+ * lv_obj_clean(), which deletes the lot, and ui_settings_close() deletes the
+ * screen itself. Every one of these is read by something that runs from the
+ * loop -- ui_settings_loop() refreshes the WLAN state line and polls the scan
+ * -- so a pointer left behind here is one those go on writing to after the
+ * object is gone. It was written out three times, and the copy in
+ * ui_settings_close() had drifted into a different order. */
+static void widget_refs_clear(void)
+{
+    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
+    {
+        tab_rows[i] = NULL;
+        tab_status[i] = NULL;
+    }
+
+    wlan_state_label = NULL;
+    wlan_ssid_row = NULL;
+    wlan_psk_row = NULL;
+    wlan_scan_list = NULL;
+}
+
 /* ---------------------------------------------------------------- builders */
-
-/* v9's lv_obj_create() comes with theme background, border, radius, padding and
- * scrolling, none of which a layout container wants. openhab_ui.cpp has the
- * same helper; it is six lines, and neither file's copy is worth exporting. */
-static lv_obj_t *plain_container(lv_obj_t *parent)
-{
-    lv_obj_t *obj = lv_obj_create(parent);
-
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_set_style_pad_gap(obj, 0, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    lv_obj_set_style_radius(obj, 0, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_TRANSP, 0);
-
-    return obj;
-}
-
-static lv_obj_t *button_create(lv_obj_t *parent, const char *text)
-{
-    lv_obj_t *btn = lv_button_create(parent);
-
-    lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
-    lv_obj_add_style(btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
-    lv_obj_add_style(btn, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
-    ui_motion_pressable(btn);
-    lv_obj_set_size(btn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-
-    lv_obj_t *label = lv_label_create(btn);
-    lv_label_set_text(label, text);
-    lv_obj_center(label);
-
-    return btn;
-}
 
 /* A settings row: full width, the name on the left and the current value on the
  * right. Both a button and a two-column layout, so that the whole row is the
- * touch target -- at 30 px tall there is no room for a separate control. */
+ * touch target -- at 30 px tall there is no room for a separate control.
+ *
+ * Built on ui_themed_button() rather than on a bare lv_button, so that the row
+ * and the buttons in the footer cannot disagree about what a press looks like.
+ * The label that helper centres becomes the left column: a child of a parent
+ * with a layout is positioned by the layout, so its own alignment is simply
+ * not read. */
 static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
 {
-    lv_obj_t *row = lv_button_create(parent);
+    lv_obj_t *row = ui_themed_button(parent, name);
 
-    lv_obj_add_style(row, &ui_style_btn, LV_PART_MAIN);
-    lv_obj_add_style(row, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
-    lv_obj_add_style(row, &ui_style_btn_checked, ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
-    ui_motion_pressable(row);
     lv_obj_set_size(row, lv_pct(100), ROW_HEIGHT);
     lv_obj_set_style_pad_hor(row, 6, 0);
     lv_obj_set_style_pad_ver(row, 0, 0);
     lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_t *name_label = lv_label_create(row);
-    lv_label_set_text(name_label, name);
+    lv_obj_t *name_label = lv_obj_get_child(row, 0);
+
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
     lv_obj_set_flex_grow(name_label, 1);
 
+    /* Child 1, which is what row_set_value() writes to. */
     lv_obj_t *value_label = lv_label_create(row);
+
     lv_label_set_text(value_label, "");
     lv_label_set_long_mode(value_label, LV_LABEL_LONG_DOT);
     /* Capped rather than content-sized: a 31 character item name would
@@ -464,15 +458,15 @@ static void confirm_restart_open(const char *text)
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(label, text);
 
-    lv_obj_t *buttons = plain_container(root);
+    lv_obj_t *buttons = ui_plain_container(root);
     lv_obj_set_size(buttons, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(buttons, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(buttons, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_add_event_cb(button_create(buttons, "Restart"), confirm_restart_event,
+    lv_obj_add_event_cb(ui_themed_button(buttons, "Restart"), confirm_restart_event,
                         LV_EVENT_CLICKED, NULL);
-    lv_obj_add_event_cb(button_create(buttons, "Later"), confirm_dismiss_event,
+    lv_obj_add_event_cb(ui_themed_button(buttons, "Later"), confirm_dismiss_event,
                         LV_EVENT_CLICKED, NULL);
 }
 
@@ -548,7 +542,7 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(root, 3, 0);
 
-    lv_obj_t *title_row = plain_container(root);
+    lv_obj_t *title_row = ui_plain_container(root);
     lv_obj_set_size(title_row, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
@@ -560,7 +554,7 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     lv_obj_add_style(label, &ui_style_label, LV_PART_MAIN);
     lv_obj_set_flex_grow(label, 1);
 
-    lv_obj_add_event_cb(button_create(title_row, LV_SYMBOL_CLOSE), keyboard_cancel_event,
+    lv_obj_add_event_cb(ui_themed_button(title_row, LV_SYMBOL_CLOSE), keyboard_cancel_event,
                         LV_EVENT_CLICKED, NULL);
 
     overlay_textarea = lv_textarea_create(root);
@@ -1008,7 +1002,7 @@ static void wlan_tab_build(lv_obj_t *rows)
     row_set_value(wlan_psk_row, (wlan_psk_buf[0] == '\0') ? "--" : "*****");
     lv_obj_add_event_cb(wlan_psk_row, wlan_psk_row_event, LV_EVENT_CLICKED, NULL);
 
-    wlan_scan_list = plain_container(rows);
+    wlan_scan_list = ui_plain_container(rows);
     lv_obj_set_size(wlan_scan_list, lv_pct(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(wlan_scan_list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_row(wlan_scan_list, 2, 0);
@@ -1163,37 +1157,12 @@ static void back_event(lv_event_t *e)
         screen_show_menu(menu_of(current_tab));
 }
 
+/* A close glyph at the root of the index, a chevron everywhere else: the bar
+ * shows where back actually goes, and from the root that is out. */
 static void back_bar_create(const char *title)
 {
-    lv_obj_t *bar = lv_obj_create(screen);
-
-    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(bar, lv_pct(100), BAR_HEIGHT);
-    lv_obj_set_pos(bar, 0, 0);
-    lv_obj_add_style(bar, &ui_style_win_header, LV_PART_MAIN);
-    lv_obj_set_style_radius(bar, 0, 0);
-    lv_obj_set_style_pad_hor(bar, 10, 0);
-    lv_obj_set_style_pad_ver(bar, 0, 0);
-    lv_obj_set_style_pad_column(bar, 10, 0);
-    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_add_flag(bar, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(bar, back_event, LV_EVENT_CLICKED, NULL);
-    ui_motion_pressable(bar);
-
-    lv_obj_t *chevron = lv_label_create(bar);
-
-    lv_label_set_text(chevron,
-                      (current_tab == MENU_ROOT) ? LV_SYMBOL_CLOSE : LV_SYMBOL_LEFT);
-    lv_obj_remove_flag(chevron, LV_OBJ_FLAG_CLICKABLE);
-
-    lv_obj_t *label = lv_label_create(bar);
-
-    lv_label_set_text(label, title);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(label, 1);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    ui_back_bar(screen, (current_tab == MENU_ROOT) ? LV_SYMBOL_CLOSE : LV_SYMBOL_LEFT,
+                title, back_event);
 }
 
 static void index_event(lv_event_t *e)
@@ -1222,23 +1191,14 @@ static void screen_show_menu(uint8_t menu)
     lv_obj_clean(screen);
     current_tab = menu;
 
-    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
-    {
-        tab_rows[i] = NULL;
-        tab_status[i] = NULL;
-    }
-
-    wlan_state_label = NULL;
-    wlan_ssid_row = NULL;
-    wlan_psk_row = NULL;
-    wlan_scan_list = NULL;
+    widget_refs_clear();
 
     back_bar_create(m->title);
 
     int32_t hres = lv_display_get_horizontal_resolution(NULL);
     int32_t vres = lv_display_get_vertical_resolution(NULL);
 
-    lv_obj_t *grid = plain_container(screen);
+    lv_obj_t *grid = ui_plain_container(screen);
 
     lv_obj_set_pos(grid, INDEX_GAP, BAR_HEIGHT + INDEX_GAP);
     lv_obj_set_size(grid, hres - 2 * INDEX_GAP, vres - BAR_HEIGHT - 2 * INDEX_GAP);
@@ -1259,8 +1219,8 @@ static void screen_show_menu(uint8_t menu)
 
         /* An empty label rather than NULL: lv_label_set_text(NULL) leaves the
          * widget's default "Text" behind. The two labels below are the
-         * content; this one only exists because button_create() makes it. */
-        lv_obj_t *cell = button_create(grid, "");
+         * content; this one only exists because ui_themed_button() makes it. */
+        lv_obj_t *cell = ui_themed_button(grid, "");
 
         lv_obj_set_pos(cell, r.x, r.y);
         lv_obj_set_size(cell, r.w, r.h);
@@ -1293,22 +1253,13 @@ static void screen_show_section(uint8_t tab)
     lv_obj_clean(screen);
     current_tab = tab;
 
-    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
-    {
-        tab_rows[i] = NULL;
-        tab_status[i] = NULL;
-    }
-
-    wlan_state_label = NULL;
-    wlan_ssid_row = NULL;
-    wlan_psk_row = NULL;
-    wlan_scan_list = NULL;
+    widget_refs_clear();
 
     back_bar_create(target_title(tab));
 
     int32_t vres = lv_display_get_vertical_resolution(NULL);
 
-    lv_obj_t *rows = plain_container(screen);
+    lv_obj_t *rows = ui_plain_container(screen);
 
     lv_obj_set_pos(rows, 0, BAR_HEIGHT);
     lv_obj_set_size(rows, lv_pct(100), vres - BAR_HEIGHT - FOOTER_HEIGHT);
@@ -1351,18 +1302,18 @@ static void screen_show_section(uint8_t tab)
 
     if (tab == SETTINGS_TAB_INFO)
     {
-        lv_obj_add_event_cb(button_create(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
+        lv_obj_add_event_cb(ui_themed_button(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
                             NULL);
     }
     else if (tab == SETTINGS_TAB_WLAN)
     {
-        lv_obj_add_event_cb(button_create(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
-        lv_obj_add_event_cb(button_create(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
+        lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
                             NULL);
     }
     else
     {
-        lv_obj_add_event_cb(button_create(footer, "Save"), save_event, LV_EVENT_CLICKED,
+        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)tab);
     }
 
@@ -1448,16 +1399,8 @@ void ui_settings_close(void)
     screen = NULL;
     current_tab = SETTINGS_TAB_COUNT;
     rebuild_pending = false;
-    wlan_state_label = NULL;
-    wlan_ssid_row = NULL;
-    wlan_psk_row = NULL;
-    wlan_scan_list = NULL;
 
-    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
-    {
-        tab_rows[i] = NULL;
-        tab_status[i] = NULL;
-    }
+    widget_refs_clear();
 
     BEEPER_EVENT_WINDOW_CLOSE();
 }

@@ -2,6 +2,7 @@
 #define ITEM_SCREEN_HPP
 
 #include "openhab/openhab_connector.hpp"
+#include "ui/ui_widgets.hpp"
 
 #include <lvgl.h>
 #include <stdint.h>
@@ -102,8 +103,9 @@ void item_screen_glyph(lv_obj_t *btn);
  * 2.4" panel and 7.8 mm on the 2.8". A fingertip is nearer 9. */
 #define ITEM_TAP_MIN 44
 
-/* The back bar across the top of every item screen. */
-#define ITEM_BAR_H 56
+/* The back bar across the top of every item screen. The settings screen wears
+ * the same one; ui_widgets.hpp is where it and its height live. */
+#define ITEM_BAR_H UI_BAR_H
 
 /* What is left underneath it, which is all any builder gets: 240 - 56. Worth
  * stating as a number, because it is small enough that every layout below has
