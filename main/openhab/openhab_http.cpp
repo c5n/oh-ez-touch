@@ -294,12 +294,20 @@ ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool trunc
     return http_get_attempt(url, buf, buf_size, truncate);
 }
 
-static int http_post_attempt(const char *url, const char *body)
+/* How a POST attempt ended, which is not the same question as whether it
+ * succeeded: only a transport failure is worth another go, and the two used
+ * to be the same -1. */
+enum post_result_e
+{
+    POST_OK = 0,
+    POST_TRANSPORT_FAILED, /* nothing was answered; a retry may work */
+    POST_REFUSED,          /* the server answered, and said no       */
+};
+
+static enum post_result_e http_post_attempt(const char *url, const char *body)
 {
     if (session_prepare(url, HTTP_METHOD_POST) == false)
-        return -1;
-
-    int retval = -1;
+        return POST_REFUSED;
 
     esp_http_client_set_header(session, "Content-Type", "text/plain");
     esp_http_client_set_post_field(session, body, (int)strlen(body));
@@ -314,30 +322,40 @@ static int http_post_attempt(const char *url, const char *body)
     {
         ESP_LOGE(TAG, "POST %s: %s", url, esp_err_to_name(err));
         session_disconnect();
-        return -1;
+        return POST_TRANSPORT_FAILED;
     }
 
     int status = esp_http_client_get_status_code(session);
 
-    if (status >= 200 && status < 300)
-        retval = 0;
-    else
-        ESP_LOGE(TAG, "POST %s: HTTP %d", url, status);
-
     session_connected = esp_http_client_is_persistent_connection(session);
 
-    return retval;
+    if (status >= 200 && status < 300)
+        return POST_OK;
+
+    ESP_LOGE(TAG, "POST %s: HTTP %d", url, status);
+
+    return POST_REFUSED;
 }
 
 int openhab_http_post_text(const char *url, const char *body)
 {
-    bool reused = session_connected;
-    int retval = http_post_attempt(url, body);
+    bool               reused = session_connected;
+    enum post_result_e result = http_post_attempt(url, body);
 
-    if (retval == 0 || reused == false)
-        return retval;
+    /* Only a transport failure on a reused connection is retried, and for the
+     * one reason the GET above is: a keep-alive the server has since hung up
+     * does not say so until the read.
+     *
+     * A status is not that. openHAB answering 404 for an item that has been
+     * renamed, or 400 for a command an item does not accept, will answer the
+     * same way a second time -- so retrying doubles the traffic and the log
+     * for every tap on a broken tile, and it did, because both cases came
+     * back as -1. */
+    if (result == POST_TRANSPORT_FAILED && reused == true)
+    {
+        ESP_LOGD(TAG, "POST %s: retrying on a new connection", url);
+        result = http_post_attempt(url, body);
+    }
 
-    ESP_LOGD(TAG, "POST %s: retrying on a new connection", url);
-
-    return http_post_attempt(url, body);
+    return (result == POST_OK) ? 0 : -1;
 }
