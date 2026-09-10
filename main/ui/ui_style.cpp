@@ -32,6 +32,9 @@ lv_style_t ui_style_info_error;
  * they are geometry, not theme. */
 #define BORDER_THIN  (LV_DPI_DEF / 50 >= 1 ? LV_DPI_DEF / 50 : 1)
 #define RADIUS_TILE  (LV_DPI_DEF / 15)
+/* Slate's cards. Generous on purpose: at 96x93 an 18 px radius is what makes
+ * the shape read as a sheet resting on the ground rather than as a button. */
+#define RADIUS_CARD  18
 #define RADIUS_PANEL (LV_DPI_DEF / 20)
 #define RADIUS_LCARS (LV_DPI_DEF / 6)
 #define PAD_TILE     (LV_DPI_DEF / 20)
@@ -104,60 +107,68 @@ lv_style_t ui_style_info_error;
  * main(GREY) -- read out of the theme, not guessed. */
 static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
 
-    /* ---------------------------------------------------------------- Default
-     * The blue-on-silver look the UI was born with: LV_THEME_DEFAULT_COLOR_PRIMARY
-     * was LV_COLOR_MAKE(0x00, 0x80, 0xFF) and the borders were a near-black navy. */
+    /* ---------------------------------------------------- Default -- "Slate"
+     * Warm paper, flat white cards, and exactly one saturated colour on the
+     * screen -- a deep teal that means "this is on". The blue-on-silver the UI
+     * was born with had a gradient on every surface and a marker in four
+     * different places; what carries state here is a 4 px shelf along the
+     * bottom edge of the card, which is a border side rather than an object.
+     *
+     * The link and active markers keep their names but stop being all-round
+     * borders: LV_BORDER_SIDE_BOTTOM is the shelf, and it follows the 18 px
+     * radius round as a stroked arc, which is what makes the card look like it
+     * is resting on it. */
     {
         UI_THEME_NAME_DEFAULT " Day", UI_THEME_DEFAULT, false,
-        /* screen       */ SURF(0xF5F5F5, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x616161),
-        /* tile         */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x000000, 2, OP30, EK, RADIUS_TILE, 0x000000),
-        /* tile_pressed */ SURF(CK, CK, EK, MK, CK, MK, MK, EK, MK, 0xC0C0C0),
+        /* screen       */ SURF(0xF2F0EC, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x6A6E76),
+        /* tile         */ SURF(0xFFFFFF, CK, NON, FULLO, 0xE2DED7, 1, FULLO, EK, RADIUS_CARD, 0x1B1D21),
+        /* tile_pressed */ SURF(0xE8E4DC, CK, NON, MK, CK, MK, MK, EK, MK, 0x1B1D21),
         /* window       */ SURF(0xFFFFFF, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
-        /* header       */ SURF(0x0080FF, CK, NON, FULLO, CK, 0, MK, EK, 5, 0xFFFFFF),
-        /* btn          */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_TILE, 0x000000),
-        /* btn_checked  */ SURF(CK, CK, EK, MK, CK, MK, MK, EK, MK, 0xC0C0C0),
-        /* slider       */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* slider_indic */ SURF(0x9E9E9E, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
-        /* knob         */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* cell         */ SURF(0xE0E0E0, CK, EK, FULLO, 0xC0C0C0, 1, MK, EK, MK, CK),
-        /* swatch       */ SURF(CK, CK, EK, FULLO, 0x000000, 1, MK, EK, MK, CK),
-        /* info         */ SURF(0xC0C0C0, CK, EK, FULLO, 0x000000, 4, MK, EK, MK, 0x000000),
-        /* accent       */ 0x0080FF,
-        /* link         */ MARK(0x2196F3, 4, FULLO, EK),
-        /* active       */ MARK(CK, 4, MK, EK),
-        /* info warn/err*/ 0xFFEB3B, 0xF44336,
-        /* icon         */ 0x000000, 0, 80, 140, 50,
+        /* header       */ SURF(0x0B7A75, CK, NON, FULLO, CK, 0, MK, EK, 0, 0xFFFFFF),
+        /* btn          */ SURF(0xFFFFFF, CK, NON, FULLO, 0xE2DED7, 1, FULLO, EK, RADIUS_PANEL, 0x1B1D21),
+        /* btn_checked  */ SURF(0x0B7A75, CK, NON, MK, CK, MK, MK, EK, MK, 0xFFFFFF),
+        /* slider       */ SURF(0xE8E4DC, CK, NON, FULLO, 0xD5D0C6, 1, FULLO, EK, RADIUS_PANEL, CK),
+        /* slider_indic */ SURF(0x0B7A75, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
+        /* knob         */ SURF(0x1B1D21, CK, NON, FULLO, CK, 0, MK, EK, 2, CK),
+        /* cell         */ SURF(0xFFFFFF, CK, EK, FULLO, 0xE2DED7, 1, MK, EK, MK, CK),
+        /* swatch       */ SURF(CK, CK, EK, FULLO, 0xC9C4BB, 1, MK, EK, RADIUS_PANEL, CK),
+        /* info         */ SURF(0xFFFFFF, CK, EK, FULLO, 0x0B7A75, 3, MK, EK, RADIUS_PANEL, 0x1B1D21),
+        /* accent       */ 0x0B7A75,
+        /* link         */ MARK(0x4A4E57, 4, FULLO, BOT),
+        /* active       */ MARK(0x0B7A75, 4, FULLO, BOT),
+        /* info warn/err*/ 0xB4531F, 0xB3261E,
+        /* icon         */ 0x000000, 0, 22, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
     },
     {
         UI_THEME_NAME_DEFAULT " Night", UI_THEME_DEFAULT, true,
-        /* screen       */ SURF(0x101418, CK, NON, FULLO, CK, MK, MK, EK, MK, 0xB8B0A4),
-        /* tile         */ SURF(0x232A31, 0x161B20, VER, FULLO, 0xC0C0C0, 2, OP30, EK, RADIUS_TILE, 0xE8E0D4),
-        /* tile_pressed */ SURF(0x1E3A4C, 0x2A5670, VER, MK, CK, MK, MK, EK, MK, 0xE8E0D4),
-        /* window       */ SURF(0x14191E, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
-        /* header       */ SURF(0x2A6E96, CK, NON, FULLO, CK, 0, MK, EK, 5, 0xF0E8DC),
-        /* btn          */ SURF(0x232A31, 0x161B20, VER, FULLO, 0x8A8276, BORDER_THIN, OP70, EK, RADIUS_TILE, 0xE8E0D4),
-        /* btn_checked  */ SURF(0x1E3A4C, 0x2A5670, VER, MK, CK, MK, MK, EK, MK, 0xF0E8DC),
-        /* slider       */ SURF(0x1A2026, CK, NON, FULLO, 0x39424B, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* slider_indic */ SURF(0x4A90B8, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
-        /* knob         */ SURF(0x39424B, CK, NON, FULLO, 0x8A8276, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* cell         */ SURF(0x1A2026, CK, EK, FULLO, 0x39424B, 1, MK, EK, MK, CK),
-        /* swatch       */ SURF(CK, CK, EK, FULLO, 0x8A8276, 1, MK, EK, MK, CK),
-        /* info         */ SURF(0x2A3138, CK, EK, FULLO, 0x8A8276, 4, MK, EK, MK, 0xE8E0D4),
-        /* accent       */ 0x2A6E96,
-        /* link         */ MARK(0x4A90B8, 4, FULLO, EK),
-        /* active       */ MARK(0x8A8276, 4, FULLO, EK),
-        /* info warn/err*/ 0x8A6A1E, 0x8A2A22,
-        /* icon         */ 0x8A8276, 255, 110, 140, 50,
+        /* screen       */ SURF(0x14161A, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x8A9099),
+        /* tile         */ SURF(0x1E2126, CK, NON, FULLO, 0x2C3037, 1, FULLO, EK, RADIUS_CARD, 0xE8E4DC),
+        /* tile_pressed */ SURF(0x262A31, CK, NON, MK, CK, MK, MK, EK, MK, 0xFFFFFF),
+        /* window       */ SURF(0x14161A, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
+        /* header       */ SURF(0x2A6B64, CK, NON, FULLO, CK, 0, MK, EK, 0, 0xE8E4DC),
+        /* btn          */ SURF(0x1E2126, CK, NON, FULLO, 0x2C3037, 1, FULLO, EK, RADIUS_PANEL, 0xE8E4DC),
+        /* btn_checked  */ SURF(0x2A6B64, CK, NON, MK, CK, MK, MK, EK, MK, 0xFFFFFF),
+        /* slider       */ SURF(0x11141A, CK, NON, FULLO, 0x2C3037, 1, FULLO, EK, RADIUS_PANEL, CK),
+        /* slider_indic */ SURF(0x48C0B0, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
+        /* knob         */ SURF(0xE8E4DC, CK, NON, FULLO, CK, 0, MK, EK, 2, CK),
+        /* cell         */ SURF(0x1E2126, CK, EK, FULLO, 0x2C3037, 1, MK, EK, MK, CK),
+        /* swatch       */ SURF(CK, CK, EK, FULLO, 0x383D45, 1, MK, EK, RADIUS_PANEL, CK),
+        /* info         */ SURF(0x1E2126, CK, EK, FULLO, 0x48C0B0, 3, MK, EK, RADIUS_PANEL, 0xE8E4DC),
+        /* accent       */ 0x48C0B0,
+        /* link         */ MARK(0x5A616B, 4, FULLO, BOT),
+        /* active       */ MARK(0x48C0B0, 4, FULLO, BOT),
+        /* info warn/err*/ 0xC4832E, 0xD9584C,
+        /* icon         */ 0xE8E4DC, 255, 30, 150, 55,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
-    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
+        /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
     },
 
     /* ------------------------------------------------------------------ LCARS
