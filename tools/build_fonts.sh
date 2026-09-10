@@ -82,7 +82,7 @@ fetch()
 # also carries the ten a control can be: transport, plus, minus, up, down and
 # the back chevron. Without them those pads render a placeholder box.
 FA_FULL="61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62189,62212,62810,63426,63650"
-#            eye    plus   minus  prev   play   pause  stop   next   left   up     down   thermo
+#         eye   nline plus  minus prev  play  pause stop  next  left  up    down
 FA_LARGE="61550,63650,61543,61544,61512,61515,61516,61517,61521,61523,61559,61560"
 
 [ -f "$FA" ] || { echo "FontAwesome subset not found: $FA (run 'git submodule update --init' once)" >&2; exit 1; }

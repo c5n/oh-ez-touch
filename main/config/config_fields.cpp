@@ -54,7 +54,12 @@ const struct config_field_s config_fields[] = {
     SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, -12, 14),
     CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, 0),
 
-    SEC("Appearance", SETTINGS_TAB_OTHER),
+    SEC("LCD Backlight Dimming", SETTINGS_TAB_OTHER),
+    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
+    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
+    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
+
+    SEC("Appearance", SETTINGS_TAB_THEME),
     /* The option names come straight from ui_theme.hpp, so the dropdown, the
      * config file and the simulator's environment variables cannot drift
      * apart. Unlike the AutoConnect version this needs no 1-based index
@@ -65,12 +70,7 @@ const struct config_field_s config_fields[] = {
     UINT("night_from", "Night from [h]", ui.night_from, 0, 23),
     UINT("night_to", "Night to [h]", ui.night_to, 0, 23),
 
-    SEC("LCD Backlight Dimming", SETTINGS_TAB_OTHER),
-    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
-    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
-    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
-
-    SEC("Beeper", SETTINGS_TAB_OTHER),
+    SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, 0),
 
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
@@ -98,9 +98,8 @@ const struct config_field_s config_fields[] = {
     CHK("bme_use", "Use BME280 sensor", sensors.bme280.use, SETTINGS_F_RESTART),
     SINT("bme_interval", "Update interval [s]", sensors.bme280.interval, 1, 86400),
 
-    /* On the Sensors tab rather than a tab of its own. A beacon scanner is a
-     * presence sensor, which is what this tab is for, and six tab buttons is
-     * already what fits across 320 px. */
+    /* On the Sensors page rather than one of its own: a beacon scanner is a
+     * presence sensor, which is what that page is for. */
     SEC("Bluetooth LE Beacons", SETTINGS_TAB_SENSORS),
     CHK("ble_use", "Scan for BLE beacons", ble.enabled, SETTINGS_F_RESTART),
     SINT("ble_interval", "Scan every [s]", ble.interval, 5, 3600),

@@ -238,9 +238,9 @@ Off by default, for the reason the BME280 invents nothing on the host: these
 readings are published to a broker, and a simulator that quietly wrote fiction
 into someone's presence history would be worse than one that did nothing.
 
-`OHEZ_SETTINGS` opens the settings screen at boot, on the section it names --
-`wlan`, `openhab`, `mqtt`, `sensors`, `other`, `info`, or `index` for the list
-of all six:
+`OHEZ_SETTINGS` opens the settings screen at boot, on the page it names --
+a section (`theme`, `audio`, `other`, `info`, `wlan`, `openhab`, `mqtt`,
+`sensors`) or a menu (`settings`, also spelled `index`, and `system`):
 
 ```bash
 OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
@@ -498,24 +498,29 @@ Route            | Purpose
 None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
 
 #### Settings on the screen
-Touching the upper bar opens the settings screen. It has six tabs, and the
-buttons across the top carry a symbol each rather than a name -- six words do
-not fit 320 pixels -- so the bar along the bottom names the tab you are on. That
-bar also holds the tab's buttons and the **X** that leaves the screen; there is
-no title bar, so that all of the 240 pixels that are not chrome go to settings.
+Touching the upper bar opens the settings screen. It is a menu of large cells
+rather than the bar of six symbol-sized tabs it used to be: each cell carries a
+pictogram and its name, so nothing has to be recognised from the symbol alone.
+Touch one to open that section; the bar across the top of every page is
+entirely the way back, and from the first menu it is the **X** that closes the
+screen. A section's own buttons -- **Save**, and **Scan** or **Restart** where
+they apply -- are in a bar along the bottom.
 
-Tab                     | Contents
+Page                    | Contents
 ----------------------- | --------
-WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
-openHAB (house symbol)  | Host, port and sitemap
-MQTT (upload symbol)    | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
-Sensors (eye symbol)    | The BME280 rows, and the BLE beacon scanner
-Other (gear symbol)     | Hostname, NTP, appearance, backlight and beeper
+Theme (eye symbol)      | Theme family, and the night variant and its schedule
+Audio (speaker symbol)  | The beeper
+System (folder symbol)  | A menu of the four below, which are set once when the panel is installed and then left alone
+&nbsp;&nbsp;WLAN                    | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
+&nbsp;&nbsp;openHAB (house symbol)  | Host, port and sitemap
+&nbsp;&nbsp;MQTT (upload symbol)    | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
+&nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner
+Other (gear symbol)     | Hostname, NTP and the backlight
 Info (list symbol)      | The Systeminfo table -- uptime, version, and the IP your DHCP server handed out -- and a **Restart** button
 
 Touching a row opens an on-screen keyboard for the text and number settings, and
 toggles or steps the switches and the drop-down-style ones in place. Nothing is
-stored until you press **Save** on that tab, so leaving the screen throws away
+stored until you press **Save** on that page, so leaving the screen throws away
 whatever you were in the middle of typing.
 
 If a setting you changed is one of the two that are only read while the device
@@ -547,6 +552,14 @@ Host            | pool.ntp.org  | Host which serves the time. e.g. pool.ntp.org 
 GMT Offset      | 1             | Offset of your timezone from Greenwich Mean Time
 Daylight Saving | 0             | Daylight saving +1 hour
 
+##### LCD Backlight Dimming
+
+Setting           | Default     | Description
+----------------- | ----------- | -------------
+Activity timeout  | 60          | After the timeout defined in seconds since last touch the display will dim down
+Normal Brightness | 100         | Normal brightness level in percent
+Dim Brightness    | 40          | Dim brightness level in percent
+
 ##### Appearance
 
 Setting         | Default       | Description
@@ -559,14 +572,6 @@ Night to        | 6             | Hour the night variant ends, when night mode i
 The theme takes effect as soon as it is saved, on the screen as well as in the
 browser. ```auto``` needs the clock, so it only starts working once NTP has
 answered.
-
-##### LCD Backlight Dimming
-
-Setting           | Default     | Description
------------------ | ----------- | -------------
-Activity timeout  | 60          | After the timeout defined in seconds since last touch the display will dim down
-Normal Brightness | 100         | Normal brightness level in percent
-Dim Brightness    | 40          | Dim brightness level in percent
 
 ##### Beeper
 

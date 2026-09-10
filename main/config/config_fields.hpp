@@ -45,13 +45,21 @@ enum config_field_kind_e
 
 /* Which page of the touch settings screen a section belongs to. A field
  * inherits the tab of the section row above it, so only SEC() rows carry one.
- * The order is the tab order. */
+ *
+ * This is an identity, not an order. It used to be both, because the screen
+ * was a bar of tabs and they appeared left to right in this order; the screen
+ * is now an index of menus, and ui_settings.cpp's menu tables say which page
+ * each of these is on and in what order. The rows of config_fields[] below
+ * are still grouped by tab, though -- that grouping is what the web form
+ * renders in. */
 enum settings_tab_e
 {
     SETTINGS_TAB_WLAN = 0,
     SETTINGS_TAB_OPENHAB,
     SETTINGS_TAB_MQTT,
     SETTINGS_TAB_SENSORS,
+    SETTINGS_TAB_THEME,
+    SETTINGS_TAB_AUDIO,
     SETTINGS_TAB_OTHER,
     SETTINGS_TAB_INFO,
     SETTINGS_TAB_COUNT

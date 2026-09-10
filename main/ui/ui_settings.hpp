@@ -17,17 +17,20 @@
 
 void ui_settings_setup(Config *config);
 
-/* Opens on the section named, or on the index when passed SETTINGS_TAB_COUNT
- * -- which is what "settings" with nothing more specific in mind means. */
+/* Opens on the section named, or on the root menu when passed
+ * SETTINGS_TAB_COUNT -- which is what "settings" with nothing more specific
+ * in mind means. The sections are spread over two menus; ui_settings.cpp says
+ * which, and opening one directly skips straight past them. */
 void ui_settings_open(enum settings_tab_e tab);
 void ui_settings_close(void);
 bool ui_settings_is_open(void);
 
-/* Rebuild the tabs in place, keeping the active one. For a theme change: the
- * shared styles carry the colours and fonts by themselves, but the tab bar and
- * the keyboard have local styles set at creation, and the Info table's cell
- * values are a snapshot. Called from openhab_ui.cpp's theme_apply_pending(),
- * next to where it rebuilds the tile page for the same reason. */
+/* Rebuild the screen in place, on whatever page it is showing. For a theme
+ * change: the shared styles carry the colours and fonts by themselves, but the
+ * bars and the keyboard have local styles set at creation, and the Info
+ * table's cell values are a snapshot. Called from openhab_ui.cpp's
+ * theme_apply_pending(), next to where it rebuilds the tile page for the same
+ * reason. */
 void ui_settings_rebuild(void);
 
 /* Polls the asynchronous access point scan and refreshes the WLAN state line.
@@ -36,11 +39,13 @@ void ui_settings_rebuild(void);
 void ui_settings_loop(void);
 
 #if CONFIG_IDF_TARGET_LINUX
-/* Open the screen at boot, on the tab OHEZ_SETTINGS names -- wlan, openhab,
- * sensors, other or info; anything else, including an unset variable, leaves it
- * closed. On the device the screen is reached by tapping the status bar, or
- * comes up by itself when there are no credentials, and the host has neither a
- * status bar worth tapping nor a radio:
+/* Open the screen at boot, on the page OHEZ_SETTINGS names -- any section
+ * (wlan, openhab, mqtt, sensors, theme, audio, other, info) or either menu
+ * (settings, which "index" also names, and system); anything else, including
+ * an unset variable, leaves it closed. On the device the screen is reached by
+ * tapping the status bar, or comes up by itself when there are no
+ * credentials, and the host has neither a status bar worth tapping nor a
+ * radio:
  *
  *   OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
  *

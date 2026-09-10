@@ -100,8 +100,8 @@ static config_item_t baseline;
 
 static lv_obj_t *screen = NULL;
 
-/* Which section is on screen, or SETTINGS_TAB_COUNT for the index. The tabview
- * used to answer this. */
+/* What is on screen: a section, or a menu (MENU_ROOT and above -- see the menu
+ * tables below). The tabview used to answer this. */
 static uint8_t current_tab = SETTINGS_TAB_COUNT;
 
 /* One per tab: the scrollable list of rows, and the footer's message label. */
@@ -146,24 +146,133 @@ static uint64_t wlan_state_refresh_deadline = 0;
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
 
-/* Symbols, not words: the tab bar is six buttons across 320 px, and the
- * condensed LCARS face at 16 px cannot fit "openHAB" or "Sensors" into 53 px
- * each -- it could not fit them into the 64 the five tabs before MQTT had. The
- * footer names the active tab instead, which is more legible than a clipped
- * label would be.
+/* A symbol and a name for every section.
  *
- * LV_SYMBOL_UPLOAD for MQTT, because a panel's side of a broker is almost all
- * publishing. It is one of the codepoints tools/build_fonts.sh puts in the 16
- * and 22 px faces; a symbol outside that list renders as a box. */
+ * The index cell carries both, so unlike the tab bar this replaced -- six
+ * pictograms across 320 px, each a sixth of the width, with the footer naming
+ * whichever one you had hit -- the symbol only has to distinguish, not
+ * explain. LV_SYMBOL_UPLOAD for MQTT, because a panel's side of a broker is
+ * almost all publishing; LV_SYMBOL_GPS for Sensors, which is both a
+ * thermometer and a beacon scanner and so is really about what is around the
+ * panel. Every one of these is a codepoint tools/build_fonts.sh puts in the
+ * 16 and 22 px faces; a symbol outside that list renders as a box. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
-    LV_SYMBOL_WIFI,     LV_SYMBOL_HOME,     LV_SYMBOL_UPLOAD,
-    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
+    LV_SYMBOL_WIFI,     LV_SYMBOL_HOME,       LV_SYMBOL_UPLOAD,   LV_SYMBOL_GPS,
+    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_SETTINGS, LV_SYMBOL_LIST};
 
 static const char *const tab_title[SETTINGS_TAB_COUNT] = {
-    "WLAN", "openHAB", "MQTT", "Sensors", "Other", "Info"};
+    "WLAN", "openHAB", "MQTT", "Sensors", "Theme", "Audio", "Other", "Info"};
 
-static void screen_show_index(void);
+/* ------------------------------------------------------------- the menus */
+
+/* Eight sections is more than an index of one screenful, so the index became
+ * two of them. A menu entry names either a section or another menu, in one
+ * uint8_t: below SETTINGS_TAB_COUNT it is an enum settings_tab_e, at or above
+ * it a menu. MENU_ROOT is deliberately equal to SETTINGS_TAB_COUNT, which is
+ * what ui_settings_open() has always taken to mean "the index".
+ *
+ * The four pages that configure something outside the panel -- the network it
+ * is on, the servers it talks to, the hardware it reads -- are behind System,
+ * because they are set once at installation and then never again. What is
+ * left on the root menu is what someone might actually walk over to change. */
+#define MENU_ROOT       ((uint8_t)(SETTINGS_TAB_COUNT + 0))
+#define MENU_SYSTEM     ((uint8_t)(SETTINGS_TAB_COUNT + 1))
+#define MENU_COUNT      2
+#define MENU_IS(target) ((target) >= SETTINGS_TAB_COUNT)
+#define MENU_AT(target) (&menus[(target) - SETTINGS_TAB_COUNT])
+
+static constexpr uint8_t menu_root_entries[] = {SETTINGS_TAB_THEME, SETTINGS_TAB_AUDIO,
+                                                MENU_SYSTEM, SETTINGS_TAB_OTHER,
+                                                SETTINGS_TAB_INFO};
+
+static constexpr uint8_t menu_system_entries[] = {SETTINGS_TAB_WLAN, SETTINGS_TAB_OPENHAB,
+                                                  SETTINGS_TAB_MQTT, SETTINGS_TAB_SENSORS};
+
+struct menu_s
+{
+    const char    *title;
+    const char    *symbol; /* how the menu above lists it; unused by the root */
+    const uint8_t *entries;
+    uint8_t        count;
+    uint8_t        parent; /* where back goes; the root's is itself, and closes */
+};
+
+#define ENTRIES(a) (a), (uint8_t)(sizeof(a) / sizeof((a)[0]))
+
+static constexpr struct menu_s menus[MENU_COUNT] = {
+    {"Settings", NULL, ENTRIES(menu_root_entries), MENU_ROOT},
+    /* A folder rather than a gear: it is the one cell on the root menu that
+     * opens another menu instead of a list of settings, and the pictogram is
+     * the only warning of that. */
+    {"System", LV_SYMBOL_DIRECTORY, ENTRIES(menu_system_entries), MENU_ROOT},
+};
+
+/* Every section on exactly one menu. Without this a tab added to
+ * settings_tab_e but to no menu would compile, build its rows, and be
+ * reachable from nothing -- and one listed twice would have a back bar that
+ * returns to whichever menu menu_of() finds first, not the one it came
+ * from. */
+static constexpr bool menus_list_every_section_once(void)
+{
+    for (uint8_t tab = 0; tab < SETTINGS_TAB_COUNT; tab++)
+    {
+        unsigned seen = 0;
+
+        for (size_t m = 0; m < MENU_COUNT; m++)
+            for (size_t e = 0; e < menus[m].count; e++)
+                if (menus[m].entries[e] == tab)
+                    seen++;
+
+        if (seen != 1)
+            return false;
+    }
+
+    return true;
+}
+
+static_assert(menus_list_every_section_once(),
+              "every settings section must be on exactly one menu");
+
+/* Which menu lists a section -- and so where its back bar goes. Derived
+ * rather than remembered: a stale "where I came from" is how a back button
+ * ends up somewhere the user has never been. */
+static uint8_t menu_of(uint8_t tab)
+{
+    for (uint8_t m = 0; m < MENU_COUNT; m++)
+        for (uint8_t e = 0; e < menus[m].count; e++)
+            if (menus[m].entries[e] == tab)
+                return (uint8_t)(SETTINGS_TAB_COUNT + m);
+
+    return MENU_ROOT;
+}
+
+static const char *target_title(uint8_t target)
+{
+    return MENU_IS(target) ? MENU_AT(target)->title : tab_title[target];
+}
+
+static const char *target_symbol(uint8_t target)
+{
+    const char *symbol = MENU_IS(target) ? MENU_AT(target)->symbol : tab_symbol[target];
+
+    /* The root menu has none, because nothing lists it. An empty string
+     * rather than its NULL, because lv_label_set_text(NULL) leaves LVGL's
+     * default "Text" on the cell. */
+    return (symbol != NULL) ? symbol : "";
+}
+
+static void screen_show_menu(uint8_t menu);
 static void screen_show_section(uint8_t tab);
+
+/* One entry point for both, so a caller does not have to know which it has. */
+static void screen_show_target(uint8_t target)
+{
+    if (MENU_IS(target))
+        screen_show_menu(target);
+    else
+        screen_show_section(target);
+}
+
 static void field_rows_build(uint8_t tab);
 static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
@@ -1037,15 +1146,18 @@ static void field_rows_build(uint8_t tab)
 
 /* The bar across the top of every settings screen, and all of it is the way
  * back -- the same affordance the item screens use, for the same reason. From
- * a section it returns to the index; from the index it closes. */
+ * a section it returns to the menu that lists it, from a menu to the menu
+ * above, and from the root menu it closes. */
 static void back_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    if (current_tab == SETTINGS_TAB_COUNT)
+    if (current_tab == MENU_ROOT)
         ui_settings_close();
+    else if (MENU_IS(current_tab))
+        screen_show_menu(MENU_AT(current_tab)->parent);
     else
-        screen_show_index();
+        screen_show_menu(menu_of(current_tab));
 }
 
 static void back_bar_create(const char *title)
@@ -1069,8 +1181,8 @@ static void back_bar_create(const char *title)
 
     lv_obj_t *chevron = lv_label_create(bar);
 
-    lv_label_set_text(chevron, (current_tab == SETTINGS_TAB_COUNT) ? LV_SYMBOL_CLOSE
-                                                                   : LV_SYMBOL_LEFT);
+    lv_label_set_text(chevron,
+                      (current_tab == MENU_ROOT) ? LV_SYMBOL_CLOSE : LV_SYMBOL_LEFT);
     lv_obj_remove_flag(chevron, LV_OBJ_FLAG_CLICKABLE);
 
     lv_obj_t *label = lv_label_create(bar);
@@ -1083,16 +1195,28 @@ static void back_bar_create(const char *title)
 
 static void index_event(lv_event_t *e)
 {
-    screen_show_section((uint8_t)(uintptr_t)lv_event_get_user_data(e));
+    screen_show_target((uint8_t)(uintptr_t)lv_event_get_user_data(e));
 }
 
-/* Six sections, all visible, all comfortably bigger than a fingertip. This
- * replaces a bar of six symbol-only tab buttons 32 px tall, which had to be
- * read as pictograms and hit as a sixth of the screen width. */
-static void screen_show_index(void)
+/* A menu: its entries, all visible at once, all comfortably bigger than a
+ * fingertip. This replaces a bar of six symbol-only tab buttons 32 px tall,
+ * which had to be read as pictograms and hit as a sixth of the screen width.
+ *
+ * The grid is three rows whatever the entry count, so stepping into System
+ * does not resize every cell under the finger that is already moving. Five
+ * entries therefore leave one hole and four leave two, which costs nothing:
+ * 53 px is already well over the 44 px floor. */
+static void screen_show_menu(uint8_t menu)
 {
+    const struct menu_s *m;
+
+    if (MENU_IS(menu) == false)
+        return;
+
+    m = MENU_AT(menu);
+
     lv_obj_clean(screen);
-    current_tab = SETTINGS_TAB_COUNT;
+    current_tab = menu;
 
     for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
     {
@@ -1105,7 +1229,7 @@ static void screen_show_index(void)
     wlan_psk_row = NULL;
     wlan_scan_list = NULL;
 
-    back_bar_create("Settings");
+    back_bar_create(m->title);
 
     int32_t hres = lv_display_get_horizontal_resolution(NULL);
     int32_t vres = lv_display_get_vertical_resolution(NULL);
@@ -1121,8 +1245,9 @@ static void screen_show_index(void)
     int16_t          area_w = (int16_t)(hres - 2 * INDEX_GAP);
     int16_t          area_h = (int16_t)(vres - BAR_HEIGHT - 2 * INDEX_GAP);
 
-    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
+    for (uint8_t i = 0; i < m->count; i++)
     {
+        uint8_t               target = m->entries[i];
         struct ui_geom_rect_s r;
 
         if (ui_grid_cell(&layout, area_w, area_h, i, &r) == false)
@@ -1136,16 +1261,16 @@ static void screen_show_index(void)
         lv_obj_set_pos(cell, r.x, r.y);
         lv_obj_set_size(cell, r.w, r.h);
         lv_obj_set_style_pad_all(cell, 4, 0);
-        lv_obj_add_event_cb(cell, index_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+        lv_obj_add_event_cb(cell, index_event, LV_EVENT_CLICKED, (void *)(uintptr_t)target);
 
         lv_obj_t *glyph = lv_label_create(cell);
 
-        lv_label_set_text(glyph, tab_symbol[i]);
+        lv_label_set_text(glyph, target_symbol(target));
         lv_obj_align(glyph, LV_ALIGN_LEFT_MID, 8, 0);
 
         lv_obj_t *name = lv_label_create(cell);
 
-        lv_label_set_text(name, tab_title[i]);
+        lv_label_set_text(name, target_title(target));
         lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
         lv_obj_set_width(name, r.w - 46);
         lv_obj_align(name, LV_ALIGN_LEFT_MID, 36, 0);
@@ -1175,7 +1300,7 @@ static void screen_show_section(uint8_t tab)
     wlan_psk_row = NULL;
     wlan_scan_list = NULL;
 
-    back_bar_create(tab_title[tab]);
+    back_bar_create(target_title(tab));
 
     int32_t vres = lv_display_get_vertical_resolution(NULL);
 
@@ -1264,7 +1389,7 @@ void ui_settings_setup(Config *config)
 
 void ui_settings_open(enum settings_tab_e tab)
 {
-    /* SETTINGS_TAB_COUNT is not out of range here: it is the index. */
+    /* SETTINGS_TAB_COUNT is not out of range here: it is MENU_ROOT. */
     if (settings_config == NULL || tab > SETTINGS_TAB_COUNT)
         return;
 
@@ -1273,11 +1398,7 @@ void ui_settings_open(enum settings_tab_e tab)
         /* Already up: treat this as a request for that section, the way the
          * single open_window slot in openhab_ui.cpp stopped a second window
          * stacking. */
-        if (tab == SETTINGS_TAB_COUNT)
-            screen_show_index();
-        else
-            screen_show_section(tab);
-
+        screen_show_target(tab);
         return;
     }
 
@@ -1296,13 +1417,11 @@ void ui_settings_open(enum settings_tab_e tab)
 
     screen = ui_screen_create();
 
-    /* Straight to the section a caller named -- a pristine device is sent here
-     * on the WLAN tab and should not have to find it -- and to the index when
-     * the user asked for "settings" rather than for something in particular. */
-    if (tab == SETTINGS_TAB_COUNT)
-        screen_show_index();
-    else
-        screen_show_section(tab);
+    /* Straight to the section a caller named -- a pristine device is sent to
+     * WLAN, which is now two levels down and which it should certainly not
+     * have to find -- and to the root menu when the user asked for "settings"
+     * rather than for something in particular. */
+    screen_show_target(tab);
 
     ui_screen_push(screen, UI_SCREEN_SETTINGS, SETTINGS_ANIM_MS);
 
@@ -1366,10 +1485,7 @@ void ui_settings_rebuild(void)
 
     rebuild_pending = false;
 
-    if (current_tab == SETTINGS_TAB_COUNT)
-        screen_show_index();
-    else
-        screen_show_section(current_tab);
+    screen_show_target(current_tab);
 }
 
 #if CONFIG_IDF_TARGET_LINUX
@@ -1389,13 +1505,28 @@ void ui_settings_open_from_env(void)
         return;
     }
 
-    if (strcmp(name, "index") == 0)
+    /* Then the menus, by name -- so "system" reaches the System menu, which is
+     * otherwise a tap in and unreachable from a script. */
+    for (uint8_t m = 0; m < MENU_COUNT; m++)
     {
+        bool named = strcasecmp(name, menus[m].title) == 0;
+
+        /* What this took before the menus had names of their own. */
+        if (m == 0 && strcasecmp(name, "index") == 0)
+            named = true;
+
+        if (named == false)
+            continue;
+
         ui_settings_open(SETTINGS_TAB_COUNT);
+
+        if (ui_settings_is_open())
+            screen_show_menu((uint8_t)(SETTINGS_TAB_COUNT + m));
+
         return;
     }
 
-    printf("ui_settings: OHEZ_SETTINGS=%s names no tab\r\n", name);
+    printf("ui_settings: OHEZ_SETTINGS=%s names no page\r\n", name);
 }
 #endif
 
