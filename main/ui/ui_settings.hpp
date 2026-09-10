@@ -17,6 +17,8 @@
 
 void ui_settings_setup(Config *config);
 
+/* Opens on the section named, or on the index when passed SETTINGS_TAB_COUNT
+ * -- which is what "settings" with nothing more specific in mind means. */
 void ui_settings_open(enum settings_tab_e tab);
 void ui_settings_close(void);
 bool ui_settings_is_open(void);

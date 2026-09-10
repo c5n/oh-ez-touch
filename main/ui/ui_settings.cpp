@@ -27,6 +27,7 @@
 #include "config/config_fields.hpp"
 #include "ui_beep.hpp"
 #include "ui_motion.hpp"
+#include "ui_geometry.hpp"
 #include "ui_screen.hpp"
 #include "ui_style.hpp"
 #include "ui_theme.hpp"
@@ -57,9 +58,21 @@
  * than as part of the page. Everything else staggers its contents instead. */
 #define SETTINGS_ANIM_MS 240
 
-#define TAB_BAR_HEIGHT 32
-#define FOOTER_HEIGHT 34
-#define ROW_HEIGHT 30
+/* A bar across the top that is entirely the way back, the same one the item
+ * screens wear, and rows sized for the finger this panel is operated with.
+ * ROW_HEIGHT was 30, which is four and a half millimetres on a 167 dpi panel;
+ * 48 is a little over seven. */
+#define BAR_HEIGHT    56
+#define FOOTER_HEIGHT 40
+#define ROW_HEIGHT    48
+
+/* The index: six sections as a 2 x 3 grid rather than a scrolling list, so
+ * every one of them is on screen at once. Six 48 px rows would not fit the
+ * 184 px below the bar and the two you could not see would be the two nobody
+ * ever found. */
+#define INDEX_COLS   2
+#define INDEX_ROWS   3
+#define INDEX_GAP    6
 
 /* Enough for the widest text field in Config, which is the 63 character MQTT
  * password, plus room for the numbers. This buffer is not only what a row
@@ -86,7 +99,10 @@ static config_item_t draft;
 static config_item_t baseline;
 
 static lv_obj_t *screen = NULL;
-static lv_obj_t *tabview = NULL;
+
+/* Which section is on screen, or SETTINGS_TAB_COUNT for the index. The tabview
+ * used to answer this. */
+static uint8_t current_tab = SETTINGS_TAB_COUNT;
 
 /* One per tab: the scrollable list of rows, and the footer's message label. */
 static lv_obj_t *tab_rows[SETTINGS_TAB_COUNT];
@@ -146,7 +162,11 @@ static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
 static const char *const tab_title[SETTINGS_TAB_COUNT] = {
     "WLAN", "openHAB", "MQTT", "Sensors", "Other", "Info"};
 
-static void screen_build(uint8_t tab);
+static void screen_show_index(void);
+static void screen_show_section(uint8_t tab);
+static void field_rows_build(uint8_t tab);
+static void wlan_tab_build(lv_obj_t *rows);
+static void info_tab_build(lv_obj_t *rows);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
 
@@ -276,8 +296,8 @@ static void overlay_close(void)
  * nor take a touch that was aimed at the overlay.
  *
  * IGNORE_LAYOUT is what makes "full-screen" true. The screen is a column flex
- * whose one item, the tabview, grows to fill it; without the flag the overlay
- * becomes a second item, laid out *after* the tabview at the bottom edge and
+ * whose one item, the section list, grows to fill it; without the flag the
+ * overlay becomes a second item, laid out *after* the list at the bottom edge and
  * 240 px tall from there, so all but its top edge falls off the display. */
 static lv_obj_t *overlay_create(void)
 {
@@ -961,115 +981,11 @@ static void info_tab_build(lv_obj_t *rows)
 
 /* ------------------------------------------------------------ the screen */
 
-static void tab_changed_event(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    uint32_t tab = lv_tabview_get_tab_active(tabview);
-
-    /* Leaving a tab and coming back clears what the last action reported. A
-     * message stays as long as the user is looking at the tab that caused it,
-     * which is the whole of its useful life. */
-    if (tab < SETTINGS_TAB_COUNT && tab_status[tab] != NULL)
-        lv_label_set_text(tab_status[tab], tab_title[tab]);
-}
-
-static void close_event(lv_event_t *e)
-{
-    LV_UNUSED(e);
-    ui_settings_close();
-}
-
-/* One tab page: a scrollable list of rows over a footer that stays put. A
- * footer inside the scroll area would scroll away with the rows, and Save is
- * the one control that has to be reachable at all times. */
-static lv_obj_t *tab_page_build(uint8_t tab)
-{
-    lv_obj_t *page = lv_tabview_add_tab(tabview, tab_symbol[tab]);
-
-    lv_obj_remove_flag(page, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_all(page, 0, 0);
-    lv_obj_set_style_pad_gap(page, 0, 0);
-    lv_obj_set_style_border_width(page, 0, 0);
-    lv_obj_set_style_radius(page, 0, 0);
-    lv_obj_set_style_bg_opa(page, LV_OPA_TRANSP, 0);
-    lv_obj_set_flex_flow(page, LV_FLEX_FLOW_COLUMN);
-
-    lv_obj_t *rows = plain_container(page);
-    lv_obj_set_width(rows, lv_pct(100));
-    lv_obj_set_flex_grow(rows, 1);
-    lv_obj_add_flag(rows, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_scroll_dir(rows, LV_DIR_VER);
-    lv_obj_set_flex_flow(rows, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(rows, 3, 0);
-    lv_obj_set_style_pad_row(rows, 3, 0);
-    lv_obj_set_style_bg_color(rows, lv_color_hex(ui_style_theme()->slider_indic.bg),
-                              LV_PART_SCROLLBAR);
-
-    tab_rows[tab] = rows;
-
-    /* The header's style, not a transparent container: the row the list is
-     * clipped at otherwise runs straight into the buttons, which reads as the
-     * footer floating over the list rather than ending it. */
-    lv_obj_t *footer = lv_obj_create(page);
-    lv_obj_remove_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(footer, lv_pct(100), FOOTER_HEIGHT);
-    lv_obj_add_style(footer, &ui_style_win_header, LV_PART_MAIN);
-    lv_obj_set_style_radius(footer, 0, 0);
-    lv_obj_set_flex_flow(footer, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_hor(footer, 5, 0);
-    lv_obj_set_style_pad_ver(footer, 0, 0);
-    lv_obj_set_style_pad_column(footer, 4, 0);
-
-    /* First child, so close sits in the same place on all five tabs and never
-     * lands where Save was a moment ago -- the footer's other buttons differ
-     * per tab, this one must not appear to move. */
-    lv_obj_add_event_cb(button_create(footer, LV_SYMBOL_CLOSE), close_event, LV_EVENT_CLICKED,
-                        NULL);
-
-    /* At rest this names the tab, which is the job the title bar used to do for
-     * the symbol-only tab buttons; an action's result replaces it until the
-     * user leaves the tab. */
-    tab_status[tab] = lv_label_create(footer);
-    lv_label_set_text(tab_status[tab], tab_title[tab]);
-    lv_label_set_long_mode(tab_status[tab], LV_LABEL_LONG_DOT);
-    lv_obj_set_flex_grow(tab_status[tab], 1);
-    /* DOT only writes its dots in the last line that still fits the height, so
-     * at LV_SIZE_CONTENT it never dots at all: it wraps, grows a second line,
-     * and the longest message ("Applied, not saved") spills out of a bar that
-     * neither scrolls nor clips. One line of the header font is the height
-     * that makes DOT do what it is here for. */
-    lv_obj_set_height(tab_status[tab], lv_font_get_line_height(ui_style_theme()->font_normal));
-
-    if (tab == SETTINGS_TAB_INFO)
-    {
-        lv_obj_add_event_cb(button_create(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
-                            NULL);
-    }
-    else if (tab == SETTINGS_TAB_WLAN)
-    {
-        lv_obj_add_event_cb(button_create(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
-        lv_obj_add_event_cb(button_create(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
-                            NULL);
-    }
-    else
-    {
-        lv_obj_add_event_cb(button_create(footer, "Save"), save_event, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)tab);
-    }
-
-    /* Appends the LCARS end cap, so it has to follow the buttons. This is the
-     * bar that used to be the header, and it keeps the header's decoration. */
-    ui_style_decorate_window(footer);
-
-    return rows;
-}
-
-/* A section heading only earns one of the five or so visible lines where the tab
- * holds more than one section: "Sensors" above the only group of the Sensors tab
- * says nothing the tab bar has not already said. */
+/* A footer that stays put rather than one inside the scroll area: Save is the
+ * one control that has to be reachable whatever the list is showing. */
+/* A section heading only earns one of the visible lines where the tab holds
+ * more than one section: "Sensors" above the only group of the Sensors tab
+ * says nothing the bar has not already said. */
 static uint8_t tab_section_count(uint8_t tab)
 {
     uint8_t count = 0;
@@ -1117,9 +1033,64 @@ static void field_rows_build(uint8_t tab)
     }
 }
 
-static void screen_build(uint8_t tab)
+/* The bar across the top of every settings screen, and all of it is the way
+ * back -- the same affordance the item screens use, for the same reason. From
+ * a section it returns to the index; from the index it closes. */
+static void back_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    if (current_tab == SETTINGS_TAB_COUNT)
+        ui_settings_close();
+    else
+        screen_show_index();
+}
+
+static void back_bar_create(const char *title)
+{
+    lv_obj_t *bar = lv_obj_create(screen);
+
+    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(bar, lv_pct(100), BAR_HEIGHT);
+    lv_obj_set_pos(bar, 0, 0);
+    lv_obj_add_style(bar, &ui_style_win_header, LV_PART_MAIN);
+    lv_obj_set_style_radius(bar, 0, 0);
+    lv_obj_set_style_pad_hor(bar, 10, 0);
+    lv_obj_set_style_pad_ver(bar, 0, 0);
+    lv_obj_set_style_pad_column(bar, 10, 0);
+    lv_obj_set_flex_flow(bar, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(bar, back_event, LV_EVENT_CLICKED, NULL);
+    ui_motion_pressable(bar);
+
+    lv_obj_t *chevron = lv_label_create(bar);
+
+    lv_label_set_text(chevron, (current_tab == SETTINGS_TAB_COUNT) ? LV_SYMBOL_CLOSE
+                                                                   : LV_SYMBOL_LEFT);
+    lv_obj_remove_flag(chevron, LV_OBJ_FLAG_CLICKABLE);
+
+    lv_obj_t *label = lv_label_create(bar);
+
+    lv_label_set_text(label, title);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(label, 1);
+    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+}
+
+static void index_event(lv_event_t *e)
+{
+    screen_show_section((uint8_t)(uintptr_t)lv_event_get_user_data(e));
+}
+
+/* Six sections, all visible, all comfortably bigger than a fingertip. This
+ * replaces a bar of six symbol-only tab buttons 32 px tall, which had to be
+ * read as pictograms and hit as a sixth of the screen width. */
+static void screen_show_index(void)
 {
     lv_obj_clean(screen);
+    current_tab = SETTINGS_TAB_COUNT;
 
     for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
     {
@@ -1132,53 +1103,154 @@ static void screen_build(uint8_t tab)
     wlan_psk_row = NULL;
     wlan_scan_list = NULL;
 
-    lv_obj_set_flex_flow(screen, LV_FLEX_FLOW_COLUMN);
+    back_bar_create("Settings");
 
-    tabview = lv_tabview_create(screen);
-    lv_tabview_set_tab_bar_size(tabview, TAB_BAR_HEIGHT);
-    lv_obj_set_width(tabview, lv_pct(100));
-    lv_obj_set_flex_grow(tabview, 1);
-    lv_obj_add_style(tabview, &ui_style_window, LV_PART_MAIN);
+    int32_t hres = lv_display_get_horizontal_resolution(NULL);
+    int32_t vres = lv_display_get_vertical_resolution(NULL);
 
-    /* Both of lv_tabview's own containers are plain lv_objs and would keep
-     * lv_theme_simple's white behind everything. */
-    lv_obj_t *bar = lv_tabview_get_tab_bar(tabview);
-    lv_obj_add_style(bar, &ui_style_window, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(bar, 1, 0);
-    lv_obj_set_style_pad_column(bar, 1, 0);
+    lv_obj_t *grid = plain_container(screen);
 
-    lv_obj_t *content = lv_tabview_get_content(tabview);
-    lv_obj_add_style(content, &ui_style_window, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(content, 0, 0);
+    lv_obj_set_pos(grid, INDEX_GAP, BAR_HEIGHT + INDEX_GAP);
+    lv_obj_set_size(grid, hres - 2 * INDEX_GAP, vres - BAR_HEIGHT - 2 * INDEX_GAP);
 
-    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
-        tab_page_build(i);
+    /* The same solver the tile grid uses, and for the same reason: reading the
+     * container back would give zero, because v9 has not laid it out yet. */
+    struct ui_grid_s layout = {INDEX_COLS, INDEX_ROWS, INDEX_GAP, 0};
+    int16_t          area_w = (int16_t)(hres - 2 * INDEX_GAP);
+    int16_t          area_h = (int16_t)(vres - BAR_HEIGHT - 2 * INDEX_GAP);
 
-    /* The tab buttons are real lv_buttons in v9, one per tab, and the active
-     * one carries LV_STATE_CHECKED -- so the theme's own button styles mark
-     * the selection with no extra work. */
     for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
     {
-        lv_obj_t *button = lv_tabview_get_tab_button(tabview, i);
+        struct ui_geom_rect_s r;
 
-        if (button == NULL)
-            continue;
+        if (ui_grid_cell(&layout, area_w, area_h, i, &r) == false)
+            break;
 
-        lv_obj_add_style(button, &ui_style_btn, LV_PART_MAIN);
-        lv_obj_add_style(button, &ui_style_btn_checked,
-                         ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
+        /* An empty label rather than NULL: lv_label_set_text(NULL) leaves the
+         * widget's default "Text" behind. The two labels below are the
+         * content; this one only exists because button_create() makes it. */
+        lv_obj_t *cell = button_create(grid, "");
+
+        lv_obj_set_pos(cell, r.x, r.y);
+        lv_obj_set_size(cell, r.w, r.h);
+        lv_obj_set_style_pad_all(cell, 4, 0);
+        lv_obj_add_event_cb(cell, index_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+
+        lv_obj_t *glyph = lv_label_create(cell);
+
+        lv_label_set_text(glyph, tab_symbol[i]);
+        lv_obj_align(glyph, LV_ALIGN_LEFT_MID, 8, 0);
+
+        lv_obj_t *name = lv_label_create(cell);
+
+        lv_label_set_text(name, tab_title[i]);
+        lv_label_set_long_mode(name, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(name, r.w - 46);
+        lv_obj_align(name, LV_ALIGN_LEFT_MID, 36, 0);
     }
 
-    wlan_tab_build(tab_rows[SETTINGS_TAB_WLAN]);
-    field_rows_build(SETTINGS_TAB_OPENHAB);
-    field_rows_build(SETTINGS_TAB_MQTT);
-    field_rows_build(SETTINGS_TAB_SENSORS);
-    field_rows_build(SETTINGS_TAB_OTHER);
-    info_tab_build(tab_rows[SETTINGS_TAB_INFO]);
+    ui_motion_enter(grid);
+}
 
-    lv_obj_add_event_cb(tabview, tab_changed_event, LV_EVENT_VALUE_CHANGED, NULL);
+/* One section: the bar, a scrolling list of rows, and a footer carrying
+ * whatever that section can do. */
+static void screen_show_section(uint8_t tab)
+{
+    if (tab >= SETTINGS_TAB_COUNT)
+        return;
 
-    lv_tabview_set_active(tabview, tab, LV_ANIM_OFF);
+    lv_obj_clean(screen);
+    current_tab = tab;
+
+    for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
+    {
+        tab_rows[i] = NULL;
+        tab_status[i] = NULL;
+    }
+
+    wlan_state_label = NULL;
+    wlan_ssid_row = NULL;
+    wlan_psk_row = NULL;
+    wlan_scan_list = NULL;
+
+    back_bar_create(tab_title[tab]);
+
+    int32_t vres = lv_display_get_vertical_resolution(NULL);
+
+    lv_obj_t *rows = plain_container(screen);
+
+    lv_obj_set_pos(rows, 0, BAR_HEIGHT);
+    lv_obj_set_size(rows, lv_pct(100), vres - BAR_HEIGHT - FOOTER_HEIGHT);
+    lv_obj_add_flag(rows, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scroll_dir(rows, LV_DIR_VER);
+    lv_obj_set_flex_flow(rows, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(rows, 4, 0);
+    lv_obj_set_style_pad_row(rows, 4, 0);
+    lv_obj_set_style_bg_color(rows, lv_color_hex(ui_style_theme()->slider_indic.bg),
+                              LV_PART_SCROLLBAR);
+
+    tab_rows[tab] = rows;
+
+    lv_obj_t *footer = lv_obj_create(screen);
+
+    lv_obj_remove_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(footer, 0, vres - FOOTER_HEIGHT);
+    lv_obj_set_size(footer, lv_pct(100), FOOTER_HEIGHT);
+    lv_obj_add_style(footer, &ui_style_win_header, LV_PART_MAIN);
+    lv_obj_set_style_radius(footer, 0, 0);
+    lv_obj_set_flex_flow(footer, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(footer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(footer, 6, 0);
+    lv_obj_set_style_pad_ver(footer, 0, 0);
+    lv_obj_set_style_pad_column(footer, 4, 0);
+
+    /* At rest this is empty -- the bar above already names the section, which
+     * is the job this label used to do for the symbol-only tab buttons. An
+     * action's result fills it until the user leaves. */
+    tab_status[tab] = lv_label_create(footer);
+    lv_label_set_text(tab_status[tab], "");
+    lv_label_set_long_mode(tab_status[tab], LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(tab_status[tab], 1);
+    /* DOT only writes its dots in the last line that still fits the height, so
+     * at LV_SIZE_CONTENT it never dots at all: it wraps, grows a second line,
+     * and the longest message ("Applied, not saved") spills out of a bar that
+     * neither scrolls nor clips. */
+    lv_obj_set_height(tab_status[tab], lv_font_get_line_height(ui_style_theme()->font_normal));
+
+    if (tab == SETTINGS_TAB_INFO)
+    {
+        lv_obj_add_event_cb(button_create(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
+                            NULL);
+    }
+    else if (tab == SETTINGS_TAB_WLAN)
+    {
+        lv_obj_add_event_cb(button_create(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(button_create(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
+                            NULL);
+    }
+    else
+    {
+        lv_obj_add_event_cb(button_create(footer, "Save"), save_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)tab);
+    }
+
+    switch (tab)
+    {
+    case SETTINGS_TAB_WLAN:
+        wlan_tab_build(rows);
+        break;
+
+    case SETTINGS_TAB_INFO:
+        info_tab_build(rows);
+        break;
+
+    default:
+        field_rows_build(tab);
+        break;
+    }
+
+    ui_motion_enter(rows);
 }
 
 /* ------------------------------------------------------------------- API */
@@ -1190,14 +1262,20 @@ void ui_settings_setup(Config *config)
 
 void ui_settings_open(enum settings_tab_e tab)
 {
-    if (settings_config == NULL || tab >= SETTINGS_TAB_COUNT)
+    /* SETTINGS_TAB_COUNT is not out of range here: it is the index. */
+    if (settings_config == NULL || tab > SETTINGS_TAB_COUNT)
         return;
 
     if (screen != NULL)
     {
-        /* Already up: treat this as a request for that tab, the way the single
-         * open_window slot in openhab_ui.cpp stops a second window stacking. */
-        lv_tabview_set_active(tabview, tab, LV_ANIM_OFF);
+        /* Already up: treat this as a request for that section, the way the
+         * single open_window slot in openhab_ui.cpp stopped a second window
+         * stacking. */
+        if (tab == SETTINGS_TAB_COUNT)
+            screen_show_index();
+        else
+            screen_show_section(tab);
+
         return;
     }
 
@@ -1216,7 +1294,13 @@ void ui_settings_open(enum settings_tab_e tab)
 
     screen = ui_screen_create();
 
-    screen_build(tab);
+    /* Straight to the section a caller named -- a pristine device is sent here
+     * on the WLAN tab and should not have to find it -- and to the index when
+     * the user asked for "settings" rather than for something in particular. */
+    if (tab == SETTINGS_TAB_COUNT)
+        screen_show_index();
+    else
+        screen_show_section(tab);
 
     ui_screen_push(screen, UI_SCREEN_SETTINGS, SETTINGS_ANIM_MS);
 
@@ -1237,7 +1321,7 @@ void ui_settings_close(void)
     ui_screen_pop(SETTINGS_ANIM_MS);
 
     screen = NULL;
-    tabview = NULL;
+    current_tab = SETTINGS_TAB_COUNT;
     rebuild_pending = false;
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
@@ -1279,7 +1363,11 @@ void ui_settings_rebuild(void)
     }
 
     rebuild_pending = false;
-    screen_build((uint8_t)lv_tabview_get_tab_active(tabview));
+
+    if (current_tab == SETTINGS_TAB_COUNT)
+        screen_show_index();
+    else
+        screen_show_section(current_tab);
 }
 
 #if CONFIG_IDF_TARGET_LINUX
@@ -1296,6 +1384,12 @@ void ui_settings_open_from_env(void)
             continue;
 
         ui_settings_open((enum settings_tab_e)i);
+        return;
+    }
+
+    if (strcmp(name, "index") == 0)
+    {
+        ui_settings_open(SETTINGS_TAB_COUNT);
         return;
     }
 
