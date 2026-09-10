@@ -134,6 +134,119 @@ static void test_empty_state(void)
     TEST_ASSERT_EQUAL_INT(0, item.applyState("", 0));
 }
 
+/* ------------------------------------------------------- the colour state */
+
+/* A colorpicker's state is "h,s,v". This used to be parsed by two identical
+ * copies in the UI, both of which restarted at endptr + 1 without checking
+ * that endptr was not the terminator -- so every case below that stops early
+ * read past the end of the item's state buffer. */
+static void test_hsv_state_is_parsed(void)
+{
+    Item     item;
+    uint16_t h;
+    uint8_t  s, v;
+
+    item.setStateText("120,50,75");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(120, h);
+    TEST_ASSERT_EQUAL_UINT8(50, s);
+    TEST_ASSERT_EQUAL_UINT8(75, v);
+
+    /* All three at their limits, which is what a fully saturated red is. */
+    item.setStateText("359,100,100");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(359, h);
+    TEST_ASSERT_EQUAL_UINT8(100, s);
+    TEST_ASSERT_EQUAL_UINT8(100, v);
+
+    item.setStateText("0,0,0");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(0, h);
+    TEST_ASSERT_EQUAL_UINT8(0, s);
+    TEST_ASSERT_EQUAL_UINT8(0, v);
+}
+
+/* Every one of these truncates the triple somewhere. The old parser walked
+ * off the end of the buffer on all of them; this one has to refuse and leave
+ * black behind. */
+static void test_a_short_hsv_state_is_refused(void)
+{
+    static const char *const truncated[] = {
+        "",        /* an item openHAB has no value for at all */
+        "0",       /* one field, and endptr is the terminator */
+        "120",
+        "120,",    /* a separator with nothing after it       */
+        "120,50",  /* two of three                            */
+        "120,50,", /* three fields, the last one empty        */
+        "NULL",    /* what openHAB sends for an undefined item */
+        "UNDEF",
+        "ON",
+        ",,",
+    };
+
+    for (size_t i = 0; i < sizeof(truncated) / sizeof(truncated[0]); i++)
+    {
+        Item     item;
+        uint16_t h = 1;
+        uint8_t  s = 1, v = 1;
+
+        item.setStateText(truncated[i]);
+
+        TEST_ASSERT_FALSE_MESSAGE(item.getStateHsv(&h, &s, &v), truncated[i]);
+
+        /* Not merely "false": the outputs have to be defined, because the
+         * caller paints a swatch with them whatever the answer was. */
+        TEST_ASSERT_EQUAL_UINT16(0, h);
+        TEST_ASSERT_EQUAL_UINT8(0, s);
+        TEST_ASSERT_EQUAL_UINT8(0, v);
+    }
+}
+
+/* The shape the old parser actually failed on, kept as a regression: a long
+ * state followed by a short one leaves digits behind in the fixed field, and
+ * restarting at endptr + 1 picked them up. So the swatch of an item that has
+ * gone to NULL must not inherit the colour of the item before it. */
+static void test_a_short_hsv_state_does_not_see_the_previous_one(void)
+{
+    Item     item;
+    uint16_t h = 1;
+    uint8_t  s = 1, v = 1;
+
+    item.setStateText("111,22,33");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(111, h);
+
+    /* Shorter than what it replaces, so ",22,33" is still sitting in the
+     * field past the new terminator. */
+    item.setStateText("7");
+
+    TEST_ASSERT_FALSE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(0, h);
+    TEST_ASSERT_EQUAL_UINT8(0, s);
+    TEST_ASSERT_EQUAL_UINT8(0, v);
+}
+
+/* A server being loose with a value still means something, so it is clamped
+ * rather than refused -- lv_color_hsv_to_rgb() range checks none of these. */
+static void test_an_out_of_range_hsv_state_is_clamped(void)
+{
+    Item     item;
+    uint16_t h;
+    uint8_t  s, v;
+
+    item.setStateText("400,150,999");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(359, h);
+    TEST_ASSERT_EQUAL_UINT8(100, s);
+    TEST_ASSERT_EQUAL_UINT8(100, v);
+
+    item.setStateText("-30,-1,-100");
+    TEST_ASSERT_TRUE(item.getStateHsv(&h, &s, &v));
+    TEST_ASSERT_EQUAL_UINT16(0, h);
+    TEST_ASSERT_EQUAL_UINT8(0, s);
+    TEST_ASSERT_EQUAL_UINT8(0, v);
+}
+
 void test_item_state_run(void)
 {
     RUN_TEST(test_string_state_change_is_reported_once);
@@ -144,4 +257,8 @@ void test_item_state_run(void)
     RUN_TEST(test_over_long_state_truncates);
     RUN_TEST(test_state_need_not_be_terminated);
     RUN_TEST(test_empty_state);
+    RUN_TEST(test_hsv_state_is_parsed);
+    RUN_TEST(test_a_short_hsv_state_is_refused);
+    RUN_TEST(test_an_out_of_range_hsv_state_is_clamped);
+    RUN_TEST(test_a_short_hsv_state_does_not_see_the_previous_one);
 }

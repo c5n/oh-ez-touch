@@ -31,15 +31,14 @@ enum
 #define SWATCH_H 36
 #define LABEL_W  28
 
-/* openHAB sends "h,s,v" with h in degrees and s/v in percent. */
-static lv_color_hsv_t hsv_parse(const char *text)
+/* The item's state as HSV. Item::getStateHsv() owns the format and the
+ * bounds; a state it refuses leaves black, which is a colour the three fields
+ * below can show and be dragged away from. */
+static lv_color_hsv_t hsv_parse(Item *item)
 {
-    lv_color_hsv_t hsv;
-    char          *end;
+    lv_color_hsv_t hsv = {};
 
-    hsv.h = (uint16_t)strtol(text, &end, 10);
-    hsv.s = (uint8_t)strtol(end + 1, &end, 10);
-    hsv.v = (uint8_t)strtol(end + 1, &end, 10);
+    item->getStateHsv(&hsv.h, &hsv.s, &hsv.v);
 
     return hsv;
 }
@@ -122,7 +121,7 @@ static lv_obj_t *field_create(struct item_view_s *v, const char *name, int32_t m
 
 static void build(struct item_view_s *v)
 {
-    lv_color_hsv_t hsv = hsv_parse(v->item->getStateText());
+    lv_color_hsv_t hsv = hsv_parse(v->item);
 
     lv_obj_set_flex_flow(v->body, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(v->body, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
@@ -144,7 +143,7 @@ static void build(struct item_view_s *v)
 
 static void refresh(struct item_view_s *v)
 {
-    lv_color_hsv_t hsv = hsv_parse(v->item->getStateText());
+    lv_color_hsv_t hsv = hsv_parse(v->item);
 
     lv_slider_set_value(v->extra[HSV_H], hsv.h, LV_ANIM_ON);
     lv_slider_set_value(v->extra[HSV_S], hsv.s, LV_ANIM_ON);

@@ -306,6 +306,90 @@ static void test_page_need_not_outlive_the_parse(void)
     TEST_ASSERT_NOT_NULL(strstr(sitemap.getItem(1)->getLink(), "/rest/items/Light_Ceiling"));
 }
 
+/* The edges of that stripping, each of which the old trimmer got wrong.
+ *
+ * It stepped back one character before looking at anything -- so an empty
+ * label, or one that is nothing but a bracketed value, formed a pointer
+ * before the start of the buffer -- and it tested for trailing space with a
+ * plain char, which is undefined input to isspace() for any byte above 0x7F.
+ * A label like "Küche" reaches it with a negative value on every panel in a
+ * German installation. */
+static void test_label_trimming_edges(void)
+{
+    static const struct
+    {
+        const char *label;
+        const char *want;
+    } cases[] = {
+        /* Nothing at all, and nothing but the value: both used to form
+         * buffer - 1. */
+        {"", ""},
+        {"[21.5]", ""},
+        {" [21.5]", ""},
+
+        /* A label that is only spaces trims to nothing rather than walking
+         * back past the start looking for one. */
+        {"   ", ""},
+
+        /* Non-ASCII, which is the case that reached isspace() negative. The
+         * bytes have to survive intact -- a name is what the user sees. */
+        {"Küche", "Küche"},
+        {"Küche [21.5 degC]", "Küche"},
+        {"Büro Süd [ON]", "Büro Süd"},
+        {"Außentemperatur [3.5 °C]", "Außentemperatur"},
+
+        /* The ordinary shapes, kept here so the edges are read next to
+         * them. */
+        {"Kitchen", "Kitchen"},
+        {"Kitchen [21.5 degC]", "Kitchen"},
+        {"Kitchen   [21.5]", "Kitchen"},
+        {"Kitchen[21.5]", "Kitchen"},
+
+        /* A trailing space with no bracket at all is still trailing space. */
+        {"Kitchen ", "Kitchen"},
+
+        /* Interior spaces are not trailing ones. */
+        {"Living Room Lamp", "Living Room Lamp"},
+    };
+
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++)
+    {
+        Sitemap sitemap;
+        char    page[512];
+
+        snprintf(page, sizeof(page),
+                 "{\"title\":\"T\",\"widgets\":[{\"type\":\"Switch\",\"label\":\"%s\","
+                 "\"item\":{\"type\":\"Switch\",\"state\":\"ON\","
+                 "\"link\":\"http://h/rest/items/x\"}}]}",
+                 cases[i].label);
+
+        TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, strlen(page)));
+        TEST_ASSERT_EQUAL_INT(1, sitemap.getItemCount());
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(cases[i].want, sitemap.getItem(0)->getLabel(),
+                                         cases[i].label);
+    }
+}
+
+/* A label longer than the field it lands in is cut to fit rather than
+ * overrunning it. */
+static void test_an_over_long_label_is_truncated(void)
+{
+    Sitemap sitemap;
+    char    page[512];
+    char    label[STR_LABEL_LEN * 2];
+
+    memset(label, 'x', sizeof(label) - 1);
+    label[sizeof(label) - 1] = '\0';
+
+    snprintf(page, sizeof(page),
+             "{\"title\":\"T\",\"widgets\":[{\"type\":\"Switch\",\"label\":\"%s\","
+             "\"item\":{\"type\":\"Switch\",\"state\":\"ON\"}}]}",
+             label);
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, strlen(page)));
+    TEST_ASSERT_EQUAL_INT(STR_LABEL_LEN - 1, strlen(sitemap.getItem(0)->getLabel()));
+}
+
 void test_sitemap_parse_run(void)
 {
     RUN_TEST(test_home_page_titles_and_counts);
@@ -313,6 +397,8 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_dimensioned_number_is_a_number);
     RUN_TEST(test_parent_link_takes_the_first_slot);
     RUN_TEST(test_label_strips_the_bracketed_value);
+    RUN_TEST(test_label_trimming_edges);
+    RUN_TEST(test_an_over_long_label_is_truncated);
     RUN_TEST(test_setpoint_range_and_pattern);
     RUN_TEST(test_missing_range_falls_back_to_defaults);
     RUN_TEST(test_mappings_become_the_selection);

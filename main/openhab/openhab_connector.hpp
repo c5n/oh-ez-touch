@@ -5,6 +5,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #define ITEM_COUNT_MAX 6
@@ -139,6 +140,25 @@ public:
 
     float getStateNumber() { return strtof(state_text, NULL); }
     void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
+
+    /* A colorpicker's state, which openHAB sends as "h,s,v" -- degrees, then
+     * two percents.
+     *
+     * Here rather than in the two UI files that draw a colour, because both of
+     * them had a copy and both copies read past the end of the state: they ran
+     * strtol() and then restarted at endptr + 1 without checking that endptr
+     * was not already the terminator. The read stays inside state_text, which
+     * is a fixed char[32], so this was never memory-unsafe -- it picked up
+     * whatever digits a *previous, longer* state had left in the field. A
+     * colorpicker showing "NULL", "UNDEF" or "" -- which is what openHAB sends
+     * for an item it has no value for -- therefore got its colour out of the
+     * item that last held the slot.
+     *
+     * @return false when the state is not three numbers, in which case the
+     *   outputs are set to black rather than left undefined -- every caller
+     *   paints something with them.
+     */
+    bool getStateHsv(uint16_t *h, uint8_t *s, uint8_t *v) const;
 
     bool stateIsNumber()
     {

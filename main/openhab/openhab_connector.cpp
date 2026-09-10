@@ -15,6 +15,44 @@ static inline const char *json_str(JsonVariant value)
     return (str != NULL) ? str : "";
 }
 
+/* A widget's label without the "[state]" openHAB appends to it, and without
+ * the run of spaces in front of that.
+ *
+ * "Kitchen [21.5 degC]" is one string in the sitemap; the panel draws the
+ * name and the reading in two different places, so the bracket and everything
+ * after it goes.
+ *
+ * Two things this had wrong. It stepped back one character before looking at
+ * anything, so a label that was empty or that began with '[' formed
+ * `buffer - 1` -- undefined behaviour, and only harmless by luck. And it
+ * passed a plain char to isspace(), which is undefined for any byte with the
+ * top bit set: every label with an umlaut in it reached that call with a
+ * negative value. glibc happens to tolerate that -- its table is offset for
+ * it -- so the host tests cannot demonstrate the second one; newlib, which is
+ * what the panel runs, indexes its table directly.
+ *
+ * Returns `out`, always terminated, so the caller can pass it straight on.
+ */
+static const char *label_trim(const char *label, char *out, size_t out_size)
+{
+    const char *end = strchr(label, '[');
+    size_t      len = (end != NULL) ? (size_t)(end - label) : strlen(label);
+
+    /* Trailing space, tested as unsigned: isspace() takes an int that must be
+     * representable as unsigned char, and a UTF-8 continuation byte in a
+     * plain char is not. */
+    while (len > 0 && isspace((unsigned char)label[len - 1]))
+        len--;
+
+    if (len >= out_size)
+        len = out_size - 1;
+
+    memcpy(out, label, len);
+    out[len] = '\0';
+
+    return out;
+}
+
 /* openHAB offers the same label/command list either as the widget's "mappings"
  * or as the item's "commandOptions"; both are read into the item's fixed
  * selection arrays, so the count has to be clamped to what those hold. */
@@ -61,6 +99,75 @@ bool Item::iconUrl(const char *website, char *out, size_t out_size) const
                        website, icon_name, state_text);
 
     return (len > 0 && (size_t)len < out_size);
+}
+
+/* Read one non-negative integer, and say where it stopped.
+ *
+ * strtol() alone is not enough here: it reports "nothing parsed" only through
+ * endptr, and the caller has to know that before it can step over a separator
+ * that may not be there. */
+static bool parse_uint_field(const char **cursor, long *out)
+{
+    char *end;
+    long  value = strtol(*cursor, &end, 10);
+
+    if (end == *cursor)
+        return false;
+
+    *cursor = end;
+    *out = value;
+
+    return true;
+}
+
+bool Item::getStateHsv(uint16_t *h, uint8_t *s, uint8_t *v) const
+{
+    const char *cursor = state_text;
+    long        parsed[3] = {0, 0, 0};
+
+    /* Black, so a caller that ignores the return value still paints something
+     * defined rather than whatever was on its stack. */
+    *h = 0;
+    *s = 0;
+    *v = 0;
+
+    for (size_t i = 0; i < 3; i++)
+    {
+        if (parse_uint_field(&cursor, &parsed[i]) == false)
+            return false;
+
+        /* Step over the separator, but only if there is one. Skipping it
+         * blind is what read past the end of a short state. */
+        if (i < 2)
+        {
+            if (*cursor != ',')
+                return false;
+
+            cursor++;
+        }
+    }
+
+    /* Clamped rather than rejected: a hue of 400 is a server being loose with
+     * a value that still means something, and lv_color_hsv_to_rgb() takes
+     * these as a uint16 and two uint8 that it does not range check. */
+    if (parsed[0] < 0)
+        parsed[0] = 0;
+    if (parsed[0] > 359)
+        parsed[0] = 359;
+
+    for (size_t i = 1; i < 3; i++)
+    {
+        if (parsed[i] < 0)
+            parsed[i] = 0;
+        if (parsed[i] > 100)
+            parsed[i] = 100;
+    }
+
+    *h = (uint16_t)parsed[0];
+    *s = (uint8_t)parsed[1];
+    *v = (uint8_t)parsed[2];
+
+    return true;
 }
 
 int Item::applyState(const char *text, size_t len)
@@ -189,6 +296,10 @@ int Sitemap::parse(const char *payload, size_t payload_len)
 
         JsonArray widget_array = doc["widgets"].as<JsonArray>();
 
+        /* Scratch for label_trim(), reused across widgets: it is a whole
+         * label wide and there is only ever one in flight. */
+        char label_buffer[STR_LABEL_LEN];
+
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array[widget_index];
@@ -201,22 +312,10 @@ int Sitemap::parse(const char *payload, size_t payload_len)
 
             // Label
             if (widget["label"])
-            {
-                char buffer[STR_LABEL_LEN];
-                snprintf(buffer, sizeof(buffer), "%s", json_str(widget["label"]));
-                char *end = strchr(buffer, '[');
-                if (end == NULL)
-                    end = buffer + strlen(buffer);
-                end -= 1;
-                while(end > buffer && isspace(*end)) end--;
-                end[1] = '\0';
-
-                item->setLabel(buffer);
-            }
+                item->setLabel(label_trim(json_str(widget["label"]), label_buffer,
+                                          sizeof(label_buffer)));
             else
-            {
                 item->setLabel("NO LABEL");
-            }
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
             printf("  idx: %u label=\"%s\"", (unsigned)item_count, item->getLabel());

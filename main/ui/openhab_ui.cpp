@@ -246,21 +246,6 @@ static lv_obj_t *plain_container(lv_obj_t *parent)
     return obj;
 }
 
-/* openHAB sends a colorpicker's state as "h,s,v": degrees, then two percents. */
-lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
-{
-    const char *ptr = hsvstring;
-    char       *endptr;
-
-    lv_color_hsv_t hsvcolor;
-
-    hsvcolor.h = strtol(ptr, &endptr, 10);
-    hsvcolor.s = strtol(endptr + 1, &endptr, 10);
-    hsvcolor.v = strtol(endptr + 1, &endptr, 10);
-
-    return hsvcolor;
-}
-
 static void event_handler(lv_event_t *e)
 {
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
@@ -382,8 +367,14 @@ void update_state_widget(struct widget_context_s *ctx)
 
     case ItemType::type_colorpicker:
     {
-        lv_color_hsv_t hsv = hsvCStringToLVColor(ctx->item->getStateText());
-        lv_obj_set_style_bg_color(ctx->state_widget, lv_color_hsv_to_rgb(hsv.h, hsv.s, hsv.v), 0);
+        /* A state that is not "h,s,v" leaves the swatch black, which is what
+         * getStateHsv() sets its outputs to when it refuses. */
+        uint16_t h;
+        uint8_t  s;
+        uint8_t  v;
+
+        ctx->item->getStateHsv(&h, &s, &v);
+        lv_obj_set_style_bg_color(ctx->state_widget, lv_color_hsv_to_rgb(h, s, v), 0);
         return;
     }
 
