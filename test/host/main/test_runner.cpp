@@ -32,6 +32,7 @@ extern "C" void app_main(void)
     test_item_state_run();
     test_item_urls_run();
     test_sitemap_parse_run();
+    test_ui_geometry_run();
     test_ui_theme_run();
 
     int failures = UNITY_END();

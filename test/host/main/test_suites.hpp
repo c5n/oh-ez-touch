@@ -17,6 +17,7 @@ void test_item_setters_run(void);
 void test_item_state_run(void);
 void test_item_urls_run(void);
 void test_sitemap_parse_run(void);
+void test_ui_geometry_run(void);
 void test_ui_theme_run(void);
 
 #endif /* TEST_SUITES_HPP */
