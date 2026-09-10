@@ -1,6 +1,7 @@
 #include "ui_style.hpp"
 
 #include "frames/ui_frame.hpp"
+#include "ui_beep.hpp"
 
 #include "debug.h"
 
@@ -78,8 +79,8 @@ lv_style_t ui_style_info_error;
     }
 
 /* frame ops, then cols, rows, gutter, margin */
-#define FRAME(f, c, r, g, m)                                                   \
-    &(f), { (uint8_t)(c), (uint8_t)(r), (uint8_t)(g), (uint8_t)(m) }
+#define FRAME(f, c, r, g, m, snd)                                              \
+    &(f), {(uint8_t)(c), (uint8_t)(r), (uint8_t)(g), (uint8_t)(m)}, &(snd)
 
 #define SURF(bg, grad, dir, bgopa, bd, bw, bo, sd, rad, txt)                       \
     {                                                                              \
@@ -145,7 +146,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, ui_sound_default),
     },
     {
         UI_THEME_NAME_DEFAULT " Night", UI_THEME_DEFAULT, true,
@@ -171,7 +172,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, ui_sound_default),
     },
 
     /* ------------------------------------------------------------------ LCARS
@@ -209,7 +210,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, ui_sound_lcars),
     },
     {
         UI_THEME_NAME_LCARS " Night", UI_THEME_LCARS, true,
@@ -235,7 +236,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, ui_sound_lcars),
     },
 
     /* ----------------------------------------------------------------- JARVIS
@@ -272,7 +273,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, ui_sound_jarvis),
     },
     {
         UI_THEME_NAME_JARVIS " Night", UI_THEME_JARVIS, true,
@@ -298,7 +299,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, ui_sound_jarvis),
     },
 };
 

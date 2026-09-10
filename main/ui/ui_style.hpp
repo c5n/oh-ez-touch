@@ -7,6 +7,7 @@
 #include "ui_theme.hpp"
 
 struct ui_frame_ops_s;
+struct ui_sound_s;
 
 /* The shared styles of the OhEzTouch UI.
  *
@@ -150,6 +151,10 @@ struct ui_theme_s
 
     /* How the tiles pack into whatever rectangle the frame leaves. */
     struct ui_grid_s grid;
+
+    /* What it sounds like. Per family, shared by day and night: a theme does
+     * not sound different after dark. */
+    const struct ui_sound_s *sound;
 };
 
 void ui_style_select(enum ui_theme_family_e family, bool night);

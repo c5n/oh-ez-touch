@@ -240,18 +240,6 @@ static lv_obj_t *plain_container(lv_obj_t *parent)
     return obj;
 }
 
-/* Touching the status bar is how the settings screen is reached. */
-static void header_event_handler(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    if (ui_settings_is_open() == false)
-    {
-        BEEPER_EVENT_WINDOW();
-        ui_settings_open(SETTINGS_TAB_INFO);
-    }
-}
-
 /* openHAB sends a colorpicker's state as "h,s,v": degrees, then two percents. */
 lv_color_hsv_t hsvCStringToLVColor(const char *hsvstring)
 {
@@ -295,7 +283,7 @@ static void event_handler(lv_event_t *e)
         page_request(0);
 
         if (ctx->item->getType() == ItemType::type_parent_link)
-            BEEPER_EVENT_LINK_BACK()
+            BEEPER_EVENT_LINK_BACK();
         else
             BEEPER_EVENT_LINK();
         break;

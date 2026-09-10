@@ -1,55 +1,60 @@
 #ifndef UI_BEEP_HPP
 #define UI_BEEP_HPP
 
-/* The UI's sound policy, one macro per kind of thing the user just did.
+/* What the panel sounds like, per theme family.
  *
- * These lived in openhab_ui.cpp until the settings screen needed the same
- * sounds for the same gestures -- a window opening should not sound different
- * depending on which file created it. Macros rather than functions because a
- * chime is a sequence of notes and naming each sequence beats repeating it.
+ * This was six macros of fixed-pitch notes shared by every family, so a window
+ * opened with the same C-E-G arpeggio whether the panel was pretending to be a
+ * starship or a workshop. Sound is part of a theme's identity in exactly the
+ * way its palette is, so it comes out of the theme table now.
  *
- * They are unconditional now. Where there is no buzzer -- the simulator, and
- * the Lanbon L8 -- the notes are queued and played into a port_beeper that
- * makes no sound, which costs nothing and keeps the guards out of the UI.
+ * The honest caveat, and it belongs in the code rather than in a commit
+ * message: a monophonic square-wave piezo cannot reproduce the sampled sounds
+ * these families are named after. What it can carry is their rhythm and their
+ * contour -- LCARS as rapid blips across wide intervals, Reticle as slow
+ * swells -- and that is most of what makes either recognisable. Nobody should
+ * read these tables expecting a recording.
+ *
+ * The call sites keep their macro names: what a gesture sounds like is a
+ * theme's business, but *which* gesture happened is the UI's, and that has not
+ * changed.
  */
 
 #include "control/beeper_control.hpp"
 
-#ifndef BEEPER_VOLUME
-#define BEEPER_VOLUME 50
-#endif
+#include <stdint.h>
 
-#define BEEPER_EVENT_CHANGE()              \
-    {                                      \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 5, 0); \
-    }
-#define BEEPER_EVENT_LINK()                  \
-    {                                        \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 20, 10); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0);  \
-    }
-#define BEEPER_EVENT_LINK_BACK()            \
-    {                                       \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 5); \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 10, 5); \
-        beeper_playNote(NOTE_A6, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_WINDOW()               \
-    {                                       \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_G7, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_WINDOW_CLOSE()         \
-    {                                       \
-        beeper_playNote(NOTE_G7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_E7, BEEPER_VOLUME, 10, 0); \
-        beeper_playNote(NOTE_C7, BEEPER_VOLUME, 20, 0); \
-    }
-#define BEEPER_EVENT_ERROR()                 \
-    {                                        \
-        beeper_playNote(NOTE_E3, BEEPER_VOLUME, 50, 0); \
-        beeper_playNote(NOTE_C3, BEEPER_VOLUME, 100, 0); \
-    }
+enum ui_sound_e
+{
+    UI_SOUND_TOUCH = 0,  /* a press acknowledged            */
+    UI_SOUND_CHANGE,     /* a value the user just moved     */
+    UI_SOUND_LINK,       /* going deeper                    */
+    UI_SOUND_LINK_BACK,  /* coming back                     */
+    UI_SOUND_SCREEN,     /* a control screen opening        */
+    UI_SOUND_SCREEN_OUT, /* and closing                     */
+    UI_SOUND_ERROR,
+    UI_SOUND_COUNT
+};
 
-#endif // UI_BEEP_HPP
+/* One per family, shared by its day and night variants -- a theme does not
+ * sound different after dark. */
+struct ui_sound_s
+{
+    struct beeper_chime_s chime[UI_SOUND_COUNT];
+};
+
+void ui_beep_play(enum ui_sound_e sound);
+
+extern const struct ui_sound_s ui_sound_default;
+extern const struct ui_sound_s ui_sound_lcars;
+extern const struct ui_sound_s ui_sound_jarvis;
+
+#define BEEPER_EVENT_TOUCH()        ui_beep_play(UI_SOUND_TOUCH)
+#define BEEPER_EVENT_CHANGE()       ui_beep_play(UI_SOUND_CHANGE)
+#define BEEPER_EVENT_LINK()         ui_beep_play(UI_SOUND_LINK)
+#define BEEPER_EVENT_LINK_BACK()    ui_beep_play(UI_SOUND_LINK_BACK)
+#define BEEPER_EVENT_WINDOW()       ui_beep_play(UI_SOUND_SCREEN)
+#define BEEPER_EVENT_WINDOW_CLOSE() ui_beep_play(UI_SOUND_SCREEN_OUT)
+#define BEEPER_EVENT_ERROR()        ui_beep_play(UI_SOUND_ERROR)
+
+#endif /* UI_BEEP_HPP */
