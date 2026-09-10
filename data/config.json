@@ -7,7 +7,7 @@
     {
         "hostname":         "pool.ntp.org",
         "gmt_offset":       1,
-        "daylightsaving":   0
+        "daylightsaving":   false
     },
     "ui":
     {
@@ -24,27 +24,27 @@
     },
     "beeper":
     {
-        "enabled":  1
+        "enabled":  true
     },
     "mqtt":
     {
-        "enabled":  0,
+        "enabled":  false,
         "hostname": "mosquitto",
         "port":     1883,
         "user":     "",
         "password": "",
         "topic":    "oheztouch",
         "interval": 60,
-        "retain":   1
+        "retain":   true
     },
     "ble":
     {
-        "enabled":      0,
+        "enabled":      false,
         "interval":     30,
         "window":       5,
         "rssi_min":     -90,
         "expire":       120,
-        "publish_all":  0
+        "publish_all":  false
     },
     "openhab":
     {
@@ -56,7 +56,7 @@
     {
         "bme280":
         {
-            "use":      0,
+            "use":      false,
             "interval": 180
         }
     }
