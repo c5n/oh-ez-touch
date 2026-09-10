@@ -73,9 +73,12 @@ later in the web interface. `idf.py flash` writes that file to the device's
 filesystem along with the firmware -- there is no separate upload step any
 more.
 
-The built-in defaults in `Config::loadConfig()` apply to anything the file does
-not mention, so a partial `config.json` is fine and a missing one leaves a
-complete, working configuration.
+The built-in defaults apply to anything the file does not mention, so a partial
+`config.json` is fine and a missing one leaves a complete, working
+configuration. They live in `main/config/config_fields.cpp`, one per row of the
+settings table, next to the range that setting accepts and the place it is
+stored under -- so a value the file gives outside that range is clamped to it,
+and a host name containing `/` or `:` is refused and the default kept.
 
 WLAN credentials are not part of that file. They are kept in the ESP32's NVS,
 which survives both an OTA update and a filesystem reflash -- a config file
@@ -321,10 +324,33 @@ default theme has to hold for a typo, an empty string and a NULL alike.
 
 `test_config_fields` covers the settings table in `main/config/config_fields.cpp`
 -- the one description of every setting, walked by the web form, the panel's
-settings screen and the MQTT client alike. What it pins down is the table rather
-than the accessors: that no two rows share a name, that a name is usable both as
-a POST argument and as an MQTT topic segment, that every tab has rows on it, and
-that the rows flagged as needing a restart are the ones that really do.
+settings screen, the MQTT client and the config file alike. What it pins down is
+the table rather than the accessors: that no two rows share a name, that a name
+is usable both as a POST argument and as an MQTT topic segment, that every tab
+has rows on it, that the rows flagged as needing a restart are the ones that
+really do, that no two rows claim the same place in the file, and that every
+default is inside the range its own row declares.
+
+`test_config_file` covers `config.json` itself: the shipped defaults, a value
+per section surviving a save and a load, a corrupt file, a file that omits
+whole sections, and the validation above. Since `Config::loadConfig()` and
+`Config::saveConfig()` stopped naming settings and started reading the path and
+the default off each row, the file format is *data* -- and data with no test is
+a format that changes by accident, with the only symptom on a real panel being
+one value quietly reverting after a reboot. It makes its own directory under
+`$TMPDIR`, so running the suite cannot touch the config of a simulator you are
+using.
+
+`test_multipart` covers the firmware upload's body scanner in
+`main/web/multipart.c`. It earns its keep for the same reason `test_ble_beacon`
+does and then some: it is the one path in this firmware that can leave a panel
+unbootable, and the only one that parses bytes somebody else chose with no
+authentication in front of it -- `/update` is open, and so is the setup access
+point that reaches it. The scanner was welded to `esp_ota_begin()` and
+`esp_ota_write()` and so was device-only and untestable; it writes into a sink
+now. The suite found a buffer overrun on the first run: the multipart boundary
+is the first line of the body, the sender picks it, and nothing checked its
+length.
 
 `test_ble_beacon` covers the advertisement parsers in
 `main/ble/ble_beacon.cpp`, and is the suite that earns its keep most easily. The
@@ -338,12 +364,15 @@ lengths that run past the end of the payload, and pins down each format's
 identity, reference power and telemetry byte by byte. It found two bugs in its
 own fixtures and one in the URL character ranges on the first run.
 
-Those two suites are also the only ones that link anything out of `main/`, and
-only the two files: `config_fields.cpp` and `ble_beacon.cpp` touch neither LVGL
-nor the network. For the beacon parsers that is not a happy accident but the
-reason `main/port/port_ble.h` yields raw advertisement bytes and leaves the
-parsing above the port layer. The other two suites cover header-only code and
-link nothing, which is what keeps the test app worth having.
+What every file linked out of `main/` here has in common is that it touches
+neither LVGL nor the network: the settings table and the config file over it,
+the beacon parsers, the sitemap model and parser, the relay and LED payload
+rules, and the multipart scanner. For the beacon parsers that is not a happy
+accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
+and leaves the parsing above the port layer, and the same argument moved the
+multipart scanner out of `webui_ota.cpp`. The remaining suites cover
+header-only code and link nothing, which is what keeps the test app worth
+having.
 
 ### Upload
 
