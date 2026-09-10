@@ -247,8 +247,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
      * band visibly at 320x240 in RGB565. */
     {
         UI_THEME_NAME_JARVIS " Day", UI_THEME_JARVIS, false,
-        /* screen       */ SURF(0x061018, 0x0B1F2E, VER, FULLO, CK, MK, MK, EK, MK, 0x9FE8FF),
-        /* tile         */ SURF(0x0C2233, 0x071620, VER, FULLO, 0x1E6E8C, 1, FULLO, EK, 4, 0xD8F6FF),
+        /* screen       */ SURF(0x050B12, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x9FE8FF),
+        /* tile         */ SURF(0x0F2434, CK, NON, FULLO, 0x1E6E8C, 1, FULLO, EK, 2, 0xD8F6FF),
         /* tile_pressed */ SURF(0x13415C, 0x0C2A3D, VER, MK, CK, MK, MK, EK, MK, 0xFFFFFF),
         /* window       */ SURF(0x061018, CK, EK, FULLO, 0x35D6FF, 1, FULLO, EK, 0, CK),
         /* header       */ SURF(0x0E3247, CK, NON, FULLO, 0x35D6FF, 2, FULLO, BOT, 2, 0x9FE8FF),
@@ -269,12 +269,12 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),
     },
     {
         UI_THEME_NAME_JARVIS " Night", UI_THEME_JARVIS, true,
-        /* screen       */ SURF(0x0A0704, 0x140D06, VER, FULLO, CK, MK, MK, EK, MK, 0xE0A860),
-        /* tile         */ SURF(0x1C1207, 0x120B04, VER, FULLO, 0x6A4A1A, 1, FULLO, EK, 4, 0xE8C48A),
+        /* screen       */ SURF(0x0A0603, CK, NON, FULLO, CK, MK, MK, EK, MK, 0xE0A860),
+        /* tile         */ SURF(0x1E1409, CK, NON, FULLO, 0x6A4A1A, 1, FULLO, EK, 2, 0xE8C48A),
         /* tile_pressed */ SURF(0x3A2410, 0x2A1A0B, VER, MK, CK, MK, MK, EK, MK, 0xF0D8B0),
         /* window       */ SURF(0x0A0704, CK, EK, FULLO, 0xB3762A, 1, FULLO, EK, 0, CK),
         /* header       */ SURF(0x241706, CK, NON, FULLO, 0xB3762A, 2, FULLO, BOT, 2, 0xE0A860),
@@ -295,7 +295,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),
     },
 };
 

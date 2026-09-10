@@ -69,6 +69,12 @@ extern const struct ui_frame_ops_s ui_frame_default;
 extern const struct ui_frame_ops_s ui_frame_lcars;
 extern const struct ui_frame_ops_s ui_frame_jarvis;
 
+/* JARVIS draws a ring on any tile whose value has a range behind it, and needs
+ * the value's place in that range rather than the value. Only one family has
+ * gauges, so this is a direct call rather than a seventh entry in the vtable
+ * that five implementations would have to leave NULL. */
+void ui_frame_jarvis_set_gauge(uint8_t slot, uint8_t percent);
+
 /* ------------------------------------------------------ shared by the frames */
 
 /* An unstyled, unpadded, non-scrolling container. */

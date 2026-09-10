@@ -399,6 +399,20 @@ void update_state_widget(struct widget_context_s *ctx)
         return;
     }
 
+    /* Where a family draws a gauge, it needs the value's place in its range
+     * rather than the value. Only JARVIS has one, so this is a direct call
+     * rather than another entry in the frame interface -- the linker drops it
+     * for a build that never selects that family. */
+    if (ui_style_family() == UI_THEME_JARVIS && ctx->item->getMaxVal() > ctx->item->getMinVal())
+    {
+        float span = ctx->item->getMaxVal() - ctx->item->getMinVal();
+        float here = ctx->item->getStateNumber() - ctx->item->getMinVal();
+        int   pct  = (int)((here * 100.0f) / span);
+
+        ui_frame_jarvis_set_gauge((uint8_t)(ctx - widget_context),
+                                  (uint8_t)((pct < 0) ? 0 : (pct > 100) ? 100 : pct));
+    }
+
     /* After the text, not before: the size that fits depends on what was just
      * written. The colorpicker's swatch is an object rather than a label and
      * returns above rather than falling through to here. */
@@ -919,13 +933,17 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
          * six icon GETs that used to happen here, one after another and before
          * anything was drawn, are six submissions that cost nothing. */
         widget_create(parent, &widget_context[i], (uint8_t)i);
-        update_state_widget(&widget_context[i]);
 
-        /* Whatever the family adds that a style cannot reach. */
+        /* Whatever the family adds that a style cannot reach -- before the
+         * state, not after: a decoration that tracks a value has to exist
+         * before the value is written to it, or the write lands on nothing and
+         * the decoration starts out empty. */
         if (ui_style_theme()->frame->decorate_tile != NULL)
             ui_style_theme()->frame->decorate_tile(widget_context[i].container,
                                                    widget_context[i].item->getType(),
                                                    (uint8_t)i);
+
+        update_state_widget(&widget_context[i]);
 
         if (reload_icons == true)
             widget_icon_request(i);

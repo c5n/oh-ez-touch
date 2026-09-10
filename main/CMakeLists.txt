@@ -72,6 +72,7 @@ set(OHEZ_APP_SRCS
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
     "ui/frames/frame_default.cpp"
+    "ui/frames/frame_jarvis.cpp"
     "ui/frames/frame_lcars.cpp"
     "ui/frames/ui_frame_common.cpp"
     "ui/items/item_screen.cpp"
