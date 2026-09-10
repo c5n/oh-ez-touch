@@ -37,33 +37,53 @@ static esp_http_client_handle_t session;
 static bool session_connected;
 
 /* The "scheme://host:port" the open connection goes to. */
-static char session_authority[STR_AUTHORITY_LEN];
+static char session_origin[STR_AUTHORITY_LEN];
 
 /* Everything before the path: "http://openhabian:8080".
  *
+ * Two uses. It is what tells one server from another:
  * esp_http_client_set_url() closes the connection itself when it sees the host
  * or the port change, which is correct -- but it does not tell the caller, and
- * session_connected would then be a lie. So the comparison is made here too. */
-static void url_authority(const char *url, char *out, size_t out_size)
+ * session_connected would then be a lie, so the comparison is made here too.
+ * And the authority inside it is what the Host header has to carry.
+ *
+ * @return false for a URL with no scheme or no host, and for one that did not
+ *   fit. Every URL this client is given is absolute -- the two the panel builds
+ *   itself start with the configured "http://<host>:<port>", and the ones that
+ *   come out of a sitemap page are absolute because openHAB writes them that
+ *   way -- so anything else is a URL that could not be fetched anyway, and
+ *   saying so beats requesting whatever esp_http_client makes of it. */
+static bool url_origin(const char *url, char *out, size_t out_size)
 {
     const char *scheme_end = strstr(url, "://");
-    size_t len;
 
     if (scheme_end == NULL)
-    {
-        strlcpy(out, url, out_size);
-        return;
-    }
+        return false;
 
     const char *path = strchr(scheme_end + 3, '/');
+    size_t len = (path != NULL) ? (size_t)(path - url) : strlen(url);
 
-    len = (path != NULL) ? (size_t)(path - url) : strlen(url);
+    /* A scheme and nothing else -- "http://" or "http:///rest/..." -- which is
+     * what a configured hostname left blank builds into. There is no server in
+     * it to name in a Host header, so it is refused with the rest. */
+    if (len <= (size_t)(scheme_end + 3 - url))
+        return false;
 
     if (len >= out_size)
-        len = out_size - 1;
+        return false;
 
     memcpy(out, url, len);
     out[len] = '\0';
+
+    return true;
+}
+
+/* The "host:port" inside an origin, which is what a Host header is. */
+static const char *origin_authority(const char *origin)
+{
+    const char *scheme_end = strstr(origin, "://");
+
+    return (scheme_end != NULL) ? scheme_end + 3 : origin;
 }
 
 static void session_disconnect(void)
@@ -80,9 +100,13 @@ static void session_disconnect(void)
  * @return false only if there is no handle to be had at all. */
 static bool session_prepare(const char *url, esp_http_client_method_t method)
 {
-    char authority[STR_AUTHORITY_LEN];
+    char origin[STR_AUTHORITY_LEN];
 
-    url_authority(url, authority, sizeof(authority));
+    if (url_origin(url, origin, sizeof(origin)) == false)
+    {
+        ESP_LOGE(TAG, "no server in the URL: %s", url);
+        return false;
+    }
 
     if (session == NULL)
     {
@@ -101,20 +125,44 @@ static bool session_prepare(const char *url, esp_http_client_method_t method)
         }
 
         session_connected = false;
-        strlcpy(session_authority, authority, sizeof(session_authority));
+    }
+    else
+    {
+        if (strcmp(origin, session_origin) != 0)
+            session_disconnect();
 
-        return true;
+        if (esp_http_client_set_url(session, url) != ESP_OK)
+        {
+            ESP_LOGE(TAG, "cannot set the URL: %s", url);
+            session_disconnect();
+            return false;
+        }
     }
 
-    if (strcmp(authority, session_authority) != 0)
-    {
-        session_disconnect();
-        strlcpy(session_authority, authority, sizeof(session_authority));
-    }
+    strlcpy(session_origin, origin, sizeof(session_origin));
 
-    if (esp_http_client_set_url(session, url) != ESP_OK)
+    /* Host, rebuilt from this request's own URL.
+     *
+     * esp_http_client sets this header once, from the URL handed to
+     * esp_http_client_init(), and esp_http_client_set_url() touches it again
+     * only when the host *name* changes -- and then sets it to the bare host,
+     * dropping the port. So a handle that outlives a change of server, which
+     * this one is built to do, goes on announcing an authority the URL no
+     * longer agrees with.
+     *
+     * It matters more than a header usually does, because openHAB builds the
+     * "link" and "linkedPage" URLs of a sitemap page out of the authority the
+     * request announced. The panel then polls item states at "<link>/state",
+     * follows sub-page links and posts commands to exactly those URLs -- so a
+     * Host header without the port comes back as a page full of portless
+     * links, and every one of those three fails while the two URLs the panel
+     * builds for itself, the sitemap page and the icons, keep working.
+     *
+     * HTTPClient wrote this header from the URL on every request, which is why
+     * none of it was visible before; so does this. */
+    if (esp_http_client_set_header(session, "Host", origin_authority(origin)) != ESP_OK)
     {
-        ESP_LOGE(TAG, "cannot set the URL: %s", url);
+        ESP_LOGE(TAG, "cannot set the Host header: %s", origin);
         session_disconnect();
         return false;
     }
@@ -165,8 +213,10 @@ static ssize_t http_get_attempt(const char *url, void *buf, size_t buf_size, boo
         goto out;
     }
 
-    /* Returns the Content-Length, or -1 for a chunked response -- which is not
-     * an error and needs no special handling below. */
+    /* Returns the Content-Length, or 0 for a chunked response -- which is not
+     * an error, and needs no special handling below because
+     * esp_http_client_read_response() reads a chunked body to its end without
+     * being told how long it is. */
     if (esp_http_client_fetch_headers(session) < 0)
     {
         ESP_LOGE(TAG, "GET %s: no response headers", url);

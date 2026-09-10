@@ -103,6 +103,15 @@ public:
         state_text[0] = 0;
         transformedstate_text[0] = 0;
         link[0] = 0;
+        /* Left behind before this line, which mattered because a widget only
+         * assigns it when openHAB sends a "linkedPage": a Group rendered
+         * inline, or a link that lost its target, kept the slot's page link
+         * from the page before and navigated to it when tapped. */
+        page_link[0] = 0;
+        /* And the same for the mappings, which parse_selection() only writes
+         * when the widget carries some: a Selection that arrives without them
+         * offered the options of whatever last held the slot. */
+        mapping_count = 0;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
