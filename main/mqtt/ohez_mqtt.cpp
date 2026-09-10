@@ -29,14 +29,24 @@
  *   <prefix>/sensor/pressure
  *   <prefix>/config/<field>          one topic per settings field
  *
- * plus a `<prefix>/ble/...` subtree that is not a fixed list and so is not
- * described here: it is one group of topics per BLE advertiser in range, and
+ * plus three subtrees that are not fixed lists and so are not described here.
+ * `<prefix>/ble/...` is one group of topics per BLE advertiser in range, and
  * ble/ble_scan.cpp owns both its shape and its lifetime through
- * ohez_mqtt_publish_value() and ohez_mqtt_clear_value().
+ * ohez_mqtt_publish_value() and ohez_mqtt_clear_value(). `<prefix>/relay/...`
+ * and `<prefix>/led/...` are one topic per output the board actually has, and
+ * belong to peripherals/relay.cpp and peripherals/led.cpp the same way.
  *
- * And one subscription:
+ * And the subscriptions:
  *
  *   <prefix>/config/<field>/set      write that field
+ *   <prefix>/relay/<n>/set           switch a relay      -- peripherals/relay.cpp
+ *   <prefix>/led/<name>/set          set an LED          -- peripherals/led.cpp
+ *
+ * Only the first of those is this file's own. The other two are registered
+ * through ohez_mqtt_subscribe() by the modules that own the hardware, which
+ * is what keeps a pin out of the MQTT client and a broker out of a driver;
+ * this file knows only that something asked for `relay/+/set` and wants to be
+ * called back on the application's task when one arrives.
  *
  * The config/ half is not a hand-written list. It is config_fields[] -- the
  * same table the web form and the panel's settings screen walk -- so MQTT is a
@@ -117,21 +127,43 @@ static const char *TAG = "ohez_mqtt";
  * text field. */
 #define MQTT_VALUE_MAX 80
 
+/* A topic with the prefix taken off, which is what a command is addressed by
+ * and what a handler is given: the longest is "config/mqtt_interval/set". */
+#define MQTT_SUFFIX_MAX 48
+
 /* Arrived messages waiting for the application task. Eight is well past what
  * anyone sets by hand; the depth exists so that a broker replaying a handful of
- * retained commands at connect time does not lose any. */
-#define MQTT_COMMAND_QUEUE_DEPTH 8
+ * retained commands at connect time does not lose any -- and with the relays
+ * and the LEDs subscribing too there are now six more of those to replay. */
+#define MQTT_COMMAND_QUEUE_DEPTH 16
+
+/* How many modules may own a subtree of the command tree. Three are taken:
+ * the settings here, the relays and the LEDs. */
+#define MQTT_SUBSCRIPTIONS_MAX 6
 
 /* Half a minute, against esp-mqtt's 120 second default. The broker declares us
  * dead after one and a half of these, and a panel that has silently dropped off
  * the network should not still read as online for three minutes. */
 #define MQTT_KEEPALIVE_S 30
 
-/* One field name plus the value published to it. */
+/* One arrived message: the topic with the prefix taken off, and the payload.
+ *
+ * The topic rather than a parsed field name, because the client's task no
+ * longer knows what a topic means -- working that out is the dispatch below,
+ * and that runs on the application's task where the handlers do. */
 struct mqtt_command_s
 {
-    char field[24];
+    char topic[MQTT_SUFFIX_MAX];
     char value[MQTT_VALUE_MAX];
+};
+
+/* Who wants which subtree. Read by the client's task on connect and written
+ * by ohez_mqtt_subscribe() during setup, which is before there is a client to
+ * read it. */
+struct mqtt_subscription_s
+{
+    const char          *filter;
+    ohez_mqtt_command_fn handler;
 };
 
 /* The settings the running client is working from: a snapshot rather than a
@@ -172,9 +204,17 @@ static bool                     applied_valid = false;
 
 static char mqtt_prefix[MQTT_PREFIX_MAX];
 static char mqtt_will_topic[MQTT_TOPIC_MAX];
-static char mqtt_command_filter[MQTT_TOPIC_MAX];
+
+static struct mqtt_subscription_s mqtt_subs[MQTT_SUBSCRIPTIONS_MAX];
+static size_t                     mqtt_sub_count = 0;
 
 static QueueHandle_t mqtt_commands = NULL;
+
+/* Set by the settings handler when a command actually changed something, and
+ * cleared by the loop once it has saved. A separate flag rather than a return
+ * value because the handlers all share one signature, and only this one has
+ * anything for the loop to do afterwards. */
+static bool mqtt_config_dirty = false;
 
 /* Written by the client's task, read by the application's. volatile because
  * that hand-off is the whole of what they share: without it the loop's read is
@@ -239,7 +279,58 @@ static void topics_build(const struct mqtt_applied_s &a)
         strlcpy(mqtt_prefix, "oheztouch", sizeof(mqtt_prefix));
 
     snprintf(mqtt_will_topic, sizeof(mqtt_will_topic), "%s/status", mqtt_prefix);
-    snprintf(mqtt_command_filter, sizeof(mqtt_command_filter), "%s/config/+/set", mqtt_prefix);
+}
+
+/* Does this topic match this filter?
+ *
+ * MQTT's own rules, less than they look: '+' stands for one whole segment and
+ * '#' for the rest of the topic, and everything else is a literal. Written out
+ * here rather than left to the broker because the broker only tells us that
+ * *something* we asked for matched -- the filters registered below overlap in
+ * their first segment, and this is what decides which handler gets the
+ * message.
+ *
+ * Both sides are prefix-relative, so neither starts with a '/'.
+ */
+static bool topic_matches(const char *filter, const char *topic)
+{
+    while (*filter != '\0')
+    {
+        if (*filter == '#')
+            return true;
+
+        if (*filter == '+')
+        {
+            filter++;
+
+            while (*topic != '\0' && *topic != '/')
+                topic++;
+
+            continue;
+        }
+
+        if (*filter != *topic)
+            return false;
+
+        filter++;
+        topic++;
+    }
+
+    return *topic == '\0';
+}
+
+/* Ask the broker for one registered filter. Runs on the client's task, from
+ * the connect event; `client` is the one the event came from rather than
+ * mqtt_client, which client_stop() may already have cleared. */
+static void subscribe_one(esp_mqtt_client_handle_t client,
+                          const struct mqtt_subscription_s &sub)
+{
+    char topic[MQTT_TOPIC_MAX];
+
+    snprintf(topic, sizeof(topic), "%s/%s", mqtt_prefix, sub.filter);
+
+    if (esp_mqtt_client_subscribe(client, topic, 0) < 0)
+        ESP_LOGW(TAG, "cannot subscribe to %s", topic);
 }
 
 /* ---------------------------------------------------------------- publishing */
@@ -427,8 +518,9 @@ static bool value_is_on(const char *value)
            || strcasecmp(value, "yes") == 0 || strcmp(value, "1") == 0;
 }
 
-/* Runs on the client's task. Copies the message onto the queue and returns;
- * the field lookup and the write to Config happen in ohez_mqtt_loop().
+/* Runs on the client's task. Strips the prefix, copies what is left onto the
+ * queue and returns; deciding what the topic means, and doing it, happens in
+ * ohez_mqtt_loop().
  *
  * mqtt_prefix is read here and written by topics_build(), on the other task --
  * safely, because topics_build() only runs inside client_start(), and by then
@@ -460,28 +552,18 @@ static void command_enqueue(esp_mqtt_event_handle_t event)
     memcpy(topic, event->topic, len);
     topic[len] = '\0';
 
-    /* The subscription is `<prefix>/config/+/set`, so this only fails if a
+    /* Every subscription is made under the prefix, so this only fails if a
      * broker sends something that does not match what it was asked for. */
-    if (strncmp(topic, mqtt_prefix, prefix_len) != 0
-        || strncmp(topic + prefix_len, "/config/", 8) != 0)
+    if (strncmp(topic, mqtt_prefix, prefix_len) != 0 || topic[prefix_len] != '/')
     {
         ESP_LOGW(TAG, "unexpected topic %s", topic);
         return;
     }
 
+    if (strlcpy(cmd.topic, topic + prefix_len + 1, sizeof(cmd.topic)) >= sizeof(cmd.topic))
     {
-        const char *name = topic + prefix_len + 8;
-        const char *tail = strrchr(name, '/');
-
-        if (tail == NULL || strcmp(tail, "/set") != 0
-            || (size_t)(tail - name) >= sizeof(cmd.field))
-        {
-            ESP_LOGW(TAG, "unexpected topic %s", topic);
-            return;
-        }
-
-        memcpy(cmd.field, name, (size_t)(tail - name));
-        cmd.field[tail - name] = '\0';
+        ESP_LOGW(TAG, "ignoring an over-long topic %s", topic);
+        return;
     }
 
     len = (event->data_len > 0) ? (size_t)event->data_len : 0;
@@ -495,78 +577,122 @@ static void command_enqueue(esp_mqtt_event_handle_t event)
     /* Dropped rather than waited for: this is the client's task, and blocking
      * it would stop the very loop that empties the queue. */
     if (mqtt_commands == NULL || xQueueSend(mqtt_commands, &cmd, 0) != pdTRUE)
-        ESP_LOGW(TAG, "command queue full, dropped %s", cmd.field);
+        ESP_LOGW(TAG, "command queue full, dropped %s", cmd.topic);
 }
 
-/* Apply everything that arrived since the last call. Returns true if any
- * setting actually changed, which is what decides whether the file is
- * rewritten -- a broker replaying a retained command on every reconnect must
- * not mean a flash write on every reconnect. */
-static bool commands_apply(Config &config)
+/* `config/<field>/set`: this file's own handler, registered like any other.
+ *
+ * Sets mqtt_config_dirty only when the setting actually changed, which is what
+ * decides whether the file is rewritten -- a broker replaying a retained
+ * command on every reconnect must not mean a flash write on every reconnect. */
+static void config_command(const char *topic, const char *value)
+{
+    char                         name[MQTT_SUFFIX_MAX];
+    const struct config_field_s *f;
+    char                         before[MQTT_VALUE_MAX];
+    char                         after[MQTT_VALUE_MAX];
+
+    if (mqtt_config == NULL)
+        return;
+
+    /* "config/" is 7 characters, and the filter guarantees the "/set" that
+     * this cuts off. */
+    {
+        const char *from = topic + 7;
+        const char *tail = strrchr(from, '/');
+
+        if (tail == NULL || (size_t)(tail - from) >= sizeof(name))
+        {
+            ESP_LOGW(TAG, "unexpected topic %s", topic);
+            return;
+        }
+
+        memcpy(name, from, (size_t)(tail - from));
+        name[tail - from] = '\0';
+    }
+
+    f = field_by_name(name);
+
+    if (f == NULL)
+    {
+        ESP_LOGW(TAG, "no setting called %s", name);
+        return;
+    }
+
+    if (f->flags & SETTINGS_F_SECRET)
+    {
+        ESP_LOGW(TAG, "%s is a secret and is not settable over MQTT", name);
+        return;
+    }
+
+    Config &config = *mqtt_config;
+
+    config.lock();
+
+    config_field_value_text(f, &config.item, before, sizeof(before));
+
+    switch (f->kind)
+    {
+    case SETTINGS_TEXT:
+        /* False means the value contained '/' or ':' on a row that forbids
+         * them, and the stored value is left alone -- the same silent drop
+         * the web form and the settings screen apply. */
+        config_field_set_text(f, &config.item, value);
+        break;
+
+    case SETTINGS_BOOL:
+        config_field_write(f, &config.item, value_is_on(value) ? 1 : 0);
+        break;
+
+    case SETTINGS_ENUM:
+        config_field_set_number(f, &config.item, config_field_enum_from_name(f, value));
+        break;
+
+    default:
+        config_field_set_number(f, &config.item, strtol(value, NULL, 10));
+        break;
+    }
+
+    config_field_value_text(f, &config.item, after, sizeof(after));
+
+    config.unlock();
+
+    if (strcmp(before, after) != 0)
+    {
+        ESP_LOGI(TAG, "%s: %s -> %s", name, before, after);
+        mqtt_config_dirty = true;
+    }
+}
+
+/* Hand everything that arrived since the last call to whoever registered for
+ * it. Runs on the application's task, which is the whole point of the queue.
+ *
+ * A message with no handler is logged rather than dropped silently: it means
+ * a subscription outlived the module that asked for it, and the symptom
+ * otherwise is a topic that does nothing. */
+static void commands_dispatch(void)
 {
     struct mqtt_command_s cmd;
-    bool                  changed = false;
 
     if (mqtt_commands == NULL)
-        return false;
+        return;
 
     while (xQueueReceive(mqtt_commands, &cmd, 0) == pdTRUE)
     {
-        const struct config_field_s *f = field_by_name(cmd.field);
-        char                         before[MQTT_VALUE_MAX];
-        char                         after[MQTT_VALUE_MAX];
+        bool handled = false;
 
-        if (f == NULL)
+        for (size_t i = 0; i < mqtt_sub_count; i++)
         {
-            ESP_LOGW(TAG, "no setting called %s", cmd.field);
-            continue;
+            if (topic_matches(mqtt_subs[i].filter, cmd.topic) == false)
+                continue;
+
+            mqtt_subs[i].handler(cmd.topic, cmd.value);
+            handled = true;
         }
 
-        if (f->flags & SETTINGS_F_SECRET)
-        {
-            ESP_LOGW(TAG, "%s is a secret and is not settable over MQTT", cmd.field);
-            continue;
-        }
-
-        config.lock();
-
-        config_field_value_text(f, &config.item, before, sizeof(before));
-
-        switch (f->kind)
-        {
-        case SETTINGS_TEXT:
-            /* False means the value contained '/' or ':' on a row that forbids
-             * them, and the stored value is left alone -- the same silent drop
-             * the web form and the settings screen apply. */
-            config_field_set_text(f, &config.item, cmd.value);
-            break;
-
-        case SETTINGS_BOOL:
-            config_field_write(f, &config.item, value_is_on(cmd.value) ? 1 : 0);
-            break;
-
-        case SETTINGS_ENUM:
-            config_field_set_number(f, &config.item,
-                                    config_field_enum_from_name(f, cmd.value));
-            break;
-
-        default:
-            config_field_set_number(f, &config.item, strtol(cmd.value, NULL, 10));
-            break;
-        }
-
-        config_field_value_text(f, &config.item, after, sizeof(after));
-
-        config.unlock();
-
-        if (strcmp(before, after) != 0)
-        {
-            ESP_LOGI(TAG, "%s: %s -> %s", cmd.field, before, after);
-            changed = true;
-        }
+        if (handled == false)
+            ESP_LOGW(TAG, "nothing handles %s", cmd.topic);
     }
-
-    return changed;
 }
 
 /* ------------------------------------------------------------------- events */
@@ -585,8 +711,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         /* Subscribed from here and not once at start-up, because a
          * subscription belongs to the session: it does not survive a
          * reconnect, and esp-mqtt reconnects by itself. */
-        if (esp_mqtt_client_subscribe(event->client, mqtt_command_filter, 0) < 0)
-            ESP_LOGW(TAG, "cannot subscribe to %s", mqtt_command_filter);
+        for (size_t i = 0; i < mqtt_sub_count; i++)
+            subscribe_one(event->client, mqtt_subs[i]);
 
         mqtt_online = true;
         mqtt_announce_pending = true;
@@ -743,6 +869,30 @@ static void reconfigure(Config &config)
 
 /* ---------------------------------------------------------------------- API */
 
+bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler)
+{
+    if (filter == NULL || handler == NULL)
+        return false;
+
+    if (mqtt_sub_count >= MQTT_SUBSCRIPTIONS_MAX)
+    {
+        ESP_LOGE(TAG, "no room to subscribe to %s", filter);
+        return false;
+    }
+
+    mqtt_subs[mqtt_sub_count].filter = filter;
+    mqtt_subs[mqtt_sub_count].handler = handler;
+    mqtt_sub_count++;
+
+    /* Registrations all happen during setup, before there is a client. This
+     * is for the one that does not: without it the topic would be silently
+     * dead until the next reconnect. */
+    if (mqtt_client != NULL && mqtt_online == true)
+        subscribe_one(mqtt_client, mqtt_subs[mqtt_sub_count - 1]);
+
+    return true;
+}
+
 void ohez_mqtt_setup(Config *config)
 {
     mqtt_config = config;
@@ -752,6 +902,17 @@ void ohez_mqtt_setup(Config *config)
 
     if (mqtt_commands == NULL)
         ESP_LOGE(TAG, "no command queue; the broker cannot change settings");
+
+    /* The settings are a subscriber like any other. Where in the table they
+     * land does not matter -- the three filters registered by a full build
+     * differ in their first segment, so no message matches two of them -- and
+     * the dispatch offers a message to every filter that matches rather than
+     * stopping at the first, which is what would make the order load-bearing.
+     *
+     * They are not first, as it happens: main.cpp brings the relays and the
+     * LEDs up before the client, because a subscription registered after the
+     * connect event would not reach the broker until the next reconnect. */
+    ohez_mqtt_subscribe("config/+/set", config_command);
 
     /* Connecting is left to the first loop, which main.cpp only reaches with
      * the link up. Starting here would mean a name resolution failure per
@@ -781,8 +942,12 @@ void ohez_mqtt_loop(Config &config)
     /* Before the online check: a command that arrived just before the link
      * dropped is still worth applying, and dropping the queue on a
      * disconnection would lose it. */
-    if (commands_apply(config) == true)
+    commands_dispatch();
+
+    if (mqtt_config_dirty == true)
     {
+        mqtt_config_dirty = false;
+
         config.lock();
         settings_apply_live(&config);
         config.saveConfig();

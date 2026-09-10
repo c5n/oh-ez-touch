@@ -79,4 +79,39 @@ bool ohez_mqtt_publish_value(const char *suffix, const char *value);
  */
 bool ohez_mqtt_clear_value(const char *suffix);
 
+/**
+ * A command that arrived on a subscribed topic.
+ *
+ * @param topic the part after this device's prefix, e.g. "relay/2/set", so a
+ *   handler that registered a wildcard can tell which topic it matched.
+ * @param value the payload, NUL-terminated and truncated to fit.
+ *
+ * Called from ohez_mqtt_loop(), so on the task that owns Config, LVGL and the
+ * display -- never on the client's own task. A handler may therefore do
+ * whatever the main loop may do.
+ */
+typedef void (*ohez_mqtt_command_fn)(const char *topic, const char *value);
+
+/**
+ * Take ownership of a subtree of the command tree: the counterpart to
+ * ohez_mqtt_publish_value() for the direction the broker talks in.
+ *
+ * @param filter relative to this device's prefix and in MQTT's own filter
+ *   syntax, e.g. "relay/+/set". Not copied -- pass a literal or something
+ *   that outlives the client.
+ * @param handler called once per matching message, in registration order if
+ *   two filters overlap.
+ *
+ * Register during setup, before the first ohez_mqtt_loop(): the client
+ * subscribes on connect, and a subscription belongs to a session rather than
+ * to the client, so registering late is legal but does not reach the broker
+ * until the next reconnect. That case is handled anyway -- a registration
+ * made while connected subscribes immediately -- because the alternative is a
+ * silence with no cause to find.
+ *
+ * @return false when the table is full, in which case nothing was registered
+ *   and that subtree will never be delivered.
+ */
+bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler);
+
 #endif // OHEZ_MQTT_HPP

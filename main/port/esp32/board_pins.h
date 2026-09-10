@@ -63,6 +63,10 @@
 #define OHEZ_I2C_PIN_SDA            33
 #define OHEZ_I2C_PIN_SCL            32
 
+/* No relays and no mood light on these boards: OHEZ_RELAY_PINS and
+ * OHEZ_LED_PINS are left undefined, which is what port_relay.c and port_led.c
+ * compile down to nothing on. */
+
 /* The 2.4" and the 2.8" panel are mounted the other way up from each other, so
  * only one of them needs the pointer flipped end for end. */
 #ifdef CONFIG_OHEZ_BOARD_ARDUITOUCH
@@ -102,6 +106,34 @@
 
 /* No buzzer on this board. */
 #define OHEZ_HAS_BEEPER              0
+
+/* The three relays of the L8-HS, and the RGB "mood light" behind the glass.
+ * Both are outputs and nothing else: no switch reads back, and the panel's own
+ * UI never touches them -- they are driven over MQTT, which is what
+ * peripherals/relay.cpp and peripherals/led.cpp are for.
+ *
+ * The relay pins are 12, 14 and 27, not the 12, 24 and 37 the PlatformIO
+ * environment carried. Those two were impossible on this chip: there is no
+ * GPIO 24 on an ESP32 at all, and GPIO 37 is input-only and not bonded out on
+ * a WROOM module. Nothing ever read the flags -- they were defined in
+ * platformio.ini and used by no source file -- so the mistake had no symptom
+ * to be found by. 14 and 27 are what the hardware actually uses.
+ *
+ * GPIO 12 is MTDI, the strapping pin that selects the flash voltage at reset.
+ * It is only sampled during reset, so driving it afterwards is fine, and it is
+ * left low here at boot, which is the level that strapping wants anyway.
+ *
+ * The mood light is three separate PWM channels rather than one colour: the
+ * hardware is three LEDs, and giving each its own topic lets a broker mix
+ * whatever it likes without this firmware having an opinion about colour.
+ * Newer L8 units drive the same light through a WS2811 on GPIO 26 instead, and
+ * those will see red respond and the other two do nothing. */
+#define OHEZ_RELAY_PINS             { 12, 14, 27 }
+#define OHEZ_RELAY_ACTIVE_LOW       0
+
+#define OHEZ_LED_PINS               { 26, 32, 33 }
+#define OHEZ_LED_NAMES              { "red", "green", "blue" }
+#define OHEZ_LED_ACTIVE_LOW         0
 
 #else
 #error "No board selected. Run idf.py menuconfig -> OhEzTouch -> Target board."

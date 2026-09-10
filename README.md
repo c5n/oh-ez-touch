@@ -639,8 +639,10 @@ Publish non-beacon devices    | off     | Publish plain BLE devices too, not onl
 
 ### MQTT
 
-The client publishes what the panel knows about itself and subscribes to one
-wildcard through which every setting can be written. It is off by default; the
+The client publishes what the panel knows about itself, subscribes to one
+wildcard through which every setting can be written, and -- on a board that
+has them -- to two more through which its relays and LEDs are driven. It is
+off by default; the
 settings are on the ```MQTT``` tab of the settings screen and in the web
 interface.
 
@@ -668,6 +670,8 @@ Topic                        | Published        | Value
 ```sensor/humidity```        | on each reading  | Percent relative humidity
 ```sensor/pressure```        | on each reading  | hPa
 ```config/<setting>```       | on connect, and after every save | One topic per setting
+```relay/<n>```              | on change, and on connect | ```ON``` or ```OFF```. Only on a board with relays
+```led/<name>```             | on change, and on connect | ```0``` to ```100```. Only on a board with LEDs
 
 Everything is published at QoS 0, and retained unless ```Retain published
 values``` is turned off. Nothing here is an event -- every topic carries the
@@ -675,7 +679,8 @@ current value of something -- so a subscriber that missed an update wants the
 newest one and not the one it missed, which is what retain gives it.
 
 The sensor topics need ```Use BME280 sensor``` turned on, and are the only
-place a reading goes.
+place a reading goes. The relay and LED topics need a board that has the
+hardware -- see [Relays and LEDs](#relays-and-leds) below.
 
 #### Writing a setting
 
@@ -706,6 +711,70 @@ a retained command on every reconnect costs nothing.
 
 There is no authentication in front of any of this, which is also true of the
 web interface. Both belong on a network you trust.
+
+### Relays and LEDs
+
+The Lanbon L8 is a wall switch as well as a panel: behind the glass are three
+mains relays and an RGB "mood light". Both are driven over MQTT and nothing
+else. There is no setting for them, no widget on the screen and no openHAB
+item -- a relay answers a topic, and that is the whole of the interface.
+
+Nothing appears on a board that does not have the hardware. The ArduiTouch
+boards have neither, so they publish and subscribe to none of it.
+
+Topic                        | Direction | Value
+---------------------------- | --------- | -----
+```relay/<n>/set```          | in        | ```ON```, ```OFF``` or ```TOGGLE```
+```relay/<n>```              | out       | ```ON``` or ```OFF```, the state now
+```led/<name>/set```         | in        | ```0``` to ```100```, or ```ON``` / ```OFF```
+```led/<name>```             | out       | ```0``` to ```100```, the brightness now
+
+The relays are numbered from 1, as they are on the wall plate: ```relay/1``` to
+```relay/3``` on an L8-HS. The LEDs are named rather than numbered --
+```led/red```, ```led/green``` and ```led/blue``` -- because that is what a
+topic wants, and they are three independent brightnesses rather than one
+colour: what to mix from them is a decision for whatever is publishing.
+
+```bash
+mosquitto_pub -t oheztouch/oheztouch-new/relay/1/set -m ON
+mosquitto_pub -t oheztouch/oheztouch-new/relay/2/set -m TOGGLE
+mosquitto_pub -t oheztouch/oheztouch-new/led/red/set -m 100
+mosquitto_pub -t oheztouch/oheztouch-new/led/green/set -m 40
+```
+
+A ```relay/<n>/set``` payload is ```ON```, ```OFF```, ```TRUE```, ```FALSE```,
+```YES```, ```NO```, ```1``` or ```0```, case-insensitive, plus ```TOGGLE```
+for a push-button that does not know the current state. Anything unrecognised
+is off, which is the direction a mains switch should fail in.
+
+A ```led/<name>/set``` payload is a number from 0 to 100 -- an openHAB Dimmer
+percentage -- or ```ON``` and ```OFF``` for the two ends of it. Where the two
+readings could disagree the number wins: ```1``` is one percent, not "on".
+
+Nothing is saved. The outputs come up off after a reboot, and the broker's
+retained ```set``` messages put them back a second after the connection --
+which is also what makes a reflashed panel come back in the state the
+installation thinks it is in, rather than the state it happened to die in. The
+state topics are published on every change and again after a reconnect, since
+a broker that has just come back holds none of the last session's retained
+messages.
+
+To use one from openHAB, bind it as an MQTT Thing channel like any other
+broker topic, and it gets rules, schedules and the phone app for free:
+
+```
+Type switch : hallLight "Hall light" [ stateTopic="oheztouch/oheztouch-new/relay/1",
+                                       commandTopic="oheztouch/oheztouch-new/relay/1/set" ]
+Type dimmer : moodRed    "Mood red"   [ stateTopic="oheztouch/oheztouch-new/led/red",
+                                        commandTopic="oheztouch/oheztouch-new/led/red/set" ]
+```
+
+Put that item in the sitemap and the panel draws a switch for it like any
+other -- which is why there is no built-in widget for the local relay.
+
+The simulator has neither by default. ```OHEZ_OUTPUTS=1``` gives it three
+relays and a three-channel mood light that exist only as log lines, which is
+enough to exercise the topics against a real broker on a desktop.
 
 ### Bluetooth LE beacons
 
@@ -959,6 +1028,8 @@ Contact: c5n AT posteo DOT de
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [ ] sensors: Support DS18B20 onewire sensors
+- [x] peripherals: Drive the Lanbon L8's three relays and three mood LEDs over MQTT -- see [Relays and LEDs](#relays-and-leds)
+- [ ] peripherals: The relays and the LEDs have not been run on hardware. The pin table is the openHASP and ESPHome mapping for the L8-HS, not a measurement, and the PlatformIO flags it replaces named two pins that do not exist on an ESP32.
 - [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
 - [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.
 - [ ] mqtt: Home Assistant style discovery, so the topics above do not have to be wired up by hand

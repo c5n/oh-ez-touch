@@ -39,6 +39,8 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
+#include "peripherals/led.hpp"
+#include "peripherals/relay.hpp"
 #include "peripherals/sensor_main.hpp"
 #include "port/ohez_port.h"
 #include "ui/openhab_ui.hpp"
@@ -249,6 +251,15 @@ static void ohez_setup(void)
         ESP_LOGE(TAG, "no openHAB client task; the panel will not reach openHAB");
 
     sensor_main_setup(config);
+
+    /* Before the MQTT client, because that is what they talk through and the
+     * only thing they talk through: each claims a subtree of the command tree
+     * with ohez_mqtt_subscribe(), and the client asks the broker for them
+     * when it connects. No-ops on a board without the hardware, which is
+     * every board but the Lanbon L8-HS. */
+    relay_setup();
+    led_setup();
+
     ohez_mqtt_setup(&config);
 
     /* After the MQTT client, which is where its findings go, and last of the
@@ -377,6 +388,11 @@ static void ohez_loop(void)
          * whole of the association failing to resolve the broker's name, once a
          * second, with a log line each time. */
         ohez_mqtt_loop(config);
+
+        /* After it, not before: a command is applied from inside that call,
+         * and these two are what publish the state it left behind. */
+        relay_loop();
+        led_loop();
 
         /* Inside it too, though for a weaker reason: the scanner has somewhere
          * to publish only while the link is up, and scanning with nowhere to

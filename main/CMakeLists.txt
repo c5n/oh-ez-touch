@@ -29,6 +29,7 @@ if(OHEZ_LINUX)
         "port/linux/port_backlight.c"
         "port/linux/port_beeper.c"
         "port/linux/port_bme280.c"
+        "port/linux/port_outputs.c"
         "port/linux/port_net.c"
         "port/linux/port_ntp.c"
         "port/linux/port_ble.c"
@@ -43,6 +44,8 @@ else()
         "port/esp32/port_backlight.c"
         "port/esp32/port_beeper.c"
         "port/esp32/port_bme280.c"
+        "port/esp32/port_relay.c"
+        "port/esp32/port_led.c"
         "port/esp32/port_net.c"
         "port/esp32/port_ntp.c"
         "port/esp32/port_ble.c"
@@ -93,6 +96,8 @@ set(OHEZ_APP_SRCS
 
     "peripherals/sensor_bme280.cpp"
     "peripherals/sensor_main.cpp"
+    "peripherals/relay.cpp"
+    "peripherals/led.cpp"
 
     "mqtt/ohez_mqtt.cpp"
 
@@ -148,6 +153,7 @@ if(NOT OHEZ_LINUX)
         esp_lcd
         esp_driver_spi
         esp_driver_ledc
+        esp_driver_gpio
         esp_driver_i2c
         esp_wifi
         esp_netif

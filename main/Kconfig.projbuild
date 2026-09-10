@@ -71,6 +71,10 @@ config OHEZ_DEBUG_CONFIG_FILE
     bool "config: the file name, and every setting as it is loaded"
     default n
 
+config OHEZ_DEBUG_LED
+    bool "LEDs: every brightness command from the broker"
+    default n
+
 config OHEZ_DEBUG_MQTT
     bool "MQTT: every topic published, with its value"
     default n
@@ -81,6 +85,10 @@ config OHEZ_DEBUG_OPENHAB_CONNECTOR
 
 config OHEZ_DEBUG_OPENHAB_CLIENT
     bool "openHAB client task: every request submitted, dropped, and its stack"
+    default n
+
+config OHEZ_DEBUG_RELAY
+    bool "relays: every switch command from the broker"
     default n
 
 config OHEZ_DEBUG_SENSOR_BME280
