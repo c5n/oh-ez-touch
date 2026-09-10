@@ -375,6 +375,46 @@ static void test_an_unknown_enum_name_falls_back(void)
     TEST_ASSERT_EQUAL_INT(UI_THEME_LCARS, config.item.ui.theme);
 }
 
+/* A hand-written 1 or 0 for a boolean is honoured.
+ *
+ * This is a trap the old loader had. It read booleans as `doc[...] | false`,
+ * and ArduinoJson 7's `|` refuses to coerce an integer to a bool -- so every
+ * `"enabled": 1` in a hand-edited file fell back to the default and was
+ * silently ignored, which cost a debugging session. The shipped
+ * data/config.json got away with it only because each value happened to equal
+ * its fallback.
+ *
+ * as<bool>() does coerce, so this now works. saveConfig() still writes real
+ * true/false; this is about what a human may type. */
+static void test_a_hand_written_integer_boolean_is_honoured(void)
+{
+    Config &config = config_instance();
+
+    write_file("{\"mqtt\":{\"enabled\":1,\"retain\":0},\"beeper\":{\"enabled\":0},"
+               "\"sensors\":{\"bme280\":{\"use\":1}}}");
+
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+
+    /* Each of these differs from its default, so a fallback would show. */
+    TEST_ASSERT_TRUE(config.item.mqtt.enabled);   /* default false */
+    TEST_ASSERT_FALSE(config.item.mqtt.retain);   /* default true  */
+    TEST_ASSERT_FALSE(config.item.beeper.enabled); /* default true  */
+    TEST_ASSERT_TRUE(config.item.sensors.bme280.use); /* default false */
+}
+
+/* And a number written as a string, which is the other thing a human types. */
+static void test_a_quoted_number_is_honoured(void)
+{
+    Config &config = config_instance();
+
+    write_file("{\"openhab\":{\"port\":\"8090\"},\"mqtt\":{\"interval\":\"30\"}}");
+
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+
+    TEST_ASSERT_EQUAL_INT(8090, config.item.openhab.port);
+    TEST_ASSERT_EQUAL_INT(30, config.item.mqtt.interval);
+}
+
 /* saveConfig() before any load has no file name to write to, and must say so
  * rather than inventing one. */
 static void test_save_without_a_load_fails(void)
@@ -398,6 +438,8 @@ void test_config_file_run(void)
     RUN_TEST(test_missing_sections_keep_their_defaults);
     RUN_TEST(test_a_hand_edited_file_is_validated);
     RUN_TEST(test_an_unknown_enum_name_falls_back);
+    RUN_TEST(test_a_hand_written_integer_boolean_is_honoured);
+    RUN_TEST(test_a_quoted_number_is_honoured);
     RUN_TEST(test_save_without_a_load_fails);
 
     /* The directory itself is left behind: it is one empty directory under
