@@ -341,6 +341,108 @@ static void test_restart_is_needed_only_for_flagged_fields(void)
     TEST_ASSERT_EQUAL_STRING(row("hostname")->label, label);
 }
 
+/* ------------------------------------------------- the file half of a row */
+
+/* The rows carry the config.json layout now, so a duplicated path would have
+ * two settings overwrite each other in the file -- and only in the file, which
+ * is the kind of bug that survives every interactive test. */
+static void test_json_paths_are_unique(void)
+{
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *a = &config_fields[i];
+
+        if (a->kind == SETTINGS_SECTION)
+            continue;
+
+        TEST_ASSERT_NOT_NULL(a->json_path);
+        TEST_ASSERT_NOT_NULL(a->json_key);
+        TEST_ASSERT_TRUE(a->json_path[0] != '\0');
+        TEST_ASSERT_TRUE(a->json_key[0] != '\0');
+
+        /* config.cpp copies the path into a fixed buffer before walking it. */
+        TEST_ASSERT_TRUE(strlen(a->json_path) < 32);
+
+        /* '/' separates the objects of a path, so it cannot also appear in a
+         * key -- "bme280/use" as a key would address nothing. */
+        TEST_ASSERT_NULL(strchr(a->json_key, '/'));
+
+        for (size_t j = i + 1; j < config_field_count; j++)
+        {
+            const struct config_field_s *b = &config_fields[j];
+
+            if (b->kind == SETTINGS_SECTION)
+                continue;
+
+            if (strcmp(a->json_path, b->json_path) == 0)
+                TEST_ASSERT_TRUE(strcmp(a->json_key, b->json_key) != 0);
+        }
+    }
+}
+
+/* A default outside its own row's range would be clamped the moment the file
+ * was read, so the panel would boot with a value the table does not admit and
+ * the next save would write a different one than the last load produced. */
+static void test_every_default_is_in_range(void)
+{
+    config_item_t defaults;
+
+    memset(&defaults, 0, sizeof(defaults));
+    config_fields_set_defaults(&defaults);
+
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *f = &config_fields[i];
+
+        switch (f->kind)
+        {
+        case SETTINGS_SECTION:
+            break;
+
+        case SETTINGS_TEXT:
+            /* It has to survive the field it is copied into. */
+            TEST_ASSERT_NOT_NULL(f->def_text);
+            TEST_ASSERT_TRUE(strlen(f->def_text) < f->size);
+            TEST_ASSERT_EQUAL_STRING(f->def_text, config_field_text(f, &defaults));
+            break;
+
+        case SETTINGS_ENUM:
+        {
+            /* By name, so the name has to be one the table knows: an unknown
+             * one silently resolves to the first option. */
+            char rendered[32];
+
+            TEST_ASSERT_NOT_NULL(f->def_text);
+            config_field_value_text(f, &defaults, rendered, sizeof(rendered));
+            TEST_ASSERT_EQUAL_STRING(f->def_text, rendered);
+            break;
+        }
+
+        default:
+            TEST_ASSERT_TRUE(f->def_num >= f->min);
+            TEST_ASSERT_TRUE(f->def_num <= f->max);
+            TEST_ASSERT_EQUAL_INT32(f->def_num, config_field_read(f, &defaults));
+            break;
+        }
+    }
+}
+
+/* The lookup the MQTT client and the simulator's environment overrides share. */
+static void test_lookup_by_name(void)
+{
+    TEST_ASSERT_EQUAL_PTR(row("mqtt_host"), config_field_by_name("mqtt_host"));
+    TEST_ASSERT_EQUAL_PTR(row("theme"), config_field_by_name("theme"));
+
+    TEST_ASSERT_NULL(config_field_by_name("no_such_setting"));
+    TEST_ASSERT_NULL(config_field_by_name(""));
+    TEST_ASSERT_NULL(config_field_by_name(NULL));
+
+    /* A section has a label but no name, and must never be returned: the
+     * accessors would read a zero offset as though it were a field. */
+    TEST_ASSERT_NULL(config_field_by_name("Device"));
+    TEST_ASSERT_NULL(config_field_by_name("MQTT Broker"));
+}
+
 void test_config_fields_run(void)
 {
     RUN_TEST(test_every_row_is_well_formed);
@@ -357,4 +459,7 @@ void test_config_fields_run(void)
     RUN_TEST(test_an_over_long_text_is_truncated);
     RUN_TEST(test_the_broker_password_is_the_only_secret);
     RUN_TEST(test_restart_is_needed_only_for_flagged_fields);
+    RUN_TEST(test_json_paths_are_unique);
+    RUN_TEST(test_every_default_is_in_range);
+    RUN_TEST(test_lookup_by_name);
 }

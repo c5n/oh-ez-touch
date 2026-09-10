@@ -18,10 +18,18 @@
 # only two modules with no other front end at all -- no widget, no setting --
 # so a test is the only place their behaviour is written down twice.
 #
+# config.cpp joined them when loadConfig() and saveConfig() stopped naming
+# settings: what they do now is read the JSON path and the default off each row
+# of config_fields[], which makes the *file format* a property of that table
+# and worth pinning down. It brings the two halves of port_storage with it --
+# plain stdio over a directory $OHEZ_CONFIG_DIR names, so the tests write real
+# files without needing SPIFFS or a device.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_ble_beacon.cpp"
                             "test_config_fields.cpp"
+                            "test_config_file.cpp"
                             "test_item_setters.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
@@ -30,11 +38,15 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/port_storage_stdio.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main"
+                                    "${CMAKE_CURRENT_LIST_DIR}/../../../main/port"
                        REQUIRES unity ArduinoJson freertos)

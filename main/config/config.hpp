@@ -26,8 +26,13 @@
  * port_storage, which is SPIFFS on the device and the host's config directory
  * in the simulator. The simulator used to have a second copy of loadConfig()
  * that assigned literals instead, which duplicated the defaults from
- * data/config.json and had already drifted from them; the `| default` fallbacks
- * in loadConfig() are now the only place a default is written down.
+ * data/config.json and had already drifted from them.
+ *
+ * The struct below is the only hand-written list of settings left. Where each
+ * field lives in the file, what it defaults to, what range it accepts and what
+ * the two front ends call it are all one row of config_fields[], and
+ * loadConfig() and saveConfig() walk that table -- so adding a setting means
+ * adding the member here and the row there, and nothing else.
  */
 class Config
 {
@@ -67,9 +72,6 @@ public:
         } beeper;
         struct
         {
-            /* Off by default: a device that has never been told about a broker
-             * must not spend every boot resolving "mosquitto" and logging the
-             * failure. */
             bool enabled;
             char hostname[32];
             int  port;
@@ -82,9 +84,9 @@ public:
              * general.hostname, so two panels with the defaults do not publish
              * over each other -- see mqtt/ohez_mqtt.cpp. */
             char topic[32];
-            /* Seconds between two rounds of system information. A minute is
-             * what a dashboard showing an uptime wants, and slow enough that
-             * the handful of retained topics it republishes cost nothing. */
+            /* Seconds between two rounds of system information. Slow
+             * enough that the handful of retained topics it republishes cost
+             * nothing; see config_fields.cpp for the value. */
             int  interval;
             bool retain;
         } mqtt;

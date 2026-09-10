@@ -492,22 +492,6 @@ bool ohez_mqtt_clear_value(const char *suffix)
 
 /* ------------------------------------------------------------------ commands */
 
-static const struct config_field_s *field_by_name(const char *name)
-{
-    for (size_t i = 0; i < config_field_count; i++)
-    {
-        /* A section row has no name at all, so the comparison has to be
-         * skipped and not merely fail. */
-        if (config_fields[i].kind == SETTINGS_SECTION)
-            continue;
-
-        if (strcmp(config_fields[i].name, name) == 0)
-            return &config_fields[i];
-    }
-
-    return NULL;
-}
-
 /* A checkbox over MQTT. Accepts what a broker's other publishers are likely to
  * be sending: openHAB's ON/OFF, a JSON true/false, and a bare 1/0. Anything
  * else is off, which is the same direction the web form's absent checkbox
@@ -611,7 +595,7 @@ static void config_command(const char *topic, const char *value)
         name[tail - from] = '\0';
     }
 
-    f = field_by_name(name);
+    f = config_field_by_name(name);
 
     if (f == NULL)
     {

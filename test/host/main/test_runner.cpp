@@ -28,6 +28,7 @@ extern "C" void app_main(void)
 
     test_ble_beacon_run();
     test_config_fields_run();
+    test_config_file_run();
     test_item_setters_run();
     test_item_state_run();
     test_item_urls_run();

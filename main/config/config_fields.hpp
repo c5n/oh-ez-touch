@@ -93,6 +93,23 @@ struct config_field_s
     const char        *name;   /* POST argument name; [a-z0-9_] only        */
     const char        *label;
     const char *const *names;  /* SETTINGS_ENUM: the option names           */
+
+    /* Where the field lives in config.json. `json_path` is the containing
+     * object and nests with '/', so "mqtt" and "sensors/bme280" are both
+     * valid; `json_key` is the name inside it. Together they are the file
+     * format, which is why they are written down rather than derived from
+     * `name` -- "oh_host" is stored as openhab/hostname, and an existing
+     * file has to keep loading. */
+    const char        *json_path;
+    const char        *json_key;
+
+    /* The value a missing or unreadable file leaves behind. `def_text` for
+     * SETTINGS_TEXT, and for SETTINGS_ENUM the option *name*; `def_num` for
+     * every numeric kind and for SETTINGS_BOOL. This is the only place a
+     * default is written down. */
+    const char        *def_text;
+    int32_t            def_num;
+
     uint16_t           offset; /* byte offset into Config::item             */
     int32_t            min;
     int32_t            max;
@@ -163,6 +180,16 @@ bool config_field_set_text(const struct config_field_s *f, config_item_t *item, 
 
 /* Clamps to [f->min, f->max] rather than rejecting. */
 void config_field_set_number(const struct config_field_s *f, config_item_t *item, long value);
+
+/* The row with this POST argument name, or NULL. Section rows have no name
+ * and are never returned. Three callers: the MQTT config/ topics, the
+ * simulator's environment overrides, and the tests. */
+const struct config_field_s *config_field_by_name(const char *name);
+
+/* Write every field's built-in default into `item`. loadConfig() calls this
+ * before it reads the file, so a missing, truncated or unparseable file
+ * leaves a complete and valid set of settings rather than a partial one. */
+void config_fields_set_defaults(config_item_t *item);
 
 /* SETTINGS_ENUM: the index of an option name, compared case-insensitively.
  * Unknown names resolve to the first option, the same fallback

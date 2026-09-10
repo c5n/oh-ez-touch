@@ -16,14 +16,33 @@
 
 /* Shorthand, so that a row fits on one line and the table can be read against
  * the settings tables in README.md. Only SEC() names a tab; the rows under it
- * inherit it. */
-#define SEC(lbl, tb)                {NULL, (lbl), NULL, 0,          0,     0, SETTINGS_SECTION, 0,        0,   0,     (tb)}
-#define TXT(nm, lbl, path, fl)      {(nm), (lbl), NULL, OFF(path),  0,     0, SETTINGS_TEXT,    SZ(path), 0,   (fl),  0}
-#define SINT(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), SETTINGS_INT,    0,        0,   0,     0}
-#define UINT(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), SETTINGS_UINT,   0,        0,   0,     0}
-#define ULNG(nm, lbl, path, lo, hi) {(nm), (lbl), NULL, OFF(path), (lo), (hi), SETTINGS_ULONG,  0,        0,   0,     0}
-#define CHK(nm, lbl, path, fl)      {(nm), (lbl), NULL, OFF(path),  0,     0, SETTINGS_BOOL,    0,        0,   (fl),  0}
-#define SEL(nm, lbl, path, tbl, n)  {(nm), (lbl), (tbl), OFF(path), 0, (n) - 1, SETTINGS_ENUM,  0,      (n),   0,     0}
+ * inherit it.
+ *
+ * Every value row now also carries where it lives in config.json (`jp`/`jk`)
+ * and what it is worth when the file does not say (`dv`). Those two used to
+ * be a second and third hand-written copy of this list, in Config::loadConfig()
+ * and Config::saveConfig(); they are read straight off these rows instead, so
+ * a setting added here is stored and restored without touching config.cpp.
+ *
+ *   nm   POST argument name        lbl  label shown in both front ends
+ *   fld  the member of Config::item jp   containing JSON object, '/' nests
+ *   jk   key inside that object     dv   the built-in default
+ *   lo/hi  accepted range, clamped  fl   SETTINGS_F_* flags
+ */
+#define SEC(lbl, tb) \
+    {NULL, (lbl), NULL, NULL, NULL, NULL, 0, 0, 0, 0, SETTINGS_SECTION, 0, 0, 0, (tb)}
+#define TXT(nm, lbl, fld, jp, jk, dv, fl) \
+    {(nm), (lbl), NULL, (jp), (jk), (dv), 0, OFF(fld), 0, 0, SETTINGS_TEXT, SZ(fld), 0, (fl), 0}
+#define SINT(nm, lbl, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_INT, 0, 0, 0, 0}
+#define UINT(nm, lbl, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_UINT, 0, 0, 0, 0}
+#define ULNG(nm, lbl, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_ULONG, 0, 0, 0, 0}
+#define CHK(nm, lbl, fld, jp, jk, dv, fl) \
+    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 1, SETTINGS_BOOL, 0, 0, (fl), 0}
+#define SEL(nm, lbl, fld, jp, jk, dv, tbl, n) \
+    {(nm), (lbl), (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), 0, 0}
 
 /* The SETTINGS_F_RESTART flags say what the code actually does, which is not
  * what they used to say. settings_apply_live() re-applies the openHAB endpoint,
@@ -47,66 +66,89 @@
 const struct config_field_s config_fields[] = {
 
     SEC("Device", SETTINGS_TAB_DEVICE),
-    TXT("hostname", "Hostname", general.hostname, SETTINGS_F_HOSTCHARS | SETTINGS_F_RESTART),
+    TXT("hostname", "Hostname", general.hostname, "general", "hostname", "oheztouch-new",
+        SETTINGS_F_HOSTCHARS | SETTINGS_F_RESTART),
 
     SEC("NTP Time", SETTINGS_TAB_TIME),
-    TXT("ntp_host", "Host", ntp.hostname, SETTINGS_F_HOSTCHARS),
-    SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, -12, 14),
-    CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, 0),
+    TXT("ntp_host", "Host", ntp.hostname, "ntp", "hostname", "pool.ntp.org",
+        SETTINGS_F_HOSTCHARS),
+    SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, "ntp", "gmt_offset", 1, -12, 14),
+    CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, "ntp", "daylightsaving", 0, 0),
 
     SEC("Appearance", SETTINGS_TAB_THEME),
     /* The option names come straight from ui_theme.hpp, so the dropdown, the
      * config file and the simulator's environment variables cannot drift
      * apart. Unlike the AutoConnect version this needs no 1-based index
      * arithmetic: the POST carries the name, and the lookup owns the
-     * fallback. */
-    SEL("theme", "Theme", ui.theme, ui_theme_names, UI_THEME_FAMILY_COUNT),
-    SEL("night_mode", "Night mode", ui.night_mode, ui_night_mode_names, UI_NIGHT_MODE_COUNT),
-    UINT("night_from", "Night from [h]", ui.night_from, 0, 23),
-    UINT("night_to", "Night to [h]", ui.night_to, 0, 23),
+     * fallback.
+     *
+     * Stored by name for the same reason: a file written by one firmware and
+     * read by another that has since gained a theme must not silently select
+     * a different one because the numbering moved. */
+    SEL("theme", "Theme", ui.theme, "ui", "theme", UI_THEME_NAME_DEFAULT,
+        ui_theme_names, UI_THEME_FAMILY_COUNT),
+    SEL("night_mode", "Night mode", ui.night_mode, "ui", "night_mode", UI_NIGHT_NAME_OFF,
+        ui_night_mode_names, UI_NIGHT_MODE_COUNT),
+    UINT("night_from", "Night from [h]", ui.night_from, "ui", "night_from", 22, 0, 23),
+    UINT("night_to", "Night to [h]", ui.night_to, "ui", "night_to", 6, 0, 23),
 
     SEC("LCD Backlight Dimming", SETTINGS_TAB_THEME),
-    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout, 0, 86400),
-    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness, 0, 100),
-    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness, 0, 100),
+    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout,
+         "backlight", "activity_timeout", 60, 0, 86400),
+    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness,
+         "backlight", "normal_brightness", 100, 0, 100),
+    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness,
+         "backlight", "dim_brightness", 40, 0, 100),
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
-    CHK("beeper", "Enable beeper", beeper.enabled, 0),
+    CHK("beeper", "Enable beeper", beeper.enabled, "beeper", "enabled", 1, 0),
 
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
-    TXT("oh_host", "Host", openhab.hostname, SETTINGS_F_HOSTCHARS),
-    SINT("oh_port", "Port", openhab.port, 1, 65535),
-    TXT("oh_sitemap", "Sitemap", openhab.sitemap, SETTINGS_F_HOSTCHARS),
+    TXT("oh_host", "Host", openhab.hostname, "openhab", "hostname", "openhabian",
+        SETTINGS_F_HOSTCHARS),
+    SINT("oh_port", "Port", openhab.port, "openhab", "port", 8080, 1, 65535),
+    TXT("oh_sitemap", "Sitemap", openhab.sitemap, "openhab", "sitemap", "setme_sitemap",
+        SETTINGS_F_HOSTCHARS),
 
     SEC("MQTT Broker", SETTINGS_TAB_MQTT),
-    CHK("mqtt_use", "Enable MQTT", mqtt.enabled, 0),
-    TXT("mqtt_host", "Host", mqtt.hostname, SETTINGS_F_HOSTCHARS),
-    SINT("mqtt_port", "Port", mqtt.port, 1, 65535),
-    TXT("mqtt_user", "User (empty: none)", mqtt.user, 0),
-    TXT("mqtt_pass", "Password", mqtt.password, SETTINGS_F_SECRET),
+    /* Off by default: a device that has never been told about a broker must
+     * not spend every boot resolving "mosquitto" and logging the failure. */
+    CHK("mqtt_use", "Enable MQTT", mqtt.enabled, "mqtt", "enabled", 0, 0),
+    TXT("mqtt_host", "Host", mqtt.hostname, "mqtt", "hostname", "mosquitto",
+        SETTINGS_F_HOSTCHARS),
+    SINT("mqtt_port", "Port", mqtt.port, "mqtt", "port", 1883, 1, 65535),
+    TXT("mqtt_user", "User (empty: none)", mqtt.user, "mqtt", "user", "", 0),
+    TXT("mqtt_pass", "Password", mqtt.password, "mqtt", "password", "", SETTINGS_F_SECRET),
 
     SEC("MQTT Publishing", SETTINGS_TAB_MQTT),
     /* No SETTINGS_F_HOSTCHARS: a base topic of "home/panels" is a reasonable
      * thing to want, and '/' is what makes it one. The client rejects the two
      * characters that would actually break a topic -- '+' and '#', the
      * subscription wildcards -- when it assembles the prefix. */
-    TXT("mqtt_topic", "Base topic", mqtt.topic, 0),
-    SINT("mqtt_interval", "Publish interval [s]", mqtt.interval, 5, 86400),
-    CHK("mqtt_retain", "Retain published values", mqtt.retain, 0),
+    TXT("mqtt_topic", "Base topic", mqtt.topic, "mqtt", "topic", "oheztouch", 0),
+    SINT("mqtt_interval", "Publish interval [s]", mqtt.interval, "mqtt", "interval",
+         60, 5, 86400),
+    CHK("mqtt_retain", "Retain published values", mqtt.retain, "mqtt", "retain", 1, 0),
 
     SEC("Sensors", SETTINGS_TAB_SENSORS),
-    CHK("bme_use", "Use BME280 sensor", sensors.bme280.use, SETTINGS_F_RESTART),
-    SINT("bme_interval", "Update interval [s]", sensors.bme280.interval, 1, 86400),
+    /* The one two-level path in the table: the file has always nested the
+     * BME280 under "sensors", against the day a second chip joins it. */
+    CHK("bme_use", "Use BME280 sensor", sensors.bme280.use, "sensors/bme280", "use", 0,
+        SETTINGS_F_RESTART),
+    SINT("bme_interval", "Update interval [s]", sensors.bme280.interval,
+         "sensors/bme280", "interval", 180, 1, 86400),
 
     /* On the Sensors page rather than one of its own: a beacon scanner is a
      * presence sensor, which is what that page is for. */
     SEC("Bluetooth LE Beacons", SETTINGS_TAB_SENSORS),
-    CHK("ble_use", "Scan for BLE beacons", ble.enabled, SETTINGS_F_RESTART),
-    SINT("ble_interval", "Scan every [s]", ble.interval, 5, 3600),
-    SINT("ble_window", "Scan for [s]", ble.window, 1, 60),
-    SINT("ble_rssi", "Ignore weaker than [dBm]", ble.rssi_min, -100, 0),
-    SINT("ble_expire", "Forget after [s]", ble.expire, 10, 86400),
-    CHK("ble_all", "Publish non-beacon devices", ble.publish_all, 0),
+    CHK("ble_use", "Scan for BLE beacons", ble.enabled, "ble", "enabled", 0,
+        SETTINGS_F_RESTART),
+    SINT("ble_interval", "Scan every [s]", ble.interval, "ble", "interval", 30, 5, 3600),
+    SINT("ble_window", "Scan for [s]", ble.window, "ble", "window", 5, 1, 60),
+    SINT("ble_rssi", "Ignore weaker than [dBm]", ble.rssi_min, "ble", "rssi_min",
+         -90, -100, 0),
+    SINT("ble_expire", "Forget after [s]", ble.expire, "ble", "expire", 120, 10, 86400),
+    CHK("ble_all", "Publish non-beacon devices", ble.publish_all, "ble", "publish_all", 0, 0),
 };
 
 const size_t config_field_count = sizeof(config_fields) / sizeof(config_fields[0]);
@@ -240,6 +282,56 @@ void config_field_set_number(const struct config_field_s *f, config_item_t *item
         value = f->max;
 
     config_field_write(f, item, (int32_t)value);
+}
+
+const struct config_field_s *config_field_by_name(const char *name)
+{
+    if (name == NULL)
+        return NULL;
+
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        /* A section row has no name at all, so the comparison has to be
+         * skipped and not merely fail. */
+        if (config_fields[i].kind == SETTINGS_SECTION)
+            continue;
+
+        if (strcmp(config_fields[i].name, name) == 0)
+            return &config_fields[i];
+    }
+
+    return NULL;
+}
+
+void config_fields_set_defaults(config_item_t *item)
+{
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *f = &config_fields[i];
+
+        switch (f->kind)
+        {
+        case SETTINGS_SECTION:
+            break;
+
+        case SETTINGS_TEXT:
+            /* Straight in, not through config_field_set_text(): a default is
+             * ours and does not need the character check a submitted value
+             * gets. */
+            strlcpy((char *)((uint8_t *)item + f->offset), f->def_text, f->size);
+            break;
+
+        case SETTINGS_ENUM:
+            /* By name, like everything else that names a theme. An unknown
+             * one resolves to the first option. */
+            config_field_write(f, item, config_field_enum_from_name(f, f->def_text));
+            break;
+
+        default:
+            config_field_write(f, item, f->def_num);
+            break;
+        }
+    }
 }
 
 int32_t config_field_enum_from_name(const struct config_field_s *f, const char *name)

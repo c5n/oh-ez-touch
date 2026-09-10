@@ -4,10 +4,18 @@
  * See config.hpp. This used to be a header-only class with two
  * implementations of loadConfig() selected by `#if (SIMULATOR)`; it is one
  * implementation over port_storage now, which is why it needs a .cpp at all.
+ *
+ * Nothing here names a setting. loadConfig(), saveConfig(), the debug dump and
+ * the simulator's environment overrides are all one pass over config_fields[],
+ * which carries each row's JSON path and its default -- so a setting added to
+ * that table is stored, restored and dumped without this file changing. It
+ * used to hold two more hand-written copies of the field list, and they were
+ * the two that a new setting was easiest to forget.
  */
 
 #include "config.hpp"
 
+#include "config_fields.hpp"
 #include "debug.h"
 #include "port/port_storage.h"
 
@@ -20,6 +28,10 @@
 #include "esp_log.h"
 
 static const char *TAG = "config";
+
+/* The longest json_path in the table, plus room. strtok_r() writes into its
+ * subject, so the path has to be copied before it is walked. */
+#define CONFIG_JSON_PATH_MAX 32
 
 void Config::lock()
 {
@@ -49,6 +61,56 @@ bool Config::setup()
     return true;
 }
 
+/* ------------------------------------------------------------- JSON paths */
+
+/* The value of one field, or a null variant when the file does not carry it.
+ *
+ * Walking a null variant is safe in ArduinoJson -- every step of a missing
+ * path yields null again -- so a file missing a whole section needs no special
+ * case here; the caller simply keeps the default. */
+static JsonVariantConst config_json_read(JsonVariantConst root,
+                                         const struct config_field_s *f)
+{
+    char  path[CONFIG_JSON_PATH_MAX];
+    char *save = NULL;
+
+    strlcpy(path, f->json_path, sizeof(path));
+
+    JsonVariantConst node = root;
+
+    for (char *seg = strtok_r(path, "/", &save); seg != NULL;
+         seg = strtok_r(NULL, "/", &save))
+        node = node[seg];
+
+    return node[f->json_key];
+}
+
+/* The object a field is written into, created if it is not there yet. */
+static JsonObject config_json_object(JsonObject root, const struct config_field_s *f)
+{
+    char  path[CONFIG_JSON_PATH_MAX];
+    char *save = NULL;
+
+    strlcpy(path, f->json_path, sizeof(path));
+
+    JsonObject node = root;
+
+    for (char *seg = strtok_r(path, "/", &save); seg != NULL;
+         seg = strtok_r(NULL, "/", &save))
+    {
+        JsonObject child = node[seg].as<JsonObject>();
+
+        if (child.isNull())
+            child = node[seg].to<JsonObject>();
+
+        node = child;
+    }
+
+    return node;
+}
+
+/* ----------------------------------------------------------- env overrides */
+
 /* The OHEZ_* overrides. An explicit debug convenience, applied after the file so
  * that it can be inspected without being edited -- all six theme variants can be
  * compared without a rebuild, and the "auto" night mode can be watched without
@@ -66,59 +128,151 @@ bool Config::setup()
  *
  * They apply on both targets, not just the simulator: the device has no
  * environment to read, so the calls are inert there rather than guarded. Only a
- * variable that is actually set overrides the file. */
-static void config_apply_env_overrides(decltype(Config::item) &item)
+ * variable that is actually set overrides the file.
+ *
+ * The variable names are spelled out rather than derived from the field names,
+ * because they are documented in README.md and used in scripts: OHEZ_SITEMAP
+ * is not what "oh_sitemap" would generate. Adding one is a line here.
+ */
+static const struct
 {
-    const char *theme      = getenv("OHEZ_THEME");
-    const char *night      = getenv("OHEZ_NIGHT");
-    const char *from       = getenv("OHEZ_NIGHT_FROM");
-    const char *to         = getenv("OHEZ_NIGHT_TO");
-    const char *host       = getenv("OHEZ_OPENHAB_HOST");
-    const char *port       = getenv("OHEZ_OPENHAB_PORT");
-    const char *sitemap    = getenv("OHEZ_SITEMAP");
-    const char *mqtt       = getenv("OHEZ_MQTT");
-    const char *mqtt_host  = getenv("OHEZ_MQTT_HOST");
-    const char *mqtt_port  = getenv("OHEZ_MQTT_PORT");
-    const char *mqtt_topic = getenv("OHEZ_MQTT_TOPIC");
+    const char *env;
+    const char *field;
+} config_env_overrides[] = {
+    {"OHEZ_THEME", "theme"},
+    {"OHEZ_NIGHT", "night_mode"},
+    {"OHEZ_NIGHT_FROM", "night_from"},
+    {"OHEZ_NIGHT_TO", "night_to"},
+    {"OHEZ_OPENHAB_HOST", "oh_host"},
+    {"OHEZ_OPENHAB_PORT", "oh_port"},
+    {"OHEZ_SITEMAP", "oh_sitemap"},
+    {"OHEZ_MQTT", "mqtt_use"},
+    {"OHEZ_MQTT_HOST", "mqtt_host"},
+    {"OHEZ_MQTT_PORT", "mqtt_port"},
+    {"OHEZ_MQTT_TOPIC", "mqtt_topic"},
+};
 
-    /* ui_theme_from_name() falls back to the first entry for a name it does not
-     * know, so a typo here selects the default theme rather than nothing. */
-    if (theme != NULL)
-        item.ui.theme = ui_theme_from_name(theme);
+static void config_apply_env_overrides(config_item_t &item)
+{
+    for (size_t i = 0; i < sizeof(config_env_overrides) / sizeof(config_env_overrides[0]); i++)
+    {
+        const char *value = getenv(config_env_overrides[i].env);
 
-    if (night != NULL)
-        item.ui.night_mode = ui_night_mode_from_name(night);
+        if (value == NULL)
+            continue;
 
-    if (from != NULL)
-        item.ui.night_from = (unsigned int)atoi(from);
+        const struct config_field_s *f = config_field_by_name(config_env_overrides[i].field);
 
-    if (to != NULL)
-        item.ui.night_to = (unsigned int)atoi(to);
+        if (f == NULL)
+        {
+            /* A row renamed out from under the list above. Worth saying: the
+             * variable would otherwise be silently ignored. */
+            ESP_LOGW(TAG, "%s names no setting (%s)", config_env_overrides[i].env,
+                     config_env_overrides[i].field);
+            continue;
+        }
 
-    if (host != NULL)
-        strlcpy(item.openhab.hostname, host, sizeof(item.openhab.hostname));
+        switch (f->kind)
+        {
+        case SETTINGS_TEXT:
+            config_field_set_text(f, &item, value);
+            break;
 
-    if (port != NULL)
-        item.openhab.port = atoi(port);
+        case SETTINGS_ENUM:
+            /* An unknown name selects the first option rather than nothing,
+             * so a typo here gives the default theme. */
+            config_field_write(f, &item, config_field_enum_from_name(f, value));
+            break;
 
-    if (sitemap != NULL)
-        strlcpy(item.openhab.sitemap, sitemap, sizeof(item.openhab.sitemap));
+        case SETTINGS_BOOL:
+            /* Anything but "off" or "0" enables it, so OHEZ_MQTT=1, =on and
+             * =yes all work; the point of the variable is to switch something
+             * on for one run, not to be a second configuration language. */
+            config_field_write(f, &item,
+                               (strcasecmp(value, "off") != 0 && strcmp(value, "0") != 0));
+            break;
 
-    /* Anything but "off" or "0" enables it, so OHEZ_MQTT=1, =on and =yes all
-     * work; the point of the variable is to switch the client on for one run
-     * without editing the file, not to be a second configuration language. */
-    if (mqtt != NULL)
-        item.mqtt.enabled = (strcasecmp(mqtt, "off") != 0 && strcmp(mqtt, "0") != 0);
+        default:
+            config_field_set_number(f, &item, strtol(value, NULL, 10));
+            break;
+        }
 
-    if (mqtt_host != NULL)
-        strlcpy(item.mqtt.hostname, mqtt_host, sizeof(item.mqtt.hostname));
-
-    if (mqtt_port != NULL)
-        item.mqtt.port = atoi(mqtt_port);
-
-    if (mqtt_topic != NULL)
-        strlcpy(item.mqtt.topic, mqtt_topic, sizeof(item.mqtt.topic));
+        ESP_LOGI(TAG, "%s overrides %s", config_env_overrides[i].env, f->name);
+    }
 }
+
+/* ------------------------------------------------------------------- load */
+
+/* Apply one field from the parsed document, or leave the default in place.
+ *
+ * Every value goes through the same setters the web form and the settings
+ * screen use, so a hand-edited file cannot put a value into Config that
+ * neither front end would accept: a number outside the row's range is clamped,
+ * and a hostname containing '/' or ':' is refused and the default stands. That
+ * is new -- the old hand-written loader assigned whatever the file said.
+ */
+static void config_load_field(config_item_t &item, JsonVariantConst root,
+                              const struct config_field_s *f)
+{
+    JsonVariantConst value = config_json_read(root, f);
+
+    if (value.isNull())
+        return;
+
+    switch (f->kind)
+    {
+    case SETTINGS_TEXT:
+    {
+        const char *text = value.as<const char *>();
+
+        if (text != NULL)
+            config_field_set_text(f, &item, text);
+        break;
+    }
+
+    case SETTINGS_BOOL:
+        config_field_write(f, &item, value.as<bool>() ? 1 : 0);
+        break;
+
+    case SETTINGS_ENUM:
+        config_field_write(f, &item, config_field_enum_from_name(f, value.as<const char *>()));
+        break;
+
+    default:
+        config_field_set_number(f, &item, value.as<long>());
+        break;
+    }
+}
+
+#if CONFIG_OHEZ_DEBUG_CONFIG_FILE
+/* Every setting as it ended up, secrets excluded. One loop rather than the
+ * thirty printf() lines this used to be, which is also why it can no longer
+ * fall behind the table. */
+static void config_dump(const config_item_t &item)
+{
+    printf("Config::loadConfig: loaded values\r\n");
+
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *f = &config_fields[i];
+        char                         value[64];
+
+        if (f->kind == SETTINGS_SECTION)
+            continue;
+
+        /* The password is deliberately not printed. Everything else in this
+         * dump is already visible in the web form; that one is not. */
+        if (f->flags & SETTINGS_F_SECRET)
+        {
+            printf("  %-14s %s/%s = *****\r\n", f->name, f->json_path, f->json_key);
+            continue;
+        }
+
+        config_field_value_text(f, &item, value, sizeof(value));
+        printf("  %-14s %s/%s = %s\r\n", f->name, f->json_path, f->json_key, value);
+    }
+}
+#endif
 
 bool Config::loadConfig(const char *name)
 {
@@ -126,12 +280,13 @@ bool Config::loadConfig(const char *name)
 
     debug_printf("loadConfig file: %s\r\n", config_filename);
 
-    /* Parsed on success, left empty on every failure path below. An empty
-     * document makes each `| default` the effective value, so the field
-     * assignments further down are the one place the defaults live and they run
-     * whether or not there is a file to read. */
+    /* Parsed on success, left empty on every failure path below. The defaults
+     * go in first either way, so a missing, oversized or unparseable file
+     * leaves a complete set of settings rather than whatever was in memory. */
     JsonDocument doc;
-    bool from_file = false;
+    bool         from_file = false;
+
+    config_fields_set_defaults(&item);
 
     ssize_t size = port_storage_size(name);
 
@@ -167,7 +322,7 @@ bool Config::loadConfig(const char *name)
 
             if (error)
             {
-                ESP_LOGE(TAG, "Failed to parse config file");
+                ESP_LOGE(TAG, "Failed to parse config file: %s", error.c_str());
                 /* deserializeJson() may leave a partial document behind, and a
                  * half-parsed file is worse than none: it would mix values from
                  * the file with defaults, unpredictably. */
@@ -180,78 +335,22 @@ bool Config::loadConfig(const char *name)
         }
     }
 
-    strlcpy(item.general.hostname, doc["general"]["hostname"] | "oheztouch-new", sizeof(item.general.hostname));
-    strlcpy(item.ntp.hostname, doc["ntp"]["hostname"] | "pool.ntp.org", sizeof(item.ntp.hostname));
-    item.ntp.gmt_offset = doc["ntp"]["gmt_offset"] | 1;
-    item.ntp.daylightsaving = doc["ntp"]["daylightsaving"] | false;
-    item.ui.theme = ui_theme_from_name(doc["ui"]["theme"] | UI_THEME_NAME_DEFAULT);
-    item.ui.night_mode = ui_night_mode_from_name(doc["ui"]["night_mode"] | UI_NIGHT_NAME_OFF);
-    item.ui.night_from = doc["ui"]["night_from"] | 22;
-    item.ui.night_to = doc["ui"]["night_to"] | 6;
-    item.backlight.activity_timeout = doc["backlight"]["activity_timeout"] | 60;
-    item.backlight.normal_brightness = doc["backlight"]["normal_brightness"] | 100;
-    item.backlight.dim_brightness = doc["backlight"]["dim_brightness"] | 40;
-    item.beeper.enabled = doc["beeper"]["enabled"] | true;
-    item.mqtt.enabled = doc["mqtt"]["enabled"] | false;
-    strlcpy(item.mqtt.hostname, doc["mqtt"]["hostname"] | "mosquitto", sizeof(item.mqtt.hostname));
-    item.mqtt.port = doc["mqtt"]["port"] | 1883;
-    strlcpy(item.mqtt.user, doc["mqtt"]["user"] | "", sizeof(item.mqtt.user));
-    strlcpy(item.mqtt.password, doc["mqtt"]["password"] | "", sizeof(item.mqtt.password));
-    strlcpy(item.mqtt.topic, doc["mqtt"]["topic"] | "oheztouch", sizeof(item.mqtt.topic));
-    item.mqtt.interval = doc["mqtt"]["interval"] | 60;
-    item.mqtt.retain = doc["mqtt"]["retain"] | true;
-    item.ble.enabled = doc["ble"]["enabled"] | false;
-    item.ble.interval = doc["ble"]["interval"] | 30;
-    item.ble.window = doc["ble"]["window"] | 5;
-    item.ble.rssi_min = doc["ble"]["rssi_min"] | -90;
-    item.ble.expire = doc["ble"]["expire"] | 120;
-    item.ble.publish_all = doc["ble"]["publish_all"] | false;
-    strlcpy(item.openhab.hostname, doc["openhab"]["hostname"] | "openhabian", sizeof(item.openhab.hostname));
-    item.openhab.port = doc["openhab"]["port"] | 8080;
-    strlcpy(item.openhab.sitemap, doc["openhab"]["sitemap"] | "setme_sitemap", sizeof(item.openhab.sitemap));
-    item.sensors.bme280.use = doc["sensors"]["bme280"]["use"] | false;
-    item.sensors.bme280.interval = doc["sensors"]["bme280"]["interval"] | 180;
+    JsonVariantConst root = doc.as<JsonVariantConst>();
+
+    for (size_t i = 0; i < config_field_count; i++)
+        if (config_fields[i].kind != SETTINGS_SECTION)
+            config_load_field(item, root, &config_fields[i]);
 
     config_apply_env_overrides(item);
 
 #if CONFIG_OHEZ_DEBUG_CONFIG_FILE
-    printf("Config::loadConfig: Loaded Values\r\n");
-    debug_printf("  item.general.hostname: %s\r\n", item.general.hostname);
-    debug_printf("  item.ntp.hostname: %s\r\n", item.ntp.hostname);
-    debug_printf("  item.ntp.gmt_offset: %d\r\n", item.ntp.gmt_offset);
-    debug_printf("  item.ntp.daylightsaving: %d\r\n", item.ntp.daylightsaving);
-    debug_printf("  item.ui.theme: %d (%s)\r\n", (int)item.ui.theme, ui_theme_name(item.ui.theme));
-    debug_printf("  item.ui.night_mode: %d (%s)\r\n", (int)item.ui.night_mode, ui_night_mode_name(item.ui.night_mode));
-    debug_printf("  item.ui.night_from: %u\r\n", item.ui.night_from);
-    debug_printf("  item.ui.night_to: %u\r\n", item.ui.night_to);
-    debug_printf("  item.backlight.activity_timeout: %lu\r\n", item.backlight.activity_timeout);
-    debug_printf("  item.backlight.normal_brightness: %u\r\n", item.backlight.normal_brightness);
-    debug_printf("  item.backlight.dim_brightness: %u\r\n", item.backlight.dim_brightness);
-    debug_printf("  item.beeper.enabled: %d\r\n", item.beeper.enabled);
-    debug_printf("  item.mqtt.enabled: %d\r\n", item.mqtt.enabled);
-    debug_printf("  item.mqtt.hostname: %s\r\n", item.mqtt.hostname);
-    debug_printf("  item.mqtt.port: %d\r\n", item.mqtt.port);
-    debug_printf("  item.mqtt.user: %s\r\n", item.mqtt.user);
-    /* The password is deliberately not printed. Everything else in this dump
-     * is already visible in the web form; that one is not. */
-    debug_printf("  item.mqtt.topic: %s\r\n", item.mqtt.topic);
-    debug_printf("  item.mqtt.interval: %d\r\n", item.mqtt.interval);
-    debug_printf("  item.mqtt.retain: %d\r\n", item.mqtt.retain);
-    debug_printf("  item.ble.enabled: %d\r\n", item.ble.enabled);
-    debug_printf("  item.ble.interval: %d\r\n", item.ble.interval);
-    debug_printf("  item.ble.window: %d\r\n", item.ble.window);
-    debug_printf("  item.ble.rssi_min: %d\r\n", item.ble.rssi_min);
-    debug_printf("  item.ble.expire: %d\r\n", item.ble.expire);
-    debug_printf("  item.ble.publish_all: %d\r\n", item.ble.publish_all);
-    debug_printf("  item.openhab.hostname: %s\r\n", item.openhab.hostname);
-    debug_printf("  item.openhab.port: %d\r\n", item.openhab.port);
-    debug_printf("  item.openhab.sitemap: %s\r\n", item.openhab.sitemap);
-    debug_printf("  item.sensors.bme280.use: %d\r\n", item.sensors.bme280.use);
-    debug_printf("  item.sensors.bme280.interval: %d\r\n", item.sensors.bme280.interval);
+    config_dump(item);
 #endif
 
     return from_file;
 }
+
+/* ------------------------------------------------------------------- save */
 
 bool Config::saveConfig()
 {
@@ -261,46 +360,46 @@ bool Config::saveConfig()
     debug_printf("saveConfig file: %s\r\n", config_filename);
 
     JsonDocument doc;
+    JsonObject   root = doc.to<JsonObject>();
 
-    doc["general"]["hostname"] = item.general.hostname;
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *f = &config_fields[i];
 
-    doc["ntp"]["hostname"] = item.ntp.hostname;
-    doc["ntp"]["gmt_offset"] = item.ntp.gmt_offset;
-    doc["ntp"]["daylightsaving"] = item.ntp.daylightsaving;
+        if (f->kind == SETTINGS_SECTION)
+            continue;
 
-    doc["ui"]["theme"] = ui_theme_name(item.ui.theme);
-    doc["ui"]["night_mode"] = ui_night_mode_name(item.ui.night_mode);
-    doc["ui"]["night_from"] = item.ui.night_from;
-    doc["ui"]["night_to"] = item.ui.night_to;
+        JsonObject obj = config_json_object(root, f);
 
-    doc["backlight"]["activity_timeout"] = item.backlight.activity_timeout;
-    doc["backlight"]["normal_brightness"] = item.backlight.normal_brightness;
-    doc["backlight"]["dim_brightness"] = item.backlight.dim_brightness;
+        switch (f->kind)
+        {
+        case SETTINGS_TEXT:
+            obj[f->json_key] = config_field_text(f, &item);
+            break;
 
-    doc["beeper"]["enabled"] = item.beeper.enabled;
+        case SETTINGS_BOOL:
+            /* As a JSON boolean, not as 0 or 1: the file is meant to be
+             * readable and hand-editable. */
+            obj[f->json_key] = (config_field_read(f, &item) != 0);
+            break;
 
-    doc["mqtt"]["enabled"] = item.mqtt.enabled;
-    doc["mqtt"]["hostname"] = item.mqtt.hostname;
-    doc["mqtt"]["port"] = item.mqtt.port;
-    doc["mqtt"]["user"] = item.mqtt.user;
-    doc["mqtt"]["password"] = item.mqtt.password;
-    doc["mqtt"]["topic"] = item.mqtt.topic;
-    doc["mqtt"]["interval"] = item.mqtt.interval;
-    doc["mqtt"]["retain"] = item.mqtt.retain;
+        case SETTINGS_ENUM:
+        {
+            /* By name, and through the same bounds check every other reader
+             * of an enum uses: an index out of range would otherwise be an
+             * out-of-bounds read of ->names on the way to the file. */
+            char option[32];
 
-    doc["ble"]["enabled"] = item.ble.enabled;
-    doc["ble"]["interval"] = item.ble.interval;
-    doc["ble"]["window"] = item.ble.window;
-    doc["ble"]["rssi_min"] = item.ble.rssi_min;
-    doc["ble"]["expire"] = item.ble.expire;
-    doc["ble"]["publish_all"] = item.ble.publish_all;
+            config_field_value_text(f, &item, option, sizeof(option));
+            obj[f->json_key] = option;
+            break;
+        }
 
-    doc["openhab"]["hostname"] = item.openhab.hostname;
-    doc["openhab"]["port"] = item.openhab.port;
-    doc["openhab"]["sitemap"] = item.openhab.sitemap;
-
-    doc["sensors"]["bme280"]["use"] = item.sensors.bme280.use;
-    doc["sensors"]["bme280"]["interval"] = item.sensors.bme280.interval;
+        default:
+            obj[f->json_key] = (long)config_field_read(f, &item);
+            break;
+        }
+    }
 
     /* port_storage replaces a blob whole, so the document is serialized into
      * memory first rather than streamed into an open File as it used to be.
@@ -323,6 +422,8 @@ bool Config::saveConfig()
         ESP_LOGE(TAG, "Failed to write config file");
         return false;
     }
+
+    ESP_LOGD(TAG, "saved %u bytes to %s", (unsigned)written, config_filename);
 
     return true;
 }
