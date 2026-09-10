@@ -127,16 +127,10 @@ static void slate_set_clock(const char *text)
 
     /* Slate does not tick. The blinking colon is a habit from a panel that had
      * nothing else to say it was alive; this one has a whole grid of readings,
-     * and a calm theme should not have something flashing in the corner of it.
-     * The seventh character is the separator the caller alternates. */
+     * and a calm theme should not have something flashing in the corner of it. */
     char steady[8];
-    size_t i = 0;
 
-    for (; text[i] != '\0' && i < sizeof(steady) - 1; i++)
-        steady[i] = (text[i] == ' ') ? ':' : text[i];
-
-    steady[i] = '\0';
-
+    ui_frame_clock_steady(steady, sizeof(steady), text);
     lv_label_set_text(slate.clock, steady);
 }
 

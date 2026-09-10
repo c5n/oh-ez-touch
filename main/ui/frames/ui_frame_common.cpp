@@ -47,6 +47,19 @@ void ui_frame_settings_target(lv_obj_t *obj)
     lv_obj_add_event_cb(obj, settings_event, LV_EVENT_CLICKED, NULL);
 }
 
+void ui_frame_clock_steady(char *dst, size_t size, const char *text)
+{
+    size_t i = 0;
+
+    if (dst == NULL || size == 0)
+        return;
+
+    for (; text[i] != '\0' && i < size - 1; i++)
+        dst[i] = (text[i] == ' ') ? ':' : text[i];
+
+    dst[i] = '\0';
+}
+
 lv_obj_t *ui_frame_block(lv_obj_t *parent, int16_t x, int16_t y, int16_t w, int16_t h,
                          uint32_t color, int16_t radius)
 {

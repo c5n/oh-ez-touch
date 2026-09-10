@@ -660,7 +660,10 @@ static void header_update(void)
             last_second = timeinfo.tm_sec;
 
             /* The blinking colon is the caller's business rather than the
-             * frame's: it is a matter of taste and the families differ on it. */
+             * frame's: it is a matter of taste and the families differ on it.
+             * A frame that declines it calls ui_frame_clock_steady() -- it
+             * must not simply pass the string through, or its minutes shift
+             * by the difference between its face's colon and its space. */
             lv_snprintf(text, sizeof(text), (timeinfo.tm_sec % 2 == 0) ? "%02d:%02d" : "%02d %02d",
                         timeinfo.tm_hour, timeinfo.tm_min);
             ui_style_theme()->frame->set_clock(text);

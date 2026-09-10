@@ -197,8 +197,20 @@ static void jarvis_set_title(const char *title)
 
 static void jarvis_set_clock(const char *text)
 {
-    if (jarvis.clock != NULL)
-        lv_label_set_text(jarvis.clock, text);
+    if (jarvis.clock == NULL)
+        return;
+
+    /* Steady, and not as a matter of taste: Rajdhani's colon is 19/16 px
+     * narrower than its space, and the strip is a left-anchored flex row, so
+     * a blinking separator makes the minutes hop a pixel sideways once a
+     * second. Reticle already has a second hand -- the scan dot on the bottom
+     * rail -- and it is the one this family designed for the job. (LCARS keeps
+     * its blink: Antonio's colon and space differ by 1/16 px, which never
+     * crosses a pixel boundary.) */
+    char steady[8];
+
+    ui_frame_clock_steady(steady, sizeof(steady), text);
+    lv_label_set_text(jarvis.clock, steady);
 }
 
 /* Five segments rather than a percentage: a bar is read at a glance and a

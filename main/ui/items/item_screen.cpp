@@ -81,8 +81,22 @@ lv_obj_t *item_screen_button(lv_obj_t *parent, const char *text)
     lv_obj_t *btn = lv_button_create(parent);
 
     lv_obj_add_style(btn, &ui_style_btn, LV_PART_MAIN);
+
+    /* The same surface answers for both states, as it does on a tile, where
+     * ui_style_tile_pressed is both the press and the mark of an active item.
+     *
+     * Without the pressed selector a button's only feedback is the plate
+     * deformation from ui_style_press_active, and only Slate asks for one:
+     * LCARS and JARVIS both set press_grow to 0 because they mean to
+     * acknowledge a press by changing colour -- which nothing but the tile
+     * ever had a style saying. So on those two a transport or a blind button
+     * acknowledged nothing at all. */
     lv_obj_add_style(btn, &ui_style_btn_checked,
                      ui_style_selector(LV_PART_MAIN, LV_STATE_CHECKED));
+    lv_obj_add_style(btn, &ui_style_btn_checked,
+                     ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
+
+    /* After the pressed style, so the transition governs what it sets. */
     ui_motion_pressable(btn);
 
     lv_obj_t *label = lv_label_create(btn);

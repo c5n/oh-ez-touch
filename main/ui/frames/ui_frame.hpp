@@ -4,6 +4,7 @@
 #include "openhab/openhab_connector.hpp"
 
 #include <lvgl.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* The chrome around the tiles, and where the tiles are allowed to go.
@@ -83,6 +84,16 @@ lv_obj_t *ui_frame_container(lv_obj_t *parent);
 /* Make `obj` open the settings screen when touched. Every family puts this on
  * whatever carries its status readout. */
 void ui_frame_settings_target(lv_obj_t *obj);
+
+/* Undo the caller's blinking colon.
+ *
+ * header_update() alternates "HH:MM" and "HH MM" every second and lets each
+ * family decide what to do with it. A family that does not want the blink
+ * cannot simply ignore it -- the two strings are not the same width, because
+ * a proportional face has no reason to make its colon and its space agree, so
+ * the minutes would step sideways once a second. Writes at most `size` bytes,
+ * the separator restored. */
+void ui_frame_clock_steady(char *dst, size_t size, const char *text);
 
 /* A plain rect of one colour, positioned absolutely. The building block the
  * LCARS elbow and the JARVIS hairlines are made of. */
