@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 22 px
  * Bpp: 4
- * Opts: --format lvgl --lv-include lvgl.h --bpp 4 --no-compress --no-prefilter --force-fast-kern-format --size 22 --font /tmp/claude-1000/-home-cba-Projekte-oh-ez-touch/a155a840-a3f7-4c67-a9b5-db700c898b8f/scratchpad/antonio.ttf -r 0x20-0x7F -r 0xA0-0xFF --font .pio/libdeps/linux/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62189,62212,62810,63426,63650 --lv-font-name custom_font_lcars_22 -o src/fonts/custom_font_lcars_22.c
+ * Opts: --format lvgl --lv-include lvgl.h --bpp 4 --no-compress --no-prefilter --force-fast-kern-format --size 22 --font /tmp/Antonio-nXdoAC.ttf -r 0x20-0x7F -r 0xA0-0xFF --font components/lvgl/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478,61479,61480,61502,61512,61515,61516,61517,61521,61522,61523,61524,61543,61544,61550,61552,61553,61556,61559,61560,61561,61563,61587,61589,61636,61637,61639,61671,61674,61683,61724,61732,61787,61931,62016,62017,62018,62019,62020,62087,62099,62189,62212,62810,63426,63650 --lv-font-name custom_font_lcars_22 -o components/lvgl/fonts/custom_font_lcars_22.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

@@ -43,12 +43,15 @@ lv_style_t ui_style_info_error;
 
 /* The LCARS variants are the only reason a second font family is compiled in.
  * Antonio is a tall condensed face; see tools/build_fonts.sh. */
-#define FONT_ROBOTO_SMALL  (&custom_font_roboto_16)
-#define FONT_ROBOTO_NORMAL (&custom_font_roboto_22)
-#define FONT_ROBOTO_LARGE  (&custom_font_roboto_36)
-#define FONT_LCARS_SMALL   (&custom_font_lcars_16)
-#define FONT_LCARS_NORMAL  (&custom_font_lcars_22)
-#define FONT_LCARS_LARGE   (&custom_font_lcars_36)
+#define FONT_UI_SMALL     (&custom_font_ui_16)     /* Barlow Regular   */
+#define FONT_UI_NORMAL    (&custom_font_ui_22)     /* Barlow Medium    */
+#define FONT_UI_LARGE     (&custom_font_ui_36)     /* Barlow SemiBold  */
+#define FONT_HUD_SMALL    (&custom_font_hud_16)    /* Rajdhani Regular */
+#define FONT_HUD_NORMAL   (&custom_font_hud_22)    /* Rajdhani Medium  */
+#define FONT_HUD_LARGE    (&custom_font_hud_36)    /* Rajdhani SemiBold*/
+#define FONT_LCARS_SMALL  (&custom_font_lcars_16)  /* Antonio          */
+#define FONT_LCARS_NORMAL (&custom_font_lcars_22)
+#define FONT_LCARS_LARGE  (&custom_font_lcars_36)
 
 /* Shorthand, so that a table row fits on a line and the six variants can be
  * read against each other. Undefined again below the table. */
@@ -139,7 +142,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* info warn/err*/ 0xB4531F, 0xB3261E,
         /* icon         */ 0x000000, 0, 22, 140, 50,
         /* glow         */ 0x000000, 0, 0,
-        /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+        /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
     /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
@@ -165,7 +168,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* info warn/err*/ 0xC4832E, 0xD9584C,
         /* icon         */ 0xE8E4DC, 255, 30, 150, 55,
         /* glow         */ 0x000000, 0, 0,
-        /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+        /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
     /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8),
@@ -266,7 +269,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* info warn/err*/ 0xFFA23A, 0xFF5A4A,
         /* icon         */ 0x2E7F99, 255, 110, 180, 60,
         /* glow         */ 0x35D6FF, 8, 70,
-        /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+        /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
     /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),
@@ -292,7 +295,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* info warn/err*/ 0x8A6A1E, 0x8A3A22,
         /* icon         */ 0x6A4A1A, 255, 90, 160, 55,
         /* glow         */ 0xB3762A, 6, 50,
-        /* fonts        */ FONT_ROBOTO_SMALL, FONT_ROBOTO_NORMAL, FONT_ROBOTO_LARGE, 0,
+        /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
     /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6),

@@ -719,18 +719,25 @@
  *  #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)
  *  @endcode
  */
-/* Two families: Roboto for the Default and JARVIS themes, and the condensed
- * Antonio ("lcars") for the LCARS theme. Regenerate both with
- * tools/build_fonts.sh. */
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(custom_font_roboto_16) \
-                               LV_FONT_DECLARE(custom_font_roboto_22) \
-                               LV_FONT_DECLARE(custom_font_roboto_36) \
+/* Three families, one per theme: Barlow ("ui") for Slate, Rajdhani ("hud") for
+ * Reticle, and the condensed Antonio ("lcars") for LCARS. Each size is a
+ * different static weight of its face, so a caption, a label and a reading
+ * differ in weight as well as in size. Regenerate with tools/build_fonts.sh.
+ *
+ * This list is the whole of what the build is allowed to reference: a role in
+ * the theme table pointing anywhere else will not link. */
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(custom_font_ui_16) \
+                               LV_FONT_DECLARE(custom_font_ui_22) \
+                               LV_FONT_DECLARE(custom_font_ui_36) \
+                               LV_FONT_DECLARE(custom_font_hud_16) \
+                               LV_FONT_DECLARE(custom_font_hud_22) \
+                               LV_FONT_DECLARE(custom_font_hud_36) \
                                LV_FONT_DECLARE(custom_font_lcars_16) \
                                LV_FONT_DECLARE(custom_font_lcars_22) \
                                LV_FONT_DECLARE(custom_font_lcars_36)
 
 /** Always set a default font */
-#define LV_FONT_DEFAULT &custom_font_roboto_16
+#define LV_FONT_DEFAULT &custom_font_ui_16
 
 /** Enable handling large font and/or fonts with a lot of characters.
  *  The limit depends on the font size, font face and bpp.
