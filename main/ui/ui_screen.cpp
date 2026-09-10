@@ -33,10 +33,16 @@ static void banners_hide(bool hidden)
         lv_obj_set_flag(lv_obj_get_child(top, i), LV_OBJ_FLAG_HIDDEN, hidden);
 }
 
-/* The pushed screen is gone for good once it leaves the display. Deleting it
- * from here rather than at the pop call site is what makes an animated pop safe:
- * the pop is reached from an event on one of the screen's own descendants, and
- * this fires long after that handler has returned. */
+/* The pushed screen is gone for good once it leaves the display, and this is
+ * the *only* place it is deleted.
+ *
+ * Deleting it here rather than at the pop call site is what makes an animated
+ * pop safe: the pop is reached from an event on one of the screen's own
+ * descendants, and this fires long after that handler has returned. Having it
+ * be the only place is what stops the instant pop deleting the same object
+ * twice -- lv_screen_load() unloads the screen synchronously, so an explicit
+ * delete next to it queued a second lv_obj_delete_async() on an object this
+ * had already queued one for. */
 static void unloaded_event(lv_event_t *e)
 {
     lv_obj_t *screen = (lv_obj_t *)lv_event_get_target(e);
@@ -130,18 +136,16 @@ void ui_screen_pop(uint32_t anim_ms)
     printf("ui_screen: pop anim=%ums\r\n", (unsigned)anim_ms);
 #endif
 
+    /* Either way unloaded_event() does the deleting -- see its comment. Not
+     * lv_screen_load_anim(..., 0, 0, true) for the instant case: with a zero
+     * duration that deletes synchronously, and every caller here is inside an
+     * event on one of `going`'s own descendants. */
     if (anim_ms == 0)
-    {
-        /* Not lv_screen_load_anim(..., 0, 0, true): with a zero duration that
-         * deletes synchronously, and every caller here is inside an event on one
-         * of `going`'s own descendants. Load first, then defer the delete. */
         lv_screen_load(root);
-        lv_obj_delete_async(going);
-        return;
-    }
+    else
+        lv_screen_load_anim(root, LV_SCREEN_LOAD_ANIM_OVER_RIGHT, anim_ms, 0, false);
 
-    /* Animated, so unloaded_event() does the deleting -- see its comment. */
-    lv_screen_load_anim(root, LV_SCREEN_LOAD_ANIM_OVER_RIGHT, anim_ms, 0, false);
+    LV_UNUSED(going);
 }
 
 void ui_screen_settle(void)

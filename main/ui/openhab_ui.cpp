@@ -195,6 +195,12 @@ static bool connect_pending;
 static char connect_pending_host[32];
 static uint16_t connect_pending_port;
 static char connect_pending_sitemap[32];
+
+/* What openhab_ui_connect() was last called with, so a request naming the same
+ * server again can be recognised as the no-op it is. */
+static char connect_current_host[32];
+static uint16_t connect_current_port;
+static char connect_current_sitemap[32];
 static enum ui_theme_family_e theme_pending_family;
 static bool theme_pending_night;
 static char current_page[STR_PAGE_LEN];
@@ -1027,6 +1033,22 @@ bool openhab_ui_night_active(Config *config)
  * deleting and recreating widgets. */
 void openhab_ui_request_connect(const char *host, uint16_t port, const char *sitemap)
 {
+    /* A request that changes nothing is dropped, the way a theme request
+     * naming the variant already in effect is.
+     *
+     * settings_apply_live() calls this on every save, whatever the save
+     * touched, and carrying it out throws away the page and refetches it --
+     * one page GET and up to six icon GETs -- because someone changed the
+     * beeper. It also resets the page state machine out of PAGE_READY, which
+     * silently disables everything that only runs on a page that has one:
+     * item state polling, and putting back an open control after a theme
+     * change. */
+    if (   connect_current_host[0] != '\0'
+        && port == connect_current_port
+        && strcmp(host, connect_current_host) == 0
+        && strcmp(sitemap, connect_current_sitemap) == 0)
+        return;
+
     strlcpy(connect_pending_host, host, sizeof(connect_pending_host));
     strlcpy(connect_pending_sitemap, sitemap, sizeof(connect_pending_sitemap));
     connect_pending_port = port;
@@ -1105,9 +1127,14 @@ static void theme_apply_pending(void)
         page_rebuild(content, false);
 
     /* Put back what was open. The user did not navigate -- the theme changed
-     * under them, and on the automatic night schedule they may not have touched
-     * the panel at all -- so this reopens on the same item. */
-    if (reopen != ItemType::type_unknown && reopen_slot < WIDGET_COUNT_MAX)
+     * under them, and on the automatic night schedule they may not have
+     * touched the panel at all -- so this reopens on the same item.
+     *
+     * Only if the tiles came back, which means only if the page was ready. A
+     * theme change that arrives while the page is being refetched has no item
+     * to reopen and, once the new page lands, may have no such item at all. */
+    if (reopen != ItemType::type_unknown && reopen_slot < WIDGET_COUNT_MAX &&
+        widget_context[reopen_slot].item != nullptr)
         item_screen_open(widget_context[reopen_slot].item, reopen_slot);
 }
 
@@ -1122,6 +1149,10 @@ void openhab_ui_set_wifi_state(bool wifi_state)
 
 void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
 {
+    strlcpy(connect_current_host, host, sizeof(connect_current_host));
+    strlcpy(connect_current_sitemap, sitemap, sizeof(connect_current_sitemap));
+    connect_current_port = port;
+
     snprintf(current_website, sizeof(current_website), "http://%s:%u", host, port);
 
     int page_len = snprintf(current_page, sizeof(current_page), "%s/rest/sitemaps/%s/%s?type=json", current_website, sitemap, sitemap);
