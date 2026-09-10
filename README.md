@@ -203,8 +203,11 @@ OHEZ_THEME=lcars ./build/linux/oh-ez-touch.elf
 OHEZ_THEME=jarvis OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 ```
 
-`OHEZ_THEME` takes `default`, `lcars` or `jarvis` and `OHEZ_NIGHT` takes `off`,
-`on` or `auto`; anything unrecognised means the default. `OHEZ_NIGHT_FROM` and
+`OHEZ_THEME` takes `default` (Slate -- warm paper, flat cards, one teal
+accent), `lcars` (the spine-and-elbow frame, blocks coloured by item type) or
+`jarvis` (Reticle -- corner brackets, hairlines and ring gauges), and
+`OHEZ_NIGHT` takes `off`, `on` or `auto`; anything unrecognised means the
+default. `OHEZ_NIGHT_FROM` and
 `OHEZ_NIGHT_TO` set the hours the `auto` window spans (22 and 6 by default).
 
 The clock follows the *configured* GMT offset rather than the host's timezone,
@@ -235,12 +238,26 @@ Off by default, for the reason the BME280 invents nothing on the host: these
 readings are published to a broker, and a simulator that quietly wrote fiction
 into someone's presence history would be worse than one that did nothing.
 
-`OHEZ_SETTINGS` opens the settings screen at boot, on the tab it names --
-`wlan`, `openhab`, `mqtt`, `sensors`, `other` or `info`:
+`OHEZ_SETTINGS` opens the settings screen at boot, on the section it names --
+`wlan`, `openhab`, `mqtt`, `sensors`, `other`, `info`, or `index` for the list
+of all six:
 
 ```bash
 OHEZ_SETTINGS=wlan ./build/linux/oh-ez-touch.elf
 ```
+
+`OHEZ_ITEM` walks to one control and opens it. The value is a dot-separated
+path of tile indices: every step but the last follows that tile's linked page,
+and the last opens that tile's control. So `5` opens the sixth tile of the
+home page, and `0.4` follows the first tile and then opens the fifth tile of
+the page behind it.
+
+```bash
+OHEZ_ITEM=0.4 OHEZ_THEME=lcars OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
+```
+
+The item screens are three taps deep on a sub page, which makes "show me the
+setpoint screen in LCARS night" tedious by hand and impossible from a script.
 
 Touching the status bar opens it here too, but on the host there is no radio to
 leave unconfigured, so the screen never comes up on its own the way it does on a
@@ -251,8 +268,31 @@ pristine device.
 The LVGL font sources in `components/lvgl/fonts/` are generated and committed,
 so a normal build needs no font tooling. Regenerate them with
 `tools/build_fonts.sh` after changing a face, a size or a glyph range; it needs
-`lv_font_conv` (an npm tool) and, for the LCARS face, network access to fetch
-Antonio from Google Fonts.
+`lv_font_conv` (an npm tool) and network access to fetch the faces from Google
+Fonts.
+
+There are three, one per theme family:
+
+| family | face | licence |
+| --- | --- | --- |
+| `ui` | Barlow -- Slate | OFL 1.1 |
+| `hud` | Rajdhani -- Reticle | OFL 1.1 |
+| `lcars` | Antonio -- LCARS | OFL 1.1 |
+
+Each of the three sizes is generated from a **different static weight** of its
+face -- Regular at 16, Medium at 22, SemiBold at 36 -- so a caption, a label
+and a reading differ in weight as well as in size. That is where the type
+hierarchy comes from and it costs nothing: three files either way.
+
+It is also why Barlow and Rajdhani rather than the more obvious modern choices.
+Inter, Manrope, Figtree, Outfit, Public Sans, Work Sans, DM Sans, IBM Plex
+Sans, Archivo, Saira and Space Grotesk are all variable-only in `google/fonts`,
+and `lv_font_conv` renders a variable font's default instance -- Regular --
+with no way to ask for another short of instancing it with `fonttools` first.
+Antonio is variable too, and stays that way: LCARS wants one weight anyway.
+
+The nine faces are about 210 KB of flash, which is the largest single item in
+the firmware after LVGL itself.
 
 ### Tests
 
@@ -765,7 +805,10 @@ main/                 main.cpp -- the entry point
 main/config/          the settings, and the one field table that both the
                       panel's settings screen and the web form walk
 main/ui/              the LVGL user interface: the openHAB page, the settings
-                      screen, the styles and themes
+                      screen, the styles, themes and motion
+main/ui/frames/       one per theme family: the chrome it draws around the
+                      tiles, and where it lets them sit
+main/ui/items/        one per openHAB item type: the screen its tile opens
 main/openhab/         the openHAB client: the task every request waits on,
                       and the sitemap model and parser it feeds
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
@@ -824,6 +867,60 @@ faster and would also be free to deliver two taps on the same item out of
 order. The connection to openHAB is held open between requests, so a page's
 six icons share one TCP handshake.
 
+### Screens, frames and motion
+
+The UI used to be one screen with things drawn on top of it. It is three ideas
+now, and they are worth knowing before changing anything in `main/ui/`.
+
+**One pushed screen.** `ui_screen` owns a root and at most one thing covering
+it -- an item control or the settings screen. Not a general stack: the panel
+has exactly those two, and encoding what is true removes a class of bug. Three
+mechanisms used to do this job and disagreed about all of it, so "deeper" and
+"back" now mean the same thing everywhere.
+
+**A frame per family.** `main/ui/frames/` is where a theme stops being a
+palette. Each family builds its own chrome and then answers `content_area()`
+with the rectangle the tile grid may have, which is what lets LCARS put a
+spine down the left edge, Slate have no chrome objects at all, and Reticle
+draw two hairlines -- without the page knowing about any of it. The grid is
+solved by `ui_geometry.hpp`, which is deliberately free of `<lvgl.h>` so the
+host tests can check every family against the tile-size floor.
+
+None of a frame is properties, so `lv_obj_report_style_change()` cannot reach
+it: a live theme change tears the old family's chrome down *before*
+`ui_style_select()` -- while its own ops are still what `ui_style_theme()`
+answers with -- and builds the new one after.
+
+**A screen per item type.** `main/ui/items/` has one file each, found through
+a registry rather than a `switch`, and each carries a `refresh` hook so an
+open control follows the server. The windows they replace never did, so a
+dimmer changed from a phone left a stale number on the glass.
+
+#### What the panel can afford to animate
+
+The binding constraint is not the CPU. A 320x240 RGB565 panel on a 40 MHz SPI
+bus moves 5 MB/s, so a full-screen repaint is **30.7 ms of pure transfer** and
+rendering it costs about a quarter of that. Frame time is the SPI time, which
+makes the budget a *pixel* budget: roughly 24,000 px per frame for anything
+sustained, 40,000 for a one-shot.
+
+That is why there are no screen transitions on any path the user walks often.
+`lv_screen_load_anim()` moves the screen object, so every frame invalidates
+320x240 twice and a 200 ms slide is six frames of full repaint. The settings
+screen is the one exception, and it is rare enough that the stepping reads as
+"somewhere else" rather than as jank. Everything else keeps the screen still
+and staggers its *contents*, which is both cheaper and, once you have seen it,
+better.
+
+`ui_motion.hpp` documents the two constructs that look free and are not --
+`opa_layered` and `transform_scale` -- with the measurements. The short
+version: plain `lv_obj_set_style_opa()` fades a whole subtree with no layer at
+all, and `transform_width`/`transform_height` deform a plate the same way.
+
+One rule prevents most of the crashes available here: **every animation's
+`var` is the `lv_obj_t` it animates**, never a context struct, because
+`lv_obj_delete()` cancels animations keyed on the object it is deleting.
+
 ### Contributing
 
 The project is still under development, but is already very usable.
@@ -835,7 +932,8 @@ Contact: c5n AT posteo DOT de
 ## ToDo list
 
 - [ ] openhab_ui: Fix icon loading. Some of the original icon file sizes are too large and have to be reencoded.
-- [ ] openhab_ui: Auto close item manipulation window after timeout
+- [ ] openhab_ui: Auto close item control screen after timeout -- straightforward
+      now that there is a screen stack: one timer and an `ui_screen_pop()`
 - [ ] openhab_ui: Auto back to homescreen after timeout
 - [ ] openhab_ui: Prefer widget label text instead of item label text
 - [ ] openhab_ui: Add secured sections with PIN protection
@@ -843,9 +941,14 @@ Contact: c5n AT posteo DOT de
 - [x] ac: Improve OTA firmware update --> batchupdate.sh
 - [x] main: Show portal active icon
 - [x] openhab_ui: Add theme support
+- [x] openhab_ui: Give each theme family its own chrome, tiles, typeface and
+      chime rather than one geometry in three palettes -- see
+      [Screens, frames and motion](#screens-frames-and-motion)
+- [x] openhab_ui: Make the item controls screens of their own, laid out for a
+      finger, and let them follow the server while they are open
 - [ ] main: Add screen calibration
 - [x] main: Add setup wizard with WLAN credential input instead of portal procedure -- on the panel too, see [Settings on the screen](#settings-on-the-screen)
-- [ ] doc: Retake the web interface screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages
+- [ ] doc: Retake the screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages, and ```doc/img/arduitouch_main.jpeg``` shows the pre-overhaul UI
 - [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.

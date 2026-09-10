@@ -134,7 +134,9 @@ struct ui_theme_s
     uint8_t  glow_opa;
 
     /* Three roles, not one font per style, so that adding a variant cannot
-     * quietly pull a fourth font into the build. */
+     * quietly pull a fourth font into the build. The roles are also the three
+     * *weights* of the family's face, not three sizes of one weight, which is
+     * where the hierarchy comes from -- see tools/build_fonts.sh. */
     const lv_font_t *font_small;  /* captions, buttons, table cells */
     const lv_font_t *font_normal; /* state lines, window headers    */
     const lv_font_t *font_large;  /* the big value labels           */
@@ -173,17 +175,16 @@ bool                     ui_style_night(void);
 const char              *ui_style_name(void);
 const struct ui_theme_s *ui_style_theme(void);
 
-/* Structural decoration of an item window's header: the one piece of the LCARS
- * look that has to be an object rather than a property, because LVGL v9 has a
- * single uniform radius and this build has neither arcs nor a canvas. A no-op
- * for the families that want none, so the call site stays unconditional.
+/* Structural decoration used to live here, as a single LCARS-shaped hook, on
+ * the grounds that at 320x240 six tiles leave no room for chrome around them.
+ * That turned out to be a matter of how the space was spent rather than how
+ * much of it there was: see frames/ui_frame.hpp, where every family builds its
+ * own chrome and then says which rectangle the tile grid may have.
  *
- * Nothing else is decorated. At 320x240 six tiles leave no room for chrome
- * around them, and the tiles carry their family's look in their own styles --
- * the flat block and left spine of LCARS, the hairline and bloom of JARVIS.
- * Note that anything added here has to survive a live variant change; it does,
- * because openhab_ui closes the open window before re-applying. */
-void ui_style_decorate_window(lv_obj_t *header);
+ * The rule it was right about still holds, and is why the interface has a
+ * destroy(): none of that is properties, so lv_obj_report_style_change()
+ * cannot reach it and a live variant change has to tear it down and rebuild.
+ */
 
 /* Build a style selector out of a part and a state. lv_obj_add_style() takes an
  * lv_style_selector_t, but LV_PART_* and LV_STATE_* are two distinct enums, and

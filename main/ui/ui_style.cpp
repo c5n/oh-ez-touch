@@ -31,6 +31,10 @@ lv_style_t ui_style_info_error;
  * the v7 value of 100 in lv_conf.h so these keep producing the same geometry.
  * Metrics that no variant wants to change stay here rather than in the table:
  * they are geometry, not theme. */
+/* Geometry that no family varies. What a family *does* vary -- where its
+ * chrome sits and how its tiles pack into what is left -- is not here: it is
+ * the layout and grid columns of the table below, and the frame ops they point
+ * at. The line between the two is simply whether anything differs. */
 #define BORDER_THIN  (LV_DPI_DEF / 50 >= 1 ? LV_DPI_DEF / 50 : 1)
 #define RADIUS_TILE  (LV_DPI_DEF / 15)
 /* Slate's cards. Generous on purpose: at 96x93 an 18 px radius is what makes
@@ -177,15 +181,23 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
 
     /* ------------------------------------------------------------------ LCARS
      * Flat blocks of colour on black, generously rounded, in a tall condensed
-     * face. Real LCARS elbows are not drawable: LVGL v9 has one uniform radius
-     * property, not four, and this build has neither arcs nor a canvas. What
-     * carries the look instead is the palette, the radius, and the left spine
-     * that lv_style_set_border_side() puts on navigation and control tiles.
+     * face -- inside the spine and elbow that frames/frame_lcars.cpp draws.
      *
-     * The tiles are nearly square (104 x 101), so LV_RADIUS_CIRCLE would round
-     * their corners away entirely and the caption would spill outside the
-     * shape; they get RADIUS_LCARS. The window header and the buttons are wide
-     * and short, so those do become true stadiums. */
+     * This comment used to say real elbows were not drawable, because LVGL v9
+     * has one uniform radius property rather than four. That is true and it is
+     * not the obstacle it looked like: with one radius you get exactly one
+     * rounded corner by covering the other three, and the concave sweep is a
+     * rounded rect in the background colour laid over the join. See the file
+     * comment there.
+     *
+     * The tiles are 84 x 94, so LV_RADIUS_CIRCLE would round their corners
+     * away entirely and the caption would spill outside the shape; they get
+     * RADIUS_LCARS. The bar's blocks and the buttons are wide and short, so
+     * those do become true stadiums.
+     *
+     * What each tile is filled with is decided per item type by the frame's
+     * decorate_tile(), not here: the tile row is the fill an operable item
+     * gets, and the rest are mixed from the marker colours below. */
     {
         UI_THEME_NAME_LCARS " Day", UI_THEME_LCARS, false,
         /* screen       */ SURF(0x000000, CK, NON, FULLO, CK, MK, MK, EK, MK, 0xFF9900),
@@ -239,16 +251,21 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
     /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, ui_sound_lcars),
     },
 
-    /* ----------------------------------------------------------------- JARVIS
-     * Hairlines on a deep ground, with a shadow standing in for the bloom.
-     * The tile's own outline is a dimmed cyan so that the brighter link and
-     * amber control markers still read as a change of state rather than just a
-     * thicker line. Concentric arc reticles are not achievable here for the
-     * same reason as the LCARS elbows.
+    /* --------------------------------------------------- JARVIS -- "Reticle"
+     * Hairlines on a flat, deep ground. The tile's own border is removed by
+     * frames/frame_jarvis.cpp, which draws four corner brackets in its place
+     * and a ring around any reading that has a range behind it.
      *
-     * The glow is kept narrow on purpose: LV_DRAW_SW_SHADOW_CACHE_SIZE is 0, so
-     * every shadow is re-blurred on every frame, and a wide soft one would also
-     * band visibly at 320x240 in RGB565. */
+     * Arc reticles were said here to be unachievable for the same reason as
+     * the LCARS elbows. They are drawn with lv_draw_arc() from a draw event,
+     * which needs neither the lv_arc widget nor LV_USE_ARC -- the software arc
+     * renderer is linked in regardless, because lv_draw_sw.c references it
+     * unconditionally.
+     *
+     * The ground is flat rather than a gradient: LVGL issues one fill task per
+     * row for a linear one, so a full-screen gradient was 240 of them on every
+     * repaint, and with LV_GRADIENT_MAX_STOPS at 2 it banded visibly across
+     * 240 rows of RGB565 anyway. */
     {
         UI_THEME_NAME_JARVIS " Day", UI_THEME_JARVIS, false,
         /* screen       */ SURF(0x050B12, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x9FE8FF),
@@ -615,31 +632,4 @@ void ui_style_apply(void)
      * with the cache on, this refreshes only the first matching part of a
      * multi-part widget, and sliders and tables would keep their old colours. */
     lv_obj_report_style_change(NULL);
-}
-
-/* LCARS window headers end in a detached block, separated from the bar by a
- * sliver of background. That gap is what makes the shape read as LCARS rather
- * than as a rounded title bar, and it cannot come from a style: LVGL v9 has one
- * radius property for all four corners, so the bar and the block have to be two
- * objects.
- *
- * The block goes at the end of the flex row the header already is, after the
- * close button, and takes the accent's lighter partner. Every other family
- * returns without adding anything. */
-void ui_style_decorate_window(lv_obj_t *header)
-{
-    if (theme->family != UI_THEME_LCARS)
-        return;
-
-    lv_obj_t *cap = lv_obj_create(header);
-
-    lv_obj_remove_flag(cap, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(cap, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_size(cap, LV_DPI_DEF / 4, lv_pct(60));
-    lv_obj_set_style_bg_opa(cap, LV_OPA_COVER, 0);
-    lv_obj_set_style_bg_color(cap, lv_color_hex(theme->btn_checked.bg), 0);
-    lv_obj_set_style_border_width(cap, 0, 0);
-    lv_obj_set_style_radius(cap, LV_RADIUS_CIRCLE, 0);
-    /* The sliver of window background that detaches the block from the bar. */
-    lv_obj_set_style_margin_left(cap, LV_DPI_DEF / 25, 0);
 }
