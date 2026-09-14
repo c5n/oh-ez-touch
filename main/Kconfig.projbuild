@@ -103,8 +103,8 @@ config OHEZ_DEBUG_OPENHAB_UI
     bool "openHAB UI: widget events, theme changes and the poll statistics"
     default n
 
-config OHEZ_DEBUG_UI_INFOLABEL
-    bool "info banner: creation and timeout"
+config OHEZ_DEBUG_UI_MESSAGEBOX
+    bool "message box: creation and timeout"
     default n
 
 config OHEZ_DEBUG_UI_SCREEN

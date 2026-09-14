@@ -6,7 +6,7 @@
 #include "ui_frame.hpp"
 
 #include "ui/ui_beep.hpp"
-#include "ui/ui_infolabel.hpp"
+#include "ui/ui_messagebox.hpp"
 #include "ui/ui_motion.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
@@ -58,7 +58,7 @@ static void notice_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    Infolabel::unfold();
+    Messagebox::unfold();
 }
 
 lv_obj_t *ui_frame_notice(lv_obj_t *parent)

@@ -33,7 +33,7 @@
 #include "port/ohez_port.h"
 #include "ui/items/item_screen.hpp"
 #include "ui/openhab_ui.hpp"
-#include "ui/ui_infolabel.hpp"
+#include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
@@ -94,13 +94,13 @@ static const char *wlan_state_name(void)
     return "unknown";
 }
 
-static const char *banner_kind_name(enum Infolabel::infolabel_type_e kind)
+static const char *banner_kind_name(enum Messagebox::messagebox_type_e kind)
 {
     switch (kind)
     {
-    case Infolabel::INFO:    return "info";
-    case Infolabel::WARNING: return "warning";
-    case Infolabel::ERROR:   return "error";
+    case Messagebox::INFO:    return "info";
+    case Messagebox::WARNING: return "warning";
+    case Messagebox::ERROR:   return "error";
     }
 
     return "unknown";
@@ -133,12 +133,12 @@ static void add_banner(JsonDocument &doc)
     /* Whichever is up. main.cpp's covers the WLAN and the setup access point,
      * openhab_ui.cpp's covers a sitemap that will not load; both live on the
      * top layer and only one of them is ever interesting at a time. */
-    const Infolabel *up = NULL;
+    const Messagebox *up = NULL;
 
-    if (infolabel.isUp() == true)
-        up = &infolabel;
-    else if (openhab_ui_infolabel.isUp() == true)
-        up = &openhab_ui_infolabel;
+    if (messagebox.isUp() == true)
+        up = &messagebox;
+    else if (openhab_ui_messagebox.isUp() == true)
+        up = &openhab_ui_messagebox;
 
     if (up == NULL)
         return;

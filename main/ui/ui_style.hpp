@@ -222,7 +222,7 @@ extern lv_style_t ui_style_table_cell;       /* systeminfo table, ITEMS     */
 extern lv_style_t ui_style_slider_indicator; /* slider INDICATOR            */
 extern lv_style_t ui_style_icon;             /* the tile's watermark image  */
 extern lv_style_t ui_style_swatch;           /* both colour swatches        */
-extern lv_style_t ui_style_info;             /* the Infolabel panel         */
+extern lv_style_t ui_style_info;             /* the Messagebox panel        */
 extern lv_style_t ui_style_info_warning;     /* additive, over ui_style_info */
 extern lv_style_t ui_style_info_error;       /* additive, over ui_style_info */
 

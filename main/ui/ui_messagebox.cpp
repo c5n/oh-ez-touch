@@ -1,10 +1,10 @@
 /**
- * @file ui_infolabel.cpp
+ * @file ui_messagebox.cpp
  *
  * The message box that floats over the page, and the frame indicator that is
  * the way back to it once it has been folded away.
  */
-#include "ui_infolabel.hpp"
+#include "ui_messagebox.hpp"
 
 #include "debug.h"
 #include "frames/ui_frame.hpp"
@@ -20,7 +20,7 @@
  * it: the title bar has to reach the border, so only the content is padded. */
 #define PAD_CONTENT (LV_DPI_DEF / 10)
 
-bool Infolabel::covered = false;
+bool Messagebox::covered = false;
 
 /* FNV-1a over the topic and the text, seeded with the severity. See `said`. */
 static uint32_t hash(const char *text, uint32_t seed)
@@ -49,19 +49,19 @@ static lv_color_t bar_ink(uint32_t bg)
     return (lv_color_luminance(lv_color_hex(bg)) > 128) ? lv_color_black() : lv_color_white();
 }
 
-static enum ui_notice_e notice_of(enum Infolabel::infolabel_type_e kind)
+static enum ui_notice_e notice_of(enum Messagebox::messagebox_type_e kind)
 {
     switch (kind)
     {
-    case Infolabel::WARNING: return UI_NOTICE_WARNING;
-    case Infolabel::ERROR:   return UI_NOTICE_ERROR;
-    default:                 return UI_NOTICE_INFO;
+    case Messagebox::WARNING: return UI_NOTICE_WARNING;
+    case Messagebox::ERROR:   return UI_NOTICE_ERROR;
+    default:                  return UI_NOTICE_INFO;
     }
 }
 
 /* --------------------------------------------------------------- the box */
 
-void Infolabel::build(void)
+void Messagebox::build(void)
 {
     /* The panel used to build a private style here. It now shares the theme's,
      * which is what lets a theme change repaint a box that is already on
@@ -154,15 +154,15 @@ void Infolabel::build(void)
     lv_obj_set_style_pad_all(lv_msgbox_get_content(mb), PAD_CONTENT, 0);
 }
 
-void Infolabel::create(enum infolabel_type_e type, const char *topic, const char *text,
-                       uint16_t timeout)
+void Messagebox::create(enum messagebox_type_e type, const char *topic,
+                        const char *text, uint16_t timeout)
 {
     const struct ui_theme_s *t = ui_style_theme();
 
     if (mb == NULL)
     {
-#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
-        printf("Infolabel::create: Topic: %s   Text: %s\r\n", topic, text);
+#if CONFIG_OHEZ_DEBUG_UI_MESSAGEBOX
+        printf("Messagebox::create: Topic: %s   Text: %s\r\n", topic, text);
 #endif
         build();
     }
@@ -271,12 +271,12 @@ void Infolabel::create(enum infolabel_type_e type, const char *topic, const char
     refresh_notice();
 }
 
-void Infolabel::destroy(void)
+void Messagebox::destroy(void)
 {
     if (mb != NULL)
     {
-#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
-        printf("Infolabel::destroy: Destroying message box\r\n");
+#if CONFIG_OHEZ_DEBUG_UI_MESSAGEBOX
+        printf("Messagebox::destroy: Destroying message box\r\n");
 #endif
         /* Not lv_msgbox_close(): that exists to take the backdrop down with
          * the box, and this one has a real parent rather than one the widget
@@ -302,12 +302,12 @@ void Infolabel::destroy(void)
     }
 }
 
-void Infolabel::loop(void)
+void Messagebox::loop(void)
 {
     if (timeout_timestamp > 0 && port_millis() >= timeout_timestamp)
     {
-#if CONFIG_OHEZ_DEBUG_UI_INFOLABEL
-        printf("Infolabel::loop: infolabel timeout reached\r\n");
+#if CONFIG_OHEZ_DEBUG_UI_MESSAGEBOX
+        printf("Messagebox::loop: messagebox timeout reached\r\n");
 #endif
         destroy();
         timeout_timestamp = 0;
@@ -316,13 +316,13 @@ void Infolabel::loop(void)
 
 /* ------------------------------------------------------- folding it away */
 
-void Infolabel::refresh(void) const
+void Messagebox::refresh(void) const
 {
     if (mb != NULL)
         lv_obj_set_flag(mb, LV_OBJ_FLAG_HIDDEN, folded || covered);
 }
 
-void Infolabel::fold(void)
+void Messagebox::fold(void)
 {
     folded = true;
 
@@ -332,17 +332,17 @@ void Infolabel::fold(void)
     refresh();
 }
 
-void Infolabel::fold_event(lv_event_t *e)
+void Messagebox::fold_event(lv_event_t *e)
 {
-    ((Infolabel *)lv_event_get_user_data(e))->fold();
+    ((Messagebox *)lv_event_get_user_data(e))->fold();
 }
 
-void Infolabel::unfold(void)
+void Messagebox::unfold(void)
 {
-    Infolabel *all[] = {&infolabel, &openhab_ui_infolabel};
-    bool       any = false;
+    Messagebox *all[] = {&messagebox, &openhab_ui_messagebox};
+    bool        any = false;
 
-    for (Infolabel *b : all)
+    for (Messagebox *b : all)
     {
         if (b->mb == NULL || b->folded == false)
             continue;
@@ -359,23 +359,23 @@ void Infolabel::unfold(void)
         BEEPER_EVENT_SCREEN();
 }
 
-void Infolabel::cover(bool is_covered)
+void Messagebox::cover(bool is_covered)
 {
     covered = is_covered;
 
-    infolabel.refresh();
-    openhab_ui_infolabel.refresh();
+    messagebox.refresh();
+    openhab_ui_messagebox.refresh();
 }
 
-void Infolabel::refresh_notice(void)
+void Messagebox::refresh_notice(void)
 {
-    const Infolabel *all[] = {&infolabel, &openhab_ui_infolabel};
+    const Messagebox *all[] = {&messagebox, &openhab_ui_messagebox};
     enum ui_notice_e notice = UI_NOTICE_NONE;
 
     /* The louder of the two, rather than the first one up. They are
      * independent -- a sitemap error and a WLAN warning can be raised in
      * either order -- and one indicator cannot say both. */
-    for (const Infolabel *b : all)
+    for (const Messagebox *b : all)
     {
         if (b->isUp() == false)
             continue;

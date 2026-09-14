@@ -46,7 +46,7 @@
 #include "testif/testif.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_beep.hpp"
-#include "ui/ui_infolabel.hpp"
+#include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
@@ -79,7 +79,7 @@ static const char *TAG = "ohez";
 BacklightControl tft_backlight;
 
 Config config;
-Infolabel infolabel;
+Messagebox messagebox;
 
 /* Re-apply every setting that does not need a reboot. Declared in
  * config_fields.hpp and called from both save paths -- the web form in
@@ -253,7 +253,7 @@ static void ohez_setup(void)
      * nothing and then goes away. */
     if (wlan_state() != WLAN_ONLINE)
     {
-        infolabel.create(infolabel.INFO, "WLAN", "Connecting...", 0);
+        messagebox.create(messagebox.INFO, "WLAN", "Connecting...", 0);
         lv_timer_handler();
     }
 
@@ -353,7 +353,7 @@ static void ohez_loop(void)
     wlan_loop();
     webui_loop();
     testif_loop();
-    infolabel.loop();
+    messagebox.loop();
 
     /* Seeded with the state at the first call rather than with a "nothing yet"
      * value, so the state a target boots in is not announced as a change. That
@@ -375,11 +375,11 @@ static void ohez_loop(void)
 
         if (reported == WLAN_ONLINE)
         {
-            infolabel.destroy();
+            messagebox.destroy();
             openhab_ui_set_wifi_state(true);
             openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
                                config.item.openhab.sitemap);
-            infolabel.create(infolabel.INFO, "WLAN", "CONNECTED!", 3);
+            messagebox.create(messagebox.INFO, "WLAN", "CONNECTED!", 3);
         }
         else if (was_online == true || reported == WLAN_RETRY_WAIT)
         {
@@ -390,7 +390,7 @@ static void ohez_loop(void)
              * momentary idle report can no longer reboot the device in the
              * middle of an OTA upload. */
             openhab_ui_set_wifi_state(false);
-            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
+            messagebox.create(messagebox.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
     }
 
@@ -414,11 +414,11 @@ static void ohez_loop(void)
                      (unsigned)(ip & 0xFF), (unsigned)((ip >> 8) & 0xFF),
                      (unsigned)((ip >> 16) & 0xFF), (unsigned)((ip >> 24) & 0xFF));
 
-            infolabel.create(infolabel.INFO, "Setup", text, 0);
+            messagebox.create(messagebox.INFO, "Setup", text, 0);
         }
         else if (wlan_state() != WLAN_ONLINE)
         {
-            infolabel.create(infolabel.WARNING, "WLAN", "NOT CONNECTED", 0);
+            messagebox.create(messagebox.WARNING, "WLAN", "NOT CONNECTED", 0);
         }
     }
 

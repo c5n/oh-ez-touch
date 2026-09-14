@@ -3,7 +3,7 @@
 #include "openhab_ui.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
-#include "ui_infolabel.hpp"
+#include "ui_messagebox.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
 #include "frames/ui_frame.hpp"
@@ -83,7 +83,7 @@
 
 extern void lodepng_free(void* ptr);
 
-Infolabel openhab_ui_infolabel;
+Messagebox openhab_ui_messagebox;
 
 static Config *current_config;
 
@@ -686,7 +686,7 @@ static void chrome_create(void)
      * box that was already up -- and on a panel with no link yet, one is:
      * main.cpp raises "WLAN / Connecting..." before this first runs, and a
      * live theme change comes through here as well. */
-    Infolabel::refresh_notice();
+    Messagebox::refresh_notice();
 }
 
 static void chrome_destroy(void)
@@ -1404,15 +1404,15 @@ static void page_result_apply(struct openhab_result_s *res)
 
         page_state = PAGE_READY;
 
-        /* The sitemap came back. Infolabel::destroy() is deliberately silent
+        /* The sitemap came back. Messagebox::destroy() is deliberately silent
          * -- it cannot tell a recovery from a timeout -- and this is the one
          * recovery with no replacement banner to announce it, so it is said
          * here. The isUp() guard is what stops every successful poll saying
          * it. */
-        if (openhab_ui_infolabel.isUp() == true)
+        if (openhab_ui_messagebox.isUp() == true)
             BEEPER_EVENT_NOTIFY();
 
-        openhab_ui_infolabel.destroy();
+        openhab_ui_messagebox.destroy();
         show(content);
 #if CONFIG_IDF_TARGET_LINUX
         item_path_step();
@@ -1427,7 +1427,7 @@ static void page_result_apply(struct openhab_result_s *res)
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("openhab_ui_loop: no usable page at: %s\r\n", current_page);
 #endif
-    openhab_ui_infolabel.create(openhab_ui_infolabel.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
+    openhab_ui_messagebox.create(openhab_ui_messagebox.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
     page_request(GET_SITEMAP_RETRY_INTERVAL);
 
     statistics.sitemap_fail_cnt++;
@@ -1540,7 +1540,7 @@ void openhab_ui_loop(void)
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     static uint64_t statistics_timestamp;
 #endif
-    openhab_ui_infolabel.loop();
+    openhab_ui_messagebox.loop();
 
     results_apply_one();
     page_submit_if_due();

@@ -31,11 +31,11 @@
 
 /* What the frame's banner indicator is showing.
  *
- * The severities of ui_infolabel.hpp, plus the "nothing is up" the frame needs
+ * The severities of ui_messagebox.hpp, plus the "nothing is up" the frame needs
  * and a banner does not have. Declared here rather than shared with the
- * Infolabel enum so that a frame includes no more than this header: the
+ * Messagebox enum so that a frame includes no more than this header: the
  * banner and the chrome that points at it are two different concerns, and
- * only the mapping between them belongs in one place (ui_infolabel.cpp). */
+ * only the mapping between them belongs in one place (ui_messagebox.cpp). */
 enum ui_notice_e
 {
     UI_NOTICE_NONE = 0,

@@ -6,14 +6,14 @@
 #include "ui_screen.hpp"
 
 #include "debug.h"
-#include "ui_infolabel.hpp"
+#include "ui_messagebox.hpp"
 #include "ui_style.hpp"
 
 static lv_obj_t           *root = NULL;
 static lv_obj_t           *pushed = NULL;
 static enum ui_screen_id_e pushed_id = UI_SCREEN_NONE;
 
-/* ------------------------------ why the pushes and pops below call Infolabel
+/* ----------------------------- why the pushes and pops below call Messagebox
  *
  * The message boxes are hidden while something is pushed over the page.
  *
@@ -22,7 +22,7 @@ static enum ui_screen_id_e pushed_id = UI_SCREEN_NONE;
  * no timeout and never expires, so without this it would sit on top of an item
  * control screen as readily as on top of the settings tabs.
  *
- * Infolabel::cover() rather than a sweep of the top layer's children, which is
+ * Messagebox::cover() rather than a sweep of the top layer's children, which is
  * what this was. The boxes now have a second reason to be hidden -- the user
  * folded one away -- and a sweep cannot tell the two apart: popping a screen
  * would undo a fold, and a box raised while a screen was up would be counted
@@ -103,7 +103,7 @@ void ui_screen_push(lv_obj_t *screen, enum ui_screen_id_e id, uint32_t anim_ms)
 
     lv_obj_add_event_cb(screen, unloaded_event, LV_EVENT_SCREEN_UNLOADED, NULL);
 
-    Infolabel::cover(true);
+    Messagebox::cover(true);
 
 #if CONFIG_OHEZ_DEBUG_UI_SCREEN
     printf("ui_screen: push id=%u anim=%ums\r\n", (unsigned)id, (unsigned)anim_ms);
@@ -127,7 +127,7 @@ void ui_screen_pop(uint32_t anim_ms)
     pushed = NULL;
     pushed_id = UI_SCREEN_NONE;
 
-    Infolabel::cover(false);
+    Messagebox::cover(false);
 
 #if CONFIG_OHEZ_DEBUG_UI_SCREEN
     printf("ui_screen: pop anim=%ums\r\n", (unsigned)anim_ms);
@@ -166,5 +166,5 @@ enum ui_screen_id_e ui_screen_top(void)
 void ui_screen_loop(void)
 {
     if (pushed != NULL)
-        Infolabel::cover(true);
+        Messagebox::cover(true);
 }

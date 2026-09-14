@@ -112,7 +112,7 @@ static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
 
 /* The keyboard or the confirmation prompt -- only ever one at a time, and a
  * child of the screen rather than of lv_layer_top(), because open() hides that
- * layer to keep the Infolabel banner off this screen. */
+ * layer to keep the Messagebox banner off this screen. */
 static lv_obj_t *overlay = NULL;
 static lv_obj_t *overlay_textarea = NULL;
 
@@ -445,7 +445,7 @@ static void confirm_dismiss_event(lv_event_t *e)
 }
 
 /* Not an lv_msgbox, even though LV_USE_MSGBOX is now 1 for the message boxes
- * in ui_infolabel.cpp. Those wanted the header and its one button; this wants
+ * in ui_messagebox.cpp. Those wanted the header and its one button; this wants
  * two buttons of equal weight and no header at all, and a footer that has to
  * be told twice that neither of them is the default is more work than the
  * label and the two buttons it would replace. */

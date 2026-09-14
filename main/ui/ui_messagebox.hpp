@@ -1,5 +1,5 @@
-#ifndef UI_INFOLABEL_HPP
-#define UI_INFOLABEL_HPP
+#ifndef UI_MESSAGEBOX_HPP
+#define UI_MESSAGEBOX_HPP
 
 #include <stdint.h>
 #include <lvgl.h>
@@ -20,10 +20,10 @@
  *
  * It lives on the top layer so it floats above the page without being deleted
  * when the page is rebuilt. */
-class Infolabel
+class Messagebox
 {
 public:
-    enum infolabel_type_e
+    enum messagebox_type_e
     {
         INFO,
         WARNING,
@@ -36,8 +36,8 @@ public:
      * Calling this with the same severity, topic and text as the box is
      * already showing does nothing at all: no sound, and a folded box stays
      * folded. See `said` below for why that is load-bearing. */
-    void create(enum infolabel_type_e type, const char *topic, const char *text,
-                uint16_t timeout);
+    void create(enum messagebox_type_e type, const char *topic,
+                const char *text, uint16_t timeout);
 
     void destroy(void);
     void loop(void);
@@ -47,7 +47,7 @@ public:
     bool isUp(void) const { return mb != NULL; }
     bool isFolded(void) const { return folded; }
 
-    enum infolabel_type_e getKind(void) const { return kind; }
+    enum messagebox_type_e getKind(void) const { return kind; }
 
     const char *getTopic(void) const { return (mb != NULL) ? topic : NULL; }
 
@@ -98,7 +98,7 @@ private:
 
     /* The severity of the box on screen. Kept because it is the one thing
      * about a live box that is not readable back off the widgets. */
-    enum infolabel_type_e kind = INFO;
+    enum messagebox_type_e kind = INFO;
 
     /* Whether the user folded it away. Cleared by destroy(), and by a create()
      * that has something new to say -- a box that has been folded is dismissed
@@ -137,7 +137,7 @@ private:
  * They are separate instances on purpose: main.cpp owns the WLAN and setup
  * messages, openhab_ui.cpp owns "this sitemap will not load", and either can
  * be on screen without the other. */
-extern Infolabel infolabel;            /* main.cpp */
-extern Infolabel openhab_ui_infolabel; /* openhab_ui.cpp */
+extern Messagebox messagebox;            /* main.cpp */
+extern Messagebox openhab_ui_messagebox; /* openhab_ui.cpp */
 
 #endif
