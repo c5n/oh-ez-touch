@@ -62,6 +62,7 @@ static struct
     lv_obj_t *clock;
     lv_obj_t *title;
     lv_obj_t *link;
+    lv_obj_t *notice;
     lv_obj_t *scan;
     lv_timer_t *scan_timer;
     uint8_t   scan_cell;
@@ -121,6 +122,9 @@ static void jarvis_build(lv_obj_t *parent)
     lv_obj_set_pos(strip, 0, 0);
     lv_obj_set_size(strip, lv_pct(100), STRIP_H);
     lv_obj_set_style_pad_hor(strip, EDGE + 2, 0);
+    /* Only ever seen between the signal bars and the notice glyph; everything
+     * else in the strip is spaced apart by the row itself. */
+    lv_obj_set_style_pad_column(strip, 6, 0);
     lv_obj_set_flex_flow(strip, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(strip, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
@@ -134,6 +138,12 @@ static void jarvis_build(lv_obj_t *parent)
     lv_obj_set_style_text_letter_space(jarvis.title, 1, 0);
 
     jarvis.link = strip_label(strip, LV_SYMBOL_POWER, LV_OPA_COVER);
+
+    /* The right end of the strip, past the signal bars. Reticle frames every
+     * reading in the apparatus that measures it; an alert is the one thing on
+     * the panel that nothing measures, so it gets no bracket and no rule -- a
+     * bare glyph in its own colour. */
+    jarvis.notice = ui_frame_notice(strip);
 
     /* Two hairlines, which is all the structure this family has. */
     ui_frame_block(jarvis.root, 0, STRIP_H, LV_HOR_RES, HAIRLINE, line, 0);
@@ -360,9 +370,14 @@ static void jarvis_decorate_tile(lv_obj_t *tile, enum ItemType type, uint8_t slo
     lv_obj_set_style_border_width(tile, 0, 0);
 }
 
+static void jarvis_set_notice(enum ui_notice_e notice)
+{
+    ui_frame_notice_set(jarvis.notice, notice);
+}
+
 const struct ui_frame_ops_s ui_frame_jarvis = {
-    jarvis_build,     jarvis_destroy,  jarvis_content_area,  jarvis_set_title,
-    jarvis_set_clock, jarvis_set_link, jarvis_decorate_tile};
+    jarvis_build,     jarvis_destroy,  jarvis_content_area, jarvis_set_title,
+    jarvis_set_clock, jarvis_set_link, jarvis_set_notice,   jarvis_decorate_tile};
 
 /* Told by the page whenever a ring's item moves. Not part of the frame
  * interface: only this family has rings, so only this family's page hook needs

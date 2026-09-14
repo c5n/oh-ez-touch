@@ -44,7 +44,6 @@ lv_style_t ui_style_info_error;
 #define RADIUS_LCARS (LV_DPI_DEF / 6)
 #define PAD_TILE     (LV_DPI_DEF / 20)
 #define PAD_BTN      (LV_DPI_DEF / 12)
-#define PAD_INFO     (LV_DPI_DEF / 10)
 
 /* The LCARS variants are the only reason a second font family is compiled in.
  * Antonio is a tall condensed face; see tools/build_fonts.sh. */
@@ -604,14 +603,19 @@ void ui_style_init(void)
         lv_style_set_image_recolor_opa(&ui_style_icon, theme->icon_recolor_opa);
     }
 
-    /* ---- the info label ---- */
+    /* ---- the message box ----
+     * No padding: the box's title bar has to reach its edges, so what padding
+     * there is belongs to the content underneath and is set there. The font is
+     * the face the *box* carries -- its two labels ask for the smaller one. */
     apply_surface(&ui_style_info, &theme->info);
     lv_style_set_text_font(&ui_style_info, theme->font_normal);
-    /* Set here as well as on the screen: the info label lives on the top layer,
-     * which is a screen root of its own and inherits nothing from ours. */
+    /* Set here as well as on the screen: the box lives on the top layer, which
+     * is a screen root of its own and inherits nothing from ours. */
     lv_style_set_text_letter_space(&ui_style_info, theme->letter_space);
-    lv_style_set_pad_all(&ui_style_info, PAD_INFO);
 
+    /* The severity fill. Additive over ui_style_win_header rather than over the
+     * style above: it is the title bar that carries the severity, not the whole
+     * box -- see the comment in Infolabel::create(). */
     lv_style_set_bg_color(&ui_style_info_warning, lv_color_hex(theme->info_warning_bg));
     lv_style_set_bg_color(&ui_style_info_error, lv_color_hex(theme->info_error_bg));
 

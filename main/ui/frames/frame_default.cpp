@@ -42,6 +42,7 @@ static struct
     lv_obj_t *clock;
     lv_obj_t *title;
     lv_obj_t *link;
+    lv_obj_t *notice;
 } slate;
 
 /* Quiet: this is context, not content. The tiles are what the eye should
@@ -66,6 +67,10 @@ static void slate_build(lv_obj_t *parent)
     lv_obj_set_pos(slate.root, 0, 0);
     lv_obj_set_size(slate.root, lv_pct(100), BAND_H);
     lv_obj_set_style_pad_hor(slate.root, EDGE, 0);
+    /* Only ever seen between the link readout and the notice glyph: the clock
+     * and the title are spaced apart by the row itself. Without it those two
+     * touch, and "wired, and something is wrong" reads as one glyph. */
+    lv_obj_set_style_pad_column(slate.root, 6, 0);
     lv_obj_set_flex_flow(slate.root, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(slate.root, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
@@ -80,6 +85,11 @@ static void slate_build(lv_obj_t *parent)
     lv_obj_set_style_text_letter_space(slate.title, 1, 0);
 
     slate.link = band_label(slate.root, LV_SYMBOL_POWER, LV_OPA_60);
+
+    /* At the end of the band, and the only thing up here at full opacity. The
+     * band is deliberately quiet -- context, not content -- so the one glyph
+     * that is content has to break that rule to be seen at all. */
+    slate.notice = ui_frame_notice(slate.root);
 }
 
 static void slate_destroy(void)
@@ -147,6 +157,11 @@ static void slate_set_link(bool online, int rssi)
         lv_label_set_text_fmt(slate.link, "%d%% " LV_SYMBOL_WIFI, rssi);
 }
 
+static void slate_set_notice(enum ui_notice_e notice)
+{
+    ui_frame_notice_set(slate.notice, notice);
+}
+
 const struct ui_frame_ops_s ui_frame_default = {
     slate_build,     slate_destroy,  slate_content_area, slate_set_title,
-    slate_set_clock, slate_set_link, NULL};
+    slate_set_clock, slate_set_link, slate_set_notice,   NULL};

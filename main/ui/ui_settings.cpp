@@ -444,9 +444,11 @@ static void confirm_dismiss_event(lv_event_t *e)
     overlay_close();
 }
 
-/* LV_USE_MSGBOX is 0, and stays 0: the v9 msgbox is a full dialog with a
- * header, a footer and a button area, which is what made ui_infolabel.hpp
- * hand-roll its banner too. This is a label and two buttons. */
+/* Not an lv_msgbox, even though LV_USE_MSGBOX is now 1 for the message boxes
+ * in ui_infolabel.cpp. Those wanted the header and its one button; this wants
+ * two buttons of equal weight and no header at all, and a footer that has to
+ * be told twice that neither of them is the default is more work than the
+ * label and the two buttons it would replace. */
 static void confirm_restart_open(const char *text)
 {
     lv_obj_t *root = overlay_create();

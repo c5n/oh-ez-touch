@@ -6,8 +6,10 @@
 #include "ui_frame.hpp"
 
 #include "ui/ui_beep.hpp"
+#include "ui/ui_infolabel.hpp"
 #include "ui/ui_motion.hpp"
 #include "ui/ui_settings.hpp"
+#include "ui/ui_style.hpp"
 #include "ui/ui_widgets.hpp"
 
 lv_obj_t *ui_frame_container(lv_obj_t *parent)
@@ -40,6 +42,90 @@ void ui_frame_settings_target(lv_obj_t *obj)
     lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(obj, settings_event, LV_EVENT_CLICKED, NULL);
 }
+
+/* ------------------------------------------------------ the banner indicator
+ *
+ * The one thing on the chrome that is not a reading: it says a message box is
+ * waiting, and touching it brings back one that has been folded away.
+ *
+ * It is a label rather than a button because every family already has a row or
+ * a cell of labels to put it in, and a glyph that appears and disappears in
+ * one of those costs nothing to lay out -- LVGL skips a hidden child, so the
+ * row closes up again by itself. The extended click area is what makes a
+ * glyph-sized indicator a finger-sized target. */
+
+static void notice_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    Infolabel::unfold();
+}
+
+lv_obj_t *ui_frame_notice(lv_obj_t *parent)
+{
+    lv_obj_t *label = lv_label_create(parent);
+
+    lv_label_set_text(label, "");
+    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(label, 10);
+    lv_obj_add_event_cb(label, notice_event, LV_EVENT_CLICKED, NULL);
+
+    return label;
+}
+
+const char *ui_frame_notice_glyph(enum ui_notice_e notice)
+{
+    switch (notice)
+    {
+    /* A bell, a warning triangle and a cross. Three glyphs rather than one in
+     * three colours, because the families disagree about how much colour the
+     * chrome may carry -- Slate's band is one dim ink and LCARS's cells are
+     * all colour -- and a shape reads the same in both. */
+    case UI_NOTICE_INFO:    return LV_SYMBOL_BELL;
+    case UI_NOTICE_WARNING: return LV_SYMBOL_WARNING;
+    case UI_NOTICE_ERROR:   return LV_SYMBOL_CLOSE;
+    default:                return NULL;
+    }
+}
+
+uint32_t ui_frame_notice_color(enum ui_notice_e notice)
+{
+    const struct ui_theme_s *t = ui_style_theme();
+
+    switch (notice)
+    {
+    case UI_NOTICE_WARNING: return t->info_warning_bg;
+    case UI_NOTICE_ERROR:   return t->info_error_bg;
+    default:                break;
+    }
+
+    /* The edge of an info box, which is the colour that variant has already
+     * chosen to mean "something is being said". A variant that leaves it at
+     * UI_COLOR_KEEP is saying it wants the box's own text colour, so the
+     * indicator takes the screen's ink rather than painting itself black. */
+    return (t->info.border == UI_COLOR_KEEP) ? t->screen.text : t->info.border;
+}
+
+void ui_frame_notice_set(lv_obj_t *label, enum ui_notice_e notice)
+{
+    const char *glyph = ui_frame_notice_glyph(notice);
+
+    if (label == NULL)
+        return;
+
+    if (glyph == NULL)
+    {
+        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
+
+    lv_label_set_text(label, glyph);
+    lv_obj_set_style_text_color(label, lv_color_hex(ui_frame_notice_color(notice)), 0);
+    lv_obj_remove_flag(label, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* ------------------------------------------------------------------------- */
 
 void ui_frame_clock_steady(char *dst, size_t size, const char *text)
 {
@@ -91,6 +177,7 @@ static struct
     lv_obj_t *title;
     lv_obj_t *signal;
     lv_obj_t *wifi;
+    lv_obj_t *notice;
 } classic;
 
 static void classic_build(lv_obj_t *parent)
@@ -120,6 +207,10 @@ static void classic_build(lv_obj_t *parent)
 
     classic.wifi = lv_label_create(classic.bar);
     lv_label_set_text(classic.wifi, LV_SYMBOL_POWER);
+
+    /* Last in the row, past the link readout: the corner a message is least
+     * likely to be confused with a reading. */
+    classic.notice = ui_frame_notice(classic.bar);
 }
 
 static void classic_destroy(void)
@@ -169,6 +260,11 @@ static void classic_set_link(bool online, int rssi)
         lv_label_set_text_fmt(classic.signal, "%02d%%", rssi);
 }
 
+static void classic_set_notice(enum ui_notice_e notice)
+{
+    ui_frame_notice_set(classic.notice, notice);
+}
+
 const struct ui_frame_ops_s ui_frame_classic = {
-    classic_build, classic_destroy, classic_content_area,
-    classic_set_title, classic_set_clock, classic_set_link, NULL};
+    classic_build,     classic_destroy,  classic_content_area, classic_set_title,
+    classic_set_clock, classic_set_link, classic_set_notice,   NULL};

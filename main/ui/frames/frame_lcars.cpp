@@ -24,7 +24,8 @@
  *      |####|  wifi + RSSI, and the way into the settings screen        68
  *  164 +----+
  *  170 +----+
- *      |####|  a cell tag, and the rounded cap the spine ends on        70
+ *      |####|  a cell tag -- or the alert glyph, when there is one --   70
+ *      |####|  and the rounded cap the spine ends on
  *  240 +----+
  *
  * What is left for the tiles is (52, 42) to (315, 235): 264 x 194, which at a
@@ -57,6 +58,9 @@ static struct
     lv_obj_t *clock;
     lv_obj_t *wifi;
     lv_obj_t *signal;
+    lv_obj_t *tag;
+    lv_obj_t *notice;
+    lv_obj_t *notice_cell[2];
 } lcars;
 
 /* Black on a colour block, which is what LCARS text always is. */
@@ -143,15 +147,34 @@ static void lcars_build(lv_obj_t *parent)
     lcars.signal = block_label(status, "--", t->font_small, ink);
 
     /* The bottom cell, and the rounded cap the spine ends on: the block is
-     * rounded and a square patch flattens the top where it meets the gap. */
-    ui_frame_block(lcars.root, 0, DECO_Y, SPINE_W, DECO_H, third, R_NOTCH);
-    ui_frame_block(lcars.root, 0, DECO_Y, SPINE_W, R_NOTCH, third, 0);
+     * rounded and a square patch flattens the top where it meets the gap.
+     *
+     * It is also the alert cell. It was pure decoration and it is still the
+     * spine's third colour when nothing is wrong -- but a cell that lights up
+     * is how an LCARS panel says anything at all, so the banner indicator is
+     * this cell changing colour rather than a coloured glyph laid on it. Two
+     * blocks, so both have to be repainted; see lcars_set_notice(). */
+    lcars.notice_cell[0] = ui_frame_block(lcars.root, 0, DECO_Y, SPINE_W, DECO_H, third, R_NOTCH);
+    lcars.notice_cell[1] = ui_frame_block(lcars.root, 0, DECO_Y, SPINE_W, R_NOTCH, third, 0);
+
+    /* Centred on the cell rather than laid out in it: the cell is two absolute
+     * blocks and has no layout to join. One line of the face it is set in, so
+     * the arithmetic is the label's own height and not a guess. */
+    lcars.notice = ui_frame_notice(lcars.root);
+    lv_obj_set_style_text_color(lcars.notice, lv_color_hex(ink), 0);
+    lv_obj_set_style_text_font(lcars.notice, t->font_normal, 0);
+    lv_obj_set_style_text_align(lcars.notice, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(lcars.notice, SPINE_W);
+    lv_obj_set_pos(lcars.notice, 0,
+                   DECO_Y + (DECO_H - lv_font_get_line_height(t->font_normal)) / 2);
 
     /* The numeric tags LCARS panels are covered in. Decoration, and it says
-     * so: a fixed string rather than anything pretending to be a reading. */
-    lv_obj_t *tag = block_label(lcars.root, "47-1701\nD", t->font_small, ink);
-    lv_obj_set_style_text_align(tag, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_align(tag, LV_ALIGN_BOTTOM_LEFT, 6, -10);
+     * so: a fixed string rather than anything pretending to be a reading --
+     * which is exactly why it is what gives way when the cell has something
+     * real to show. */
+    lcars.tag = block_label(lcars.root, "47-1701\nD", t->font_small, ink);
+    lv_obj_set_style_text_align(lcars.tag, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(lcars.tag, LV_ALIGN_BOTTOM_LEFT, 6, -10);
 }
 
 static void lcars_destroy(void)
@@ -242,6 +265,35 @@ static void lcars_decorate_tile(lv_obj_t *tile, enum ItemType type, uint8_t slot
     lv_obj_set_style_bg_color(tile, fill, 0);
 }
 
+/* Black on a colour block, like everything else in this family: the severity
+ * is the cell, not the glyph. A coloured symbol on a coloured cell would be
+ * two colours fighting, and LCARS has no neutral surface to lay one on. */
+static void lcars_set_notice(enum ui_notice_e notice)
+{
+    const char *glyph = ui_frame_notice_glyph(notice);
+    uint32_t    fill;
+
+    if (lcars.notice == NULL)
+        return;
+
+    if (glyph == NULL)
+    {
+        lv_obj_add_flag(lcars.notice, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(lcars.tag, LV_OBJ_FLAG_HIDDEN);
+        fill = ui_style_theme()->btn.bg; /* back to the spine's third colour */
+    }
+    else
+    {
+        lv_label_set_text(lcars.notice, glyph);
+        lv_obj_remove_flag(lcars.notice, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(lcars.tag, LV_OBJ_FLAG_HIDDEN);
+        fill = ui_frame_notice_color(notice);
+    }
+
+    for (lv_obj_t *block : lcars.notice_cell)
+        lv_obj_set_style_bg_color(block, lv_color_hex(fill), 0);
+}
+
 const struct ui_frame_ops_s ui_frame_lcars = {
-    lcars_build,     lcars_destroy,  lcars_content_area,  lcars_set_title,
-    lcars_set_clock, lcars_set_link, lcars_decorate_tile};
+    lcars_build,     lcars_destroy,  lcars_content_area, lcars_set_title,
+    lcars_set_clock, lcars_set_link, lcars_set_notice,   lcars_decorate_tile};

@@ -6,32 +6,29 @@
 #include "ui_screen.hpp"
 
 #include "debug.h"
+#include "ui_infolabel.hpp"
 #include "ui_style.hpp"
 
 static lv_obj_t           *root = NULL;
 static lv_obj_t           *pushed = NULL;
 static enum ui_screen_id_e pushed_id = UI_SCREEN_NONE;
 
-/* Hide the transient banners while something is pushed over the page.
+/* ------------------------------ why the pushes and pops below call Infolabel
+ *
+ * The message boxes are hidden while something is pushed over the page.
  *
  * Moved here from ui_settings.cpp, because the reason applies to every pushed
  * screen and not only that one: a "WLAN NOT CONNECTED" warning is created with
  * no timeout and never expires, so without this it would sit on top of an item
  * control screen as readily as on top of the settings tabs.
  *
- * The children get the flag rather than the layer itself. lv_obj_remove_flag()
- * reacts to LV_OBJ_FLAG_HIDDEN by marking the object's *parent* layout dirty,
- * with no NULL check, and a layer has no parent -- hiding the layer works only
- * by luck and unhiding it segfaults. A banner is a plain child of the layer and
- * has a parent, so the flag behaves on it. */
-static void banners_hide(bool hidden)
-{
-    lv_obj_t *top = lv_layer_top();
-    uint32_t  count = lv_obj_get_child_count(top);
-
-    for (uint32_t i = 0; i < count; i++)
-        lv_obj_set_flag(lv_obj_get_child(top, i), LV_OBJ_FLAG_HIDDEN, hidden);
-}
+ * Infolabel::cover() rather than a sweep of the top layer's children, which is
+ * what this was. The boxes now have a second reason to be hidden -- the user
+ * folded one away -- and a sweep cannot tell the two apart: popping a screen
+ * would undo a fold, and a box raised while a screen was up would be counted
+ * as one the user had dismissed. Only the box knows which of its two reasons
+ * is which, so only the box may set the flag.
+ * -------------------------------------------------------------------------- */
 
 /* The pushed screen is gone for good once it leaves the display, and this is
  * the *only* place it is deleted.
@@ -106,7 +103,7 @@ void ui_screen_push(lv_obj_t *screen, enum ui_screen_id_e id, uint32_t anim_ms)
 
     lv_obj_add_event_cb(screen, unloaded_event, LV_EVENT_SCREEN_UNLOADED, NULL);
 
-    banners_hide(true);
+    Infolabel::cover(true);
 
 #if CONFIG_OHEZ_DEBUG_UI_SCREEN
     printf("ui_screen: push id=%u anim=%ums\r\n", (unsigned)id, (unsigned)anim_ms);
@@ -130,7 +127,7 @@ void ui_screen_pop(uint32_t anim_ms)
     pushed = NULL;
     pushed_id = UI_SCREEN_NONE;
 
-    banners_hide(false);
+    Infolabel::cover(false);
 
 #if CONFIG_OHEZ_DEBUG_UI_SCREEN
     printf("ui_screen: pop anim=%ums\r\n", (unsigned)anim_ms);
@@ -169,5 +166,5 @@ enum ui_screen_id_e ui_screen_top(void)
 void ui_screen_loop(void)
 {
     if (pushed != NULL)
-        banners_hide(true);
+        Infolabel::cover(true);
 }

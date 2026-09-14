@@ -145,8 +145,17 @@ static void add_banner(JsonDocument &doc)
 
     JsonObject banner = doc["banner"].to<JsonObject>();
 
-    banner["kind"] = banner_kind_name(up->getKind());
-    banner["text"] = up->getText();
+    /* The topic and the text separately, because the box keeps them apart --
+     * the topic is its header title and the text its content. They used to be
+     * one "topic\ntext" string because the banner was one label. */
+    banner["kind"]   = banner_kind_name(up->getKind());
+    banner["topic"]  = up->getTopic();
+    banner["text"]   = up->getText();
+
+    /* Folded away by the user, and reachable only through the frame's notice
+     * indicator. Still up, so still reported -- a test that taps the indicator
+     * needs to be able to see that it worked. */
+    banner["hidden"] = up->isFolded();
 }
 
 const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_size)

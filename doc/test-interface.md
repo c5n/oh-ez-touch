@@ -193,11 +193,20 @@ always there.
 
 `banner` appears only when one is up, and carries whichever of the two the
 firmware has raised -- the WLAN and setup messages `main.cpp` owns, or
-`openhab_ui.cpp`'s "this sitemap will not load":
+`openhab_ui.cpp`'s "this sitemap will not load". It is an `lv_msgbox`: `topic`
+is its header title and `text` its content, which is why they are two fields
+and not one `"topic\ntext"` string.
 
 ```json
-"banner": { "kind": "error", "text": "SITEMAP ACCESS FAILED\nhttp://..." }
+"banner": { "kind": "error", "topic": "SITEMAP ACCESS FAILED",
+            "text": "http://...", "hidden": false }
 ```
+
+`hidden` is true once the box's fold button has been pressed. It is still up,
+and still reported, because the only way back to it is the notice glyph the
+frame shows while a banner exists -- a bell, a warning triangle or a cross, in
+the top right of the status row on every family but LCARS, which lights the
+bottom cell of its spine instead. Tapping that glyph unfolds every folded box.
 
 **`page.state` is the field to wait on.** It is the fetch cycle the tiles come
 out of -- `idle`, `request`, `waiting`, `ready` -- and acting on a page before

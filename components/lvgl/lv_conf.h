@@ -890,7 +890,7 @@
 
 #define LV_USE_MENU 0
 
-#define LV_USE_MSGBOX 0
+#define LV_USE_MSGBOX 1
 
 #define LV_USE_ROLLER 0   /**< Requires: lv_label */
 

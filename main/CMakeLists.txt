@@ -88,6 +88,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_color.cpp"
     "ui/ui_beep.cpp"
     "ui/ui_beep_tables.cpp"
+    "ui/ui_infolabel.cpp"
     "ui/ui_motion.cpp"
     "ui/ui_screen.cpp"
     "ui/ui_style.cpp"

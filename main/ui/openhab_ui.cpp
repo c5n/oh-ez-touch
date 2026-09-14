@@ -681,6 +681,12 @@ static void chrome_create(void)
      * flowed, because three families want three different margins and gutters
      * and a wrapping flex can express only one of them. */
     lv_obj_update_layout(content);
+
+    /* A frame is objects, so the one just built knows nothing about a message
+     * box that was already up -- and on a panel with no link yet, one is:
+     * main.cpp raises "WLAN / Connecting..." before this first runs, and a
+     * live theme change comes through here as well. */
+    Infolabel::refresh_notice();
 }
 
 static void chrome_destroy(void)
