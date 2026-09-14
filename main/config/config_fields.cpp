@@ -102,6 +102,10 @@ const struct config_field_s config_fields[] = {
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, "beeper", "enabled", 1, 0),
+    /* Duty cycle, not decibels: a piezo's loudness goes as sin(pi*duty)
+     * and peaks at 50 %, which is what 100 here means. No
+     * SETTINGS_F_RESTART -- the task reads it per note. */
+    UINT("beeper_vol", "Volume [%]", beeper.volume, "beeper", "volume", 25, 0, 100),
 
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
     TXT("oh_host", "Host", openhab.hostname, "openhab", "hostname", "openhabian",

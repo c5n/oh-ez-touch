@@ -24,7 +24,8 @@
     },
     "beeper":
     {
-        "enabled":  true
+        "enabled":  true,
+        "volume":   25
     },
     "mqtt":
     {

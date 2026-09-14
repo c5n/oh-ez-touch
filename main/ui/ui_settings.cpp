@@ -25,6 +25,7 @@
 
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
+#include "control/beeper_control.hpp"
 #include "ui_beep.hpp"
 #include "ui_motion.hpp"
 #include "ui_geometry.hpp"
@@ -282,6 +283,7 @@ static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
+static void keyboard_key_event(lv_event_t *e);
 
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f);
 
@@ -437,7 +439,8 @@ static void confirm_dismiss_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    BEEPER_EVENT_WINDOW_CLOSE();
+    /* "Later" is a refusal, not a window closing. */
+    BEEPER_EVENT_CANCEL();
     overlay_close();
 }
 
@@ -511,7 +514,7 @@ static void keyboard_ready_event(lv_event_t *e)
         }
     }
 
-    BEEPER_EVENT_CHANGE();
+    BEEPER_EVENT_ACCEPT();
     overlay_close();
 }
 
@@ -519,8 +522,39 @@ static void keyboard_cancel_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    BEEPER_EVENT_WINDOW_CLOSE();
+    BEEPER_EVENT_CANCEL();
     overlay_close();
+}
+
+/* One tick per key, and a different one for backspace: a character gained and
+ * a character lost are the two things a keyboard does, and telling them apart
+ * is most of what makes typing without looking survivable.
+ *
+ * The keys excluded here are the ones whose outcome speaks for itself on
+ * release -- OK and Cancel get ACCEPT and CANCEL, and the mode switch and
+ * newline are either those or nothing. Everything else, the cursor arrows and
+ * the abc/ABC/1# keys included, is a tick. */
+static void keyboard_key_event(lv_event_t *e)
+{
+    lv_obj_t *kb = (lv_obj_t *)lv_event_get_current_target(e);
+    uint32_t  id = lv_keyboard_get_selected_button(kb);
+
+    if (id == LV_BUTTONMATRIX_BUTTON_NONE)
+        return;
+
+    const char *text = lv_keyboard_get_button_text(kb, id);
+
+    if (text == NULL)
+        return;
+
+    if (strcmp(text, LV_SYMBOL_OK) == 0 || strcmp(text, LV_SYMBOL_CLOSE) == 0 ||
+        strcmp(text, LV_SYMBOL_KEYBOARD) == 0 || strcmp(text, LV_SYMBOL_NEW_LINE) == 0)
+        return;
+
+    if (strcmp(text, LV_SYMBOL_BACKSPACE) == 0)
+        BEEPER_EVENT_TICK_BACK();
+    else
+        BEEPER_EVENT_TICK();
 }
 
 /* Laid out with flex rather than aligned by hand: lv_keyboard's own default is
@@ -582,7 +616,24 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     lv_obj_add_event_cb(keyboard, keyboard_ready_event, LV_EVENT_READY, NULL);
     lv_obj_add_event_cb(keyboard, keyboard_cancel_event, LV_EVENT_CANCEL, NULL);
 
-    BEEPER_EVENT_WINDOW();
+    /* PRESSED, and not VALUE_CHANGED, for three reasons.
+     *
+     * With popovers on, a character key carries LV_BUTTONMATRIX_CTRL_POPOVER
+     * and fires VALUE_CHANGED on *release*, while backspace and every key of
+     * the numeric map fire on press -- so a tick there would be timed
+     * differently depending on which key it was. LVGL's own keyboard callback
+     * also runs before ours and turns OK into a synchronous LV_EVENT_READY,
+     * which reaches overlay_close() and schedules this keyboard for deletion
+     * mid-dispatch; PRESSED never has to reason about that, because OK and
+     * Cancel are click-triggered and do nothing on the way down. And a tick on
+     * contact is what a key tick is *for*.
+     *
+     * This keyboard is deliberately not ui_motion_pressable() -- if it ever
+     * becomes so, every key will sound twice. See ui_beep.hpp. */
+    lv_obj_add_event_cb(keyboard, keyboard_key_event, LV_EVENT_PRESSED, NULL);
+    lv_obj_add_event_cb(keyboard, keyboard_key_event, LV_EVENT_LONG_PRESSED_REPEAT, NULL);
+
+    BEEPER_EVENT_SCREEN();
 }
 
 static void field_edit_open(lv_obj_t *row, const struct config_field_s *f)
@@ -639,7 +690,13 @@ static void field_row_event(lv_event_t *e)
     case SETTINGS_BOOL:
         config_field_write(f, &draft, config_field_read(f, &draft) ? 0 : 1);
         row_refresh(row, f);
-        BEEPER_EVENT_CHANGE();
+
+        /* Read back rather than inferred, so the sound follows the value even
+         * if config_field_write() ever clamps or refuses one. */
+        if (config_field_read(f, &draft) != 0)
+            BEEPER_EVENT_TOGGLE_ON();
+        else
+            BEEPER_EVENT_TOGGLE_OFF();
         break;
 
     case SETTINGS_ENUM:
@@ -791,13 +848,16 @@ static void scan_start(void)
     if (port_net_scan_start() == false)
     {
         scan_status_set("Scan failed");
+        BEEPER_EVENT_ERROR();
         return;
     }
 
     scan_running = true;
     scan_status_set("Scanning...");
 
-    BEEPER_EVENT_CHANGE();
+    /* A request taken, not a value moved: nothing has changed yet, and what
+     * the user wants to know is that the panel heard them. */
+    BEEPER_EVENT_ACCEPT();
 }
 
 static void scan_poll(void)
@@ -815,7 +875,11 @@ static void scan_poll(void)
 
     if (found < 0)
     {
+        /* Seconds after the gesture that asked for it, so a warning rather
+         * than an error: nobody is standing over the panel expecting an answer
+         * at this instant. */
         scan_status_set("Scan failed");
+        BEEPER_EVENT_WARNING();
         port_net_scan_free();
         return;
     }
@@ -836,6 +900,9 @@ static void scan_poll(void)
     snprintf(text, sizeof(text), "%u network%s", (unsigned)scan_result_count,
              (scan_result_count == 1) ? "" : "s");
     scan_status_set(text);
+
+    /* This one the user *is* waiting on. */
+    BEEPER_EVENT_NOTIFY();
 }
 
 static void scan_event(lv_event_t *e)
@@ -882,7 +949,7 @@ static void save_event(lv_event_t *e)
     }
 
     status_set(tab, "Saved");
-    BEEPER_EVENT_CHANGE();
+    BEEPER_EVENT_ACCEPT();
 
 #if CONFIG_OHEZ_DEBUG_UI_SETTINGS
     debug_printf("ui_settings: saved, restart needed: %d\r\n", (int)restart_needed);
@@ -899,6 +966,30 @@ static void save_event(lv_event_t *e)
     }
 }
 
+/* Play the family's signature chime at the volume being edited.
+ *
+ * The draft and not the saved value: the whole reason this button exists is to
+ * let a level be judged before Save commits it, and a slider you cannot hear
+ * until after you have kept it is not much of a control. The boot chime is
+ * what it plays -- it is each family's longest statement, it is the one chime
+ * with a chord in it worth hearing, and it is otherwise only audible by
+ * restarting the panel.
+ *
+ * ui_settings_close() puts the live values back, for the user who drags this
+ * to 100, presses Test, and then leaves without saving. */
+static void audio_test_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    beeper_set_volume((uint8_t)draft.beeper.volume);
+    beeper_set_enabled(draft.beeper.enabled);
+    ui_beep_set_enabled(draft.beeper.enabled);
+
+    BEEPER_EVENT_BOOT();
+
+    status_set(SETTINGS_TAB_AUDIO, draft.beeper.enabled ? "" : "Beeper is off");
+}
+
 static void wlan_save_event(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -911,7 +1002,7 @@ static void wlan_save_event(lv_event_t *e)
     }
 
     status_set(SETTINGS_TAB_WLAN, "Connecting...");
-    BEEPER_EVENT_CHANGE();
+    BEEPER_EVENT_ACCEPT();
     wlan_state_update();
 }
 
@@ -919,7 +1010,7 @@ static void restart_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    BEEPER_EVENT_WINDOW();
+    BEEPER_EVENT_SCREEN();
     confirm_restart_open("Restart the device now?");
 }
 
@@ -1150,11 +1241,22 @@ static void back_event(lv_event_t *e)
     LV_UNUSED(e);
 
     if (current_tab == MENU_ROOT)
+    {
+        /* ui_settings_close() plays SCREEN_OUT for itself: leaving the
+         * settings screen is a surface uncovering, and the two steps before it
+         * are navigation inside one. */
         ui_settings_close();
+    }
     else if (MENU_IS(current_tab))
+    {
+        BEEPER_EVENT_LINK_BACK();
         screen_show_menu(MENU_AT(current_tab)->parent);
+    }
     else
+    {
+        BEEPER_EVENT_LINK_BACK();
         screen_show_menu(menu_of(current_tab));
+    }
 }
 
 /* A close glyph at the root of the index, a chevron everywhere else: the bar
@@ -1167,6 +1269,10 @@ static void back_bar_create(const char *title)
 
 static void index_event(lv_event_t *e)
 {
+    /* Here and not in screen_show_target(): that function is also the
+     * programmatic entry from ui_settings_open(), which is how a pristine
+     * device lands on the WLAN tab with nobody having touched anything. */
+    BEEPER_EVENT_LINK();
     screen_show_target((uint8_t)(uintptr_t)lv_event_get_user_data(e));
 }
 
@@ -1305,6 +1411,13 @@ static void screen_show_section(uint8_t tab)
         lv_obj_add_event_cb(ui_themed_button(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
                             NULL);
     }
+    else if (tab == SETTINGS_TAB_AUDIO)
+    {
+        lv_obj_add_event_cb(ui_themed_button(footer, "Test"), audio_test_event,
+                            LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)tab);
+    }
     else if (tab == SETTINGS_TAB_WLAN)
     {
         lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
@@ -1402,7 +1515,18 @@ void ui_settings_close(void)
 
     widget_refs_clear();
 
-    BEEPER_EVENT_WINDOW_CLOSE();
+    BEEPER_EVENT_SCREEN_OUT();
+
+    /* Undo whatever Test applied out of the draft. A no-op unless the Audio
+     * page was visited, since these are the values already in force -- and
+     * after Save they are the draft's anyway, because settings_apply_live()
+     * has been through by then. */
+    if (settings_config != NULL)
+    {
+        beeper_set_volume((uint8_t)settings_config->item.beeper.volume);
+        beeper_set_enabled(settings_config->item.beeper.enabled);
+        ui_beep_set_enabled(settings_config->item.beeper.enabled);
+    }
 }
 
 const char *ui_settings_page_name(void)

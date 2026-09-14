@@ -5,6 +5,8 @@
  */
 #include "item_screen.hpp"
 
+#include "ui/ui_beep.hpp"
+
 #include "ui/ui_motion.hpp"
 #include "ui/ui_style.hpp"
 
@@ -56,16 +58,53 @@ static void presets_refresh(struct item_view_s *v)
     }
 }
 
+/* The drag tick is a detent, not a pixel.
+ *
+ * Ten of them across the range, which is roughly a notch every three
+ * millimetres of travel on this panel -- enough to feel the value moving
+ * without the sound becoming a texture. This is the one control where the
+ * finger covers the number it is setting, which is the whole argument for
+ * making it audible at all; the colour picker deliberately does not do this,
+ * for the reasons in item_color.cpp. */
+#define DETENTS 10
+
 /* Dragging previews; it does not publish. Holding the bus open with a command
  * per pixel would flood the queue and the lamp would chase the finger. */
 static void drag_event(lv_event_t *e)
 {
+    /* One item screen is open at a time, so a file static is the whole of the
+     * state. -1 is "no detent yet", which is what stops the first
+     * VALUE_CHANGED of a drag ticking before anything has moved. */
+    static int8_t detent = -1;
+
     struct item_view_s *v = (struct item_view_s *)lv_event_get_user_data(e);
     int32_t value = lv_slider_get_value(v->control);
 
     v->item->setStateNumber(value);
     item_screen_set_pattern(v->value, v->item, (float)value);
     presets_refresh(v);
+
+    int32_t min  = v->item->getMinVal();
+    int32_t span = (int32_t)v->item->getMaxVal() - min;
+
+    if (span <= 0)
+        return;
+
+    int8_t now = (int8_t)(((value - min) * DETENTS) / span);
+
+    if (detent >= 0 && now != detent)
+    {
+        /* Direction, so that a drag sounds like a value going somewhere. A
+         * fast swipe crosses several detents inside ui_beep's tick gap and the
+         * surplus is dropped, which is right: you hear the movement, not every
+         * notch. */
+        if (now > detent)
+            BEEPER_EVENT_TICK();
+        else
+            BEEPER_EVENT_TICK_BACK();
+    }
+
+    detent = now;
 }
 
 static void release_event(lv_event_t *e)
@@ -132,6 +171,11 @@ static void build(struct item_view_s *v)
     lv_obj_set_style_radius(v->control, 6, LV_PART_INDICATOR);
     lv_obj_add_event_cb(v->control, drag_event, LV_EVENT_VALUE_CHANGED, v);
     lv_obj_add_event_cb(v->control, release_event, LV_EVENT_RELEASED, v);
+
+    /* The contact tick without the plate deformation: a slider is dragged
+     * rather than pressed, so ui_motion_pressable()'s visual half would be
+     * wrong on it while the acknowledgement is still right. */
+    ui_beep_attach_press(v->control);
 
     /* Five pads along the bottom. flex_grow shares the width out, so they stay
      * as wide as the screen allows however many there are. */

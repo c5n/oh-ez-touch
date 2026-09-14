@@ -48,7 +48,7 @@ void item_screen_set_changed_cb(item_screen_changed_cb_t cb)
 
 /* ------------------------------------------------------- builder utilities */
 
-void item_screen_publish(struct item_view_s *v)
+void item_screen_publish_quiet(struct item_view_s *v)
 {
     if (v == NULL || v->item == NULL)
         return;
@@ -59,8 +59,14 @@ void item_screen_publish(struct item_view_s *v)
 
     if (changed_cb != NULL)
         changed_cb(v->slot);
+}
 
-    BEEPER_EVENT_CHANGE();
+void item_screen_publish(struct item_view_s *v)
+{
+    item_screen_publish_quiet(v);
+
+    if (v != NULL && v->item != NULL)
+        BEEPER_EVENT_CHANGE();
 }
 
 lv_obj_t *item_screen_container(lv_obj_t *parent)
@@ -155,7 +161,7 @@ void item_screen_open(Item *item, uint8_t slot)
 
     dsc->build(&view);
 
-    BEEPER_EVENT_WINDOW();
+    BEEPER_EVENT_SCREEN();
 
     /* Pushed with no screen animation: a whole-screen slide is 30 ms of SPI per
      * frame and would be six visible steps. The screen simply appears and its
@@ -191,7 +197,7 @@ void item_screen_close(void)
 
     view_teardown();
 
-    BEEPER_EVENT_WINDOW_CLOSE();
+    BEEPER_EVENT_SCREEN_OUT();
 }
 
 void item_screen_dismiss(void)

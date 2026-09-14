@@ -12,128 +12,119 @@
 
 #include "port/port_beeper.h"
 
-#define BEEPER_TASK_STACK_SIZE  2048
+#define BEEPER_TASK_STACK_SIZE 2048
 
-/* The queue carries a whole chime, so a sequence cannot be truncated by a
- * queue that is four deep. The pointer is to flash in every real caller. */
-struct request_s
-{
-    const struct beeper_note_s *notes;
-    uint8_t                     count;
-    struct beeper_note_s        inline_note; /* backing for beeper_playNote() */
-};
-
-/* How often the frequency and the duty are updated inside a note. Fine enough
- * that a sweep is heard as a slide rather than as steps, coarse enough that a
- * 200 ms chime is forty wakeups of a task that is otherwise asleep. */
-#define STEP_MS 5
+/* One above the IDF main task, which is where ohez_loop() and therefore all of
+ * LVGL runs.
+ *
+ * At equal priority the two round-robin at the tick, so a slot that should be
+ * two milliseconds could be one or three depending on where the renderer was
+ * -- and a chord whose slots wobble like that has a tremolo on it. One level
+ * up lets the tick that ends a slot preempt the blend loop immediately.
+ *
+ * The cost is about nineteen microseconds a slot (ledc_set_freq is the
+ * expensive part, at roughly ten), so under one per cent of a core, and only
+ * while a chord is actually sounding. That is a different thing from what
+ * d779b8b took back from the renderer, which was steady-state work happening
+ * whether or not anything was going on. */
+#define BEEPER_TASK_PRIORITY 2
 
 static QueueHandle_t xRequestQueue = NULL;
 
+/* Written from the LVGL task and from the web server's, read by beeper_task.
+ * Single aligned bytes on Xtensa, so there is nothing to tear; volatile is
+ * here to stop the compiler hoisting the enabled read out of the frame loop,
+ * which is the whole point of rechecking it there. */
+static volatile bool    beeper_enabled;
+static volatile uint8_t beeper_master = 25;
+
 static void beeper_task(void *parameter);
 
-/* The envelope, as a fraction of the peak in 0..255.
- *
- * Duty is amplitude on a piezo, so ramping it is the difference between a
- * square wave gated on and off -- which clicks at both ends and sounds like a
- * doorbell -- and something with an attack and a decay. */
-static uint8_t envelope(uint8_t shape, uint32_t elapsed, uint32_t duration)
+/* pdMS_TO_TICKS() rounds down, and the simulator's tick is four milliseconds,
+ * so a two-millisecond slot rounds to zero there -- and xTaskDelayUntil() with
+ * a zero increment does not wait at all, which would spin this task flat out
+ * for the length of the chime. One tick is the floor. */
+static void beeper_delay(TickType_t *last_wake, uint16_t ms)
 {
-    if (duration == 0)
-        return 255;
+    TickType_t ticks = pdMS_TO_TICKS(ms);
 
-    uint32_t t = (elapsed * 255) / duration; /* 0..255 through the note */
+    if (ticks == 0)
+        ticks = 1;
 
-    switch (shape)
-    {
-    case BEEPER_SHAPE_PLUCK:
-        /* Straight up, then away: what a struck thing does. */
-        return (uint8_t)(255 - t);
-
-    case BEEPER_SHAPE_PAD:
-        /* Up and down again, so neither end is a click. */
-        return (uint8_t)((t < 128) ? (t * 2) : ((255 - t) * 2));
-
-    case BEEPER_SHAPE_FLAT:
-    default:
-        return 255;
-    }
+    /* pdFALSE means the deadline was already behind us: the frame overran, and
+     * chasing it would make every following frame return immediately and burst
+     * the rest of the chime through at full speed. Resync instead. */
+    if (xTaskDelayUntil(last_wake, ticks) == pdFALSE)
+        *last_wake = xTaskGetTickCount();
 }
 
-/* One note: the pitch walked from f_start to f_end while the duty follows the
- * envelope, in STEP_MS increments. */
-static void play_note(const struct beeper_note_s *note)
+/* Walk the mixer's frames, programming each voice's slot in turn.
+ *
+ * The chime clock is recomputed from the real tick count at every frame rather
+ * than accumulated, so a frame that was preempted shortens the note it was in
+ * instead of stretching the whole chime. */
+static void beeper_play_chime(const struct beeper_chime_s *chime)
 {
-    uint32_t elapsed = 0;
+    TickType_t started   = xTaskGetTickCount();
+    TickType_t last_wake = started;
+    uint16_t   last_freq = 0;
 
-    while (elapsed < note->duration_ms)
+    for (;;)
     {
-        uint16_t freq = note->f_start;
+        struct beeper_slot_s slots[BEEPER_VOICES_MAX];
+        uint8_t              count;
 
-        if (note->f_end != note->f_start)
+        /* Rechecked here, not only at the queue, so that unchecking "Enable
+         * beeper" stops the note that is sounding rather than the one after
+         * it. */
+        if (beeper_enabled == false)
+            break;
+
+        uint32_t t_ms = (uint32_t)(xTaskGetTickCount() - started) * portTICK_PERIOD_MS;
+
+        uint16_t frame = beeper_mixer_frame(chime, t_ms, beeper_master, slots, &count);
+
+        if (frame == 0)
+            break;
+
+        if (count == 0)
         {
-            int32_t span = (int32_t)note->f_end - (int32_t)note->f_start;
-
-            freq = (uint16_t)((int32_t)note->f_start +
-                              (span * (int32_t)elapsed) / (int32_t)note->duration_ms);
+            /* Every voice is mid-pause. A rest, not the end. */
+            port_beeper_tone(last_freq, 0);
+            beeper_delay(&last_wake, frame);
+            continue;
         }
 
-        uint32_t level = envelope(note->shape, elapsed, note->duration_ms);
+        for (uint8_t i = 0; i < count; i++)
+        {
+            port_beeper_tone(slots[i].freq, slots[i].level);
+            last_freq = slots[i].freq;
 
-        port_beeper_tone(freq, (uint8_t)((note->volume * level) / 255));
-
-        vTaskDelay(pdMS_TO_TICKS(STEP_MS));
-        elapsed += STEP_MS;
+            beeper_delay(&last_wake, (count == 1) ? frame : BEEPER_SLOT_MS);
+        }
     }
 
-    port_beeper_tone(note->f_end, 0);
-
-    if (note->pause_ms != 0)
-        vTaskDelay(pdMS_TO_TICKS(note->pause_ms));
+    port_beeper_tone(last_freq, 0);
 }
 
 void beeper_play(const struct beeper_chime_s *chime)
 {
-    if (xRequestQueue == NULL || chime == NULL || chime->notes == NULL || chime->count == 0)
+    /* The live check, and the only one in the firmware. Unchecking "Enable
+     * beeper" used to silence nothing but the wake blip -- that call site
+     * tested the config itself and no other one did, so main.cpp's comment
+     * claiming the setting applied live was true of one beep out of thirty. */
+    if (beeper_enabled == false || xRequestQueue == NULL || chime == NULL ||
+        chime->voices == NULL || chime->count == 0)
         return;
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
-    printf("beeper_play: %u notes, first %u->%u Hz\r\n", (unsigned)chime->count,
-           (unsigned)chime->notes[0].f_start, (unsigned)chime->notes[0].f_end);
+    printf("beeper_play: %u voices, %ums\r\n", (unsigned)chime->count,
+           (unsigned)beeper_chime_duration_ms(chime));
 #endif
 
-    struct request_s request = {};
-
-    request.notes = chime->notes;
-    request.count = chime->count;
-
-    /* Dropped rather than waited on: a missed blip is not worth blocking a
-     * touch handler for, which is why this has always been a zero timeout. */
-    xQueueSend(xRequestQueue, &request, 0);
-}
-
-void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause)
-{
-#if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
-    printf("beeper_playNote: freq=%u Hz, duration=%u ms\r\n", note, duration);
-#endif
-    if (xRequestQueue == NULL)
-        return;
-
-    struct request_s request = {};
-
-    /* Carried by value inside the request, because a caller passing loose
-     * numbers has no table for the note to live in. */
-    request.inline_note.f_start     = note;
-    request.inline_note.f_end       = note;
-    request.inline_note.duration_ms = duration;
-    request.inline_note.pause_ms    = pause;
-    request.inline_note.volume      = (volume > 100) ? 100 : volume;
-    request.inline_note.shape       = BEEPER_SHAPE_FLAT;
-    request.notes                   = NULL;
-    request.count                   = 1;
-
-    xQueueSend(xRequestQueue, &request, 0);
+    /* By value: eight bytes, and nothing in it can be truncated by a queue
+     * that is four deep the way a note-at-a-time sequence could be. */
+    xQueueSend(xRequestQueue, chime, 0);
 }
 
 void beeper_setup(void)
@@ -141,23 +132,35 @@ void beeper_setup(void)
     port_beeper_init();
 }
 
-void beeper_enable(void)
+void beeper_set_volume(uint8_t percent)
 {
-    /* Called from setup() and again from settings_apply_live() on every save.
-     * Without this it created a second queue -- orphaning the first, along with
-     * anything queued in it -- and started a second task on every save. */
-    if (xRequestQueue != NULL)
-        return;
+    beeper_master = (percent > 100) ? 100 : percent;
+}
 
-    xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH, sizeof(struct request_s));
-
-    if (xRequestQueue == NULL)
+void beeper_set_enabled(bool enabled)
+{
+    if (enabled == true && xRequestQueue == NULL)
     {
-        ESP_LOGE("beeper", "beeper_enable: Failed to create the queue");
-        return;
+        xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH,
+                                     sizeof(struct beeper_chime_s));
+
+        if (xRequestQueue == NULL)
+        {
+            ESP_LOGE("beeper", "beeper_set_enabled: Failed to create the queue");
+            return;
+        }
+
+        xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL,
+                    BEEPER_TASK_PRIORITY, NULL);
     }
 
-    xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL, 1, NULL);
+    beeper_enabled = enabled;
+
+    /* Whatever was waiting was queued while the sound was still on. A chime
+     * already dequeued keeps playing until the task's next frame boundary,
+     * which is at most one step. */
+    if (enabled == false && xRequestQueue != NULL)
+        xQueueReset(xRequestQueue);
 }
 
 static void beeper_task(void *parameter)
@@ -166,18 +169,22 @@ static void beeper_task(void *parameter)
 
     while (true)
     {
-        struct request_s beep_request;
+        struct beeper_chime_s chime;
 
-        /* Blocks until there is a note. This used to poll with a 1 ms timeout,
-         * which on the host target rounds to no wait at all -- the tick is 4 ms
-         * -- and would have spun a core for nothing. */
-        if (xQueueReceive(xRequestQueue, &beep_request, portMAX_DELAY) == pdTRUE)
+        /* Blocks until there is a chime. This used to poll with a 1 ms
+         * timeout, which on the host target rounds to no wait at all -- the
+         * tick is 4 ms -- and would have spun a core for nothing. */
+        if (xQueueReceive(xRequestQueue, &chime, portMAX_DELAY) == pdTRUE)
         {
-            const struct beeper_note_s *notes =
-                (beep_request.notes != NULL) ? beep_request.notes : &beep_request.inline_note;
-
-            for (uint8_t i = 0; i < beep_request.count; i++)
-                play_note(&notes[i]);
+            /* The simulator would rather render the whole thing at audio
+             * resolution than be handed one slot every four milliseconds. It
+             * returns immediately, so the wait is here: both targets have to
+             * serialise chimes the same way, and on the device that falls out
+             * of walking the frames. */
+            if (port_beeper_render(&chime, beeper_master) == true)
+                vTaskDelay(pdMS_TO_TICKS(beeper_chime_duration_ms(&chime)));
+            else
+                beeper_play_chime(&chime);
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
             static UBaseType_t stack_free = 0;

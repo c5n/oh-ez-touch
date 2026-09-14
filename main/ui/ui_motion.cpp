@@ -5,6 +5,8 @@
  */
 #include "ui_motion.hpp"
 
+#include "ui_beep.hpp"
+
 #include "ui_style.hpp"
 
 lv_style_t ui_style_press;
@@ -250,6 +252,12 @@ void ui_motion_pressable(lv_obj_t *obj)
     lv_obj_add_style(obj, &ui_style_press, LV_PART_MAIN);
     lv_obj_add_style(obj, &ui_style_press_active,
                      ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
+
+    /* And the audible half of the same acknowledgement. It is one call rather
+     * than a handler here because a slider wants the sound without the plate
+     * deformation -- see ui_beep_attach_press(), and the layering policy in
+     * ui_beep.hpp before adding a second sound to anything this reaches. */
+    ui_beep_attach_press(obj);
 }
 
 /* -------------------------------------------------------------------- misc */

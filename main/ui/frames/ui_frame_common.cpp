@@ -23,7 +23,7 @@ static void settings_event(lv_event_t *e)
 
     if (ui_settings_is_open() == false)
     {
-        BEEPER_EVENT_WINDOW();
+        BEEPER_EVENT_SCREEN();
         /* The index, not the Info tab. Info was the sensible landing place
          * while the sections were tabs you could see from anywhere; now that
          * they are behind an index, dropping the user into one of them and

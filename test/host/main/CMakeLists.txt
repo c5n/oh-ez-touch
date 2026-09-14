@@ -39,8 +39,17 @@
 # somebody outside the process composed, and decides where each argument of a
 # command that presses buttons begins and ends.
 #
+# control/beeper_mixer.c joined them when the beeper went polyphonic, and the
+# split is the same one ui_geometry.hpp already had. beeper_control.cpp is a
+# queue, a task and vTaskDelay(), none of which can be reached here; what came
+# out of it includes nothing but <stdint.h>, and is the part that decides what
+# every chime on this panel sounds like. It is also the only place any of that
+# is checked at all -- the host target is silent, the Lanbon has no buzzer, and
+# the ArduiTouch that does has never had this firmware on it.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
+                            "test_beeper_mixer.cpp"
                             "test_ble_beacon.cpp"
                             "test_config_fields.cpp"
                             "test_config_file.cpp"
@@ -50,9 +59,12 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_item_urls.cpp"
                             "test_outputs.cpp"
                             "test_sitemap_parse.cpp"
+                            "test_ui_beep.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "test_testif_parse.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"

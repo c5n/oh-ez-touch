@@ -1,7 +1,7 @@
 #ifndef BEEPER_CONTROL_HPP
 #define BEEPER_CONTROL_HPP
 
-#include "beeper_control_pitches.h"
+#include "beeper_mixer.h"
 
 #include <stdint.h>
 
@@ -9,61 +9,46 @@
 #define BEEPER_CONTROL_QUEUE_LENGTH 4
 #endif
 
-/* Notes are played from a task of their own, so that a UI event can ask for a
- * chime without blocking the screen for its duration. Shared by both targets;
- * the tone behind it is port_beeper, which is silent in the simulator and on
- * the Lanbon, neither of which has a buzzer.
+/* Chimes are played from a task of their own, so that a UI event can ask for
+ * one without blocking the screen for its duration. Shared by both targets;
+ * the tone behind it is port_beeper, which is silent on the Lanbon, and which
+ * on the simulator renders the whole chime itself -- see port_beeper_render().
  *
- * A note is a *swept* tone with an envelope, not a fixed pitch gated on and
- * off. That is the whole difference between this and a doorbell: the sounds
- * this panel is imitating are chirps and swells, and a square wave switched
- * abruptly also clicks at both ends. Both come out of the same primitive --
- * port_beeper_tone() takes an arbitrary frequency and an arbitrary duty on
- * every call -- so none of it needs anything new from the port layer.
+ * What a chime *is*, and the arithmetic that turns one into a frequency and a
+ * duty, is beeper_mixer.h. What is left here is the queue, the task, and the
+ * delays: the parts that need a clock and cannot be tested without one.
  *
- * f_start == f_end is a steady note, which is what everything used to be. */
-enum beeper_shape_e
-{
-    BEEPER_SHAPE_FLAT = 0, /* on for the duration; a blip                    */
-    BEEPER_SHAPE_PLUCK,    /* instant attack, exponential decay; a chirp     */
-    BEEPER_SHAPE_PAD       /* eased in and out; a swell                      */
-};
+ * beeper_playNote() used to live here for callers with a loose frequency and
+ * nothing to say about shape. It had exactly one, the hard-coded C4 that
+ * main.cpp played on wake, and that is a themed chime now like everything
+ * else -- so the queue carries a whole chime by value, eight bytes, and no
+ * reader of the task has to work out why the note pointer might be null. */
 
-struct beeper_note_s
-{
-    uint16_t f_start;
-    uint16_t f_end;
-    uint16_t duration_ms;
-    uint16_t pause_ms;
-    uint8_t  volume; /* 0..100, the peak of the envelope */
-    uint8_t  shape;  /* enum beeper_shape_e              */
-};
-
-/* A whole chime, queued as one item.
- *
- * One entry rather than one per note, and that is not only tidiness: the queue
- * is four deep, so a five-note sequence queued note by note would have its
- * tail silently dropped. This way a chime either plays or does not. `notes`
- * must outlive the call, which is what makes a table in flash the natural way
- * to write one. */
-struct beeper_chime_s
-{
-    const struct beeper_note_s *notes;
-    uint8_t                     count;
-};
-
+/* Queue a chime. Dropped rather than waited on when the queue is full, and
+ * silently ignored when the beeper is disabled: a missed blip is not worth
+ * blocking a touch handler for. */
 void beeper_play(const struct beeper_chime_s *chime);
-
-/* One steady note, as before. Kept for callers with nothing to say about
- * shape; it is a one-note chime underneath. */
-void beeper_playNote(uint16_t note, uint8_t volume, uint16_t duration, uint16_t pause);
 
 /* Bring the PWM up, silent. */
 void beeper_setup(void);
 
-/* Start the queue and the task. Idempotent: it is called from setup() and
- * again from settings_apply_live() on every save, and used to leak a queue and
- * a task each time. */
-void beeper_enable(void);
+/* Turn the sound on or off, live.
+ *
+ * Called from setup() and again from settings_apply_live() on every save.
+ * Enabling creates the queue and the task, once -- lazily, so a panel with the
+ * beeper switched off never pays the task's two kilobytes.
+ *
+ * Disabling does not tear them down. Deleting a task in the middle of a note
+ * would leave the LEDC channel sounding, and recreating one on every save is
+ * the leak the old beeper_enable() was written to stop. It empties the queue
+ * and sets a flag that beeper_play() consults and that the task rechecks at
+ * every frame boundary, so a chime already in flight stops within a frame
+ * rather than at its end. */
+void beeper_set_enabled(bool enabled);
+
+/* The master level, 0..100, applied to every note of every chime on top of
+ * whatever the table asked for. 25 is what this panel sounded like before
+ * there was a setting; see port/esp32/port_beeper.c for why that number. */
+void beeper_set_volume(uint8_t percent);
 
 #endif

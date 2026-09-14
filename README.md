@@ -160,9 +160,12 @@ web interface, and really does store its settings.
   `$XDG_STATE_HOME/oh-ez-touch/flash.bin`. `OHEZ_STATE_DIR` moves it. Two
   simulator instances cannot share one, and the second to start says so rather
   than corrupting it.
-- **No radio, no backlight, no buzzer, no sensor and no OTA.** These report
-  "there is none" rather than pretending: the WLAN tab's **Scan** answers from a
-  canned list, the sensor publishes nothing, and `POST /update` answers 501.
+- **No radio, no backlight, no sensor and no OTA.** These report "there is
+  none" rather than pretending: the WLAN tab's **Scan** answers from a canned
+  list, the sensor publishes nothing, and `POST /update` answers 501.
+- **The buzzer, though, works.** A desktop has no piezo, so the simulator
+  synthesises what the panel's PWM channel would be doing and plays it through
+  SDL -- see [Hearing the panel](#hearing-the-panel).
 
 #### Offline mode
 
@@ -226,6 +229,45 @@ OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
 ```
 
 `OHEZ_MQTT` takes `on` or `off`; anything that is not `off` or `0` enables it.
+
+#### Hearing the panel
+
+The simulator makes sound. `main/port/linux/port_beeper.c` opens an SDL audio
+device and synthesises the pulse train the panel's LEDC channel would be
+producing, so clicking around the simulator is how the chime tables get
+listened to -- there is no separate renderer and no second copy of the
+synthesis to drift out of step.
+
+It does not follow the driver's `port_beeper_tone()` calls. It takes the whole
+chime and walks `beeper_mixer_frame()` itself at the sample rate, because this
+target's FreeRTOS tick is 4 ms and a two-millisecond interleave slot cannot be
+honoured from a task here. Following the calls would render every chord four
+times coarser than the panel plays it, which is the one direction a simulator
+must not be wrong in: it would sound worse than the hardware and somebody would
+go and "fix" a table that was fine.
+
+```bash
+OHEZ_THEME=default ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=lcars   ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=jarvis  ./build/linux/oh-ez-touch.elf
+```
+
+The beeper has to be enabled in the settings, as on the panel. `SDL_AUDIODRIVER=disk`
+with `SDL_DISKAUDIOFILE` writes the raw stream to a file instead of playing it,
+which is how a chime gets measured rather than judged.
+
+**What it will tell you**: rhythm, contour, intervals, whether two chimes are
+confusable, whether one outstays the gesture it answers, whether the voices of
+a chord clash, and how audible the interleaving grain is.
+
+**What it will not tell you is how loud anything is.** The ArduiTouch's
+transducer has a sharp mechanical resonance somewhere around 2-4 kHz, so on a
+panel a note at the peak can be ten or twenty decibels above one an octave
+away, and the deliberately low alert sounds will be far quieter in a room than
+they are here. Nothing models that, nor the ringing after the drive stops, nor
+the case it is glued into, nor LEDC's frequency quantisation, nor the jitter of
+a slot loop running next to LVGL. The simulator is cleaner than the hardware,
+unavoidably. Judge structure here; judge loudness on a panel.
 
 `OHEZ_BLE_FIXTURE=1` serves four compiled-in BLE advertisements -- an iBeacon,
 an Eddystone-UID, an Eddystone-TLM frame from the same advertiser, and a plain
@@ -406,10 +448,36 @@ produces and the client never does -- a trailing newline, a doubled space, an
 unclosed quote, a lone `@` -- and the two limits, since a datagram is free to
 carry more tokens than the argument vector holds.
 
+`test_beeper_mixer` covers the arithmetic in `main/control/beeper_mixer.c`:
+the envelope curves and their edges, a sweep in both directions -- a falling
+one wraps into the ultrasound without the signed cast, and one of the LCARS
+chimes falls -- when a voice is alive but silent, how a frame divides itself
+between the voices sounding at that instant, and that a voice which has
+finished stops taking a slot from the ones that have not. Two of them are
+load-bearing beyond their own subject. One asserts that a frame is a pure
+function of its arguments, because the simulator's audio callback evaluates
+frames at times of its own choosing and a round-robin cursor hidden in a file
+static would make that quietly wrong rather than loudly broken. The other
+asserts that the shipped defaults come out at 63 counts of duty, which is what
+every beep this firmware has ever made was, and is the promise that giving the
+panel a volume setting did not change how loud it is for anyone who never
+touches it.
+
+`test_ui_beep` covers the chime tables. There are three families and seventeen
+sounds, which is fifty-one chimes written out by hand, and every target that
+can run a test is silent -- so the first thing it checks is the boring one,
+that none of them is missing. The rest are the constraints nobody has in mind
+while writing frequencies: that they stay in the band a small piezo is loud in,
+with a named exemption for the alert sounds and a second test making sure the
+exemption is still being used; that no chime outstays the gesture it answers;
+and that nothing below a kilohertz is ever stacked, which is a property of the
+interleaving that would otherwise be enforced only by a comment.
+
 What every file linked out of `main/` here has in common is that it touches
 neither LVGL nor the network: the settings table and the config file over it,
 the beacon parsers, the sitemap model and parser, the relay and LED payload
-rules, the multipart scanner and the control interface's tokeniser. For the beacon parsers that is not a happy
+rules, the multipart scanner, the control interface's tokeniser, and the chime
+tables with the mixer arithmetic under them. For the beacon parsers that is not a happy
 accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
 and leaves the parsing above the port layer, and the same argument moved the
 multipart scanner out of `webui_ota.cpp`. The remaining suites cover
@@ -580,7 +648,7 @@ they apply -- are in a bar along the bottom.
 Page                    | Contents
 ----------------------- | --------
 Theme (eye symbol)      | Theme family, the night variant and its schedule, and the backlight levels and dim timeout
-Audio (speaker symbol)  | The beeper
+Audio (speaker symbol)  | The beeper: on or off, how loud, and a **Test** button that plays the theme's boot chime at the level being edited
 System (gear symbol)    | A menu of the six below, which are set once when the panel goes on the wall and then left alone
 &nbsp;&nbsp;WLAN                      | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
 &nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap
@@ -607,7 +675,7 @@ password, Save. No second device and no browser needed.
 #### OpenHAB Settings
 Open ```http://<hostname>/``` -- everything is on that one page: a status block, the WLAN section, all of the settings below, and buttons for the firmware update and a restart. The same settings are on the panel itself, on the settings screen above; both read one table in ```main/config/config_fields.cpp```, so they cannot drift apart.
 
-Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the MQTT broker, the backlight levels and the beeper, which used to need one without saying so.
+Settings marked ```*``` are only read while the device boots, so they take effect after a restart. Everything else applies as soon as it is saved -- including the openHAB server, the MQTT broker, the backlight levels, and the beeper's switch and volume. The beeper used to need a restart without saying so -- worse, turning it *off* had no effect at all until one, because only the wake blip ever consulted the setting.
 
 ##### Device
 
@@ -650,6 +718,28 @@ Dim Brightness    | 40          | Dim brightness level in percent
 Setting         | Default       | Description
 --------------- | ------------- | -------------
 Enable Beeper   | On            | Enable blips and bleeps
+Volume          | 25            | 0 to 100. 0 is silent.
+
+Volume is PWM duty cycle, which on a piezo is loudness only roughly and not
+linearly: the drive is a square wave, its fundamental goes as `sin(pi x duty)`,
+and 100 here means the 50 % duty that is the loudest a pulse train can be.
+Going past that would make it quieter rather than louder, which is why the
+scale stops where it does. The default of 25 is not a middle: it reproduces, to
+the count, the duty every beep this firmware has ever made -- see the file
+comment in `main/port/esp32/port_beeper.c` for how that came about.
+
+The panel has one piezo on one GPIO and one LEDC timer behind it, so a chime
+with more than one voice is *interleaved* rather than mixed: each voice holds
+the channel for two milliseconds in turn, fast enough that the ear hears a
+chord. It is a real chord and it has a real grain -- chopping a tone at 250 Hz
+puts sidebands either side of it -- which suits LCARS, is hidden under
+Reticle's slow swells, and is why Slate uses single voices for everything
+small. Nothing below about a kilohertz is ever stacked, because down there a
+slot is less than two cycles and the pitch dissolves into the slot rate; that
+is what keeps the low alert sounds monophonic, and a host test enforces it.
+
+**The Lanbon L8 has no buzzer**, so both settings do nothing there. The
+simulator does have one -- see [Hearing the panel](#hearing-the-panel).
 
 ##### Openhab Server
 
@@ -966,7 +1056,9 @@ main/peripherals/     the sensors: the BME280, and the timer that decides when
 main/web/             the web interface: one renderer, one transport per target
 main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
-                      queue that plays a chime
+                      queue that plays a chime -- with the mixer that fits its
+                      several voices onto one piezo split out beside it, so the
+                      arithmetic can be tested and heard off the device
 main/sim/             the simulator's offline fixtures
 main/testif/          the simulator's control interface: the UDP command
                       socket, the synthetic pointer, and the screen dumps
@@ -1152,6 +1244,10 @@ Contact: c5n AT posteo DOT de
 - [x] openhab_ui: Give each theme family its own chrome, tiles, typeface and
       chime rather than one geometry in three palettes -- see
       [Screens, frames and motion](#screens-frames-and-motion)
+- [x] ui, control: Make the panel polyphonic -- several voices interleaved on
+      the one piezo, seventeen events instead of seven, a volume setting, and a
+      simulator that can actually be listened to, see
+      [Hearing the panel](#hearing-the-panel)
 - [x] openhab_ui: Make the item controls screens of their own, laid out for a
       finger, and let them follow the server while they are open
 - [ ] main: Add screen calibration
@@ -1160,7 +1256,8 @@ Contact: c5n AT posteo DOT de
 - [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
 - [x] build: Give the renderer the CPU it was short of -- 240 MHz, LVGL at ```-O2```, ```LV_USE_ASSERT_OBJ``` off on the device, and a loop that sleeps for as long as LVGL asks instead of a fixed 5 ms. See [Where the frame time goes](#where-the-frame-time-goes).
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
-- [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
+- [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight and BME280 drivers are translations checked against the vendor sources, not measurements.
+- [ ] control: The beeper has been listened to but not measured. Its tables and its mixer are rendered by the simulator through the firmware's own synthesis, so the rhythm, the contour and the balance between voices are real. Nothing there models the transducer: the ArduiTouch piezo's resonance is a guess, so how the chimes balance across the band and whether the low alert sounds carry across a room are still open. Two things in particular want an ear on the actual panel -- whether the interleaved chords fuse or arpeggiate, for which the lever is `BEEPER_SLOT_MS` and it has no good setting in either direction, and whether the contact ticks are audible at all at a third of the level of everything else. If they are not, raise their level rather than lengthen them: the length is what keeps them from landing inside the chime that follows.
 - [ ] sensors: Support DS18B20 onewire sensors
 - [x] peripherals: Drive the Lanbon L8's three relays and three mood LEDs over MQTT -- see [Relays and LEDs](#relays-and-leds)
 - [ ] peripherals: The relays and the LEDs have not been run on hardware. The pin table is the openHASP and ESPHome mapping for the L8-HS, not a measurement, and the PlatformIO flags it replaces named two pins that do not exist on an ESP32.

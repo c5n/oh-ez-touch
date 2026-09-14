@@ -45,6 +45,7 @@
 #include "port/ohez_port.h"
 #include "testif/testif.hpp"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_beep.hpp"
 #include "ui/ui_infolabel.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
@@ -93,8 +94,16 @@ Infolabel infolabel;
  * from the web handler, where lv_timer_handler() is not being pumped and
  * nothing may touch LVGL. The MQTT client is asked the same way, and for the
  * same reason -- tearing down a connection and republishing three dozen
- * retained topics is not work for a POST handler. Disabling the beeper needs no
- * call at all -- the per-touch blip reads config.item.beeper.enabled live. */
+ * retained topics is not work for a POST handler.
+ *
+ * Disabling the beeper does need a call, and the comment here used to say it
+ * did not: the claim was that the per-touch blip read the setting live, which
+ * was true of that one blip and of no other sound in the firmware. Every
+ * BEEPER_EVENT_* went through beeper_play(), which never asked, and
+ * beeper_enable() had no off path -- so unchecking the box on a panel that had
+ * booted with sound on left every touch, link and error chime playing until
+ * the next restart. beeper_set_enabled() is the fix, and beeper_play() is
+ * where it is now checked. */
 void settings_apply_live(Config *config)
 {
     openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
@@ -109,8 +118,12 @@ void settings_apply_live(Config *config)
     tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config->item.backlight.dim_brightness);
 
-    if (config->item.beeper.enabled == true)
-        beeper_enable();
+    beeper_set_volume((uint8_t)config->item.beeper.volume);
+    beeper_set_enabled(config->item.beeper.enabled);
+    /* Both gates, because they answer different questions: beeper_control's is
+     * "may anything sound", ui_beep's is also what keeps the panel quiet while
+     * it is still starting up. A save has to move them together. */
+    ui_beep_set_enabled(config->item.beeper.enabled);
 
     /* Unconditional, and not only when the broker settings changed: the client
      * decides that for itself, because it is the only thing that knows what it
@@ -127,8 +140,13 @@ extern "C" bool ohez_touch_wake(void)
     if (tft_backlight.resetDimTimeout() == false)
         return false;
 
-    if (config.item.beeper.enabled == true)
-        beeper_playNote(NOTE_C4, 50, 100, 0);
+    /* The theme's wake chime, rather than the hard-coded C4 this used to be:
+     * what a gesture sounds like is the theme's business, and whether the
+     * beeper is on at all is beeper_play()'s. This is also the one press in
+     * the interface that gets no contact tick -- port_indev suppresses the
+     * pointer for 200 ms after a wake, so the widget under the finger never
+     * sees it, and this chime is the whole of the feedback. */
+    BEEPER_EVENT_WAKE();
 
     return true;
 }
@@ -201,9 +219,8 @@ static void ohez_setup(void)
     lv_tick_set_cb(port_tick_ms);
 
     beeper_setup();
-
-    if (config.item.beeper.enabled == true)
-        beeper_enable();
+    beeper_set_volume((uint8_t)config.item.beeper.volume);
+    beeper_set_enabled(config.item.beeper.enabled);
 
     tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
@@ -286,6 +303,21 @@ static void ohez_setup(void)
      * set up rather than one still deciding what to show. No-op on the device,
      * which has no control interface. */
     testif_setup();
+
+    /* And after even that, the first sound the panel makes.
+     *
+     * ui_beep starts muted, and this is the line that unmutes it, which is the
+     * whole reason it starts that way: everything raised while the UI was
+     * being built -- the "Connecting..." banner at the top of this function
+     * among them -- would otherwise have announced itself to the room before
+     * the panel was ready to be looked at.
+     *
+     * A device that came up in portal mode gets this too, and then the setup
+     * AP's banner a second later. That is not an oversight: a panel that has
+     * lost its credentials wants to be noticed, and the chime followed by the
+     * notification is exactly the sequence that says so. */
+    ui_beep_set_enabled(config.item.beeper.enabled);
+    BEEPER_EVENT_BOOT();
 }
 
 /* How long the loop below is allowed to sleep between two calls into LVGL.

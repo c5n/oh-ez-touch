@@ -11,6 +11,7 @@
 #ifndef TEST_SUITES_HPP
 #define TEST_SUITES_HPP
 
+void test_beeper_mixer_run(void);
 void test_ble_beacon_run(void);
 void test_config_fields_run(void);
 void test_config_file_run(void);
@@ -21,6 +22,7 @@ void test_item_urls_run(void);
 void test_outputs_run(void);
 void test_sitemap_parse_run(void);
 void test_testif_parse_run(void);
+void test_ui_beep_run(void);
 void test_ui_geometry_run(void);
 void test_ui_theme_run(void);
 

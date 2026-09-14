@@ -44,7 +44,7 @@ static const char shipped_json[] =
     "\"ui\":{\"theme\":\"Default\",\"night_mode\":\"off\",\"night_from\":22,\"night_to\":6},"
     "\"backlight\":{\"activity_timeout\":60,\"normal_brightness\":100,"
     "\"dim_brightness\":40},"
-    "\"beeper\":{\"enabled\":true},"
+    "\"beeper\":{\"enabled\":true,\"volume\":25},"
     "\"mqtt\":{\"enabled\":false,\"hostname\":\"mosquitto\",\"port\":1883,\"user\":\"\","
     "\"password\":\"\",\"topic\":\"oheztouch\",\"interval\":60,\"retain\":true},"
     "\"ble\":{\"enabled\":false,\"interval\":30,\"window\":5,\"rssi_min\":-90,"
@@ -164,6 +164,7 @@ static void test_no_file_gives_the_built_in_defaults(void)
     TEST_ASSERT_EQUAL_UINT(22, config.item.ui.night_from);
     TEST_ASSERT_EQUAL_INT(100, config.item.backlight.normal_brightness);
     TEST_ASSERT_TRUE(config.item.beeper.enabled);
+    TEST_ASSERT_EQUAL_UINT(25, config.item.beeper.volume);
     TEST_ASSERT_FALSE(config.item.mqtt.enabled);
     TEST_ASSERT_EQUAL_INT(1883, config.item.mqtt.port);
     TEST_ASSERT_EQUAL_STRING("openhabian", config.item.openhab.hostname);
@@ -203,7 +204,7 @@ static void test_every_section_round_trips(void)
         "\"night_to\":7},"
         "\"backlight\":{\"activity_timeout\":30,\"normal_brightness\":80,"
         "\"dim_brightness\":10},"
-        "\"beeper\":{\"enabled\":false},"
+        "\"beeper\":{\"enabled\":false,\"volume\":80},"
         "\"mqtt\":{\"enabled\":true,\"hostname\":\"broker.lan\",\"port\":8883,"
         "\"user\":\"panel\",\"password\":\"sekrit\",\"topic\":\"home/panels\","
         "\"interval\":15,\"retain\":false},"
@@ -232,6 +233,7 @@ static void test_every_section_round_trips(void)
     TEST_ASSERT_EQUAL_UINT(10, config.item.backlight.dim_brightness);
 
     TEST_ASSERT_FALSE(config.item.beeper.enabled);
+    TEST_ASSERT_EQUAL_UINT(80, config.item.beeper.volume);
 
     TEST_ASSERT_TRUE(config.item.mqtt.enabled);
     TEST_ASSERT_EQUAL_STRING("broker.lan", config.item.mqtt.hostname);
@@ -343,7 +345,8 @@ static void test_a_hand_edited_file_is_validated(void)
     Config &config = config_instance();
 
     write_file("{\"openhab\":{\"hostname\":\"http://oh.lan\",\"port\":99999},"
-               "\"backlight\":{\"normal_brightness\":250}}");
+               "\"backlight\":{\"normal_brightness\":250},"
+               "\"beeper\":{\"volume\":500}}");
 
     TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
 
@@ -354,6 +357,7 @@ static void test_a_hand_edited_file_is_validated(void)
     /* Numbers are clamped to the row's range rather than rejected. */
     TEST_ASSERT_EQUAL_INT(65535, config.item.openhab.port);
     TEST_ASSERT_EQUAL_UINT(100, config.item.backlight.normal_brightness);
+    TEST_ASSERT_EQUAL_UINT(100, config.item.beeper.volume);
 }
 
 /* An unknown theme name selects the default rather than an out-of-range enum,

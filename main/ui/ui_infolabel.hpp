@@ -3,6 +3,7 @@
 
 #include "debug.h"
 #include "port/port_sys.h"
+#include "ui_beep.hpp"
 #include "ui_style.hpp"
 
 #include <stdint.h>
@@ -35,6 +36,30 @@ private:
     /* The severity of the banner on screen. Kept because it is the one thing
      * about a live banner that is not readable back off the label. */
     enum infolabel_type_e kind = INFO;
+
+    /* What the banner on screen is *saying*, as a hash, so that saying it
+     * again does not sound again.
+     *
+     * This is load-bearing rather than tidy. openhab_ui re-creates the sitemap
+     * failure banner on every retry, and main.cpp raises the identical "WLAN /
+     * NOT CONNECTED" warning from two places one loop apart -- so without it a
+     * panel that cannot reach its server would beep at the room every few
+     * seconds, forever. A hash and not a copy of the strings: the comment on
+     * lv_label_set_text_fmt() below explains why there is no buffer here. */
+    uint32_t said = 0;
+
+    static uint32_t hash(const char *text, uint32_t seed)
+    {
+        uint32_t h = seed;
+
+        for (; text != NULL && *text != '\0'; text++)
+        {
+            h ^= (uint32_t)(unsigned char)*text;
+            h *= 16777619u;
+        }
+
+        return h;
+    }
 
 public:
     /* Whether a banner is up and what it says, for the simulator's control
@@ -93,6 +118,30 @@ public:
          * LVGL sizes its own. */
         lv_label_set_text_fmt(label, "%s\n%s", topic, text);
 
+        /* Annunciate, unless this is the same banner saying the same thing.
+         *
+         * A banner is the panel's only channel for anything that happens
+         * without being asked for -- the network coming and going, a sitemap
+         * that cannot be reached -- so mapping its severity to a sound covers
+         * all of those in one place, and stops any of them needing a beep of
+         * its own next to every create() call.
+         *
+         * It sounds even when a pushed screen is hiding the banner
+         * (ui_screen.cpp does that). That is deliberate: with nothing visible,
+         * the sound is the only signal there is. */
+        uint32_t now_saying = hash(text, hash(topic, 2166136261u + (uint32_t)type));
+
+        if (now_saying != said)
+        {
+            if (type == WARNING)
+                BEEPER_EVENT_WARNING();
+            else if (type == ERROR)
+                BEEPER_EVENT_ERROR();
+            else
+                BEEPER_EVENT_NOTIFY();
+        }
+
+        said = now_saying;
         kind = type;
 
         lv_obj_align(il, LV_ALIGN_CENTER, 0, 0);
@@ -114,6 +163,14 @@ public:
             il = NULL;
             label = NULL;
             timeout_timestamp = 0;
+            said = 0;
+
+            /* Silent, and it has to be: this is reached both when a banner
+             * times out and when the thing it reported recovered, and the WLAN
+             * recovery path calls destroy() and then create("CONNECTED!") --
+             * which would be two sounds for one event. The one recovery with
+             * no replacement banner is the sitemap, and openhab_ui sounds that
+             * one itself. */
         }
     }
 

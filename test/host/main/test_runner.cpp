@@ -26,6 +26,7 @@ extern "C" void app_main(void)
 {
     UNITY_BEGIN();
 
+    test_beeper_mixer_run();
     test_ble_beacon_run();
     test_config_fields_run();
     test_config_file_run();
@@ -36,6 +37,7 @@ extern "C" void app_main(void)
     test_item_urls_run();
     test_outputs_run();
     test_sitemap_parse_run();
+    test_ui_beep_run();
     test_ui_geometry_run();
     test_ui_theme_run();
 

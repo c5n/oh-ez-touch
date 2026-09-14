@@ -61,7 +61,8 @@ endif()
 # look here first.
 set(OHEZ_CONTROL_SRCS
     "control/backlight_control.cpp"
-    "control/beeper_control.cpp")
+    "control/beeper_control.cpp"
+    "control/beeper_mixer.c")
 
 # One directory per concern. Only main.cpp stays at the top; config/ holds the
 # settings and the one field table that both the panel's settings screen and the
@@ -86,6 +87,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_player.cpp"
     "ui/items/item_color.cpp"
     "ui/ui_beep.cpp"
+    "ui/ui_beep_tables.cpp"
     "ui/ui_motion.cpp"
     "ui/ui_screen.cpp"
     "ui/ui_style.cpp"

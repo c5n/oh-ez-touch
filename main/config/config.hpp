@@ -69,6 +69,10 @@ public:
         struct
         {
             bool enabled;
+            /* 0..100, the master every chime is scaled by. 25 is not an
+             * arbitrary default: it reproduces the duty this panel has always
+             * beeped at, to the count. See port/esp32/port_beeper.c. */
+            unsigned int volume;
         } beeper;
         struct
         {

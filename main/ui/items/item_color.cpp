@@ -12,6 +12,8 @@
  */
 #include "item_screen.hpp"
 
+#include "ui/ui_beep.hpp"
+
 #include "ui/ui_style.hpp"
 
 #include <stdlib.h>
@@ -115,6 +117,16 @@ static lv_obj_t *field_create(struct item_view_s *v, const char *name, int32_t m
     lv_obj_set_style_radius(field, 6, LV_PART_INDICATOR);
     lv_obj_add_event_cb(field, drag_event, LV_EVENT_VALUE_CHANGED, v);
     lv_obj_add_event_cb(field, release_event, LV_EVENT_RELEASED, v);
+
+    /* The contact tick, and deliberately no detent tick to go with it -- which
+     * is the one place this screen differs from the dimmer.
+     *
+     * Three fields are dragged here one after another, and one sound would
+     * have to stand for all three; worse, hue is a wheel, so "more" and "less"
+     * do not mean anything for it and the rising and falling ticks would be
+     * arbitrary. Contact is still worth acknowledging, so that is all this
+     * takes. */
+    ui_beep_attach_press(field);
 
     return field;
 }

@@ -1,99 +1,58 @@
 /**
  * @file ui_beep.cpp
  *
- * Three families, three voices.
+ * Playing a themed sound: the mute gate, the layering backstop, and the press
+ * hook every pressable object goes through.
  *
- * The frequencies sit between about 1.2 and 3 kHz because that is where a
- * small piezo is loudest -- a note an octave lower is not quieter on paper and
- * is much quieter in a room. The error sounds deliberately break that rule:
- * being hard to ignore matters more than being loud.
+ * The tables themselves are in ui_beep_tables.cpp, which includes no LVGL so
+ * that the host tests can link them. The policy this file enforces is written
+ * out in ui_beep.hpp, and it is worth reading before touching either.
  */
 #include "ui_beep.hpp"
 
 #include "ui_style.hpp"
 
-/* f_start, f_end, duration, pause, volume, shape */
-#define N(fs, fe, d, p, v, sh)                                                 \
-    {                                                                          \
-        (uint16_t)(fs), (uint16_t)(fe), (uint16_t)(d), (uint16_t)(p),          \
-            (uint8_t)(v), (uint8_t)(sh)                                        \
-    }
+#include <lvgl.h>
 
-#define CHIME(a) {(a), (uint8_t)(sizeof(a) / sizeof((a)[0]))}
-
-#define VOL 50
-
-/* ------------------------------------------------------------------ Slate
+/* The backstop under the layering policy.
  *
- * Restrained. Close to the arpeggios the panel always used, because they were
- * fine -- what they lacked was an envelope, so every one of them began and
- * ended with a click. */
-static const struct beeper_note_s slate_touch[]  = {N(2093, 2093, 15, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_change[] = {N(2093, 2093, 25, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_link[]   = {N(2093, 2093, 30, 10, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2637, 2637, 40, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_back[]   = {N(2637, 2637, 30, 10, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2093, 2093, 40, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_open[]   = {N(2093, 2093, 25, 5, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2637, 2637, 25, 5, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(3136, 3136, 45, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_close[]  = {N(3136, 3136, 25, 5, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2637, 2637, 25, 5, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2093, 2093, 45, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s slate_error[]  = {N(660, 660, 90, 40, VOL, BEEPER_SHAPE_FLAT),
-                                                    N(440, 440, 180, 0, VOL, BEEPER_SHAPE_FLAT)};
-
-const struct ui_sound_s ui_sound_default = {{
-    CHIME(slate_touch), CHIME(slate_change), CHIME(slate_link), CHIME(slate_back),
-    CHIME(slate_open), CHIME(slate_close), CHIME(slate_error),
-}};
-
-/* ------------------------------------------------------------------ LCARS
+ * Contact ticks are deliberately allowed to overlap outcome chimes in *time*
+ * -- that is what makes "tick ... chime" read as one gesture rather than as
+ * two events. What must not happen is a tick landing inside a chime, which is
+ * the one arrangement that sounds like a mistake, and it is also the only one
+ * the call sites cannot rule out by themselves: a finger dragging a settings
+ * list presses a row every few hundred milliseconds whatever the handlers do.
  *
- * Rapid blips across wide intervals, and the chirps that are the whole sound
- * of the thing: a single note swept a long way in under a tenth of a second.
- * Nothing here eases -- these are machines acknowledging an instruction. */
-static const struct beeper_note_s lcars_touch[]  = {N(2400, 2400, 18, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s lcars_change[] = {N(1800, 1800, 20, 8, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2600, 2600, 20, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s lcars_link[]   = {N(1200, 2800, 90, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s lcars_back[]   = {N(2800, 1200, 90, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s lcars_open[]   = {N(1400, 1400, 25, 8, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(1900, 1900, 25, 8, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(2500, 2900, 55, 0, VOL, BEEPER_SHAPE_PLUCK)};
-static const struct beeper_note_s lcars_close[]  = {N(2500, 2500, 25, 8, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(1900, 1900, 25, 8, VOL, BEEPER_SHAPE_PLUCK),
-                                                    N(1400, 1000, 55, 0, VOL, BEEPER_SHAPE_PLUCK)};
-/* The red alert cadence, near enough: two low pulses, evenly spaced. */
-static const struct beeper_note_s lcars_error[]  = {N(520, 380, 200, 60, VOL, BEEPER_SHAPE_FLAT),
-                                                    N(520, 380, 200, 0, VOL, BEEPER_SHAPE_FLAT)};
+ * So a tick is dropped if another was played very recently, or if there is
+ * still a meaningful amount of audio queued ahead of it. Outcome sounds are
+ * never dropped here -- they are the half of the pair that carries meaning,
+ * and the queue's own four-deep limit is the only thing allowed to lose one. */
+#define UI_BEEP_TICK_MIN_GAP_MS 100
+#define UI_BEEP_TICK_DROP_MS    40
 
-const struct ui_sound_s ui_sound_lcars = {{
-    CHIME(lcars_touch), CHIME(lcars_change), CHIME(lcars_link), CHIME(lcars_back),
-    CHIME(lcars_open), CHIME(lcars_close), CHIME(lcars_error),
-}};
+/* Starts false. Everything raised while the UI is still being built -- the
+ * "Connecting..." banner among them -- would otherwise announce itself to a
+ * room before the panel is ready to be looked at. main.cpp turns this on at
+ * the end of ohez_setup(), immediately before the boot chime. */
+static bool enabled;
 
-/* ----------------------------------------------------------------- Reticle
- *
- * Swells rather than blips: everything is a PAD, everything is a sweep, and
- * nothing has a hard edge. Affirmative rises, dismissal falls. */
-static const struct beeper_note_s hud_touch[]  = {N(2900, 3100, 30, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_change[] = {N(2200, 2800, 110, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_link[]   = {N(1600, 2500, 170, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_back[]   = {N(2500, 1600, 170, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_open[]   = {N(1500, 2100, 90, 0, VOL, BEEPER_SHAPE_PAD),
-                                                  N(2100, 2700, 120, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_close[]  = {N(2700, 2100, 90, 0, VOL, BEEPER_SHAPE_PAD),
-                                                  N(2100, 1500, 120, 0, VOL, BEEPER_SHAPE_PAD)};
-static const struct beeper_note_s hud_error[]  = {N(700, 420, 320, 0, VOL, BEEPER_SHAPE_PAD)};
+/* When the queue should next be empty, and when the last tick-class sound
+ * went out. Both lv_tick milliseconds, both only ever touched from the LVGL
+ * task -- ui_beep_play() has no other caller. */
+static uint32_t busy_until;
+static uint32_t last_tick;
 
-const struct ui_sound_s ui_sound_jarvis = {{
-    CHIME(hud_touch), CHIME(hud_change), CHIME(hud_link), CHIME(hud_back),
-    CHIME(hud_open), CHIME(hud_close), CHIME(hud_error),
-}};
+static bool is_tick_class(enum ui_sound_e sound)
+{
+    return sound == UI_SOUND_PRESS || sound == UI_SOUND_TICK ||
+           sound == UI_SOUND_TICK_BACK;
+}
 
 void ui_beep_play(enum ui_sound_e sound)
 {
+    if (enabled == false)
+        return;
+
     if ((unsigned)sound >= UI_SOUND_COUNT)
         return;
 
@@ -102,5 +61,47 @@ void ui_beep_play(enum ui_sound_e sound)
     if (set == NULL)
         return;
 
-    beeper_play(&set->chime[sound]);
+    const struct beeper_chime_s *chime = &set->chime[sound];
+
+    uint32_t now     = lv_tick_get();
+    uint32_t pending = (busy_until > now) ? (busy_until - now) : 0;
+
+    if (is_tick_class(sound) == true)
+    {
+        if (lv_tick_elaps(last_tick) < UI_BEEP_TICK_MIN_GAP_MS)
+            return;
+
+        if (pending > UI_BEEP_TICK_DROP_MS)
+            return;
+
+        last_tick = now;
+    }
+
+    beeper_play(chime);
+
+    /* An estimate, and deliberately one that errs high: the queue plays chimes
+     * one after another, so what is outstanding is whatever was outstanding
+     * plus this. Erring high only makes the tick guard keener, which is the
+     * safe direction. */
+    busy_until = now + pending + beeper_chime_duration_ms(chime);
+}
+
+void ui_beep_set_enabled(bool en)
+{
+    enabled = en;
+}
+
+static void press_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    BEEPER_EVENT_PRESS();
+}
+
+void ui_beep_attach_press(lv_obj_t *obj)
+{
+    if (obj == NULL)
+        return;
+
+    lv_obj_add_event_cb(obj, press_event, LV_EVENT_PRESSED, NULL);
 }

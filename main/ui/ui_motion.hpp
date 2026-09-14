@@ -104,7 +104,11 @@ void ui_motion_enter_obj(lv_obj_t *obj, uint32_t index);
 /* The same for every child of a container, in child order. */
 void ui_motion_enter(lv_obj_t *container);
 
-/* Attach the theme's press feedback. Call once, at creation. */
+/* Attach the theme's press feedback -- the styles, and the contact tick
+ * through ui_beep_attach_press(). Call once, at creation.
+ *
+ * Every tile, themed button, back bar and settings row goes through here,
+ * which is what gives the whole interface one press sound from one place. */
 void ui_motion_pressable(lv_obj_t *obj);
 
 /* Cancel whatever this module started on `obj`. Deleting the object already

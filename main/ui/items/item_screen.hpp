@@ -81,6 +81,15 @@ void item_screen_set_changed_cb(item_screen_changed_cb_t cb);
  * builder ends a gesture with this. */
 void item_screen_publish(struct item_view_s *v);
 
+/* The same, without the chime.
+ *
+ * For a gesture that repeats and speaks for itself while it does -- holding
+ * the setpoint's plus, which publishes about ten times a second. That used to
+ * go through item_screen_publish() and beep on every one of them. The release
+ * still ends on a proper item_screen_publish(), so a hold reads as a run of
+ * ticks and then a commit. */
+void item_screen_publish_quiet(struct item_view_s *v);
+
 /* An unstyled, unpadded, non-scrolling container. */
 lv_obj_t *item_screen_container(lv_obj_t *parent);
 

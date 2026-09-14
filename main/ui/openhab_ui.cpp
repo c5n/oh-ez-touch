@@ -342,13 +342,23 @@ static void event_handler(lv_event_t *e)
         /* The one control that needs no screen of its own: a switch has two
          * states and the tile is already big enough to be the button. */
         if (strncmp(ctx->item->getStateText(), "OFF", 3) == 0)
+        {
             ctx->item->setStateText("ON");
+            item_publish(ctx);
+            /* Which way it went, not merely that it went: a switch is the one
+             * control whose whole state is audible in one sound, and telling
+             * the two apart is what lets somebody flip a light from across the
+             * room without looking. */
+            BEEPER_EVENT_TOGGLE_ON();
+        }
         else
+        {
             ctx->item->setStateText("OFF");
+            item_publish(ctx);
+            BEEPER_EVENT_TOGGLE_OFF();
+        }
 
-        item_publish(ctx);
         ctx->refresh_request = true;
-        BEEPER_EVENT_CHANGE();
         break;
 
     default:
@@ -1387,6 +1397,15 @@ static void page_result_apply(struct openhab_result_s *res)
         openhab_client_result_release(res);
 
         page_state = PAGE_READY;
+
+        /* The sitemap came back. Infolabel::destroy() is deliberately silent
+         * -- it cannot tell a recovery from a timeout -- and this is the one
+         * recovery with no replacement banner to announce it, so it is said
+         * here. The isUp() guard is what stops every successful poll saying
+         * it. */
+        if (openhab_ui_infolabel.isUp() == true)
+            BEEPER_EVENT_NOTIFY();
+
         openhab_ui_infolabel.destroy();
         show(content);
 #if CONFIG_IDF_TARGET_LINUX
