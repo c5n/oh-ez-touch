@@ -1405,6 +1405,14 @@ void ui_settings_close(void)
     BEEPER_EVENT_WINDOW_CLOSE();
 }
 
+const char *ui_settings_page_name(void)
+{
+    if (ui_settings_is_open() == false)
+        return NULL;
+
+    return target_title(current_tab);
+}
+
 bool ui_settings_is_open(void)
 {
     return screen != NULL;
@@ -1436,12 +1444,10 @@ void ui_settings_rebuild(void)
 }
 
 #if CONFIG_IDF_TARGET_LINUX
-void ui_settings_open_from_env(void)
+bool ui_settings_open_by_name(const char *name)
 {
-    const char *name = getenv("OHEZ_SETTINGS");
-
     if (name == NULL)
-        return;
+        return false;
 
     for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
     {
@@ -1449,7 +1455,7 @@ void ui_settings_open_from_env(void)
             continue;
 
         ui_settings_open((enum settings_tab_e)i);
-        return;
+        return true;
     }
 
     /* Then the menus, by name -- so "system" reaches the System menu, which is
@@ -1470,10 +1476,21 @@ void ui_settings_open_from_env(void)
         if (ui_settings_is_open())
             screen_show_menu((uint8_t)(SETTINGS_TAB_COUNT + m));
 
-        return;
+        return true;
     }
 
-    printf("ui_settings: OHEZ_SETTINGS=%s names no page\r\n", name);
+    return false;
+}
+
+void ui_settings_open_from_env(void)
+{
+    const char *name = getenv("OHEZ_SETTINGS");
+
+    if (name == NULL)
+        return;
+
+    if (ui_settings_open_by_name(name) == false)
+        printf("ui_settings: OHEZ_SETTINGS=%s names no page\r\n", name);
 }
 #endif
 

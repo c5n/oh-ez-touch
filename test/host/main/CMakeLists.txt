@@ -32,6 +32,13 @@
 # plain stdio over a directory $OHEZ_CONFIG_DIR names, so the tests write real
 # files without needing SPIFFS or a device.
 #
+# testif/testif_parse.c joined them for the reason multipart.c did, and it is
+# the only file of main/testif/ that could: the rest of the simulator's control
+# interface is a socket, an LVGL input device and a dump of the screen, and none
+# of those exists here. What is left is the tokeniser -- which reads a datagram
+# somebody outside the process composed, and decides where each argument of a
+# command that presses buttons begins and ends.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_ble_beacon.cpp"
@@ -45,6 +52,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_sitemap_parse.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
+                            "test_testif_parse.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"
@@ -53,6 +61,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."

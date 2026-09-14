@@ -43,6 +43,7 @@
 #include "peripherals/relay.hpp"
 #include "peripherals/sensor_main.hpp"
 #include "port/ohez_port.h"
+#include "testif/testif.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_infolabel.hpp"
 #include "ui/ui_screen.hpp"
@@ -280,13 +281,24 @@ static void ohez_setup(void)
     openhab_ui_open_item_from_env();
     ui_settings_open_from_env();
 #endif
+
+    /* Last, so that a script connecting to it finds a panel that is already
+     * set up rather than one still deciding what to show. No-op on the device,
+     * which has no control interface. */
+    testif_setup();
 }
 
 static void ohez_loop(void)
 {
     tft_backlight.loop();
 
-    lv_timer_handler(); // let the GUI do its work
+    /* Not simply lv_timer_handler(): a screenshot is streamed straight out of
+     * LVGL's own frame buffer rather than copied first, so for the few
+     * milliseconds that takes the frame has to stop changing underneath the
+     * reader. The hold times out by itself, and on the device the call is a
+     * constant false that the compiler folds away. */
+    if (testif_frame_hold() == false)
+        lv_timer_handler(); // let the GUI do its work
 
     /* Outside the online guard further down, unlike openhab_ui_loop(): the
      * settings screen is how a device with no credentials gets any, so its
@@ -295,6 +307,7 @@ static void ohez_loop(void)
     ui_screen_loop();
     wlan_loop();
     webui_loop();
+    testif_loop();
     infolabel.loop();
 
     /* Seeded with the state at the first call rather than with a "nothing yet"

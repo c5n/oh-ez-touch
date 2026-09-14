@@ -208,6 +208,77 @@ static char current_page[STR_PAGE_LEN];
 static char last_page[STR_PAGE_LEN];
 static char current_website[STR_WEBSITE_LEN];
 
+/* ------------------------------------------------------------ what is shown */
+
+/* Read-only views of the state above, for the simulator's control interface.
+ * They are here rather than in testif/ because every one of them reads a file
+ * static that has no business leaving this file any other way. */
+
+const char *openhab_ui_page_title(void)
+{
+    return sitemap.getPageName();
+}
+
+const char *openhab_ui_page_state_name(void)
+{
+    switch (page_state)
+    {
+    case PAGE_IDLE:    return "idle";
+    case PAGE_REQUEST: return "request";
+    case PAGE_WAITING: return "waiting";
+    case PAGE_READY:   return "ready";
+    }
+
+    return "unknown";
+}
+
+uint32_t openhab_ui_page_generation(void)
+{
+    return page_generation;
+}
+
+size_t openhab_ui_tile_count(void)
+{
+    /* What is built, not what the sitemap holds: a page with more items than
+     * WIDGET_COUNT_MAX shows the first few, and a script should be told about
+     * the tiles it can actually touch. */
+    size_t count = 0;
+
+    while (count < WIDGET_COUNT_MAX && widget_context[count].container != NULL)
+        count++;
+
+    return count;
+}
+
+bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out)
+{
+    if (index >= openhab_ui_tile_count())
+        return false;
+
+    struct widget_context_s *ctx = &widget_context[index];
+
+    if (ctx->item == NULL)
+        return false;
+
+    out->label = ctx->item->getLabel();
+    out->state = ctx->item->getStateText();
+    out->type  = ctx->item->getType();
+
+    /* Coordinates as laid out, not as the grid solver computed them: a frame
+     * is free to place a tile where it likes, and what a script needs is where
+     * the thing actually is. */
+    lv_area_t area;
+
+    lv_obj_get_coords(ctx->container, &area);
+
+    out->x = area.x1;
+    out->y = area.y1;
+    out->w = lv_area_get_width(&area);
+    out->h = lv_area_get_height(&area);
+
+    return true;
+}
+
 uint8_t openhab_ui_signal_quality(int8_t rssi)
 {
     if (rssi < -100)
@@ -1273,6 +1344,33 @@ static void item_path_step(void)
 void openhab_ui_open_item_from_env(void)
 {
     item_path = getenv("OHEZ_ITEM");
+}
+
+/* The same walk, asked for at any moment rather than only at boot.
+ *
+ * Two differences from the environment variable, and both are why this is not
+ * simply an assignment. The path has to be copied: it arrives in a datagram
+ * buffer that is reused on the next command, where getenv() returns something
+ * that outlives the process. And the walk has to be started here when the page
+ * is already up -- item_path_step() is otherwise driven by a page load, and on
+ * a panel that has been sitting on its home page for a minute there is no next
+ * page load to drive it. */
+bool openhab_ui_open_item_path(const char *path)
+{
+    static char item_path_buf[STR_PAGE_LEN];
+
+    if (path == NULL || *path == '\0')
+        return false;
+
+    if (strlcpy(item_path_buf, path, sizeof(item_path_buf)) >= sizeof(item_path_buf))
+        return false;
+
+    item_path = item_path_buf;
+
+    if (page_state == PAGE_READY)
+        item_path_step();
+
+    return true;
 }
 #endif /* CONFIG_IDF_TARGET_LINUX */
 

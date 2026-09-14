@@ -25,6 +25,12 @@ void ui_settings_open(enum settings_tab_e tab);
 void ui_settings_close(void);
 bool ui_settings_is_open(void);
 
+/* Which page the screen is showing, by the same name OHEZ_SETTINGS takes --
+ * a section ("WLAN", "Theme") or a menu ("Settings", "System"). NULL when the
+ * screen is closed. For the control interface's screen dump: "the settings are
+ * open" is not enough to tell a test which page it is looking at. */
+const char *ui_settings_page_name(void);
+
 /* Rebuild the screen in place, on whatever page it is showing. For a theme
  * change: the shared styles carry the colours and fonts by themselves, but the
  * bars and the keyboard have local styles set at creation, and the Info
@@ -51,6 +57,12 @@ void ui_settings_loop(void);
  *
  * Same idea as OHEZ_THEME and OHEZ_NIGHT, for which see config.cpp. */
 void ui_settings_open_from_env(void);
+
+/* The lookup behind it, by the same names, for the control interface's
+ * `settings` command -- so that a script and OHEZ_SETTINGS reach the same
+ * pages by the same spellings rather than drifting apart. False when nothing
+ * is called that. */
+bool ui_settings_open_by_name(const char *name);
 #endif
 
 #endif // UI_SETTINGS_HPP

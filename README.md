@@ -266,6 +266,37 @@ Touching the status bar opens it here too, but on the host there is no radio to
 leave unconfigured, so the screen never comes up on its own the way it does on a
 pristine device.
 
+#### Driving it from a script
+
+Everything above arranges a state at boot and then leaves you watching a
+window. The simulator also listens on **127.0.0.1:8081** for commands: send a
+tap or a swipe, ask what is on screen, read the telemetry, pull the
+framebuffer.
+
+```bash
+OHEZ_OFFLINE=1 ./build/linux/oh-ez-touch.elf &
+tools/ohez_ctl.py wait-page
+tools/ohez_ctl.py tap-label "Hallway Dimmer"
+tools/ohez_ctl.py shot /tmp/panel.png --scale 2
+```
+
+`tools/ohez_ctl.py` is the client and needs nothing but Python 3. The screen
+comes back as JSON -- which screen is up, each tile's label, state, type and
+rectangle -- so a check can assert on a value rather than on pixels, and a tile
+can be tapped by its label rather than by coordinates a layout change is free
+to move.
+
+Screenshots travel as raw pixels and become a PNG on this machine: the panel
+never encodes one, because the hardware has no RAM to spare for an encoder, and
+that is what keeps the same wire format usable on a device later.
+
+`OHEZ_TESTIF=0` turns the socket off and `OHEZ_TESTIF_PORT` moves it. None of
+this is compiled into a panel's firmware.
+
+**[doc/test-interface.md](doc/test-interface.md) is the full reference**: the
+command table, the JSON, the framebuffer header, and the handful of gotchas
+that otherwise cost an hour.
+
 ### Fonts
 
 The LVGL font sources in `components/lvgl/fonts/` are generated and committed,
@@ -364,10 +395,21 @@ lengths that run past the end of the payload, and pins down each format's
 identity, reference power and telemetry byte by byte. It found two bugs in its
 own fixtures and one in the URL character ranges on the first run.
 
+`test_testif_parse` covers the request tokeniser in
+`main/testif/testif_parse.c`, which is the one part of the simulator's control
+interface that this binary can reach -- the rest of it is a socket, an LVGL
+input device and a dump of the screen. It qualifies on the same terms the
+multipart scanner does: it reads a datagram somebody outside the process
+composed, and it decides where each argument of a command that presses buttons
+begins and ends. The cases that matter are the ones a hand-typed `nc -u` line
+produces and the client never does -- a trailing newline, a doubled space, an
+unclosed quote, a lone `@` -- and the two limits, since a datagram is free to
+carry more tokens than the argument vector holds.
+
 What every file linked out of `main/` here has in common is that it touches
 neither LVGL nor the network: the settings table and the config file over it,
 the beacon parsers, the sitemap model and parser, the relay and LED payload
-rules, and the multipart scanner. For the beacon parsers that is not a happy
+rules, the multipart scanner and the control interface's tokeniser. For the beacon parsers that is not a happy
 accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
 and leaves the parsing above the port layer, and the same argument moved the
 multipart scanner out of `webui_ota.cpp`. The remaining suites cover
@@ -926,6 +968,8 @@ main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
                       queue that plays a chime
 main/sim/             the simulator's offline fixtures
+main/testif/          the simulator's control interface: the UDP command
+                      socket, the synthetic pointer, and the screen dumps
 main/port/            the platform boundary -- one implementation directory per
                       target, and the whole of what differs between a panel and
                       a desktop

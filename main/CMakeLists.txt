@@ -117,7 +117,13 @@ set(OHEZ_APP_SRCS
 
     "sim/icon_fixture.cpp"
     "sim/sim_offline.cpp"
-    "sim/sitemap_fixture.cpp")
+    "sim/sitemap_fixture.cpp"
+
+    "testif/testif.cpp"
+    "testif/testif_parse.c"
+    "testif/testif_report.cpp"
+    "testif/testif_shot.cpp"
+    "testif/testif_touch.cpp")
 
 set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 

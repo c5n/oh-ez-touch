@@ -31,6 +31,7 @@ extern "C" void app_main(void)
     test_config_file_run();
     test_item_setters_run();
     test_multipart_run();
+    test_testif_parse_run();
     test_item_state_run();
     test_item_urls_run();
     test_outputs_run();

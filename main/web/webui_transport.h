@@ -76,6 +76,16 @@ void webui_transport_route_default(webui_route_fn_t fn);
 bool webui_transport_start(uint16_t port);
 
 /**
+ * The port it actually came up on, which is not always the one it was given:
+ * the simulator moves off a privileged port and OHEZ_WEBUI_PORT overrides
+ * either. Zero before webui_transport_start().
+ *
+ * One reader -- the control interface's `shot`, which answers with a URL and
+ * would otherwise have to repeat that reasoning to guess the port.
+ */
+uint16_t webui_transport_port(void);
+
+/**
  * Give the server a turn, from the task that calls it.
  *
  * A no-op where the server has a task of its own, which is both of them today

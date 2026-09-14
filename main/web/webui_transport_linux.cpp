@@ -455,6 +455,11 @@ bool webui_transport_start(uint16_t port)
     return (xTaskCreate(server_task, "webui", SERVER_TASK_STACK, NULL, 4, NULL) == pdPASS);
 }
 
+uint16_t webui_transport_port(void)
+{
+    return server_port;
+}
+
 void webui_transport_loop(void)
 {
     /* The task above does the work. */

@@ -130,8 +130,12 @@ static void register_uri(const char *path, httpd_method_t method)
     httpd_register_uri_handler(server, &uri);
 }
 
+static uint16_t server_port;
+
 bool webui_transport_start(uint16_t port)
 {
+    server_port = port;
+
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
 
     config.server_port = port;
@@ -169,6 +173,11 @@ bool webui_transport_start(uint16_t port)
     ESP_LOGI(TAG, "listening on port %u", (unsigned)port);
 
     return true;
+}
+
+uint16_t webui_transport_port(void)
+{
+    return server_port;
 }
 
 void webui_transport_loop(void)

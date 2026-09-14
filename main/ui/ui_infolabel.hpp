@@ -31,6 +31,26 @@ public:
         ERROR
     };
 
+private:
+    /* The severity of the banner on screen. Kept because it is the one thing
+     * about a live banner that is not readable back off the label. */
+    enum infolabel_type_e kind = INFO;
+
+public:
+    /* Whether a banner is up and what it says, for the simulator's control
+     * interface. The text is read back out of the label rather than stored a
+     * second time here -- which is also why it arrives as the "topic\ntext"
+     * that create() formatted, and why one caller's long sitemap URL survives
+     * intact. */
+    bool isUp(void) const { return il != NULL; }
+
+    enum infolabel_type_e getKind(void) const { return kind; }
+
+    const char *getText(void) const
+    {
+        return (label != NULL) ? lv_label_get_text(label) : NULL;
+    }
+
     void create(enum infolabel_type_e type, const char* topic, const char* text, uint16_t timeout)
     {
         if (il == NULL)
@@ -73,6 +93,8 @@ public:
          * LVGL sizes its own. */
         lv_label_set_text_fmt(label, "%s\n%s", topic, text);
 
+        kind = type;
+
         lv_obj_align(il, LV_ALIGN_CENTER, 0, 0);
 
         if (timeout > 0)
@@ -107,5 +129,15 @@ public:
         }
     }
 };
+
+/* The two banners this firmware has, declared where the class is so that the
+ * one reader of both -- the simulator's control interface, which reports
+ * whichever is up -- does not have to declare them itself.
+ *
+ * They are separate instances on purpose: main.cpp owns the WLAN and setup
+ * messages, openhab_ui.cpp owns "this sitemap will not load", and either can
+ * be on screen without the other. */
+extern Infolabel infolabel;            /* main.cpp */
+extern Infolabel openhab_ui_infolabel; /* openhab_ui.cpp */
 
 #endif

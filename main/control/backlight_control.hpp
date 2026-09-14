@@ -59,6 +59,12 @@ public:
 
     void setup();
     void loop();
+
+    /* What the backlight is doing, for the simulator's control interface. Both
+     * are already tracked; neither had a reader outside this class, which is
+     * why "is the panel dimmed?" was not a question anything could ask. */
+    uint8_t currentBrightness() const { return current_brightness; }
+    bool isDimmed() const { return dimmed; }
 };
 
 #endif
