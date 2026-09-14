@@ -1069,6 +1069,66 @@ One rule prevents most of the crashes available here: **every animation's
 `var` is the `lv_obj_t` it animates**, never a context struct, because
 `lv_obj_delete()` cancels animations keyed on the object it is deleting.
 
+### Where the frame time goes
+
+There is no 2D accelerator on an ESP32. Every pixel on the panel is written by
+one of the software loops in LVGL's `src/draw/sw/`, on the same task that runs
+the rest of the application, and the finished strip is then pushed to the panel
+over SPI. Those two costs bound everything the UI can do, and they are worth
+knowing separately because the levers are different.
+
+The SPI side is arithmetic and is not going to move. The bus runs at 40 MHz,
+which on the Lanbon is the ESP32's own ceiling -- its SCLK/MOSI/MISO route
+through the GPIO matrix rather than the IOMUX, and `board_pins.h` says so -- and
+on the ArduiTouch boards is as far as an ILI9341 is worth pushing. So a
+full-screen repaint is 320 x 240 x 2 bytes at 40 Mbit/s, about 31 ms however
+fast the CPU is. A partial repaint costs in proportion to its area, which is why
+the UI is built out of tiles that invalidate one at a time rather than screens
+that redraw whole.
+
+The CPU side is where the settings below apply. `main/port/esp32/port_display.c`
+renders into two DMA-capable buffers and alternates them, so the render of one
+strip overlaps the transfer of the last; keeping the render under the 3 ms that
+strip's transfer takes is what makes the SPI figure above the real floor rather
+than a component of a larger one. Four things go into that:
+
+- **240 MHz, not 160.** `CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240` in
+  `sdkconfig.defaults.esp32`. IDF defaults to 160, which is half again less of
+  the one resource the renderer is short of, for power a mains-powered wall
+  panel is not saving.
+- **LVGL is compiled `-O2`,** against the `-Os` the rest of the project uses.
+  `components/lvgl/CMakeLists.txt` makes that exception and says why: `-Os`
+  declines to unroll the word-at-a-time fill loops and keeps the per-pixel
+  mixes out of line. It costs 19 KB of a 1920 KB app partition.
+- **`LV_USE_ASSERT_OBJ` is off on the device** and on in the simulator. Its
+  existence check is `lv_obj_is_valid()`, which walks every object of every
+  screen looking for the pointer, and it runs at the top of very nearly every
+  public LVGL call -- including the ones the animations and the per-poll label
+  updates make every frame.
+- **The loop sleeps for as long as LVGL asks,** not a fixed 5 ms.
+  `ohez_loop()` takes `lv_timer_handler()`'s answer and waits that long, capped
+  at 10 ms so the WLAN, settings and openHAB loops beside it still run often
+  enough. The fixed figure woke the task 200 times a second to re-run all of
+  them for nothing and still delivered the frame late; nothing was sampled
+  faster for it either, because the pointer is read from an `lv_timer` on the
+  same period as the display.
+
+Two things that look like levers and are not. The byte swap in `flush_cb()` --
+the ILI9341 driver ignores `data_endian`, so the CPU does it -- is about 4 % of
+a flush against the DMA it precedes; rendering in `LV_COLOR_FORMAT_RGB565_SWAPPED`
+to avoid it would move the cost onto every blended pixel instead. And
+`LV_DRAW_LAYER_SIMPLE_BUF_SIZE` is dead config in this build, because
+`main/ui/ui_motion.hpp` rules out every property that would promote an object to
+a layer.
+
+The one lever left is the strip height, `DRAW_BUFFER_LINES`. Taller strips mean
+the object tree is walked fewer times per frame -- a 93 px tile falls across
+five strips at 24 lines and three at 40 -- but the buffers are claimed before
+WiFi and Bluetooth are up, so the extra 20 KB would come out of their heap and
+fail as a radio that will not start rather than as a slower screen. The number
+that settles it is the **Free heap** row on the web status page of a panel with
+both radios running; `port_display.c` says what to do with it.
+
 ### Contributing
 
 The project is still under development, but is already very usable.
@@ -1098,6 +1158,7 @@ Contact: c5n AT posteo DOT de
 - [x] main: Add setup wizard with WLAN credential input instead of portal procedure -- on the panel too, see [Settings on the screen](#settings-on-the-screen)
 - [ ] doc: Retake the screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages, and ```doc/img/arduitouch_main.jpeg``` shows the pre-overhaul UI
 - [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
+- [x] build: Give the renderer the CPU it was short of -- 240 MHz, LVGL at ```-O2```, ```LV_USE_ASSERT_OBJ``` off on the device, and a loop that sleeps for as long as LVGL asks instead of a fixed 5 ms. See [Where the frame time goes](#where-the-frame-time-goes).
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight, beeper and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [ ] sensors: Support DS18B20 onewire sensors

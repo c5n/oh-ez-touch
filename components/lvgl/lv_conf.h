@@ -160,6 +160,12 @@
  * and can't be drawn in chunks. */
 
 /** The target buffer size for simple layer chunks. */
+/* Left at LVGL's default, and it is dead config in this build rather than a
+ * tuned figure: nothing here ever creates a simple layer. Only
+ * lv_obj_set_style_opa_layered() and the transform properties promote an object
+ * to one, and main/ui/ui_motion.hpp rules out all of them by name with the
+ * measurements -- the fades use plain lv_obj_set_style_opa(), which is folded
+ * into the draw tasks with no layer at all. Raising it would buy nothing. */
 #define LV_DRAW_LAYER_SIMPLE_BUF_SIZE (4 * 1024)    /**< [bytes]*/
 
 /* Limit the max allocated memory for simple and transformed layers.
@@ -535,7 +541,22 @@
 #define LV_USE_ASSERT_MALLOC 1   /**< Checks is the memory is successfully allocated or no. (Very fast, recommended) */
 #define LV_USE_ASSERT_STYLE         0   /**< Check if the styles are properly initialized. (Very fast, recommended) */
 #define LV_USE_ASSERT_MEM_INTEGRITY 0   /**< Check the integrity of `lv_mem` after critical operations. (Slow) */
-#define LV_USE_ASSERT_OBJ 1   /**< Check the object's type and existence (e.g. not deleted). (Slow) */
+/* On the simulator only. "(Slow)" is not a figure of speech here: the existence
+ * half of the check is lv_obj_is_valid(), which walks every object of every
+ * screen of every display looking for the pointer, and LV_ASSERT_OBJ sits at
+ * the top of very nearly every public lv_obj_* and widget call. On a page of
+ * six tiles that is a few hundred node visits per call, and the calls that pay
+ * it are the ones that run per frame -- the animations' lv_obj_set_style_*, the
+ * per-poll label updates, every style change a press makes.
+ *
+ * It is worth its price where the UI is developed and the tests run, and the
+ * simulator has the CPU to spare. On the panel it buys a better message for a
+ * use-after-free that the host build would have caught first. */
+#if defined(CONFIG_IDF_TARGET_LINUX)
+    #define LV_USE_ASSERT_OBJ 1   /**< Check the object's type and existence (e.g. not deleted). (Slow) */
+#else
+    #define LV_USE_ASSERT_OBJ 0
+#endif
 
 /** Add a custom handler when assert happens e.g. to restart MCU. */
 #define LV_ASSERT_HANDLER_INCLUDE <stdint.h>

@@ -5,8 +5,9 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
 CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 
-# LV_DEF_REFR_PERIOD is 30 ms, so a 100 Hz tick (the IDF default) quantises the
-# refresh badly.
+# LV_DEF_REFR_PERIOD is 16 ms, so a 100 Hz tick (the IDF default) quantises the
+# refresh badly: every 16 ms deadline would round up to 20, and the screen would
+# run at 50 Hz with a third of its frames arriving late.
 CONFIG_FREERTOS_HZ=1000
 
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
@@ -15,6 +16,10 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 # libraries and the application -- about 400 KB of text compiled with no
 # optimisation at all, against prebuilt ESP-IDF archives that were already
 # -Os. See the README for what it actually saved.
+#
+# LVGL is the one exception, and it is made in components/lvgl/CMakeLists.txt
+# rather than here: -Os costs the blend and fill loops far more than it saves in
+# a 4 MB flash, and those loops are where the frame time goes.
 CONFIG_COMPILER_OPTIMIZATION_SIZE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 
@@ -60,3 +65,11 @@ CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
 # cost worth having a scanner without.
 CONFIG_ESP_WIFI_IRAM_OPT=n
 CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+
+# 240 MHz, not the 160 IDF defaults to. The panel's whole job is software
+# rendering -- there is no 2D accelerator on an ESP32 and LVGL blends every
+# pixel on the CPU -- so this is 50 % more of the one resource the GUI is short
+# of, for nothing but power the board takes from the mains anyway. The WiFi and
+# Bluetooth stacks are unaffected; their timing comes from the 80 MHz APB clock
+# either way.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y

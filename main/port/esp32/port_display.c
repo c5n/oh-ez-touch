@@ -46,7 +46,31 @@ static const char *TAG = "port_display";
 
 /* 24 lines divides 240 exactly, so a full-screen redraw is ten equal flushes.
  * Two of them, from internal DMA-capable memory: a static array is not
- * guaranteed to be either. 320 * 24 * 2 = 15360 bytes each. */
+ * guaranteed to be either. 320 * 24 * 2 = 15360 bytes each.
+ *
+ * Taller strips are the one obvious lever left on the frame rate, and it is
+ * left alone deliberately rather than for want of noticing. LVGL redraws in
+ * partial mode one strip at a time and walks the object tree again for each, so
+ * a tile 93 px tall falls across five strips here and three at 40 lines, and
+ * every style lookup behind those draws is repeated with it -- and those
+ * lookups are not cached, because LV_OBJ_STYLE_CACHE has to stay 0 for the live
+ * theme switch (lv_conf.h says why). The transfer itself is the same number of
+ * bytes either way; only the per-strip overhead changes.
+ *
+ * What stops it is where the memory comes from and when. 40 lines is 2 x 25600
+ * rather than 2 x 15360, and this runs from ohez_setup() *before* wlan_setup()
+ * and ble_scan_setup() -- so the display would take the extra 20 KB of internal
+ * DMA-capable heap out from under the WiFi and Bluetooth stacks, and the
+ * symptom would be an esp_wifi_init() failure on a wall panel rather than a
+ * slower screen. A fallback here cannot catch that either: at this point in the
+ * boot the heap is at its emptiest, so the larger pair would always succeed and
+ * the shortfall would always land on somebody else.
+ *
+ * What would settle it is one number from a running board, and the firmware
+ * already reports it: the "Free heap" row on the web status page (and
+ * <prefix>/system/heap over MQTT) once WiFi and the BLE scanner are both up.
+ * That is the headroom the extra 20 KB would have to come out of. There is no
+ * PSRAM on any of these boards, so all of it is internal. */
 #define DRAW_BUFFER_LINES   24
 #define DRAW_BUFFER_BYTES   (PORT_DISPLAY_WIDTH * DRAW_BUFFER_LINES * 2)
 

@@ -288,6 +288,17 @@ static void ohez_setup(void)
     testif_setup();
 }
 
+/* How long the loop below is allowed to sleep between two calls into LVGL.
+ *
+ * The floor is one tick: vTaskDelay(0) does not yield to an equal-priority
+ * task, so a zero here would spin. The ceiling is what the loops below this
+ * one -- the WLAN state machine, the settings screen's scan, the openHAB
+ * polling -- are serviced at; they are all deadline-driven at hundreds of
+ * milliseconds or more, so 10 ms is far finer than any of them needs and is
+ * only there to keep the sleep bounded when LVGL has nothing due at all. */
+#define OHEZ_LOOP_DELAY_MIN_MS  1
+#define OHEZ_LOOP_DELAY_MAX_MS  10
+
 static void ohez_loop(void)
 {
     tft_backlight.loop();
@@ -297,8 +308,10 @@ static void ohez_loop(void)
      * milliseconds that takes the frame has to stop changing underneath the
      * reader. The hold times out by itself, and on the device the call is a
      * constant false that the compiler folds away. */
+    uint32_t sleep_ms = OHEZ_LOOP_DELAY_MIN_MS;
+
     if (testif_frame_hold() == false)
-        lv_timer_handler(); // let the GUI do its work
+        sleep_ms = lv_timer_handler(); // let the GUI do its work
 
     /* Outside the online guard further down, unlike openhab_ui_loop(): the
      * settings screen is how a device with no credentials gets any, so its
@@ -415,8 +428,26 @@ static void ohez_loop(void)
 
     /* Was SDL_Delay(5) in the simulator and nothing at all on the device, whose
      * loop was never allowed to yield. vTaskDelay() is what lets the other
-     * tasks -- the beeper, and the web server on the device -- run. */
-    vTaskDelay(pdMS_TO_TICKS(5));
+     * tasks -- the beeper, and the web server on the device -- run.
+     *
+     * Sleeping for what lv_timer_handler() asked for rather than a fixed 5 ms.
+     * The fixed figure was the wrong shape in both directions: it woke this
+     * task 200 times a second to re-run every loop above for nothing, and it
+     * still delivered a frame up to 5 ms after LVGL wanted it. Nothing is
+     * sampled faster for the spinning, either -- the pointer is read from an
+     * lv_timer on the same LV_DEF_REFR_PERIOD as the display, so a touch is
+     * seen when lv_timer_handler() runs and not before. What the CPU stops
+     * spending here goes to the one thing that is short of it, which is the
+     * software renderer.
+     *
+     * LV_NO_TIMER_READY is the answer when no timer is due at all, which is
+     * neither a delay nor a small number; the clamp is what makes it one. */
+    if (sleep_ms < OHEZ_LOOP_DELAY_MIN_MS)
+        sleep_ms = OHEZ_LOOP_DELAY_MIN_MS;
+    else if (sleep_ms > OHEZ_LOOP_DELAY_MAX_MS)
+        sleep_ms = OHEZ_LOOP_DELAY_MAX_MS;
+
+    vTaskDelay(pdMS_TO_TICKS(sleep_ms));
 }
 
 extern "C" void app_main(void)

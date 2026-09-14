@@ -73,3 +73,24 @@ set_source_files_properties(${LVGL_C_SOURCES} PROPERTIES
     COMPILE_OPTIONS "${LVGL_WARNING_OPTIONS};-Wno-error=discarded-qualifiers")
 set_source_files_properties(${LVGL_CXX_SOURCES} PROPERTIES
     COMPILE_OPTIONS "${LVGL_WARNING_OPTIONS}")
+
+# -O2, against the project's -Os.
+#
+# There is no 2D accelerator on an ESP32, so every pixel on the panel is written
+# by one of the loops in src/draw/sw/ -- and -Os is a poor trade for exactly
+# those: it refuses to unroll the 32-bit-at-a-time fill loops, keeps the blend
+# helpers out of line, and turns the per-pixel mixes back into calls. The
+# saving is a fraction of a 4 MB flash; the cost is frame time on the one task
+# that has none to spare.
+#
+# Gated on the project actually asking for size rather than applied
+# unconditionally: a build switched to -Og or -O0 to debug something wants LVGL
+# to follow it there, not to stay optimised behind its back. That also leaves
+# the simulator (CONFIG_COMPILER_OPTIMIZATION_DEBUG, sdkconfig.defaults.linux)
+# alone, which is where LVGL is stepped through.
+#
+# IDF puts its own -Os on the command line first and this appends, so the later
+# -O2 is what GCC takes.
+if(CONFIG_COMPILER_OPTIMIZATION_SIZE)
+    target_compile_options(${COMPONENT_LIB} PRIVATE -O2)
+endif()
