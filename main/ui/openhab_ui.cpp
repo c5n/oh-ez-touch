@@ -48,8 +48,8 @@
  * The client task answers every request it does not drop, so this should never
  * fire. It exists because the one way the asynchronous shape can fail that the
  * synchronous one could not is by waiting forever -- and a page that never
- * loads and never retries is a blank screen that the connection-error watchdog
- * further down never notices, because nothing is counting. */
+ * loads and never retries is a blank screen with nothing to show for itself:
+ * no failure counted, and no box to raise the fault or offer a restart. */
 #ifndef GET_SITEMAP_ANSWER_TIMEOUT
 #define GET_SITEMAP_ANSWER_TIMEOUT 15000
 #endif
@@ -58,8 +58,12 @@
 #define NTP_TIME_UPDATE_INTERVAL (60 * 60 * 1000)
 #endif
 
-#ifndef CONNECTION_ERROR_TIMEOUT_S
-#define CONNECTION_ERROR_TIMEOUT_S 180
+/* How long the poll counters are gathered for before they start again. It
+ * used to be the watchdog's window -- the period over which more failures than
+ * successes rebooted the panel -- and is now only what the statistics line
+ * under CONFIG_OHEZ_DEBUG_OPENHAB_UI reports over. */
+#ifndef STATISTICS_WINDOW_S
+#define STATISTICS_WINDOW_S 180
 #endif
 
 #define HEADER_SIGNAL_UPDATE_INTERVAL 5000
@@ -687,6 +691,10 @@ static void chrome_create(void)
      * main.cpp raises "WLAN / Connecting..." before this first runs, and a
      * live theme change comes through here as well. */
     Messagebox::refresh_notice();
+
+    /* And the box itself, for the half of what it wears that a style refresh
+     * cannot reach. Same call site, same reason. */
+    Messagebox::restyle_all();
 }
 
 static void chrome_destroy(void)
@@ -1257,9 +1265,8 @@ static void page_submit_if_due(void)
     if (generation == 0)
     {
         /* No client task, or a request queue that is already full. Counted,
-         * because a wedged client is exactly what the connection-error
-         * watchdog restarts the panel for, and there is no other way for it to
-         * find out. */
+         * because a wedged client is exactly what the statistics are read to
+         * find, and there is no other way for it to show up in them. */
         statistics.sitemap_fail_cnt++;
         page_retry_timeout = port_millis() + GET_SITEMAP_RETRY_INTERVAL;
         return;
@@ -1428,6 +1435,11 @@ static void page_result_apply(struct openhab_result_s *res)
     printf("openhab_ui_loop: no usable page at: %s\r\n", current_page);
 #endif
     openhab_ui_messagebox.create(openhab_ui_messagebox.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
+
+    /* The other fault with nothing behind it. The retry below keeps asking and
+     * the box says so; the button is for the case where it never will, which
+     * is what the watchdog this replaced was built for. */
+    openhab_ui_messagebox.offerRestart();
     page_request(GET_SITEMAP_RETRY_INTERVAL);
 
     statistics.sitemap_fail_cnt++;
@@ -1536,7 +1548,7 @@ void openhab_ui_loop(void)
 {
     static uint64_t night_check_next_timestamp;
     static uint64_t update_ntp_next_timestamp;
-    static uint64_t connection_error_handling_timestamp;
+    static uint64_t statistics_window_timestamp;
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     static uint64_t statistics_timestamp;
 #endif
@@ -1590,8 +1602,7 @@ void openhab_ui_loop(void)
                         /* A URL that would not build, or a queue that would
                          * not take it. Counted here rather than nowhere: every
                          * poll still produces exactly one success or one
-                         * failure, so the watchdog below counts what it always
-                         * counted. */
+                         * failure, so the counters below stay a true tally. */
                         statistics.update_fail_cnt++;
                     }
                     else
@@ -1635,18 +1646,16 @@ void openhab_ui_loop(void)
 
     header_update();
 
-    if (port_millis() - connection_error_handling_timestamp >= (CONNECTION_ERROR_TIMEOUT_S * 1000))
+    if (port_millis() - statistics_window_timestamp >= (STATISTICS_WINDOW_S * 1000))
     {
-        connection_error_handling_timestamp = port_millis();
+        statistics_window_timestamp = port_millis();
 
-        if ((statistics.update_fail_cnt > statistics.update_success_cnt) || (statistics.sitemap_fail_cnt > statistics.sitemap_success_cnt))
-        {
-            /* More failures than successes for a minute: something is wedged
-             * that a restart has a fair chance of clearing. On the host this
-             * exits the process, which is the same statement. */
-            port_restart();
-        }
-
+        /* This is where the connection-error watchdog was: more failures than
+         * successes across one window and it called port_restart(), which on a
+         * panel whose server was merely slow rebooted the thing somebody was
+         * standing in front of. The sitemap box offers that restart instead --
+         * see Messagebox::offerRestart() -- and what is left here is the
+         * window the counters below are counted over. */
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
         printf("STATISTICS reset\r\n");
 #endif

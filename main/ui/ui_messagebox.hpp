@@ -18,6 +18,9 @@
  * exactly as long as the problem lasted. Folding it leaves the frame's notice
  * indicator behind, and that indicator is the way back to it.
  *
+ * Two of the messages carry a second button, in the footer, and that one
+ * restarts the panel -- see offerRestart().
+ *
  * It lives on the top layer so it floats above the page without being deleted
  * when the page is rebuilt. */
 class Messagebox
@@ -39,6 +42,20 @@ public:
     void create(enum messagebox_type_e type, const char *topic,
                 const char *text, uint16_t timeout);
 
+    /* Offer a restart, as a button in the box's footer.
+     *
+     * For the messages whoever is standing in front of the panel can do
+     * nothing else about: no WLAN, and a sitemap that will not load. It is
+     * what openhab_ui's connection-error watchdog used to do unasked -- three
+     * minutes of more failures than successes and the panel rebooted itself,
+     * whatever it was in the middle of and whoever was using it. The remedy
+     * was often the right one; taking it without being asked was not, so it is
+     * a button now and the box that reports the fault is what carries it.
+     *
+     * Called after create(), which clears the offer: a message carries only
+     * what it was told to carry, exactly as it does its severity. */
+    void offerRestart(void);
+
     void destroy(void);
     void loop(void);
 
@@ -46,6 +63,7 @@ public:
      * interface. */
     bool isUp(void) const { return mb != NULL; }
     bool isFolded(void) const { return folded; }
+    bool offersRestart(void) const { return restart_offered; }
 
     enum messagebox_type_e getKind(void) const { return kind; }
 
@@ -79,14 +97,32 @@ public:
      * box that was already up. */
     static void refresh_notice(void);
 
+    /* Re-apply the theme to whichever boxes are up. Called from the same place
+     * for the same kind of reason: ui_style_apply() repaints everything a box
+     * wears by reference, and what is left are the properties restyle() works
+     * out from the theme table itself. */
+    static void restyle_all(void);
+
 private:
     lv_obj_t *mb = NULL;    /* the lv_msgbox */
     lv_obj_t *title = NULL; /* its title-bar label -- the topic */
     lv_obj_t *body = NULL;  /* its content label   -- the text  */
 
     /* The one button, at the right-hand end of the title bar. Kept because
-     * create() re-sizes it on every message; see the comment there. */
+     * restyle() re-sizes it from the theme's face; see the comment there. */
     lv_obj_t *fold_btn = NULL;
+
+    /* The footer and the Restart button that is its only child. Built with the
+     * box and hidden until a message asks for them, rather than made and
+     * unmade around the two that do: the sitemap box is re-created on every
+     * retry, and a footer that came and went with it would blink.
+     *
+     * The footer is what gets hidden, not the button. lv_msgbox_footer_class
+     * has a fixed height rather than a content-sized one, so a footer with
+     * nothing showing in it is a strip of dead box; hidden, it is skipped by
+     * the flex layout and costs nothing. */
+    lv_obj_t *footer = NULL;
+    lv_obj_t *restart_btn = NULL;
 
     /* The topic as it was given. The title bar is one line, so its label dots
      * a topic that does not fit -- and LV_LABEL_LONG_DOT writes those dots
@@ -104,6 +140,10 @@ private:
      * that has something new to say -- a box that has been folded is dismissed
      * for that message, not for every message after it. */
     bool folded = false;
+
+    /* Whether this message offers a restart. Per message, like the severity:
+     * create() clears it, and the caller states it again if it still holds. */
+    bool restart_offered = false;
 
     /* What the box on screen is *saying*, as a hash, so that saying it again
      * does not sound again.
@@ -123,10 +163,12 @@ private:
     static bool covered;
 
     void build(void);
+    void restyle(void);
     void refresh(void) const;
     void fold(void);
 
     static void fold_event(lv_event_t *e);
+    static void restart_event(lv_event_t *e);
 };
 
 /* The two boxes this firmware has, declared where the class is so that the

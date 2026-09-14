@@ -391,6 +391,12 @@ static void ohez_loop(void)
              * middle of an OTA upload. */
             openhab_ui_set_wifi_state(false);
             messagebox.create(messagebox.WARNING, "WLAN", "NOT CONNECTED", 0);
+
+            /* With a restart under it. wlan_loop() will keep trying by itself
+             * and usually gets there, but a radio that has stopped answering
+             * is one of the two faults this panel cannot talk its way out of,
+             * and this is the offer that replaced rebooting unasked. */
+            messagebox.offerRestart();
         }
     }
 
@@ -419,6 +425,7 @@ static void ohez_loop(void)
         else if (wlan_state() != WLAN_ONLINE)
         {
             messagebox.create(messagebox.WARNING, "WLAN", "NOT CONNECTED", 0);
+            messagebox.offerRestart();
         }
     }
 

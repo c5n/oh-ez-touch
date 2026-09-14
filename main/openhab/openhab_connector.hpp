@@ -28,8 +28,8 @@
  *   <website>/icon/<icon_name>?state=<state_text>&format=png
  * which with the fields above needs 128 + 6 + 32 + 7 + 32 + 12 = 217. It used
  * to be built into a STR_LINK_LEN buffer, so a long host and a long state
- * truncated it silently -- and a truncated URL fails every request, which is
- * what the connection-error watchdog counts before it reboots the panel. */
+ * truncated it silently -- and a truncated URL fails every request, which the
+ * connection-error statistics then count. */
 #define STR_URL_LEN 256
 
 

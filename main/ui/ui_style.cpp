@@ -615,7 +615,7 @@ void ui_style_init(void)
 
     /* The severity fill. Additive over ui_style_win_header rather than over the
      * style above: it is the title bar that carries the severity, not the whole
-     * box -- see the comment in Messagebox::create(). */
+     * box -- see the comment in Messagebox::restyle(). */
     lv_style_set_bg_color(&ui_style_info_warning, lv_color_hex(theme->info_warning_bg));
     lv_style_set_bg_color(&ui_style_info_error, lv_color_hex(theme->info_error_bg));
 

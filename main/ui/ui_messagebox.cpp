@@ -152,20 +152,65 @@ void Messagebox::build(void)
      * all three come up transparent, borderless and unpadded. That is why the
      * bar above had to be given a surface by hand. */
     lv_obj_set_style_pad_all(lv_msgbox_get_content(mb), PAD_CONTENT, 0);
+
+    /* ---- the restart button ----
+     *
+     * Last, because the footer is a child like any other and the box is a flex
+     * column: the header is moved to index 0 by the widget, the content was
+     * made by the constructor, and this lands under both.
+     *
+     * Content-sized, against the class defaults -- the footer is a fixed
+     * LV_DPI_DEF / 3 tall and the button 100 % of that, which on a 240 px
+     * panel is a bar deeper than most of the messages it sits under. Content
+     * both ways instead, with the bottom padding the content area already
+     * carries so the button is not flush against the border. */
+    restart_btn = lv_msgbox_add_footer_button(mb, "Restart");
+    footer = lv_msgbox_get_footer(mb);
+
+    lv_obj_set_height(footer, LV_SIZE_CONTENT);
+    lv_obj_set_style_pad_bottom(footer, PAD_CONTENT, 0);
+    lv_obj_set_height(restart_btn, LV_SIZE_CONTENT);
+
+    /* The same styling as the fold button above, and for the same reason: a
+     * footer button arrives at its class's bare defaults, and every other
+     * button in this UI acknowledges a press. */
+    lv_obj_add_style(restart_btn, &ui_style_btn, LV_PART_MAIN);
+    lv_obj_add_style(restart_btn, &ui_style_btn_checked,
+                     ui_style_selector(LV_PART_MAIN, LV_STATE_PRESSED));
+    ui_motion_pressable(restart_btn);
+
+    /* Flat, whatever the family does with its buttons. restyle() replaces the
+     * fill with the title bar's and JARVIS gives its buttons a vertical
+     * gradient, so with the gradient left in place the button ran from the
+     * bar's colour into the theme's dark end and came out neither. A property
+     * of this button rather than of the theme, so it is set once. */
+    lv_obj_set_style_bg_grad_dir(restart_btn, LV_GRAD_DIR_NONE, 0);
+
+    /* No user data, unlike the fold button: there is one thing this can do and
+     * it is the same for both boxes. */
+    lv_obj_add_event_cb(restart_btn, restart_event, LV_EVENT_CLICKED, NULL);
+
+    /* Nothing offers it yet. create() says so again on every message. */
+    lv_obj_add_flag(footer, LV_OBJ_FLAG_HIDDEN);
 }
 
-void Messagebox::create(enum messagebox_type_e type, const char *topic,
-                        const char *text, uint16_t timeout)
+/* Everything the box wears that comes from the theme table rather than from
+ * the message: the severity fill and its ink, the two faces, and the sizes of
+ * the two buttons.
+ *
+ * Called by create(), and again by restyle_all() when the theme changes under
+ * a box that is already up. ui_style_apply() refills the shared styles in
+ * place and reports them, which repaints everything a box wears by reference
+ * -- but these are local properties worked out from the table, and a style
+ * refresh cannot redo those. Before this was its own function they were simply
+ * left standing: a box raised under JARVIS and still up when the panel went
+ * back to Slate kept JARVIS's black title ink, on Slate's dark red bar. */
+void Messagebox::restyle(void)
 {
-    const struct ui_theme_s *t = ui_style_theme();
-
     if (mb == NULL)
-    {
-#if CONFIG_OHEZ_DEBUG_UI_MESSAGEBOX
-        printf("Messagebox::create: Topic: %s   Text: %s\r\n", topic, text);
-#endif
-        build();
-    }
+        return;
+
+    const struct ui_theme_s *t = ui_style_theme();
 
     /* The severity is the colour of the title bar, and of nothing else.
      *
@@ -175,38 +220,56 @@ void Messagebox::create(enum messagebox_type_e type, const char *topic,
      * to read as severity against the *panel* -- the words were left to fend
      * for themselves. A bar is a small enough surface to give an ink of its
      * own, and it is also what the frame's indicator wears, so the two say the
-     * same thing in the same colour.
-     *
-     * Outside the build() guard above, unlike the widget setup: main.cpp calls
-     * create() again on a live box to report the next WLAN state, and a
-     * severity set only on the first call meant an error kept the colour of
-     * the info that preceded it. */
+     * same thing in the same colour. */
     lv_obj_t *bar = lv_msgbox_get_header(mb);
 
     lv_obj_remove_style(bar, &ui_style_info_warning, LV_PART_MAIN);
     lv_obj_remove_style(bar, &ui_style_info_error, LV_PART_MAIN);
+    lv_obj_remove_style(restart_btn, &ui_style_info_warning, LV_PART_MAIN);
+    lv_obj_remove_style(restart_btn, &ui_style_info_error, LV_PART_MAIN);
 
-    if (type == INFO)
+    if (kind == INFO)
     {
         /* Back to the header surface entire -- fill and ink both. Removing the
          * local property rather than setting a colour, because what belongs
-         * there is whatever the variant chose for its own headers. */
+         * there is whatever the variant chose for its own headers. The button
+         * goes back to the theme's own, which is the one case it is left on:
+         * no message that offers a restart is an info, and if one ever is it
+         * will want the same treatment the two below get. */
         lv_obj_remove_local_style_prop(bar, LV_STYLE_TEXT_COLOR, 0);
+        lv_obj_remove_local_style_prop(restart_btn, LV_STYLE_TEXT_COLOR, 0);
     }
     else
     {
-        uint32_t fill = (type == WARNING) ? t->info_warning_bg : t->info_error_bg;
+        lv_style_t *severity = (kind == WARNING) ? &ui_style_info_warning
+                                                 : &ui_style_info_error;
+        uint32_t    fill = (kind == WARNING) ? t->info_warning_bg : t->info_error_bg;
 
-        lv_obj_add_style(bar, (type == WARNING) ? &ui_style_info_warning : &ui_style_info_error,
-                         LV_PART_MAIN);
+        lv_obj_add_style(bar, severity, LV_PART_MAIN);
         lv_obj_set_style_text_color(bar, bar_ink(fill), 0);
+
+        /* The Restart button takes the bar's fill rather than the theme's own
+         * button surface, and has to: ui_style_info and ui_style_btn are the
+         * same colour in four of the six variants -- a panel and a button are
+         * the same kind of surface in Slate and in LCARS -- so a button
+         * painted the usual way and then put on this box sinks into it. Slate
+         * and JARVIS save it with the hairline border they give their buttons;
+         * LCARS gives its none, and there the word sat on the panel with
+         * nothing around it at all.
+         *
+         * The bar has already solved exactly this, in every variant, or its
+         * title would not be readable either. Only the fill and the ink come
+         * from it: the radius, the padding and the press feedback stay the
+         * theme's, so it is still that family's button. The same shared style
+         * the bar wears, so a theme change repaints both without help. */
+        lv_obj_add_style(restart_btn, severity, LV_PART_MAIN);
+        lv_obj_set_style_text_color(restart_btn, bar_ink(fill), 0);
     }
 
     /* Square, and sized from the face rather than left at the header button
-     * class's LV_DPI_DEF / 3 by 100%. Done here rather than in build() so that
-     * a theme change is picked up by the next message: the three families'
-     * faces differ by several pixels at the same nominal size, and the bar is
-     * content-sized around this. */
+     * class's LV_DPI_DEF / 3 by 100%: the three families' faces differ by
+     * several pixels at the same nominal size, and the bar is content-sized
+     * around this. */
     int32_t btn = lv_font_get_line_height(t->font_small) + 8;
 
     lv_obj_set_size(fold_btn, btn, btn);
@@ -214,10 +277,40 @@ void Messagebox::create(enum messagebox_type_e type, const char *topic,
     /* The caption face, not the state-line face the box inherits from
      * ui_style_info. At 22 px a sitemap URL filled the screen and a two-word
      * topic needed two lines; at 16 px the box is the size of the thing it has
-     * to say. Here rather than in build(), for the same reason as the button:
-     * the face is the theme's, and the theme can change under a live box. */
+     * to say. */
     lv_obj_set_style_text_font(title, t->font_small, 0);
     lv_obj_set_style_text_font(body, t->font_small, 0);
+}
+
+void Messagebox::restyle_all(void)
+{
+    messagebox.restyle();
+    openhab_ui_messagebox.restyle();
+}
+
+void Messagebox::create(enum messagebox_type_e type, const char *topic,
+                        const char *text, uint16_t timeout)
+{
+    if (mb == NULL)
+    {
+#if CONFIG_OHEZ_DEBUG_UI_MESSAGEBOX
+        printf("Messagebox::create: Topic: %s   Text: %s\r\n", topic, text);
+#endif
+        build();
+    }
+
+    /* Before restyle(), which reads it. Outside the build() guard above,
+     * unlike the widget setup: main.cpp calls create() again on a live box to
+     * report the next WLAN state, and a severity applied only on the first
+     * call meant an error kept the colour of the info that preceded it. */
+    kind = type;
+    restyle();
+
+    /* A new message, so no offer until this one makes it. The caller's
+     * offerRestart() runs before anything is drawn, so a message that does
+     * carry one does not flicker it. */
+    restart_offered = false;
+    lv_obj_add_flag(footer, LV_OBJ_FLAG_HIDDEN);
 
     /* The text goes straight into its label: one caller passes a sitemap URL,
      * which is longer than any buffer worth putting on this stack -- the copy
@@ -258,7 +351,6 @@ void Messagebox::create(enum messagebox_type_e type, const char *topic,
     }
 
     said = now_saying;
-    kind = type;
 
     lv_obj_center(mb);
 
@@ -269,6 +361,32 @@ void Messagebox::create(enum messagebox_type_e type, const char *topic,
 
     refresh();
     refresh_notice();
+}
+
+void Messagebox::offerRestart(void)
+{
+    if (mb == NULL)
+        return;
+
+    /* The box grows by a footer, and re-centres itself: create()'s
+     * lv_obj_center() set an alignment rather than a position, so the next
+     * layout puts the taller box back in the middle without a call here. */
+    restart_offered = true;
+    lv_obj_remove_flag(footer, LV_OBJ_FLAG_HIDDEN);
+}
+
+void Messagebox::restart_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    /* Straight to it, without the settings screen's "Restart the device now?"
+     * -- there the button sits on a screen the user opened for other reasons,
+     * here the box above it is already the prompt, and a fault report with one
+     * button under it does not need a second box to ask whether it meant it.
+     *
+     * Does not return on either target: the simulator exits, which is the same
+     * statement made by a process that cannot reboot itself. */
+    port_restart();
 }
 
 void Messagebox::destroy(void)
@@ -286,10 +404,13 @@ void Messagebox::destroy(void)
         title = NULL;
         body = NULL;
         fold_btn = NULL;
+        footer = NULL;
+        restart_btn = NULL;
         topic[0] = '\0';
         timeout_timestamp = 0;
         said = 0;
         folded = false;
+        restart_offered = false;
 
         refresh_notice();
 

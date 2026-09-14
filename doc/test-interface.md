@@ -199,7 +199,7 @@ and not one `"topic\ntext"` string.
 
 ```json
 "banner": { "kind": "error", "topic": "SITEMAP ACCESS FAILED",
-            "text": "http://...", "hidden": false }
+            "text": "http://...", "hidden": false, "restart": true }
 ```
 
 `hidden` is true once the box's fold button has been pressed. It is still up,
@@ -207,6 +207,12 @@ and still reported, because the only way back to it is the notice glyph the
 frame shows while a banner exists -- a bell, a warning triangle or a cross, in
 the top right of the status row on every family but LCARS, which lights the
 bottom cell of its spine instead. Tapping that glyph unfolds every folded box.
+
+`restart` is true when the box carries a **Restart** button in its footer,
+which the two faults the panel cannot recover from by itself do: "WLAN NOT
+CONNECTED" and "SITEMAP ACCESS FAILED". There is no confirmation behind it --
+the box is the prompt -- so **do not tap it from a script** unless restarting
+the target is the point. On the simulator it ends the process.
 
 **`page.state` is the field to wait on.** It is the fetch cycle the tiles come
 out of -- `idle`, `request`, `waiting`, `ready` -- and acting on a page before

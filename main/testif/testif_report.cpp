@@ -156,6 +156,11 @@ static void add_banner(JsonDocument &doc)
      * indicator. Still up, so still reported -- a test that taps the indicator
      * needs to be able to see that it worked. */
     banner["hidden"] = up->isFolded();
+
+    /* Whether this one carries the Restart button in its footer. Reported for
+     * the same reason as `hidden`: it is a button a test can be told to find,
+     * and the one thing on the panel that must never be tapped by accident. */
+    banner["restart"] = up->offersRestart();
 }
 
 const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_size)
