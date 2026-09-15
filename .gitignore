@@ -19,6 +19,10 @@ state/
 # openHAB classic icon set is EPL-2.0, incompatible with this project's GPL-3.0.
 main/sim/icon_fixture_data.h
 
+# The same icon set, rasterized by tools/fetch_openhab_icons.py. Not committed
+# for the same reason.
+openhab-icons/
+
 # Editor / IDE
 .vscode/
 .idea/

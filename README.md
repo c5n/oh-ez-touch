@@ -198,6 +198,20 @@ and one of `inkscape`, `rsvg-convert` or ImageMagick. Until it has been run,
 offline mode draws the widgets without icons, just as the firmware does when an
 icon request fails.
 
+To look at the icon set itself rather than at the fixture -- to see what a name
+resolves to before putting it in a sitemap, or to fill an `/icon/` mock --
+`tools/fetch_openhab_icons.py` fetches the whole classic set as PNG files:
+
+```bash
+tools/fetch_openhab_icons.py                    # all of it, 32x32, into openhab-icons/
+tools/fetch_openhab_icons.py --size 64          # bigger
+tools/fetch_openhab_icons.py light heating      # named icons and their state variants
+```
+
+State variants land next to their default (`light.png`, `light-on.png`,
+`light-off.png`), the way openHAB serves them. Its output directory is ignored
+by git for the same licensing reason.
+
 #### Environment overrides
 
 The `OHEZ_*` variables are applied after the config file, so it can be inspected
