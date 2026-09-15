@@ -102,6 +102,30 @@ static bool session_prepare(const char *url, esp_http_client_method_t method)
 {
     char origin[STR_AUTHORITY_LEN];
 
+    /* Whatever the last response left behind, this one does not inherit it.
+     *
+     * esp_http_client caches a body that arrives in the same read as the
+     * headers, and hands it to the next esp_http_client_read() from that cache
+     * before it touches the socket. The cache belongs to the *handle*, not to
+     * the request: esp_http_client_close() does not free it, and this file
+     * keeps one handle for the life of the panel.
+     *
+     * So a body this file never reads stays on the handle and is served as the
+     * beginning of the next response. It does not read one whenever the status
+     * is not 200 -- and openHAB answers a missing icon with an 11 KB HTML error
+     * page, which is both larger than the 5000 byte icon buffer and larger than
+     * anything a short read can drain. The next sitemap page then parses that
+     * HTML as its JSON, and the read after that trips
+     * `assert(orig_raw_data == raw_data)` inside http_on_body() and aborts the
+     * firmware. A panel pointed at a stock openHAB 5 -- whose icon sets are
+     * SVG-only, so every icon 404s -- died within a second of its first fetch.
+     *
+     * Clearing it here rather than after the failure is deliberate: it holds
+     * whether the last request bailed on a status, was truncated on purpose,
+     * or succeeded, and it is the invariant the handle cannot provide itself. */
+    if (session != NULL)
+        esp_http_client_clear_response_buffer(session);
+
     if (url_origin(url, origin, sizeof(origin)) == false)
     {
         ESP_LOGE(TAG, "no server in the URL: %s", url);
