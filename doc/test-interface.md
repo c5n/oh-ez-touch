@@ -62,7 +62,7 @@ tools/ohez_ctl.py tap 160 120
 tools/ohez_ctl.py tap-tile 4
 tools/ohez_ctl.py tap-label "Hallway Dimmer"
 tools/ohez_ctl.py longpress 160 120
-tools/ohez_ctl.py swipe right                # the back gesture
+tools/ohez_ctl.py swipe right                # a drag; the panel ignores it
 tools/ohez_ctl.py shot /tmp/panel.png --scale 2
 tools/ohez_ctl.py set theme lcars
 tools/ohez_ctl.py quit
@@ -117,8 +117,19 @@ and quietly tests the wrong widget.
 | `swipe <x1> <y1> <x2> <y2> [ms]` | an explicit drag, over 200 ms by default |
 | `press <x> <y>` / `move <x> <y>` / `release` | the primitives, for a drag nothing above describes |
 
-`swipe right` is how an item screen is dismissed -- the same gesture a finger
-makes -- and `swipe up` scrolls a settings list.
+**The panel has no swipe gestures.** `swipe` still sends a real drag, and a
+drag on a scrollable widget still scrolls it -- `swipe up` scrolls a settings
+list, and dragging a slider still moves it -- but a swipe never navigates, and
+it never activates whatever is under it. An item screen is dismissed by its
+back bar (`tap 20 20`) or by `settings`/`nav`, not by a gesture.
+
+That was not always so, and the history is worth knowing because a test written
+against the old behaviour still passes for the wrong reason. There was never a
+gesture handler on a tile page: a swipe "went back" only in the Default theme,
+where the back tile sits where a right-swipe begins, and LVGL delivered the
+click to it. In LCARS the same swipe opened the settings screen and in JARVIS
+it did nothing -- and a swipe across the top row of a page turned a light on.
+`main/ui/ui_input.c` is where that was closed off.
 
 `press` leaves the pointer down until something lifts it. `move` carries
 whatever state it is in, so it drags after a `press` and merely travels without
@@ -276,6 +287,12 @@ These are the ones that will otherwise cost an hour.
 - **A hold under 20 ms is refused**, because a press that short can fall
   between two of LVGL's input reads and be missed entirely. The default 60 ms
   is well clear of that and well under the 400 ms that makes a long press.
+- **A swipe does nothing to the UI.** It is not an error and not a no-op at
+  the transport level -- the pointer really moves -- but nothing is navigated
+  and nothing is pressed. Use `tap-tile 0` to go up a page, the back bar at
+  `tap 20 20` to leave an item screen, and `nav` to jump. The two notes below
+  are still true of the drag itself, and still matter for scrolling and for
+  dragging a slider.
 - **A slower swipe is *less* likely to register than a fast one.** LVGL only
   counts movement towards a gesture on reads that moved at least 3 px, and
   needs more than 50 px in total. Spreading a short swipe over a long duration

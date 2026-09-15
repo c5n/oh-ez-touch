@@ -115,18 +115,6 @@ static void back_event(lv_event_t *e)
     item_screen_close();
 }
 
-/* Swipe right to go back, as well as the bar.
- *
- * Additive only. The ArduiTouch panels are resistive, where a swipe is
- * unreliable, so this is never the only way out -- the bar above is. */
-static void gesture_event(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    if (lv_indev_get_gesture_dir(lv_indev_active()) == LV_DIR_RIGHT)
-        item_screen_close();
-}
-
 void item_screen_open(Item *item, uint8_t slot)
 {
     const struct item_screen_dsc_s *dsc;
@@ -149,7 +137,12 @@ void item_screen_open(Item *item, uint8_t slot)
 
     view.screen = ui_screen_create();
 
-    lv_obj_add_event_cb(view.screen, gesture_event, LV_EVENT_GESTURE, NULL);
+    /* No swipe-to-go-back. This was the firmware's only LV_EVENT_GESTURE
+     * handler, and taking it away is half of the panel's no-swipes policy --
+     * ui_input.c is the other half and explains both. The back bar below was
+     * always the reliable way out: these panels are resistive, where a swipe
+     * was never dependable, and the same gesture meant three different things
+     * in the three themes. */
 
     /* Always a chevron: there is always a page under an item screen. */
     ui_back_bar(view.screen, LV_SYMBOL_LEFT, item->getLabel(), back_event);

@@ -7,6 +7,7 @@
 #include "port_indev.h"
 
 #include "drivers/sdl/lv_sdl_mouse.h"
+#include "ui/ui_input.h"
 
 void port_indev_init(lv_display_t *disp)
 {
@@ -15,5 +16,5 @@ void port_indev_init(lv_display_t *disp)
      * device, where the touch panel has to be told which display it is on. */
     (void)disp;
 
-    lv_sdl_mouse_create();
+    ui_input_disable_swipes(lv_sdl_mouse_create());
 }

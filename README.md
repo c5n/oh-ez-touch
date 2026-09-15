@@ -312,7 +312,7 @@ pristine device.
 
 Everything above arranges a state at boot and then leaves you watching a
 window. The simulator also listens on **127.0.0.1:8781** for commands: send a
-tap or a swipe, ask what is on screen, read the telemetry, pull the
+tap or a drag, ask what is on screen, read the telemetry, pull the
 framebuffer.
 
 ```bash

@@ -35,6 +35,7 @@
 #include "port_display.h"
 
 #include "testif_internal.hpp"
+#include "ui/ui_input.h"
 
 /* Room for the longest gesture plus its edges. A 400 ms swipe is 25 steps at
  * the read period below, so this holds two of them back to back. */
@@ -149,6 +150,11 @@ void testif_touch_init(void)
 
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, read_cb);
+
+    /* The same policy the finger gets. A script that swipes has to see exactly
+     * what a hand would see, or the interface stops being a way to test the
+     * panel and becomes a second, more permissive one. */
+    ui_input_disable_swipes(indev);
 }
 
 /* ------------------------------------------------------------------ presses */

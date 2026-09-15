@@ -33,6 +33,7 @@
 #include "esp_log.h"
 
 #include "port_sys.h"
+#include "ui/ui_input.h"
 
 #if OHEZ_TOUCH_XPT2046
 #include "esp_lcd_touch_xpt2046.h"
@@ -253,4 +254,6 @@ void port_indev_init(lv_display_t *disp)
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, read_cb);
     lv_indev_set_display(indev, disp);
+
+    ui_input_disable_swipes(indev);
 }

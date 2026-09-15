@@ -87,6 +87,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_player.cpp"
     "ui/items/item_color.cpp"
     "ui/ui_beep.cpp"
+    "ui/ui_input.c"
     "ui/ui_beep_tables.cpp"
     "ui/ui_messagebox.cpp"
     "ui/ui_motion.cpp"
