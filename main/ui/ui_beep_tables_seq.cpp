@@ -314,19 +314,22 @@ TUNE(hud_link,      N(1600, 2500, 170, 0, VOL, SWELL, SHIMMER));
 TUNE(hud_link_back, N(2500, 1600, 170, 0, VOL, SWELL, SHIMMER));
 
 /* The holographic panel materialising: a G major triad, one note at a time. */
-TUNE(hud_screen,     N(1568, 1568, 80, 0, VOL, BLOOM, SHIMMER),
-                     N(1976, 1976, 60, 0, VOL, BLOOM, SHIMMER),
-                     N(2349, 2349, 60, 0, VOL, BLOOM, SHIMMER));
-TUNE(hud_screen_out, N(2349, 2349, 60, 0, VOL, BLOOM, SHIMMER),
-                     N(1976, 1976, 60, 0, VOL, BLOOM, SHIMMER),
-                     N(1568, 1568, 80, 0, VOL, SWELL, SHIMMER));
+/* No vibrato on these: a sixty-millisecond note is shorter than one period of
+ * the slowest LFO here, and an ornament that does not complete is a bend. The
+ * bloom is what carries them. */
+TUNE(hud_screen,     T(1568, 80, 0, VOL, BLOOM),
+                     T(1976, 60, 0, VOL, BLOOM),
+                     T(2349, 60, 0, VOL, BLOOM));
+TUNE(hud_screen_out, T(2349, 60, 0, VOL, BLOOM),
+                     T(1976, 60, 0, VOL, BLOOM),
+                     T(1568, 80, 0, VOL, SWELL));
 
 TUNE(hud_notify,    N(1760, 2093, 120, 0, VOL, SWELL, SHIMMER));
 
 /* Slow and deep. Tension rather than a klaxon: this family does not shout, it
  * worries -- and a siren on one voice worries better than a minor second on
  * two did. */
-TUNE(hud_warning,   NR(1568, 1568, 120, 60, VOL, SWELL, SIREN, 2));
+TUNE(hud_warning,   NR(1568, 1568, 250, 60, VOL, SWELL, SIREN, 2));
 
 /* Falling away and breathing, and staying inside the band: this family's alarm
  * is unease rather than a whoop, so it does not take the exemption the other

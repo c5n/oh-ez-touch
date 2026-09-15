@@ -272,6 +272,50 @@ static void test_the_contact_layer_is_quieter_than_the_rest(void)
     }
 }
 
+static void test_no_note_carries_an_lfo_slower_than_itself(void)
+{
+    /* An LFO slower than the note carrying it is not an ornament, it is a
+     * pitch bend or a fade: the note ends partway up the first rise and never
+     * comes back down. That is a different sound from the one the preset's name
+     * promises, and it is invisible in the table -- the note looks like it has
+     * a vibrato and the effect row looks like a vibrato.
+     *
+     * It caught three rows the first time these tables were walked. SHIMMER was
+     * 5.5 Hz, a lovely violin vibrato, getting a third of a cycle into a
+     * sixty-millisecond arpeggio note; SIREN was 2 Hz against a note an eighth
+     * of that period long. Both are faster now, and this is what keeps them
+     * honest against a table that shortens a note later.
+     *
+     * One period, not two. Two would be the better sound and would rule out
+     * half the places these are used; one is the floor below which the name on
+     * the row is simply false. */
+    for (int f = 0; f < UI_THEME_FAMILY_COUNT; f++)
+    {
+        for (int s = 0; s < UI_SOUND_COUNT; s++)
+        {
+            const struct beeper_seq_s *tune = &ui_tune_sets[f]->chime[s];
+
+            for (uint8_t i = 0; i < tune->count; i++)
+            {
+                const struct beeper_seq_note_s *n  = &tune->notes[i];
+                const struct beeper_seq_fx_s   *fx = beeper_seq_fx_preset(n->fx);
+                uint16_t                        rate;
+
+                rate = (fx->vib_rate_chz > fx->trem_rate_chz) ? fx->vib_rate_chz
+                                                              : fx->trem_rate_chz;
+
+                if (rate == 0)
+                    continue;
+
+                /* One period in milliseconds is 100000 / rate_chz. */
+                TEST_ASSERT_TRUE_MESSAGE(
+                    (uint32_t)n->duration_ms * rate >= 100000u,
+                    where(f, (enum ui_sound_e)s));
+            }
+        }
+    }
+}
+
 static void test_every_preset_is_used_by_somebody(void)
 {
     /* The converse of "every note names a preset that exists", and the reason
@@ -364,6 +408,7 @@ void test_ui_beep_tunes_run(void)
 
     RUN_TEST(test_every_note_names_a_preset_that_exists);
     RUN_TEST(test_the_contact_layer_is_quieter_than_the_rest);
+    RUN_TEST(test_no_note_carries_an_lfo_slower_than_itself);
     RUN_TEST(test_every_preset_is_used_by_somebody);
     RUN_TEST(test_each_family_sounds_like_itself);
 }

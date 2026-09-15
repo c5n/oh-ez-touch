@@ -32,13 +32,22 @@ static const struct beeper_seq_env_s env_table[BEEPER_SEQ_ENV_COUNT] = {
  *
  * Every rate is at or under BEEPER_SEQ_LFO_MAX_CHZ, and a host test says so:
  * above it the wobble aliases against BEEPER_SEQ_STEP_MS and the panel stops
- * sounding like the simulator. */
+ * sounding like the simulator.
+ *
+ * There is a floor as well as a ceiling, and it caught three of these rows when
+ * the tables were first walked: an LFO slower than the note that carries it is
+ * not an ornament, it is a pitch bend. SHIMMER was 5.5 Hz, which is a lovely
+ * violin vibrato and got less than half a cycle into a sixty-millisecond
+ * arpeggio note; SIREN was 2 Hz against a note of an eighth of that period, so
+ * it rose and never came back. Both are faster now, and the rule -- a note
+ * carrying an LFO is at least one period long -- is a host test rather than
+ * this paragraph. */
 static const struct beeper_seq_fx_s fx_table[BEEPER_SEQ_FX_COUNT] = {
     [BEEPER_SEQ_FX_NONE]    = {   0,    0,   0,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
     [BEEPER_SEQ_FX_GLIDE]   = {   0,    0,   0,   0, BEEPER_SEQ_SWEEP_GLIDE,  0},
-    [BEEPER_SEQ_FX_SHIMMER] = { 550,    0,  12,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
-    [BEEPER_SEQ_FX_WOBBLE]  = {1200,    0,  45,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
-    [BEEPER_SEQ_FX_SIREN]   = { 200,    0, 120,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
+    [BEEPER_SEQ_FX_SHIMMER] = {1200,    0,  12,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
+    [BEEPER_SEQ_FX_WOBBLE]  = {1500,    0,  45,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
+    [BEEPER_SEQ_FX_SIREN]   = { 400,    0, 120,   0, BEEPER_SEQ_SWEEP_LINEAR, 0},
     [BEEPER_SEQ_FX_BREATHE] = {   0,  500,   0,  90, BEEPER_SEQ_SWEEP_LINEAR, 0},
     [BEEPER_SEQ_FX_PULSE]   = {   0, 1600,   0, 200, BEEPER_SEQ_SWEEP_LINEAR, 0},
     [BEEPER_SEQ_FX_CHIRP]   = {   0, 2000,   0, 120, BEEPER_SEQ_SWEEP_GLIDE,  0},

@@ -235,9 +235,13 @@ static void test_a_vibrato_stays_within_its_depth_of_the_carrier(void)
         TEST_ASSERT_TRUE(f <= 2000 + swing);
         TEST_ASSERT_TRUE(f >= 2000 - swing);
 
-        if (f > 2000 + swing - 4)
+        /* Nine tenths of the way rather than all of it: the triangle is
+         * sampled here at whole milliseconds, and whether one of those lands on
+         * the peak depends on the rate. The question is whether the depth is
+         * real, not whether the grid is lucky. */
+        if (f >= 2000 + (swing * 9) / 10)
             high = true;
-        if (f < 2000 - swing + 4)
+        if (f <= 2000 - (swing * 9) / 10)
             low = true;
     }
 
