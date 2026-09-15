@@ -9,12 +9,16 @@
  * backlight's timeout state machine does.
  *
  * The one exception is port_beeper_render(), and it is a deliberate crack in
- * this header's usual rule against knowing anything above it -- see there.
+ * this header's usual rule against knowing anything above it -- see there. It
+ * is one prototype wide rather than a whole header, because beeper_common.h
+ * took the tone path out of it: a level and a band are properties of the piezo,
+ * not of whichever engine is arranging the notes.
  */
 #ifndef PORT_BEEPER_H
 #define PORT_BEEPER_H
 
-#include "control/beeper_mixer.h"
+#include "control/beeper_common.h"
+#include "control/beeper_mixer.h" /* port_beeper_render() only; see there */
 
 #include <stdbool.h>
 #include <stdint.h>

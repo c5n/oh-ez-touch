@@ -61,6 +61,7 @@ endif()
 # look here first.
 set(OHEZ_CONTROL_SRCS
     "control/backlight_control.cpp"
+    "control/beeper_common.c"
     "control/beeper_control.cpp"
     "control/beeper_mixer.c")
 

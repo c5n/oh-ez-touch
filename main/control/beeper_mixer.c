@@ -2,6 +2,10 @@
  * @file beeper_mixer.c
  *
  * See beeper_mixer.h. Pure arithmetic, no clock and no hardware.
+ *
+ * beeper_level_permille() used to live here. It is beeper_common.c's now,
+ * because both engines apply the same master the same way and the test that
+ * pins it to sixty-three counts of duty is a promise about the panel.
  */
 #include "beeper_mixer.h"
 
@@ -84,14 +88,6 @@ bool beeper_voice_sample(const struct beeper_voice_s *v, uint32_t t_ms,
     }
 
     return false;
-}
-
-uint16_t beeper_level_permille(uint8_t level, uint8_t master)
-{
-    if (master > 100)
-        master = 100;
-
-    return (uint16_t)(((uint32_t)level * (uint32_t)master * 10u) / 255u);
 }
 
 uint16_t beeper_slot_gain(uint16_t level, uint8_t voices)

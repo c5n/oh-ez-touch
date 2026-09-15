@@ -3,9 +3,14 @@
  *
  * What a chime is, and the arithmetic that turns one into a tone on a pin.
  *
+ * One of the two beeper engines -- see CONFIG_OHEZ_BEEPER_ENGINE -- and the
+ * optional one. The default is beeper_seq.h, which spends the same single tone
+ * on one expressive note instead of three interleaved ones. What both of them
+ * and the port layer agree on lives in beeper_common.h.
+ *
  * Deliberately free of every dependency -- no FreeRTOS, no esp_log, no port
- * layer, nothing but <stdint.h>. Three callers need it and they have nothing
- * else in common: beeper_control.cpp walks it from a task on the device, the
+ * layer, nothing but <stdint.h> and the header just named, which is the same
+ * rule again. Three callers need it and they have nothing else in common: beeper_control.cpp walks it from a task on the device, the
  * simulator's port_beeper.c walks it from an SDL audio callback at sample
  * resolution, and test/host walks it from Unity with no clock at all. Every
  * function here is pure, and that is a requirement rather than a property --
@@ -47,6 +52,8 @@
 #ifndef BEEPER_MIXER_H
 #define BEEPER_MIXER_H
 
+#include "beeper_common.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -72,18 +79,6 @@ extern "C" {
 
 /* Below this a slot is shorter than two periods. See rule 1 above. */
 #define BEEPER_POLY_MIN_HZ 1000
-
-/* The level scale between the mixer and the port layer, per mille rather than
- * per cent for a reason: the shipped master volume is 25, and on a 0..100
- * scale that would leave a whole envelope twelve steps tall where today a
- * PLUCK decay has fifty. */
-#define BEEPER_LEVEL_MAX 1000
-
-/* The band a small piezo is actually loud in. Advisory here -- the alert
- * sounds break it deliberately -- and enforced by test_ui_beep.cpp, which
- * knows which sounds are allowed to. */
-#define BEEPER_BAND_LO_HZ 1000
-#define BEEPER_BAND_HI_HZ 4000
 
 /* f_start == f_end is a steady note, which is what everything used to be. */
 enum beeper_shape_e
@@ -138,13 +133,6 @@ struct beeper_chime_s
     uint8_t                      count;
 };
 
-/* One voice's turn: what to program, and for BEEPER_SLOT_MS. */
-struct beeper_slot_s
-{
-    uint16_t freq;
-    uint16_t level; /* 0..BEEPER_LEVEL_MAX */
-};
-
 /* The envelope, as a fraction of the peak in 0..255.
  *
  * Duty is amplitude on a piezo, so ramping it is the difference between a
@@ -165,9 +153,6 @@ uint8_t beeper_envelope(uint8_t shape, uint32_t elapsed, uint32_t duration);
  * would steal a third of the frame from the ones that are singing. */
 bool beeper_voice_sample(const struct beeper_voice_s *v, uint32_t t_ms,
                          uint16_t *freq_out, uint8_t *level_out);
-
-/* A note's 0..255 level scaled by the 0..100 master, in 0..BEEPER_LEVEL_MAX. */
-uint16_t beeper_level_permille(uint8_t level, uint8_t master);
 
 /* Put back what interleaving took away.
  *

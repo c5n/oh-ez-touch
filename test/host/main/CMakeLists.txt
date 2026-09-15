@@ -39,8 +39,8 @@
 # somebody outside the process composed, and decides where each argument of a
 # command that presses buttons begins and ends.
 #
-# control/beeper_mixer.c joined them when the beeper went polyphonic, and the
-# split is the same one ui_geometry.hpp already had. beeper_control.cpp is a
+# control/beeper_common.c and control/beeper_mixer.c joined them when the beeper
+# went polyphonic, and the split is the same one ui_geometry.hpp already had. beeper_control.cpp is a
 # queue, a task and vTaskDelay(), none of which can be reached here; what came
 # out of it includes nothing but <stdint.h>, and is the part that decides what
 # every chime on this panel sounds like. It is also the only place any of that
@@ -76,6 +76,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "test_testif_parse.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_common.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
