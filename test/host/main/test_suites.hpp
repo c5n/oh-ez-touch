@@ -24,7 +24,8 @@ void test_item_urls_run(void);
 void test_outputs_run(void);
 void test_sitemap_parse_run(void);
 void test_testif_parse_run(void);
-void test_ui_beep_run(void);
+void test_ui_beep_chimes_run(void);
+void test_ui_beep_tunes_run(void);
 void test_ui_geometry_run(void);
 void test_ui_theme_run(void);
 

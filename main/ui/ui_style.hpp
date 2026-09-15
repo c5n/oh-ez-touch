@@ -7,7 +7,20 @@
 #include "ui_theme.hpp"
 
 struct ui_frame_ops_s;
-struct ui_sound_s;
+
+/* The theme table holds a pointer to a family's sound set, and this header
+ * stays out of ui_beep.hpp on purpose -- ui_beep_tables*.cpp include that one
+ * and must not see LVGL. Which set type it is depends on the engine; repeating
+ * the typedef here is legal and is the whole of the dependency. */
+#include "sdkconfig.h"
+
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+struct ui_tune_set_s;
+typedef struct ui_tune_set_s ui_sound_set_s;
+#else
+struct ui_chime_set_s;
+typedef struct ui_chime_set_s ui_sound_set_s;
+#endif
 
 /* The shared styles of the OhEzTouch UI.
  *
@@ -156,7 +169,7 @@ struct ui_theme_s
 
     /* What it sounds like. Per family, shared by day and night: a theme does
      * not sound different after dark. */
-    const struct ui_sound_s *sound;
+    const ui_sound_set_s *sound;
 };
 
 void ui_style_select(enum ui_theme_family_e family, bool night);

@@ -39,7 +39,8 @@ extern "C" void app_main(void)
     test_item_urls_run();
     test_outputs_run();
     test_sitemap_parse_run();
-    test_ui_beep_run();
+    test_ui_beep_chimes_run();
+    test_ui_beep_tunes_run();
     test_ui_geometry_run();
     test_ui_theme_run();
 

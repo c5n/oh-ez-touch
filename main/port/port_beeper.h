@@ -18,7 +18,19 @@
 #define PORT_BEEPER_H
 
 #include "control/beeper_common.h"
-#include "control/beeper_mixer.h" /* port_beeper_render() only; see there */
+
+/* sdkconfig.h explicitly, because an unset Kconfig bool is undefined rather
+ * than 0 -- see main/debug.h. The #error is what turns a missed include into a
+ * build failure instead of a silently-wrong-engine one. */
+#include "sdkconfig.h"
+
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+#include "control/beeper_seq.h"
+#elif CONFIG_OHEZ_BEEPER_ENGINE_MIXER
+#include "control/beeper_mixer.h"
+#else
+#error "no beeper engine selected -- see CONFIG_OHEZ_BEEPER_ENGINE"
+#endif
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -49,10 +61,14 @@ bool port_beeper_init(void);
 void port_beeper_tone(uint16_t freq, uint16_t level);
 
 /**
- * Play a whole chime here instead, if this target would rather.
+ * Play a whole chime or tune here instead, if this target would rather.
+ *
+ * Two names and not one, because the engines' payloads are different types and
+ * the caller has to say which it is holding -- see beeper_control.hpp for the
+ * same argument about beeper_play_seq().
  *
  * @return false on the panel, where the answer is no and beeper_control walks
- *   the mixer's frames itself, calling port_beeper_tone() per slot. Only the
+ *   the engine's frames itself, calling port_beeper_tone() per step. Only the
  *   simulator returns true.
  *
  * This exists because the simulator cannot honour a two-millisecond slot from
@@ -63,13 +79,17 @@ void port_beeper_tone(uint16_t freq, uint16_t level);
  * matters -- it would sound worse than the hardware, and somebody would
  * "fix" a table that was fine.
  *
- * So the simulator takes the chime and renders it against beeper_mixer_frame()
- * at audio resolution, which is exactly what that function being pure buys.
- * The cost is this header knowing what a chime is, which is a real cost and
- * worth it: the alternative is a second synthesiser, in another language,
- * drifting from this one.
+ * So the simulator takes the chime and renders it against the selected
+ * engine's frame function at audio resolution, which is exactly what those
+ * functions being pure buys. The cost is this header knowing what a chime is,
+ * which is a real cost and worth it: the alternative is a second synthesiser,
+ * in another language, drifting from this one.
  */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+bool port_beeper_render_seq(const struct beeper_seq_s *seq, uint8_t master);
+#else
 bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master);
+#endif
 
 #ifdef __cplusplus
 }

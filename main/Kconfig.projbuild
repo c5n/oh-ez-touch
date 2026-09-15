@@ -55,6 +55,72 @@ config OHEZ_ICONS_BUILTIN
         Turning it off is how to measure what the set costs in flash against
         what it saves in requests.
 
+choice OHEZ_BEEPER_ENGINE
+    prompt "Beeper engine"
+    default OHEZ_BEEPER_ENGINE_MIXER
+    help
+        What the seventeen themed sounds are made of.
+
+        The panel has one piezo on one GPIO with one LEDC timer behind it,
+        and the frequency is a property of the timer -- so there is exactly
+        one tone available at any instant, and that one tone is the entire
+        budget. The two answers below spend it differently. Neither is free,
+        and the choice is a taste one rather than a correctness one.
+
+        Compile-time rather than a setting, because each engine has its own
+        note format and therefore its own tables: the three families'
+        fifty-one sounds are written out twice, once for each, and a panel
+        carries only the set it plays. Making it a runtime switch would put
+        both sets in flash for a choice nobody changes twice.
+
+        The Lanbon L8 has no buzzer, so on that board this decides nothing.
+
+config OHEZ_BEEPER_ENGINE_SEQ
+    bool "Expressive -- melodies, envelopes, sweeps, vibrato and tremolo"
+    help
+        One note at a time, with everything that would have gone on a second
+        voice spent on the note instead.
+
+        A sound is a sequence of any length. Each note has an attack, a
+        decay, a sustain and a release given as proportions of its own
+        duration with a millisecond cap, so one envelope row describes a
+        twelve-millisecond tick and a four-hundred-millisecond boot note and
+        both sound like the same instrument. A note can sweep -- linearly in
+        hertz, or as a glide that walks the period, which is both closer to
+        musical and closer to what a divider actually does. It can carry a
+        vibrato or a tremolo. And it can repeat itself, which is how an alert
+        cadence is written.
+
+        It steps every five milliseconds, so a sounding tune is two hundred
+        wakeups a second -- fewer than a chord costs on the other engine.
+
+        A chord is spelled as an arpeggio here, and that is a real loss: the
+        LCARS blips are stacked fourths and fifths and this cannot stack
+        them. Against it, an interleaved chord on this hardware has a grain
+        on it either way, and two notes nine milliseconds apart read as an
+        interval to most ears. If they do not read that way to yours, the
+        other engine is still here.
+
+config OHEZ_BEEPER_ENGINE_MIXER
+    bool "Polyphonic -- up to three voices interleaved on the one piezo"
+    help
+        Real chords, time-multiplexed: each voice holds the channel for two
+        milliseconds in turn, fast enough that the ear fuses them. This is
+        what the panel shipped with, and it is still the right answer if the
+        stacked intervals are the point of the sound design.
+
+        What it costs: a grain on every chord, because chopping a tone at
+        250 Hz puts sidebands either side of it; a floor of about a kilohertz
+        under anything stacked, since a two-millisecond slot below that is
+        under two cycles and the ear hears the slot rate instead of the note;
+        up to five hundred timer reconfigurations a second from a task that
+        runs above the renderer; and per-note expression limited to the three
+        fixed envelope shapes it was written with -- no vibrato, no tremolo,
+        and no beating between detuned voices, because phase is not carried
+        across a slot boundary.
+
+endchoice
+
 endmenu
 
 menu "Debug output"

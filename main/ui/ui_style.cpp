@@ -149,7 +149,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, ui_sound_default),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, UI_SOUND_SET_DEFAULT),
     },
     {
         UI_THEME_NAME_DEFAULT " Night", UI_THEME_DEFAULT, true,
@@ -175,7 +175,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, ui_sound_default),
+    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, UI_SOUND_SET_DEFAULT),
     },
 
     /* ------------------------------------------------------------------ LCARS
@@ -221,7 +221,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, ui_sound_lcars),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, UI_SOUND_SET_LCARS),
     },
     {
         UI_THEME_NAME_LCARS " Night", UI_THEME_LCARS, true,
@@ -247,7 +247,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, ui_sound_lcars),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, UI_SOUND_SET_LCARS),
     },
 
     /* --------------------------------------------------- JARVIS -- "Reticle"
@@ -289,7 +289,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, ui_sound_jarvis),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, UI_SOUND_SET_JARVIS),
     },
     {
         UI_THEME_NAME_JARVIS " Night", UI_THEME_JARVIS, true,
@@ -315,7 +315,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, ui_sound_jarvis),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, UI_SOUND_SET_JARVIS),
     },
 };
 

@@ -63,10 +63,14 @@ static const char *TAG = "port_beeper";
  * loudness, and every duty step would read as a thump. One pole at 100 Hz. */
 #define HIGHPASS_HZ 100.0
 
+/* Everything except the source and the slots is the same for both engines, and
+ * so is every line of audio_cb() -- the three accessors below are what keeps it
+ * that way. The alternative was a second copy of the SDL device, the highpass
+ * and the pulse generator in a second file, which is a much worse trade than
+ * forty guarded lines. */
 struct render_s
 {
-    const struct beeper_chime_s *chime;
-    uint8_t                      master;
+    uint8_t master;
 
     /* Where the walk has got to. `slot_end` is in samples from the start of
      * the chime, which is the only clock in here. */
@@ -75,9 +79,15 @@ struct render_s
     uint32_t frame_t_ms;
     uint16_t frame_ms;
 
-    struct beeper_slot_s slots[BEEPER_VOICES_MAX];
-    uint8_t              count;
-    uint8_t              index;
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+    const struct beeper_seq_s *seq;
+    struct beeper_slot_s       slot;
+#else
+    const struct beeper_chime_s *chime;
+    struct beeper_slot_s         slots[BEEPER_VOICES_MAX];
+    uint8_t                      count;
+    uint8_t                      index;
+#endif
 
     double phase; /* 0..1 through the current period */
     double hp_x;  /* the high-pass filter's last input and output */
@@ -95,6 +105,55 @@ static uint32_t samples_for(uint16_t ms)
     /* A frame is never zero samples long: the walk advances on the slot
      * boundary, and a boundary that is already behind us would spin. */
     return (n == 0) ? 1u : n;
+}
+
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+
+static bool render_playing(const struct render_s *r) { return r->seq != NULL; }
+static void render_stop(struct render_s *r) { r->seq = NULL; }
+
+/* One tone at a time, so the slot is always the one there is. */
+static const struct beeper_slot_s *render_slot(const struct render_s *r)
+{
+    return &r->slot;
+}
+
+/* Pull the frame after this one. Returns false when the tune is over.
+ *
+ * On the engine's own five-millisecond grid, NOT on a finer one, and that is
+ * deliberate rather than lazy. The oscillator phase below is carried at sample
+ * resolution, but the *parameters* -- the swept pitch, the envelope, the two
+ * LFOs -- are re-evaluated exactly as often as the panel's task re-evaluates
+ * them. Sampling them per sample here would give the simulator a smoother
+ * vibrato than the hardware has, and that is the one direction a simulator must
+ * not be wrong in: it would flatter the panel, and a table tuned against it
+ * would arrive on real glass sounding stepped.
+ *
+ * The phase carrying across a frame boundary is the other half of the same
+ * argument, and it is what the hardware does -- see the note in the mixer's
+ * branch below, which applies here word for word. */
+static bool render_advance(struct render_s *r)
+{
+    r->frame_t_ms += r->frame_ms;
+    r->frame_ms = beeper_seq_frame(r->seq, r->frame_t_ms, r->master, &r->slot);
+
+    if (r->frame_ms == 0)
+        return false;
+
+    r->slot_end += samples_for(r->frame_ms);
+
+    return true;
+}
+
+#else
+
+static bool render_playing(const struct render_s *r) { return r->chime != NULL; }
+static void render_stop(struct render_s *r) { r->chime = NULL; }
+
+/* A frame with no voices sounding is a rest, and a rest programs nothing. */
+static const struct beeper_slot_s *render_slot(const struct render_s *r)
+{
+    return (r->count != 0) ? &r->slots[r->index] : NULL;
 }
 
 /* Take the next slot of the current frame, or pull the frame after it.
@@ -140,6 +199,8 @@ static bool render_advance(struct render_s *r)
     return true;
 }
 
+#endif /* CONFIG_OHEZ_BEEPER_ENGINE_SEQ */
+
 static void audio_cb(void *userdata, Uint8 *stream, int len)
 {
     struct render_s *r       = (struct render_s *)userdata;
@@ -150,19 +211,20 @@ static void audio_cb(void *userdata, Uint8 *stream, int len)
     {
         double level = 0.0;
 
-        while (r->chime != NULL && r->pos >= r->slot_end)
+        while (render_playing(r) == true && r->pos >= r->slot_end)
         {
             if (render_advance(r) == false)
             {
-                r->chime = NULL;
+                render_stop(r);
                 break;
             }
         }
 
-        if (r->chime != NULL && r->count != 0)
-        {
-            const struct beeper_slot_s *slot = &r->slots[r->index];
+        const struct beeper_slot_s *slot =
+            (render_playing(r) == true) ? render_slot(r) : NULL;
 
+        if (slot != NULL)
+        {
             /* The duty the panel would program, as a fraction of the period:
              * BEEPER_LEVEL_MAX maps to the 50 % that is a pulse train's
              * acoustic peak. Generated as a pulse and not as a scaled sine
@@ -177,7 +239,7 @@ static void audio_cb(void *userdata, Uint8 *stream, int len)
             level = (r->phase < duty) ? 1.0 : 0.0;
         }
 
-        if (r->chime != NULL)
+        if (render_playing(r) == true)
             r->pos++;
 
         double y = hp_alpha * (r->hp_y + level - r->hp_x);
@@ -246,15 +308,19 @@ bool port_beeper_init(void)
     return true;
 }
 
-/* Never reached on this target: port_beeper_render() answers yes, so
- * beeper_control never walks the slots itself here. */
+/* Never reached on this target: port_beeper_render*() answers yes, so
+ * beeper_control never walks the steps itself here. */
 void port_beeper_tone(uint16_t freq, uint16_t level)
 {
     (void)freq;
     (void)level;
 }
 
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+bool port_beeper_render_seq(const struct beeper_seq_s *seq, uint8_t master)
+#else
 bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
+#endif
 {
     if (device == 0)
         return false;
@@ -263,7 +329,11 @@ bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
 
     memset(&render, 0, sizeof(render));
 
-    render.chime  = chime;
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+    render.seq = seq;
+#else
+    render.chime = chime;
+#endif
     render.master = master;
 
     /* Prime the walk with the frame at t = 0. slot_end starts at zero, so the

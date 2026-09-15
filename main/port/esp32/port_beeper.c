@@ -123,14 +123,25 @@ void port_beeper_tone(uint16_t freq, uint16_t level)
     (void)ledc_update_duty(BEEPER_MODE, BEEPER_CHANNEL);
 }
 
+/* The panel plays chimes the ordinary way, a step at a time, whichever engine
+ * is arranging them. Only the simulator answers yes here. */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+bool port_beeper_render_seq(const struct beeper_seq_s *seq, uint8_t master)
+{
+    (void)seq;
+    (void)master;
+
+    return false;
+}
+#else
 bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
 {
     (void)chime;
     (void)master;
 
-    /* The panel plays chimes the ordinary way, a slot at a time. */
     return false;
 }
+#endif
 
 #else /* !OHEZ_HAS_BEEPER */
 
@@ -145,6 +156,15 @@ void port_beeper_tone(uint16_t freq, uint16_t level)
     (void)level;
 }
 
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+bool port_beeper_render_seq(const struct beeper_seq_s *seq, uint8_t master)
+{
+    (void)seq;
+    (void)master;
+
+    return false;
+}
+#else
 bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
 {
     (void)chime;
@@ -152,5 +172,6 @@ bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
 
     return false;
 }
+#endif
 
 #endif /* OHEZ_HAS_BEEPER */

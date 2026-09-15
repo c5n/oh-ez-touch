@@ -4,8 +4,9 @@
  * Playing a themed sound: the mute gate, the layering backstop, and the press
  * hook every pressable object goes through.
  *
- * The tables themselves are in ui_beep_tables.cpp, which includes no LVGL so
- * that the host tests can link them. The policy this file enforces is written
+ * The tables themselves are in ui_beep_tables.cpp or ui_beep_tables_seq.cpp
+ * depending on the engine, neither of which includes LVGL so that the host
+ * tests can link both. The policy this file enforces is written
  * out in ui_beep.hpp, and it is worth reading before touching either.
  */
 #include "ui_beep.hpp"
@@ -48,6 +49,31 @@ static bool is_tick_class(enum ui_sound_e sound)
            sound == UI_SOUND_TICK_BACK;
 }
 
+/* Queue the sound, and say how long it will take.
+ *
+ * The one place in this file that knows which engine is compiled in.
+ * Everything else here is policy -- the mute gate, the tick backstop, the press
+ * hook -- and the policy is the same either way. */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+
+static uint32_t ui_beep_queue(const ui_sound_set_s *set, enum ui_sound_e sound)
+{
+    beeper_play_seq(&set->chime[sound]);
+
+    return beeper_seq_duration_ms(&set->chime[sound]);
+}
+
+#else
+
+static uint32_t ui_beep_queue(const ui_sound_set_s *set, enum ui_sound_e sound)
+{
+    beeper_play(&set->chime[sound]);
+
+    return beeper_chime_duration_ms(&set->chime[sound]);
+}
+
+#endif
+
 void ui_beep_play(enum ui_sound_e sound)
 {
     if (enabled == false)
@@ -56,12 +82,10 @@ void ui_beep_play(enum ui_sound_e sound)
     if ((unsigned)sound >= UI_SOUND_COUNT)
         return;
 
-    const struct ui_sound_s *set = ui_style_theme()->sound;
+    const ui_sound_set_s *set = ui_style_theme()->sound;
 
     if (set == NULL)
         return;
-
-    const struct beeper_chime_s *chime = &set->chime[sound];
 
     uint32_t now     = lv_tick_get();
     uint32_t pending = (busy_until > now) ? (busy_until - now) : 0;
@@ -77,13 +101,11 @@ void ui_beep_play(enum ui_sound_e sound)
         last_tick = now;
     }
 
-    beeper_play(chime);
-
     /* An estimate, and deliberately one that errs high: the queue plays chimes
      * one after another, so what is outstanding is whatever was outstanding
      * plus this. Erring high only makes the tick guard keener, which is the
      * safe direction. */
-    busy_until = now + pending + beeper_chime_duration_ms(chime);
+    busy_until = now + pending + ui_beep_queue(set, sound);
 }
 
 void ui_beep_set_enabled(bool en)

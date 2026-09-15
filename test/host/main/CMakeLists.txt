@@ -75,7 +75,8 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_item_urls.cpp"
                             "test_outputs.cpp"
                             "test_sitemap_parse.cpp"
-                            "test_ui_beep.cpp"
+                            "test_ui_beep_chimes.cpp"
+                            "test_ui_beep_tunes.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "test_testif_parse.cpp"
@@ -83,6 +84,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_seq.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables_seq.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/icons/icon_set.cpp"
@@ -115,3 +117,26 @@ set_source_files_properties(
     PROPERTIES COMPILE_DEFINITIONS
                "CONFIG_OHEZ_ICONS_BUILTIN=1;ICON_SET_DATA_HEADER=\"icon_set_fixture.h\""
 )
+
+# Both beeper engines' tables, in one binary, each compiled as though its own
+# engine had been selected.
+#
+# The same reason as above -- this project does not read main/Kconfig.projbuild,
+# so nothing here has heard of CONFIG_OHEZ_BEEPER_ENGINE and every guarded file
+# would take the #error branch. Forced per file rather than for the whole
+# component, because the point is that BOTH sets are checked in one run:
+# fifty-one hand-written sounds each, on a target that is silent, so a missing
+# one is invisible until somebody flashes a panel. The two sets use different
+# type and symbol names precisely so they can be linked side by side -- see the
+# note in ui_beep.hpp.
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/test_ui_beep_chimes.cpp"
+    TARGET_DIRECTORY ${COMPONENT_LIB}
+    PROPERTIES COMPILE_DEFINITIONS "CONFIG_OHEZ_BEEPER_ENGINE_MIXER=1")
+
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables_seq.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/test_ui_beep_tunes.cpp"
+    TARGET_DIRECTORY ${COMPONENT_LIB}
+    PROPERTIES COMPILE_DEFINITIONS "CONFIG_OHEZ_BEEPER_ENGINE_SEQ=1")

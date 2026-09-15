@@ -1,7 +1,20 @@
 #ifndef BEEPER_CONTROL_HPP
 #define BEEPER_CONTROL_HPP
 
+/* sdkconfig.h first and explicitly: an unset Kconfig bool is undefined rather
+ * than 0, so a file that tested CONFIG_OHEZ_BEEPER_ENGINE_SEQ without this in
+ * scope would silently compile against the other engine. Same rule main/debug.h
+ * writes down, and the #error below is what turns a missed include from a
+ * wrong-engine build into a failure. */
+#include "sdkconfig.h"
+
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+#include "beeper_seq.h"
+#elif CONFIG_OHEZ_BEEPER_ENGINE_MIXER
 #include "beeper_mixer.h"
+#else
+#error "no beeper engine selected -- see CONFIG_OHEZ_BEEPER_ENGINE"
+#endif
 
 #include <stdint.h>
 
@@ -15,8 +28,18 @@
  * on the simulator renders the whole chime itself -- see port_beeper_render().
  *
  * What a chime *is*, and the arithmetic that turns one into a frequency and a
- * duty, is beeper_mixer.h. What is left here is the queue, the task, and the
- * delays: the parts that need a clock and cannot be tested without one.
+ * duty, is beeper_seq.h or beeper_mixer.h depending on which engine is
+ * selected -- see CONFIG_OHEZ_BEEPER_ENGINE. What is left here is the queue,
+ * the task, and the delays: the parts that need a clock and cannot be tested
+ * without one, and the parts both engines need identically. That is why this
+ * is one file with two small guarded holes in it rather than two files: the
+ * tick floor below and the overrun resync were hard to get right once, and two
+ * copies of them would drift.
+ *
+ * The queue entry differs between the engines and so does the name that fills
+ * it -- beeper_play_seq() against beeper_play(). Two names rather than one
+ * overloaded one, so that a caller which forgot its own guard fails with "no
+ * member named beeper_play_seq" rather than with a type mismatch.
  *
  * beeper_playNote() used to live here for callers with a loose frequency and
  * nothing to say about shape. It had exactly one, the hard-coded C4 that
@@ -24,10 +47,14 @@
  * else -- so the queue carries a whole chime by value, eight bytes, and no
  * reader of the task has to work out why the note pointer might be null. */
 
-/* Queue a chime. Dropped rather than waited on when the queue is full, and
- * silently ignored when the beeper is disabled: a missed blip is not worth
- * blocking a touch handler for. */
+/* Queue a chime or a tune. Dropped rather than waited on when the queue is
+ * full, and silently ignored when the beeper is disabled: a missed blip is not
+ * worth blocking a touch handler for. */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+void beeper_play_seq(const struct beeper_seq_s *seq);
+#else
 void beeper_play(const struct beeper_chime_s *chime);
+#endif
 
 /* Bring the PWM up, silent. */
 void beeper_setup(void);

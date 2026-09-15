@@ -4,10 +4,14 @@
  * Three families, three voices -- and now, where it earns itself, more than
  * one at a time.
  *
+ * The polyphonic engine's tables -- see CONFIG_OHEZ_BEEPER_ENGINE. The whole
+ * file is guarded, because the other engine has its own fifty-one in
+ * ui_beep_tables_seq.cpp and a panel carries only the set it plays.
+ *
  * Separate from ui_beep.cpp so that the tables can be linked by the host tests,
  * which have no LVGL and no buzzer: everything here includes ui_beep.hpp and
  * <stdint.h> and nothing else, while ui_beep_play() needs ui_style.hpp and
- * therefore <lvgl.h>. Forty-five hand-written chimes on a target that cannot
+ * therefore <lvgl.h>. Fifty-one hand-written chimes on a target that cannot
  * make a sound is exactly the kind of thing that needs a test, because a
  * missing one is invisible until somebody flashes a panel.
  *
@@ -40,6 +44,10 @@
  * no grain to hide, and a dyad is saved for the two moments where something
  * arrives or leaves.
  */
+#include "sdkconfig.h"
+
+#if CONFIG_OHEZ_BEEPER_ENGINE_MIXER
+
 #include "ui_beep.hpp"
 
 /* f_start, f_end, duration, pause, volume, shape */
@@ -147,7 +155,7 @@ static const struct beeper_voice_s slate_boot[]     = {V(slate_boot_lead),
                                                        VAT(slate_boot_pad, 110)};
 
 #define X(name, sym) CHIME(slate_##sym),
-const struct ui_sound_s ui_sound_default = {{UI_SOUND_LIST(X)}};
+const struct ui_chime_set_s ui_chime_default = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------------ LCARS
@@ -254,7 +262,7 @@ static const struct beeper_note_s lcars_wake_b[] = {N(2960, 2960, 35, 0, MED, PL
 static const struct beeper_voice_s lcars_wake[]  = {V(lcars_wake_a), V(lcars_wake_b)};
 
 #define X(name, sym) CHIME(lcars_##sym),
-const struct ui_sound_s ui_sound_lcars = {{UI_SOUND_LIST(X)}};
+const struct ui_chime_set_s ui_chime_lcars = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ----------------------------------------------------------------- Reticle
@@ -348,22 +356,23 @@ static const struct beeper_note_s hud_wake_b[] = {N(2933, 3200, 80, 0, MED, PAD)
 static const struct beeper_voice_s hud_wake[]  = {V(hud_wake_a), V(hud_wake_b)};
 
 #define X(name, sym) CHIME(hud_##sym),
-const struct ui_sound_s ui_sound_jarvis = {{UI_SOUND_LIST(X)}};
+const struct ui_chime_set_s ui_chime_jarvis = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------ enumeration
  *
- * For the host tests, which walk every family against every entry and need
- * something to put in the failure message. Nothing on the device reads either
- * of these: ui_style.cpp's theme table points straight at the three objects. */
+ * For the host tests, which walk every family against every entry. The names
+ * that go with it are in ui_beep.hpp, because both engines' table files would
+ * otherwise define them identically and collide in the one test binary that
+ * links both. Nothing on the device reads this: ui_style.cpp's theme table
+ * points straight at the three objects. */
 
-const char *const ui_sound_names[UI_SOUND_COUNT] = {
-#define X(name, sym) #sym,
-    UI_SOUND_LIST(X)
-#undef X
-};
+const struct ui_chime_set_s *const ui_chime_sets[UI_THEME_FAMILY_COUNT] = {
+    &ui_chime_default,
+    &ui_chime_lcars,
+    &ui_chime_jarvis};
 
-const struct ui_sound_s *const ui_sound_sets[UI_THEME_FAMILY_COUNT] = {
-    &ui_sound_default,
-    &ui_sound_lcars,
-    &ui_sound_jarvis};
+/* No #else, and no stub. icons/icon_set.cpp has one because it declares
+ * functions somebody calls; this file declares only data, and an empty
+ * translation unit is legal C++. */
+#endif /* CONFIG_OHEZ_BEEPER_ENGINE_MIXER */

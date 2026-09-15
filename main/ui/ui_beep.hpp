@@ -10,17 +10,17 @@
  *
  * The honest caveat, and it belongs in the code rather than in a commit
  * message: a piezo on one pin cannot reproduce the sampled sounds these
- * families are named after. It can now play a chord -- see beeper_mixer.h for
- * how, and for what that costs -- which is most of what makes an LCARS blip
- * recognisable, because those are stacked intervals rather than tones. It
- * still cannot do noise, reverb, or a voice. Nobody should read these tables
+ * families are named after. What it can do depends on the engine -- an
+ * interleaved chord under beeper_mixer.h, or an envelope and a wobble under
+ * beeper_seq.h, and see either header for what that costs. It still cannot do
+ * noise, reverb, or a voice under either. Nobody should read these tables
  * expecting a recording.
  *
- * Deliberately free of <lvgl.h>: ui_beep_tables.cpp includes this and nothing
- * else, which is what lets the host tests link forty-five hand-written chimes
- * on a target that has no display and no buzzer. Same argument that keeps
- * ui_geometry.hpp clean. The one function here that needs an object takes it
- * through the forward declaration below.
+ * Deliberately free of <lvgl.h>: the table files include this and nothing
+ * else, which is what lets the host tests link fifty-one hand-written sounds
+ * per engine on a target that has no display and no buzzer. Same argument that
+ * keeps ui_geometry.hpp clean. The one function here that needs an object takes
+ * it through the forward declaration below.
  *
  * ------------------------------------------------------- the layering policy
  *
@@ -114,12 +114,79 @@ enum ui_sound_e
     UI_SOUND_COUNT
 };
 
-/* One per family, shared by its day and night variants -- a theme does not
- * sound different after dark. */
-struct ui_sound_s
+/* The vocabulary's names, for the host tests, which walk every family against
+ * every entry and need something to put in the failure message.
+ *
+ * In the header rather than in a table file, the way ui_theme.hpp already does
+ * it for ui_theme_names[]: there are two table files now, one per engine, and
+ * both of them would otherwise define this identically -- which links fine on
+ * the panel, where only one is compiled, and collides in the host test binary,
+ * where both are. */
+static const char *const ui_sound_names[UI_SOUND_COUNT] = {
+#define X(name, sym) #sym,
+    UI_SOUND_LIST(X)
+#undef X
+};
+
+/* One set per family, shared by its day and night variants -- a theme does not
+ * sound different after dark.
+ *
+ * Two engines, two note formats, so two sets of tables and two types to hold
+ * them. They MUST NOT share a symbol or a struct tag: test/host links both
+ * table files into one binary, because fifty-one hand-written sounds each are
+ * the only place either set is checked at all, and two different definitions of
+ * one `struct ui_sound_s` would be an ODR violation that LTO eventually
+ * notices.
+ *
+ * The firmware compiles exactly one of them. ui_style.hpp holds a
+ * `const ui_sound_set_s *sound`, and ui_style.cpp's six theme rows name
+ * UI_SOUND_SET_DEFAULT / _LCARS / _JARVIS -- so neither of those files has a
+ * preprocessor conditional in it, and this is the only #if in the UI layer.
+ *
+ * Both set structs name their member `chime`, which is what lets ui_beep.cpp's
+ * backstop and mute gate stay engine-blind. A typedef rather than the tag
+ * spelled out is a small deviation from the house style and the smallest one
+ * available: the point is that the name is the same on both sides and only its
+ * meaning changes. */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+
+struct ui_tune_set_s
+{
+    struct beeper_seq_s chime[UI_SOUND_COUNT];
+};
+
+typedef struct ui_tune_set_s ui_sound_set_s;
+
+extern const struct ui_tune_set_s ui_tune_default;
+extern const struct ui_tune_set_s ui_tune_lcars;
+extern const struct ui_tune_set_s ui_tune_jarvis;
+
+extern const struct ui_tune_set_s *const ui_tune_sets[UI_THEME_FAMILY_COUNT];
+
+#define UI_SOUND_SET_DEFAULT ui_tune_default
+#define UI_SOUND_SET_LCARS   ui_tune_lcars
+#define UI_SOUND_SET_JARVIS  ui_tune_jarvis
+
+#else
+
+struct ui_chime_set_s
 {
     struct beeper_chime_s chime[UI_SOUND_COUNT];
 };
+
+typedef struct ui_chime_set_s ui_sound_set_s;
+
+extern const struct ui_chime_set_s ui_chime_default;
+extern const struct ui_chime_set_s ui_chime_lcars;
+extern const struct ui_chime_set_s ui_chime_jarvis;
+
+extern const struct ui_chime_set_s *const ui_chime_sets[UI_THEME_FAMILY_COUNT];
+
+#define UI_SOUND_SET_DEFAULT ui_chime_default
+#define UI_SOUND_SET_LCARS   ui_chime_lcars
+#define UI_SOUND_SET_JARVIS  ui_chime_jarvis
+
+#endif
 
 /* Play `sound` from the theme in force, unless the beeper is off or the
  * backstop decides this particular tick would land inside a chime. */
@@ -139,19 +206,6 @@ void ui_beep_set_enabled(bool en);
  * a colour field are dragged rather than pressed, so the motion feedback would
  * be wrong on them and the acknowledgement is still right. */
 void ui_beep_attach_press(lv_obj_t *obj);
-
-/* The three tables, and two ways to enumerate them.
- *
- * The arrays exist for the host tests, which check all three families against
- * every entry of the vocabulary and need a name to put in the failure message.
- * Nothing on the device uses them: the theme table in ui_style.cpp points
- * straight at the three objects. */
-extern const struct ui_sound_s ui_sound_default;
-extern const struct ui_sound_s ui_sound_lcars;
-extern const struct ui_sound_s ui_sound_jarvis;
-
-extern const char *const            ui_sound_names[UI_SOUND_COUNT];
-extern const struct ui_sound_s *const ui_sound_sets[UI_THEME_FAMILY_COUNT];
 
 /* The call sites keep macro names: what a gesture sounds like is a theme's
  * business, but *which* gesture happened is the UI's. */
