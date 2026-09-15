@@ -13,7 +13,10 @@
 
 #include <string.h>
 
-#define WEBSITE "http://openhabian:8780"
+/* openHAB's own port. It used to read 8780 here, which is the *panel's* web
+ * server -- harmless to the assertions, and misleading to anyone reading them
+ * for what a configured website looks like. */
+#define WEBSITE "http://openhabian:8080"
 
 static void test_state_url(void)
 {
@@ -79,7 +82,8 @@ static void test_icon_url_without_a_name(void)
 }
 
 /* An item with no state yet still has an icon: openHAB serves the plain one
- * for an empty state. */
+ * for an empty state. Checked against openHAB 5.2.1 -- "/icon/light?state="
+ * and "/icon/light" both answer 200 with the same bytes as "?state=ON". */
 static void test_icon_url_without_a_state(void)
 {
     Item item;
@@ -129,6 +133,47 @@ static void test_icon_url_at_the_widest_legal_item(void)
     TEST_ASSERT_FALSE(item.iconUrl(website, tight, sizeof(tight)));
 }
 
+/* A state is pasted into the query string exactly as it arrived, with no
+ * percent-encoding, and that is a real gap rather than a style point.
+ *
+ * Driven against openHAB 5.2.1 with a String item holding "Hello World". The
+ * request never reaches the server at all: esp_http_client_set_url() refuses
+ * the URL, and session_prepare() turns that into a disconnect --
+ *
+ *     E HTTP_CLIENT:  Error parse url http://h:8080/icon/text?state=Hello World&format=png
+ *     E openhab_http: cannot set the URL: http://h:8080/icon/text?state=Hello World&format=png
+ *
+ * so the cost is not a wasted request but a torn-down keep-alive, once per
+ * icon refresh, plus a counted failure. Encoded, the same URL is fine:
+ * /icon/text?state=Hello%20World&format=svg answers 200. An "&" in a state is
+ * the quieter version -- the URL parses, the parameter ends early, and "a&b"
+ * fetches the icon for "a".
+ *
+ * Numbers never reach this. The parser re-prints them through "%f" before they
+ * are stored, so a Number:Temperature reading "21.5 °C" is already
+ * "21.500000" by the time an icon is asked for -- checked on the same server.
+ * Any String item whose state has a space in it does reach it, for as long as
+ * it holds that value.
+ *
+ * This pins what the code emits today so the shape is written down somewhere.
+ * Encoding is the fix, and it is not free: percent-encoding a worst-case
+ * STR_STATE_TEXT_LEN state triples it to 93 bytes and pushes the widest legal
+ * URL to 276, past the STR_URL_LEN of 256 that the test above guarantees fits.
+ * So the fix is encode *and* widen, which is a sizing decision and not one to
+ * take quietly inside a test. */
+static void test_a_state_with_a_space_is_not_encoded(void)
+{
+    Item item;
+    char url[STR_URL_LEN];
+
+    item.cleanItem();
+    item.setIconName("text");
+    item.setStateText("Hello World");
+
+    TEST_ASSERT_TRUE(item.iconUrl(WEBSITE, url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/text?state=Hello World&format=png", url);
+}
+
 void test_item_urls_run(void)
 {
     RUN_TEST(test_state_url);
@@ -137,5 +182,6 @@ void test_item_urls_run(void)
     RUN_TEST(test_icon_url);
     RUN_TEST(test_icon_url_without_a_name);
     RUN_TEST(test_icon_url_without_a_state);
+    RUN_TEST(test_a_state_with_a_space_is_not_encoded);
     RUN_TEST(test_icon_url_at_the_widest_legal_item);
 }

@@ -8,7 +8,11 @@
  *
  * The pages are the simulator's own fixtures, so a change that breaks the
  * parser breaks these tests and the simulator's screen together rather than
- * one without the other.
+ * one without the other. Those fixtures were written from the openHAB REST
+ * documentation and corrected on 2026-09-15 against a real openHAB 5.2.1, so
+ * the shapes asserted below are shapes a server actually sends -- see the
+ * header of main/sim/sitemap_fixture.cpp for the three that had been guessed
+ * wrong.
  *
  * Run with:
  *   cd test/host && idf.py build && ./build/oh-ez-touch-host-test.elf
@@ -54,14 +58,62 @@ static void test_widget_types(void)
 
     TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("demo")));
 
-    /* A Text widget with a linkedPage is a link; a Group is a group; a Text
-     * widget over a Number:* item is a number and over a String a string. */
+    /* A Group is a group; a Text widget with a linkedPage is a link; a Text
+     * widget over a Number:* item is a number and over a String a string.
+     *
+     * Slots 0 and 1 are the two ways a sitemap makes a sub-page, and both are
+     * here because a real server sends both: `Group item=gX` becomes a Group
+     * widget carrying the group item, and `Text label="..." { ... }` becomes a
+     * Text widget with a linkedPage and no item at all. Only the first used to
+     * be covered -- the comment claimed the second and no assertion made it. */
     TEST_ASSERT_EQUAL(ItemType::type_group,  sitemap.getItem(0)->getType());
-    TEST_ASSERT_EQUAL(ItemType::type_group,  sitemap.getItem(1)->getType());
+    TEST_ASSERT_EQUAL(ItemType::type_link,   sitemap.getItem(1)->getType());
     TEST_ASSERT_EQUAL(ItemType::type_number, sitemap.getItem(2)->getType());
     TEST_ASSERT_EQUAL(ItemType::type_string, sitemap.getItem(3)->getType());
     TEST_ASSERT_EQUAL(ItemType::type_switch, sitemap.getItem(4)->getType());
     TEST_ASSERT_EQUAL(ItemType::type_slider, sitemap.getItem(5)->getType());
+}
+
+/* The sub-page shapes, each carrying what a real server puts on it.
+ *
+ * The Text form has no "item" key whatsoever, so every json_item[...] lookup
+ * below it walks a null variant. That is the case that would fault if anything
+ * in the parser ever dereferenced the item's type instead of asking json_str()
+ * for it, and it is what the user's own sitemap produced. */
+static void test_the_two_link_shapes(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("demo")));
+
+    Item *group = sitemap.getItem(0);
+    Item *link  = sitemap.getItem(1);
+
+    /* A Group widget has both: the page it opens, and the group item whose
+     * state openHAB reports for it. Checked against a real one -- a
+     * `Group:Switch:OR(ON,OFF)` on openHAB 5.2.1 arrives with an item carrying
+     * "members", "groupType" and "function", a linkedPage, and an aggregated
+     * state ("ON" while any member is on). The tile is polled like any other,
+     * because that state is real. */
+    TEST_ASSERT_EQUAL(ItemType::type_group, group->getType());
+    TEST_ASSERT_TRUE(group->hasPageLink());
+    TEST_ASSERT_NOT_NULL(strstr(group->getPageLink(), "/demo/living"));
+    TEST_ASSERT_NOT_NULL(strstr(group->getLink(), "/rest/items/gLivingRoom"));
+    TEST_ASSERT_EQUAL_STRING("OFF", group->getStateText());
+
+    char group_url[STR_URL_LEN];
+    TEST_ASSERT_TRUE(group->stateUrl(group_url, sizeof(group_url)));
+
+    /* The Text form has the page and nothing else. An empty link is what
+     * stateUrl() refuses on, which is what keeps the panel from polling
+     * "<nothing>/state" once every five seconds. */
+    TEST_ASSERT_EQUAL_STRING("Bedroom", link->getLabel());
+    TEST_ASSERT_TRUE(link->hasPageLink());
+    TEST_ASSERT_NOT_NULL(strstr(link->getPageLink(), "/demo/bedroom"));
+    TEST_ASSERT_EQUAL_STRING("", link->getLink());
+
+    char url[STR_URL_LEN];
+    TEST_ASSERT_FALSE(link->stateUrl(url, sizeof(url)));
 }
 
 /* The Number range test is a string comparison -- strcmp(type, "Number") >= 0
@@ -167,6 +219,177 @@ static void test_mappings_become_the_selection(void)
     TEST_ASSERT_EQUAL_STRING("Off", scene->getSelectionLabel(3));
 }
 
+/* Every widget a real server sends carries a "mappings" array, empty when the
+ * sitemap declares none -- so the panel must read an empty one as "no choices"
+ * and not as "some choices I could not read".
+ *
+ * It matters more than it looks, because an empty JSON array is *truthy* to
+ * ArduinoJson: `if (widget["mappings"])` is true for every widget openHAB
+ * sends, which is why the parser's fallback to the item's
+ * commandDescription.commandOptions can never run against a real openHAB 5.
+ * The fixture used to omit the key entirely and so exercised the fallback
+ * instead of the path a server actually takes. */
+static void test_an_empty_mappings_array_is_not_a_selection(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("demo")));
+
+    /* The switch and the slider both arrive with "mappings": []. */
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(4)->getSelectionCount());
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(5)->getSelectionCount());
+
+    /* And the link, which has no item behind it to fall back to either. */
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(1)->getSelectionCount());
+}
+
+/* The fallback is still reachable for a server that omits the key, which is
+ * the only shape that reaches it, so it is pinned where it can be reached. */
+static void test_command_options_are_used_when_mappings_are_absent(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Selection\",\"label\":\"Fan\","
+        "\"item\":{\"type\":\"String\",\"state\":\"LOW\","
+        "\"link\":\"http://h/rest/items/Fan\","
+        "\"commandDescription\":{\"commandOptions\":["
+        "{\"command\":\"LOW\",\"label\":\"Low\"},"
+        "{\"command\":\"HIGH\",\"label\":\"High\"}]}}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(2, sitemap.getItem(0)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("HIGH", sitemap.getItem(0)->getSelectionCommand(1));
+    TEST_ASSERT_EQUAL_STRING("High", sitemap.getItem(0)->getSelectionLabel(1));
+}
+
+/* A Player arrives as a Switch widget over a Player item, carrying four
+ * mappings openHAB generated by itself from a bare `Default item=...`. The
+ * item's type has to win: mappings are read after the type is decided and must
+ * not turn the tile into a selection, or the transport screen never opens. */
+static void test_a_player_keeps_its_type_despite_its_mappings(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("bedroom")));
+
+    Item *player = sitemap.getItem(2); /* slot 0 is the parent link */
+
+    TEST_ASSERT_EQUAL(ItemType::type_player, player->getType());
+    TEST_ASSERT_EQUAL_UINT(4, player->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("PREVIOUS", player->getSelectionCommand(0));
+    TEST_ASSERT_EQUAL_STRING("PLAY", player->getSelectionCommand(2));
+
+    /* And the one beside it, which openHAB sends with an empty array. */
+    TEST_ASSERT_EQUAL(ItemType::type_rollershutter, sitemap.getItem(1)->getType());
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(1)->getSelectionCount());
+}
+
+/* openHAB reports an item it has no value for as the four characters "NULL" --
+ * not a JSON null, not an empty string. It reaches the tile verbatim for a
+ * type whose state is text.
+ *
+ * The panel shows those four characters on the tile, which is what a panel
+ * pointed at a fresh openHAB really does show. */
+static void test_a_null_state_arrives_as_text(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("bedroom")));
+
+    Item *night = sitemap.getItem(4);
+
+    TEST_ASSERT_EQUAL(ItemType::type_switch, night->getType());
+    TEST_ASSERT_EQUAL_STRING("NULL", night->getStateText());
+}
+
+/* The same state on a numeric type goes through strtof(), which reads nothing
+ * from "NULL" and yields zero -- so an uninitialised setpoint reads 0.0 on the
+ * glass while openHAB's own label for it says "- °C".
+ *
+ * Pinned rather than endorsed: it is what the panel does today, and it is the
+ * behaviour to change if a dash is ever wanted instead. */
+static void test_a_null_state_on_a_number_reads_as_zero(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Setpoint\",\"label\":\"Sp\","
+        "\"mappings\":[],\"minValue\":-10,\"maxValue\":10,\"step\":0.5,"
+        "\"item\":{\"type\":\"Number\",\"state\":\"NULL\","
+        "\"link\":\"http://h/rest/items/N\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL(ItemType::type_setpoint, sitemap.getItem(0)->getType());
+    TEST_ASSERT_EQUAL_STRING("0.000000", sitemap.getItem(0)->getStateText());
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, sitemap.getItem(0)->getStateNumber());
+}
+
+/* A dimensioned item, and the two places openHAB puts its unit.
+ *
+ * Captured from openHAB 5.2.1: a Number:Temperature holding 21.5 °C arrives
+ * with state "21.5 °C", the widget carrying "unit": "°C" and the item carrying
+ * "unitSymbol": "°C". The connector reads neither -- it strips the unit off
+ * the state with strtof() and formats the number back through the item's
+ * pattern, which happens to carry "°C" too, so a temperature comes out right
+ * by a route that does not involve the unit at all.
+ *
+ * That works until the pattern and the unit disagree, which is exactly what
+ * Number:Dimensionless does -- see
+ * test_a_dimensionless_percentage_is_stored_as_its_ratio() in
+ * test_item_state.cpp. This test pins the shape so the fields are on record. */
+static void test_a_dimensioned_number_arrives_with_its_unit(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("demo")));
+
+    Item *temperature = sitemap.getItem(2);
+
+    TEST_ASSERT_EQUAL(ItemType::type_number, temperature->getType());
+    TEST_ASSERT_EQUAL_STRING("Outside Temperature", temperature->getLabel());
+
+    /* "3.5 °C" in, the bare number out. */
+    TEST_ASSERT_EQUAL_STRING("3.500000", temperature->getStateText());
+    TEST_ASSERT_EQUAL_FLOAT(3.5f, temperature->getStateNumber());
+
+    /* And the unit reaches the tile only because the pattern repeats it. */
+    TEST_ASSERT_EQUAL_STRING("%.1f °C", temperature->getNumberPattern());
+}
+
+/* A plain Number comes off the wire with six decimals -- "10.000000", not
+ * "10" -- because openHAB formats the state and not the pattern. The parser
+ * re-prints it through the same "%f", so the two spellings have to agree or
+ * every poll would look like a change. */
+static void test_a_plain_number_state_keeps_its_printed_form(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Text\",\"label\":\"N [10,0 °C]\","
+        "\"mappings\":[],\"pattern\":\"%.1f °C\","
+        "\"item\":{\"type\":\"Number\",\"state\":\"10.000000\","
+        "\"stateDescription\":{\"pattern\":\"%.1f °C\"},"
+        "\"link\":\"http://h/rest/items/N\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+
+    Item *item = sitemap.getItem(0);
+
+    TEST_ASSERT_EQUAL(ItemType::type_number, item->getType());
+    TEST_ASSERT_EQUAL_STRING("10.000000", item->getStateText());
+
+    /* The label openHAB built carries the value in a German decimal comma;
+     * all of it comes off, comma included. */
+    TEST_ASSERT_EQUAL_STRING("N", item->getLabel());
+
+    /* The pattern is taken from the item's stateDescription. openHAB fills the
+     * widget's own "pattern" field from that same place -- verified against
+     * 5.2.1, where the .items label carried the pattern and the .sitemap line
+     * did not -- so reading either gives the same answer. */
+    TEST_ASSERT_EQUAL_STRING("%.1f °C", item->getNumberPattern());
+
+    /* An unchanged reading polled again is not a change. */
+    TEST_ASSERT_EQUAL_INT(0, item->applyState("10.000000", strlen("10.000000")));
+}
+
 /* More widgets than the item array holds must stop at the end of it rather
  * than run past it. ITEM_COUNT_MAX is 6, so this page offers ten. */
 static void test_widget_count_is_clamped(void)
@@ -219,9 +442,21 @@ static void test_selection_count_is_clamped(void)
                            sitemap.getItem(0)->getSelectionCount());
 }
 
-/* openHAB answers a bad sitemap name with a 200 and an error object. That used
- * to "return false", which is 0 and therefore this function's success code, so
- * the caller kept the stale page and never found out. */
+/* A body that is an error object rather than a page is a failure. That used to
+ * "return false", which is 0 and therefore this function's success code, so
+ * the caller kept the stale page and never found out.
+ *
+ * This test used to say openHAB answers a bad sitemap name with a *200* and
+ * this object. It does not. Measured against openHAB 5.2.1:
+ *
+ *   /rest/sitemaps/nope/nope            404, and the body is a JSON *string*
+ *                                       containing JSON -- see the next test
+ *   /rest/items/<missing>/state         404, and the body is this bare object
+ *
+ * so openhab_http.cpp's status check rejects both before a byte reaches here.
+ * Refusing the object is still the right thing -- it costs nothing and the
+ * shape is what a server would send if it ever answered 200 -- but the guard
+ * that actually protects the panel today is the status check, not this. */
 static void test_error_object_is_a_failure(void)
 {
     Sitemap sitemap;
@@ -230,6 +465,29 @@ static void test_error_object_is_a_failure(void)
         "\"http-code\":404}}";
 
     TEST_ASSERT_EQUAL_INT(-1, sitemap.parse(page, sizeof(page) - 1));
+}
+
+/* What openHAB 5.2.1 really answers for a sitemap that is not there, captured
+ * verbatim: a 404 whose body is JSON-encoded *twice*, so the top level is a
+ * string and not an object at all.
+ *
+ * It parses, because a bare JSON string is valid JSON, and there is no "error"
+ * object in it to catch -- so the page comes out titled "no title" with no
+ * widgets, and parse() calls that success. Nothing reaches this state today,
+ * because the 404 is refused by the status check first; the test is here to
+ * record that parse() alone does not recognise a non-page, and that a caller
+ * which ever stops checking the status would blank the screen rather than keep
+ * the page it had. */
+static void test_a_body_that_is_not_a_page_yields_an_empty_page(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "\"{\\\"error\\\":{\\\"message\\\":\\\"HTTP 404 Not Found\\\","
+        "\\\"http-code\\\":404}}\"";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_STRING("no title", sitemap.getPageName());
 }
 
 static void test_malformed_json_is_a_failure(void)
@@ -402,9 +660,18 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_setpoint_range_and_pattern);
     RUN_TEST(test_missing_range_falls_back_to_defaults);
     RUN_TEST(test_mappings_become_the_selection);
+    RUN_TEST(test_the_two_link_shapes);
+    RUN_TEST(test_an_empty_mappings_array_is_not_a_selection);
+    RUN_TEST(test_command_options_are_used_when_mappings_are_absent);
+    RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
+    RUN_TEST(test_a_null_state_arrives_as_text);
+    RUN_TEST(test_a_null_state_on_a_number_reads_as_zero);
+    RUN_TEST(test_a_plain_number_state_keeps_its_printed_form);
+    RUN_TEST(test_a_dimensioned_number_arrives_with_its_unit);
     RUN_TEST(test_widget_count_is_clamped);
     RUN_TEST(test_selection_count_is_clamped);
     RUN_TEST(test_error_object_is_a_failure);
+    RUN_TEST(test_a_body_that_is_not_a_page_yields_an_empty_page);
     RUN_TEST(test_malformed_json_is_a_failure);
     RUN_TEST(test_truncated_body_is_a_failure);
     RUN_TEST(test_over_deep_nesting_is_a_failure);

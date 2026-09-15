@@ -41,7 +41,19 @@ static void test_string_state_change_is_reported_once(void)
 
 /* openHAB appends the unit to a dimensioned number. The unit comes off and the
  * value is re-printed through the same "%f" setStateNumber() uses, so that an
- * unchanged reading compares equal as text. */
+ * unchanged reading compares equal as text.
+ *
+ * Both spellings are checked now, against a Number:Temperature added to the
+ * 5.2.1 instance for exactly this question, and they are not equals:
+ *
+ *   "21.5 °C"    is what it emits. /rest/items/<n>/state answers those bytes
+ *                verbatim, degree sign and all, and the panel shows 21.5 °C.
+ *   "22.5 degC"  it will not take at all -- POSTing it is a 400, and no
+ *                endpoint on that server produces it.
+ *
+ * So the degC case below is defensive and nothing more: it costs one line, and
+ * strtof() stopping at the first non-numeric byte is what makes both work. The
+ * one to keep honest is the degree-sign case. */
 static void test_numeric_state_loses_its_unit(void)
 {
     Item item = make_item(ItemType::type_number, "");
@@ -75,6 +87,113 @@ static void test_setpoint_and_slider_are_numeric_too(void)
 
     TEST_ASSERT_EQUAL_INT(1, slider.applyState("75", strlen("75")));
     TEST_ASSERT_EQUAL_STRING("75.000000", slider.getStateText());
+}
+
+/* What a plain Number really looks like on the wire, captured from openHAB
+ * 5.2.1: /rest/items/OHEZTOUCH_Number/state answers "10.000000" -- six
+ * decimals and no unit, whatever the item's display pattern says. So the
+ * re-printing is not only for stripping units; it is what makes the value the
+ * parser stored out of the sitemap page compare equal to the one the poll
+ * brings back. */
+static void test_a_plain_number_state_is_six_decimals(void)
+{
+    Item item = make_item(ItemType::type_number, "");
+
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("10.000000", strlen("10.000000")));
+    TEST_ASSERT_EQUAL_STRING("10.000000", item.getStateText());
+
+    /* The same reading, and the same reading spelled shorter, are both the
+     * value already held. */
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("10.000000", strlen("10.000000")));
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("10", strlen("10")));
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("10.0", strlen("10.0")));
+}
+
+/* openHAB answers the four characters "NULL" for an item it has no value for,
+ * and it is an ordinary poll result rather than an error: the tile shows it.
+ *
+ * Confirmed against 5.2.1, where the Player and Rollershutter items read NULL
+ * until something first commanded them. */
+static void test_a_null_state_is_ordinary_text(void)
+{
+    Item item = make_item(ItemType::type_switch, "ON");
+
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("NULL", strlen("NULL")));
+    TEST_ASSERT_EQUAL_STRING("NULL", item.getStateText());
+
+    /* Still NULL next time round, and still not a change. */
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("NULL", strlen("NULL")));
+
+    /* "UNDEF" is the other one openHAB uses, and is no more special. */
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("UNDEF", strlen("UNDEF")));
+    TEST_ASSERT_EQUAL_STRING("UNDEF", item.getStateText());
+}
+
+/* On a numeric type the same answer goes through strtof(), which reads nothing
+ * from it and yields zero. An uninitialised setpoint therefore reads 0.0 on
+ * the glass while openHAB's own label for it says "- °C".
+ *
+ * Pinned rather than endorsed -- this is the line to change if a dash is
+ * wanted instead -- and worth knowing that NULL is then indistinguishable from
+ * a real zero. */
+static void test_a_null_state_on_a_number_is_zero(void)
+{
+    Item item = make_item(ItemType::type_setpoint, "");
+
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("NULL", strlen("NULL")));
+    TEST_ASSERT_EQUAL_STRING("0.000000", item.getStateText());
+    TEST_ASSERT_EQUAL_FLOAT(0.0f, item.getStateNumber());
+
+    /* And a genuine zero arriving afterwards is not reported as a change,
+     * because it is not one as far as the item can tell. */
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("0", strlen("0")));
+}
+
+/* The dimensioned form, captured verbatim from openHAB 5.2.1: a
+ * Number:Temperature holding 21.5 °C answers "21.5 °C" on /state, and the
+ * degree sign is two UTF-8 bytes that strtof() has to stop in front of. */
+static void test_a_dimensioned_state_loses_its_degree_sign(void)
+{
+    Item item = make_item(ItemType::type_number, "");
+
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("21.5 °C", strlen("21.5 °C")));
+    TEST_ASSERT_EQUAL_STRING("21.500000", item.getStateText());
+    TEST_ASSERT_EQUAL_FLOAT(21.5f, item.getStateNumber());
+
+    /* The same reading again is not a change, which is the whole point of
+     * re-printing it. */
+    TEST_ASSERT_EQUAL_INT(0, item.applyState("21.5 °C", strlen("21.5 °C")));
+}
+
+/* Number:Dimensionless is the one numeric item whose state the panel cannot
+ * render from the state alone, and this pins how far off it is.
+ *
+ * Measured on openHAB 5.2.1. Commanding such an item "48 %" makes it store the
+ * *ratio*: /state answers "0.48", while the sitemap label openHAB builds for
+ * the same item says "48 %". The panel keeps 0.480000 and prints it through
+ * the item's own "%d %%" pattern, so the tile reads "0 %" -- confirmed on the
+ * glass, not merely derived.
+ *
+ * Going the other way is no better: a bare "48" is stored as "48" and the
+ * panel then reads "48 %", but openHAB's label for it says "4800 %".
+ *
+ * Closing this needs the unit the panel currently drops -- openHAB sends it
+ * twice, as the widget's "unit" and as the item's "unitSymbol", and the
+ * connector reads neither. Pinned as today's behaviour, not endorsed. */
+static void test_a_dimensionless_percentage_is_stored_as_its_ratio(void)
+{
+    Item item = make_item(ItemType::type_number, "");
+
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("0.48", strlen("0.48")));
+    TEST_ASSERT_EQUAL_STRING("0.480000", item.getStateText());
+
+    /* What a "%d %%" pattern makes of that is the "0 %" seen on the tile. */
+    TEST_ASSERT_EQUAL_UINT16(0, (uint16_t)item.getStateNumber());
+
+    /* And the other spelling, which the panel gets right and openHAB labels
+     * as 4800 %. */
+    TEST_ASSERT_EQUAL_INT(1, item.applyState("48", strlen("48")));
+    TEST_ASSERT_EQUAL_UINT16(48, (uint16_t)item.getStateNumber());
 }
 
 /* A switch is not a number, so its state is kept verbatim. */
@@ -253,6 +372,11 @@ void test_item_state_run(void)
     RUN_TEST(test_numeric_state_loses_its_unit);
     RUN_TEST(test_equivalent_numeric_state_is_not_a_change);
     RUN_TEST(test_setpoint_and_slider_are_numeric_too);
+    RUN_TEST(test_a_plain_number_state_is_six_decimals);
+    RUN_TEST(test_a_dimensioned_state_loses_its_degree_sign);
+    RUN_TEST(test_a_dimensionless_percentage_is_stored_as_its_ratio);
+    RUN_TEST(test_a_null_state_is_ordinary_text);
+    RUN_TEST(test_a_null_state_on_a_number_is_zero);
     RUN_TEST(test_switch_state_is_verbatim);
     RUN_TEST(test_over_long_state_truncates);
     RUN_TEST(test_state_need_not_be_terminated);
