@@ -185,75 +185,90 @@ const struct ui_tune_set_s ui_tune_default = {{UI_SOUND_LIST(X)}};
 
 /* ------------------------------------------------------------------ LCARS
  *
- * Struck and gone. The stacked fourths and fifths are arpeggios now -- see the
- * note at the head of this file about what that costs -- and the chirps, which
- * were always one voice doing the work, are untouched. */
+ * Struck and gone. This is the family that loses the most -- the blips in the
+ * show are stacked fourths and fifths, and an arpeggio is not a chord -- so it
+ * is also the one that takes the most back.
+ *
+ * STAB is the envelope of the thing: an edge, a drop, a short hold. On a
+ * ten-millisecond blip that is three milliseconds of fall onto a plateau and
+ * two of release, which is a machine acknowledging an instruction rather than
+ * a bell being hit.
+ *
+ * The chirps were always one voice doing the work, and they get what the mixer
+ * could not give them. GLIDE walks the period instead of the frequency: a
+ * linear sweep in hertz crosses its first octave in a third of the note and
+ * then crawls, which is why the old ones sounded top-heavy. CHIRP is that plus
+ * a hard tremolo, which is most of what a "working" sound is.
+ *
+ * And the two alert cadences are repeats now, with the effect rows carrying
+ * what the second voice used to: a wobble under the warning where a tritone
+ * was, and a hard pulse under the whoops. */
 
-/* The panel blip: a fifth, now rolled rather than stacked. */
-TUNE(lcars_press,     T(1976, 9, 0, LOW, PLUCK),
-                      T(2960, 9, 0, LOW, PLUCK));
+/* The panel blip: a fifth, rolled rather than stacked. */
+TUNE(lcars_press,     T(1976, 9, 0, LOW, STAB),
+                      T(2960, 9, 0, LOW, STAB));
 
-/* Keypads in the show are dry single blips, so these were one voice already. */
+/* Keypads in the show are dry single blips, so these stay struck and dry. */
 TUNE(lcars_tick,      T(2400, 18, 0, LOW, PLUCK));
 TUNE(lcars_tick_back, T(2000, 18, 0, LOW, PLUCK));
 
-TUNE(lcars_toggle_on,  T(1976, 10, 0, VOL, PLUCK),
-                       T(2960, 10, 8, VOL, PLUCK),
-                       T(2349, 14, 0, VOL, PLUCK),
-                       T(3520, 14, 0, VOL, PLUCK));
-TUNE(lcars_toggle_off, T(2349, 10, 0, VOL, PLUCK),
-                       T(3520, 10, 8, VOL, PLUCK),
-                       T(1976, 14, 0, VOL, PLUCK),
-                       T(2960, 14, 0, VOL, PLUCK));
+TUNE(lcars_toggle_on,  T(1976, 10, 0, VOL, STAB),
+                       T(2960, 10, 8, VOL, STAB),
+                       T(2349, 14, 0, VOL, STAB),
+                       T(3520, 14, 0, VOL, STAB));
+TUNE(lcars_toggle_off, T(2349, 10, 0, VOL, STAB),
+                       T(3520, 10, 8, VOL, STAB),
+                       T(1976, 14, 0, VOL, STAB),
+                       T(2960, 14, 0, VOL, STAB));
 
-TUNE(lcars_change,    T(1800, 10, 0, VOL, PLUCK),
-                      T(2700, 10, 8, VOL, PLUCK),
-                      T(2600, 10, 0, VOL, PLUCK),
-                      T(3900, 10, 0, VOL, PLUCK));
+TUNE(lcars_change,    T(1800, 10, 0, VOL, STAB),
+                      T(2700, 10, 8, VOL, STAB),
+                      T(2600, 10, 0, VOL, STAB),
+                      T(3900, 10, 0, VOL, STAB));
 
-/* The computer acknowledging: rising, in fourths. */
-TUNE(lcars_accept,    T(1976, 15, 0, VOL, PLUCK),
-                      T(2637, 15, 10, VOL, PLUCK),
-                      T(2637, 25, 0, VOL, PLUCK),
-                      T(3520, 25, 0, VOL, PLUCK));
-TUNE(lcars_cancel,    T(2637, 15, 0, VOL, PLUCK),
-                      T(3520, 15, 10, VOL, PLUCK),
-                      T(1976, 25, 0, VOL, PLUCK),
-                      T(2637, 25, 0, VOL, PLUCK));
+/* The computer acknowledging: rising, in fourths, the last one held. */
+TUNE(lcars_accept,    T(1976, 15, 0, VOL, STAB),
+                      T(2637, 15, 10, VOL, STAB),
+                      T(2637, 25, 0, VOL, STAB),
+                      T(3520, 25, 0, VOL, BELL));
+TUNE(lcars_cancel,    T(2637, 15, 0, VOL, STAB),
+                      T(3520, 15, 10, VOL, STAB),
+                      T(1976, 25, 0, VOL, STAB),
+                      T(2637, 25, 0, VOL, BELL));
 
 /* The chirp: one note swept most of the band in ninety milliseconds, which is
- * the "working" sound. The mixer doubled it a fourth up; one carries it. */
-TUNE(lcars_link,      N(1200, 2800, 90, 0, VOL, PLUCK, NONE));
-TUNE(lcars_link_back, N(2800, 1200, 90, 0, VOL, PLUCK, NONE));
+ * the "working" sound. The mixer doubled it a fourth up and swept it linearly;
+ * one note glided and pulsed is closer to the show than two were. */
+TUNE(lcars_link,      N(1200, 2800, 90, 0, VOL, STAB, CHIRP));
+TUNE(lcars_link_back, N(2800, 1200, 90, 0, VOL, STAB, CHIRP));
 
-TUNE(lcars_screen,     T(1400, 25, 8, VOL, PLUCK),
-                       T(1900, 25, 8, VOL, PLUCK),
-                       N(2500, 2900, 55, 0, VOL, PLUCK, NONE));
-TUNE(lcars_screen_out, T(2500, 25, 8, VOL, PLUCK),
-                       T(1900, 25, 8, VOL, PLUCK),
-                       N(1400, 1100, 55, 0, VOL, PLUCK, NONE));
+TUNE(lcars_screen,     T(1400, 25, 8, VOL, STAB),
+                       T(1900, 25, 8, VOL, STAB),
+                       N(2500, 2900, 55, 0, VOL, STAB, GLIDE));
+TUNE(lcars_screen_out, T(2500, 25, 8, VOL, STAB),
+                       T(1900, 25, 8, VOL, STAB),
+                       N(1400, 1100, 55, 0, VOL, STAB, GLIDE));
 
-TUNE(lcars_notify,    N(1760, 2093, 60, 0, VOL, PLUCK, NONE));
+TUNE(lcars_notify,    N(1760, 2093, 60, 0, VOL, STAB, GLIDE));
 
-/* Held and repeated. The mixer stacked a tritone under this; the repeat is what
- * makes it a cadence rather than a tone. */
-TUNE(lcars_warning,   T(1400, 90, 50, VOL, FLAT),
-                      T(1400, 90,  0, VOL, FLAT));
+/* Held and repeated, with a wobble where the mixer stacked a tritone. Neither
+ * is a pleasant interval, which is the point of both. */
+TUNE(lcars_warning,   NR(1400, 1400, 90, 50, VOL, FLAT, WOBBLE, 2));
 
-/* The red alert cadence, near enough: two low whoops, evenly spaced. This was
- * one voice under the mixer too -- everything in it is below the band. */
-TUNE(lcars_error,     N(520, 380, 200, 60, VOL, FLAT, NONE),
-                      N(520, 380, 200,  0, VOL, FLAT, NONE));
+/* The red alert cadence, near enough: two low whoops, evenly spaced, with a
+ * hard tremolo putting the grain on them. Everything in it is below the band
+ * and that is deliberate -- see may_go_low() in the tests. */
+TUNE(lcars_error,     NR(520, 380, 200, 60, VOL, FLAT, PULSE, 2));
 
 /* Four blips up onto a held note: the computer coming online, and the one tune
  * long enough to be a statement rather than an acknowledgement. */
-TUNE(lcars_boot,      T(1400,  45, 10, VOL, PLUCK),
-                      T(1760,  45, 10, VOL, PLUCK),
-                      T(2093,  45, 10, VOL, PLUCK),
-                      T(2637, 140,  0, VOL, PLUCK));
+TUNE(lcars_boot,      T(1400,  45, 10, VOL, STAB),
+                      T(1760,  45, 10, VOL, STAB),
+                      T(2093,  45, 10, VOL, STAB),
+                      T(2637, 140,  0, VOL, BELL));
 
-TUNE(lcars_wake,      T(1976, 17, 0, MED, PLUCK),
-                      T(2960, 18, 0, MED, PLUCK));
+TUNE(lcars_wake,      T(1976, 17, 0, MED, STAB),
+                      T(2960, 18, 0, MED, STAB));
 
 #define X(name, sym) SEQ(lcars_##sym##_n),
 const struct ui_tune_set_s ui_tune_lcars = {{UI_SOUND_LIST(X)}};
