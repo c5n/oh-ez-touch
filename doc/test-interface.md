@@ -32,7 +32,7 @@ tools/ohez_ctl.py ping
 sitemap and the icons from the compiled-in fixtures, so the screen is the same
 every run and does not depend on an openHAB server being reachable.
 
-It listens on **127.0.0.1:8081** -- the web interface's 8080 plus one. Loopback
+It listens on **127.0.0.1:8781** -- the web interface's 8780 plus one. Loopback
 only, deliberately: the channel has no authentication and can press anything on
 the panel, so it is not offered to the network.
 
@@ -42,7 +42,7 @@ the panel, so it is not offered to the network.
 | `OHEZ_TESTIF_PORT` | listen somewhere else |
 
 A port already in use costs the interface and not the run: the simulator logs
-`bind to 127.0.0.1:8081 ... -- no control interface` and carries on. In practice
+`bind to 127.0.0.1:8781 ... -- no control interface` and carries on. In practice
 ports do not collide, because `port_flash.c` takes an `flock` on the emulated
 NVS image and a second simulator refuses to start before it gets that far.
 
@@ -83,7 +83,7 @@ what it means instead of naming pixels that the next layout change moves.
 ## The protocol
 
 One request datagram, one reply datagram, plain text, nothing kept between
-them. `nc -u 127.0.0.1 8081` is a perfectly good client.
+them. `nc -u 127.0.0.1 8781` is a perfectly good client.
 
 ```
 [@<id> ]<command> [args...]     request, at most 512 bytes; the newline is optional
@@ -245,7 +245,7 @@ The bytes come off the web server rather than the control socket, because 150
 KB does not belong in a datagram:
 
 ```bash
-curl -o /tmp/panel.fb http://127.0.0.1:8080/screenshot.raw   # 153616 bytes
+curl -o /tmp/panel.fb http://127.0.0.1:8780/screenshot.raw   # 153616 bytes
 ```
 
 The body is a 16-byte header and then the framebuffer, all little-endian:

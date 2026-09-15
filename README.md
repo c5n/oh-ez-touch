@@ -151,7 +151,7 @@ web interface, and really does store its settings.
 - **openHAB**: set the server with the config file, or with
   `OHEZ_OPENHAB_HOST`, `OHEZ_OPENHAB_PORT` and `OHEZ_SITEMAP`. Operating a
   widget POSTs a command, exactly as the panel does.
-- **Web interface**: on port 8080 rather than 80, since an unprivileged process
+- **Web interface**: on port 8780 rather than 80, since an unprivileged process
   cannot bind 80. `OHEZ_WEBUI_PORT` overrides that.
 - **Settings**: stored in `$XDG_CONFIG_HOME/oh-ez-touch/config.json` (or
   `~/.config/oh-ez-touch/config.json`), which is a real file that can be edited
@@ -311,7 +311,7 @@ pristine device.
 #### Driving it from a script
 
 Everything above arranges a state at boot and then leaves you watching a
-window. The simulator also listens on **127.0.0.1:8081** for commands: send a
+window. The simulator also listens on **127.0.0.1:8781** for commands: send a
 tap or a swipe, ask what is on screen, read the telemetry, pull the
 framebuffer.
 
@@ -486,16 +486,16 @@ having.
 
 ### Upload
 
-Example for Connecting UART TTL Adapters for flashing works for me: 
+Example for Connecting UART TTL Adapters for flashing works for me:
 - Put UART TTL Adapter on 5V with jumper
-- UART VCC connection to ESP32 5V 
+- UART VCC connection to ESP32 5V
 - UART GND connection to ESP32 GND (6. PIN same Row 5V)
 - UART RX connection to ESP32 TXD
 - UART TX connection to ESP32 RXD
 - Connect ESP GND to ESP G0 for Flashing Mode
 
 Connect the ESP32 board to your computer. A ttyUSB device should appear. It will likely be /dev/ttyUSB0 if no other USB-serial adapters are connected.
-Use following Command after connecting to identify just connected adapters 
+Use following Command after connecting to identify just connected adapters
 ```
 dmesg | grep /dev/ttyUSB
 ```

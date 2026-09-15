@@ -49,9 +49,9 @@
     },
     "openhab":
     {
-        "hostname": "openhabian",
+        "hostname": "localhost",
         "port":     8080,
-        "sitemap":  "oheztouch"
+        "sitemap":  "demo"
     },
     "sensors":
     {

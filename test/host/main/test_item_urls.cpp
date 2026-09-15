@@ -13,7 +13,7 @@
 
 #include <string.h>
 
-#define WEBSITE "http://openhabian:8080"
+#define WEBSITE "http://openhabian:8780"
 
 static void test_state_url(void)
 {

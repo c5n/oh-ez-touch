@@ -31,8 +31,8 @@ import urllib.request
 import zlib
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8081
-DEFAULT_WEB_PORT = 8080
+DEFAULT_PORT = 8781
+DEFAULT_WEB_PORT = 8780
 
 # Long enough for a dump the simulator assembles inside one turn of its loop,
 # short enough that a dead simulator is noticed rather than waited on.

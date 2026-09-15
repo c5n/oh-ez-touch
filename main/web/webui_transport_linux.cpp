@@ -440,13 +440,13 @@ bool webui_transport_start(uint16_t port)
     /* The device serves on 80, which an unprivileged process cannot bind. Rather
      * than failing to start -- and leaving the web interface untestable on a
      * desktop, which is half of why this transport exists -- the simulator moves
-     * to 8080 and says so. OHEZ_WEBUI_PORT overrides either. */
+     * to 8780 and says so. OHEZ_WEBUI_PORT overrides either. */
     const char *env = getenv("OHEZ_WEBUI_PORT");
 
     if (env != NULL && env[0] != '\0')
         server_port = (uint16_t)atoi(env);
     else if (port < 1024)
-        server_port = 8080;
+        server_port = 8780;
     else
         server_port = port;
 

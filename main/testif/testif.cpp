@@ -29,9 +29,9 @@
 
 static const char *TAG = "testif";
 
-/* One past the web server's 8080. Adjacent on purpose: the two are the panel's
+/* One past the web server's 8780. Adjacent on purpose: the two are the panel's
  * two doors on the host, and remembering one means remembering the other. */
-#define TESTIF_DEFAULT_PORT 8081
+#define TESTIF_DEFAULT_PORT 8781
 
 /* The reply is one datagram. Loopback carries 64 KB of them, so this is a
  * formatting budget rather than a transport limit -- the `screen` dump of a
