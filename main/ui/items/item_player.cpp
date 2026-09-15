@@ -15,6 +15,8 @@
 #define PRIMARY_H   80
 #define SECONDARY_H 88
 
+static void primary_sync(struct item_view_s *v);
+
 static void command_event(lv_event_t *e)
 {
     struct item_view_s *v = (struct item_view_s *)lv_event_get_user_data(e);
@@ -26,6 +28,19 @@ static void command_event(lv_event_t *e)
 
     v->item->setStateText(command);
     item_screen_publish(v);
+
+    /* And follow the state this tap just set, because the poll will not.
+     *
+     * refresh() runs only when a poll brings back something different from
+     * what the item already holds -- and setStateText() above has just made
+     * the item agree with what the server is about to report. So the key kept
+     * whatever glyph and command it was built with: press play once and it
+     * stayed play, sending PLAY to an item that was already playing, for as
+     * long as the screen was open. Pausing from the panel was impossible.
+     *
+     * The slider does the same thing after a local change for the same reason;
+     * the selection list marks its own row inline. This is the player's. */
+    primary_sync(v);
 }
 
 static lv_obj_t *key_create(struct item_view_s *v, lv_obj_t *parent, const char *symbol,
