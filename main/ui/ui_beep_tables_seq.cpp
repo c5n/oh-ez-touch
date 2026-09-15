@@ -114,29 +114,41 @@
 
 /* ------------------------------------------------------------------ Slate
  *
- * Restrained and consonant. Ten of its seventeen were already single voices
- * under the mixer, so this is the family that changes least. */
+ * Restrained and consonant, and that is the design rather than a shortfall: it
+ * is the family that must not draw attention, so it is also the one with the
+ * least to gain here and is written to take the least.
+ *
+ * It takes two things. The notes that *resolve* -- the second of a pair, the
+ * last of a rise -- become BELL rather than PLUCK: an instant attack is a click
+ * at the onset, and four milliseconds of attack is the difference between a
+ * struck thing and a tapped one. And the warning is a repeat rather than two
+ * notes, which is what `repeat` is for.
+ *
+ * Nothing here sweeps, nothing wobbles. Slate has no use for either. */
 
 TUNE(slate_press,     T(2093, 12, 0, LOW, PLUCK));
 TUNE(slate_tick,      T(2349, 10, 0, LOW, PLUCK));
 TUNE(slate_tick_back, T(1976, 10, 0, LOW, PLUCK));
 TUNE(slate_change,    T(2093, 25, 0, VOL, PLUCK));
-TUNE(slate_wake,      T(2093, 40, 0, MED, PLUCK));
+TUNE(slate_wake,      T(2093, 40, 0, MED, BELL));
 
 /* Two notes a fourth apart, in sequence: going somewhere is a move, and a move
- * is two things one after the other. */
+ * is two things one after the other. The second one lands rather than strikes. */
 TUNE(slate_link,      T(2093, 30, 10, VOL, PLUCK),
-                      T(2794, 40,  0, VOL, PLUCK));
+                      T(2794, 40,  0, VOL, BELL));
 TUNE(slate_link_back, T(2794, 30, 10, VOL, PLUCK),
-                      T(2093, 40,  0, VOL, PLUCK));
+                      T(2093, 40,  0, VOL, BELL));
 
 TUNE(slate_notify,    T(2093, 30, 8, VOL, PLUCK),
-                      T(2637, 45, 0, VOL, PLUCK));
-TUNE(slate_warning,   T(1568, 80, 60, VOL, FLAT),
-                      T(1568, 80,  0, VOL, FLAT));
+                      T(2637, 45, 0, VOL, BELL));
+
+/* Two strikes, said once. The mixer needed two notes written out for this;
+ * a repeat is what a cadence is, and the envelope restarts on the second. */
+TUNE(slate_warning,   NR(1568, 1568, 80, 60, VOL, FLAT, NONE, 2));
 
 /* The one Slate tune deliberately outside the piezo's good band. Being hard to
- * ignore is the point, and it costs loudness to get it. */
+ * ignore is the point, and it costs loudness to get it. FLAT on purpose: this
+ * is the one sound that is allowed to click at both ends. */
 TUNE(slate_error,     T(660,  90, 40, VOL, FLAT),
                       T(440, 180,  0, VOL, FLAT));
 
@@ -144,27 +156,28 @@ TUNE(slate_error,     T(660,  90, 40, VOL, FLAT),
  * rising through the same interval say the same thing in sequence. */
 TUNE(slate_toggle_on,  T(2093, 20, 5, VOL, PLUCK),
                        T(2637, 18, 0, VOL, PLUCK),
-                       T(3136, 17, 0, VOL, PLUCK));
+                       T(3136, 17, 0, VOL, BELL));
 TUNE(slate_toggle_off, T(2637, 20, 5, VOL, PLUCK),
                        T(2093, 18, 0, VOL, PLUCK),
-                       T(1568, 17, 0, VOL, PLUCK));
+                       T(1568, 17, 0, VOL, BELL));
 
 /* A major third, the upper note arriving a moment later: "done". */
 TUNE(slate_accept,    T(2093, 20, 0, VOL, PLUCK),
-                      T(2637, 30, 0, VOL, PLUCK));
+                      T(2637, 30, 0, VOL, BELL));
 TUNE(slate_cancel,    T(2637, 20, 0, VOL, PLUCK),
-                      T(2093, 30, 0, VOL, PLUCK));
+                      T(2093, 30, 0, VOL, BELL));
 
 TUNE(slate_screen,     T(2093, 25, 5, VOL, PLUCK),
                        T(2637, 25, 5, VOL, PLUCK),
-                       T(3136, 45, 0, VOL, PLUCK));
+                       T(3136, 45, 0, VOL, BELL));
 TUNE(slate_screen_out, T(3136, 25, 5, VOL, PLUCK),
                        T(2637, 25, 5, VOL, PLUCK),
-                       T(2093, 45, 0, VOL, PLUCK));
+                       T(2093, 45, 0, VOL, BELL));
 
+/* The one Slate sound long enough to settle rather than stop. */
 TUNE(slate_boot,      T(2093,  45, 10, VOL, PLUCK),
                       T(2637,  45, 10, VOL, PLUCK),
-                      T(3136, 120,  0, VOL, PLUCK));
+                      T(3136, 120,  0, VOL, BELL));
 
 #define X(name, sym) SEQ(slate_##sym##_n),
 const struct ui_tune_set_s ui_tune_default = {{UI_SOUND_LIST(X)}};
