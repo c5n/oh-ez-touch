@@ -27,6 +27,7 @@ extern "C" void app_main(void)
     UNITY_BEGIN();
 
     test_beeper_mixer_run();
+    test_beeper_seq_run();
     test_ble_beacon_run();
     test_config_fields_run();
     test_config_file_run();

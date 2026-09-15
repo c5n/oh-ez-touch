@@ -12,6 +12,7 @@
 #define TEST_SUITES_HPP
 
 void test_beeper_mixer_run(void);
+void test_beeper_seq_run(void);
 void test_ble_beacon_run(void);
 void test_config_fields_run(void);
 void test_config_file_run(void);
