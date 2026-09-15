@@ -339,6 +339,20 @@ this is compiled into a panel's firmware.
 command table, the JSON, the framebuffer header, and the handful of gotchas
 that otherwise cost an hour.
 
+### Testing against a real openHAB
+
+The compiled-in fixtures draw a screen without a server, which is what makes the
+simulator worth having -- but they cannot say what openHAB really sends, and
+several of the things they were written to assume turned out to be wrong.
+`test/openhab/` holds sitemaps and items to point a real server at: one page
+with six widget types on it, one with the shapes that page has no example of,
+and a five-level navigation tree that reaches every fixed limit the panel has.
+`test/openhab/seed-states.sh` gives them all a value worth looking at.
+
+**[doc/openhab-fixtures.md](doc/openhab-fixtures.md)** installs them, says what
+each one is for, writes down what a real openHAB actually puts on the wire, and
+lists the places where the panel and the server still disagree.
+
 ### Fonts
 
 The LVGL font sources in `components/lvgl/fonts/` are generated and committed,

@@ -1,0 +1,17 @@
+sitemap demo label="OhEzTouch Test"
+{
+    Switch      item=OHEZTOUCH_Switch
+    Selection   item=OHEZTOUCH_Switch mappings=[OFF="Off", ON="On"]
+    Selection   item=OHEZTOUCH_Select mappings=["SEL1"="Selection 1", "SEL2"="Selection 2", "SEL3"="Selection 3"]
+    Default     item=OHEZTOUCH_Player
+    Default     item=OHEZTOUCH_Rollershutter
+
+    Text label="Submenu" icon="settings"
+    {
+        Setpoint    item=OHEZTOUCH_Number label="Setpoint"  minValue=-10 maxValue=10 step=0.5
+        Slider      item=OHEZTOUCH_Number label="Slider"    minValue=-10 maxValue=10 step=1
+        Text        item=OHEZTOUCH_Number label="Text"
+        Colorpicker item=OHEZTOUCH_Color
+    }
+}
+

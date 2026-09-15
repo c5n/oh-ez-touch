@@ -1,0 +1,24 @@
+// Items added to exercise the sitemap widget shapes the `demo` sitemap does
+// not cover, so that oh-ez-touch's host tests can be checked against a real
+// server instead of against assumptions. Safe to delete.
+
+// A dimensioned number: openHAB appends the unit to the state.
+Number:Temperature  OHEZTOUCH_Temp      "Temperature [%.1f °C]"  <temperature>
+Number:Dimensionless OHEZTOUCH_Humidity "Humidity [%d %%]"       <humidity>
+
+// A Dimmer, which is what a Slider widget normally sits on.
+Dimmer              OHEZTOUCH_Dimmer    "Dimmer [%d %%]"         <slider>
+
+// A group with an aggregate function, plus its members, so that a Group
+// widget has something real behind it.
+Group:Switch:OR(ON,OFF) gOHEZTOUCH_Lights "All Lights"           <light>
+Switch              OHEZTOUCH_Light1    "Light One"              <light>  (gOHEZTOUCH_Lights)
+Switch              OHEZTOUCH_Light2    "Light Two"              <light>  (gOHEZTOUCH_Lights)
+
+// A string whose value contains a space -- the case that makes the panel's
+// unencoded icon URL malformed.
+String              OHEZTOUCH_Text      "Text [%s]"              <text>
+
+// A plain Number carrying a percent pattern -- the well-behaved way to show
+// a humidity, as opposed to the Number:Dimensionless above.
+Number              OHEZTOUCH_Percent   "Percent [%d %%]"        <humidity>
