@@ -272,6 +272,82 @@ static void test_the_contact_layer_is_quieter_than_the_rest(void)
     }
 }
 
+static void test_every_preset_is_used_by_somebody(void)
+{
+    /* The converse of "every note names a preset that exists", and the reason
+     * to have both: a row nobody names is dead flash and a word in the
+     * vocabulary that means nothing. It should be deleted rather than left as
+     * an option nobody took -- or, better, a sound that wanted it should be
+     * found. CLICK was unused until this test asked, and the two warnings
+     * turned out to want exactly what it is.
+     *
+     * FX_NONE is exempt: it is what a note says when it says nothing. ENV_FLAT
+     * is not, because "no envelope at all" is a real editorial choice and the
+     * alert sounds make it. */
+    bool env_used[BEEPER_SEQ_ENV_COUNT] = {false};
+    bool fx_used[BEEPER_SEQ_FX_COUNT]   = {false};
+
+    fx_used[BEEPER_SEQ_FX_NONE] = true;
+
+    for (int f = 0; f < UI_THEME_FAMILY_COUNT; f++)
+    {
+        for (int s = 0; s < UI_SOUND_COUNT; s++)
+        {
+            const struct beeper_seq_s *tune = &ui_tune_sets[f]->chime[s];
+
+            for (uint8_t i = 0; i < tune->count; i++)
+            {
+                if (tune->notes[i].env < BEEPER_SEQ_ENV_COUNT)
+                    env_used[tune->notes[i].env] = true;
+
+                if (tune->notes[i].fx < BEEPER_SEQ_FX_COUNT)
+                    fx_used[tune->notes[i].fx] = true;
+            }
+        }
+    }
+
+    for (uint8_t i = 0; i < BEEPER_SEQ_ENV_COUNT; i++)
+        TEST_ASSERT_TRUE_MESSAGE(env_used[i], "an envelope preset no tune names");
+
+    for (uint8_t i = 0; i < BEEPER_SEQ_FX_COUNT; i++)
+        TEST_ASSERT_TRUE_MESSAGE(fx_used[i], "an effect preset no tune names");
+}
+
+static void test_each_family_sounds_like_itself(void)
+{
+    /* Three families exist so that a panel can be told apart from another
+     * panel, and with one voice the only thing left to tell them apart *with*
+     * is the vocabulary each draws on. So: no two families may agree about
+     * every sound's envelope, which is what would happen if somebody
+     * transcribed one family over another.
+     *
+     * Deliberately weak -- it is a smoke test for a copy-paste, not an
+     * aesthetic judgement, and nothing here can make an aesthetic judgement. */
+    for (int a = 0; a < UI_THEME_FAMILY_COUNT; a++)
+    {
+        for (int b = a + 1; b < UI_THEME_FAMILY_COUNT; b++)
+        {
+            bool differs = false;
+
+            for (int s = 0; s < UI_SOUND_COUNT && differs == false; s++)
+            {
+                const struct beeper_seq_s *x = &ui_tune_sets[a]->chime[s];
+                const struct beeper_seq_s *y = &ui_tune_sets[b]->chime[s];
+
+                if (x->count != y->count)
+                    differs = true;
+                else
+                    for (uint8_t i = 0; i < x->count; i++)
+                        if (x->notes[i].env != y->notes[i].env ||
+                            x->notes[i].fx != y->notes[i].fx)
+                            differs = true;
+            }
+
+            TEST_ASSERT_TRUE_MESSAGE(differs, "two families share a vocabulary");
+        }
+    }
+}
+
 void test_ui_beep_tunes_run(void)
 {
     RUN_TEST(test_every_family_has_every_sound);
@@ -288,4 +364,6 @@ void test_ui_beep_tunes_run(void)
 
     RUN_TEST(test_every_note_names_a_preset_that_exists);
     RUN_TEST(test_the_contact_layer_is_quieter_than_the_rest);
+    RUN_TEST(test_every_preset_is_used_by_somebody);
+    RUN_TEST(test_each_family_sounds_like_itself);
 }

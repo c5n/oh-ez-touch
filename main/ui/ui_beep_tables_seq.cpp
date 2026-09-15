@@ -144,7 +144,7 @@ TUNE(slate_notify,    T(2093, 30, 8, VOL, PLUCK),
 
 /* Two strikes, said once. The mixer needed two notes written out for this;
  * a repeat is what a cadence is, and the envelope restarts on the second. */
-TUNE(slate_warning,   NR(1568, 1568, 80, 60, VOL, FLAT, NONE, 2));
+TUNE(slate_warning,   NR(1568, 1568, 80, 60, VOL, CLICK, NONE, 2));
 
 /* The one Slate tune deliberately outside the piezo's good band. Being hard to
  * ignore is the point, and it costs loudness to get it. FLAT on purpose: this
@@ -253,7 +253,7 @@ TUNE(lcars_notify,    N(1760, 2093, 60, 0, VOL, STAB, GLIDE));
 
 /* Held and repeated, with a wobble where the mixer stacked a tritone. Neither
  * is a pleasant interval, which is the point of both. */
-TUNE(lcars_warning,   NR(1400, 1400, 90, 50, VOL, FLAT, WOBBLE, 2));
+TUNE(lcars_warning,   NR(1400, 1400, 90, 50, VOL, CLICK, WOBBLE, 2));
 
 /* The red alert cadence, near enough: two low whoops, evenly spaced, with a
  * hard tremolo putting the grain on them. Everything in it is below the band
@@ -276,58 +276,70 @@ const struct ui_tune_set_s ui_tune_lcars = {{UI_SOUND_LIST(X)}};
 
 /* ---------------------------------------------------------------- Reticle
  *
- * Swells rather than blips: everything is a PAD, everything sweeps, and nothing
- * has a hard edge. Affirmative rises, dismissal falls, and the triads the mixer
- * stacked arrive one note at a time. */
+ * Swells rather than blips: everything eases, everything sweeps, affirmative
+ * rises and dismissal falls. It is the family with the most to gain here,
+ * because a slow synthetic voice is exactly what an ornament is for -- and a
+ * vibrato is the one thing the mixer explicitly could not do, its own header
+ * saying that two voices a few hertz apart will not beat because phase is not
+ * carried across a slot.
+ *
+ * So SHIMMER is this family's default on anything sustained, SWELL and BLOOM
+ * replace the one PAD shape it had, and the two alerts stop borrowing the other
+ * families' vocabulary: the warning is a deep slow siren rather than a stacked
+ * second, and the error breathes rather than whooping. */
 
 TUNE(hud_press,     N(2900, 3100, 20, 0, LOW, PAD, NONE));
 TUNE(hud_tick,      N(3000, 3100, 18, 0, LOW, PAD, NONE));
 TUNE(hud_tick_back, N(2600, 2500, 18, 0, LOW, PAD, NONE));
 
-TUNE(hud_toggle_on,  N(2200, 2400, 90, 0, VOL, PAD, NONE));
-TUNE(hud_toggle_off, N(2400, 2200, 90, 0, VOL, PAD, NONE));
+TUNE(hud_toggle_on,  N(2200, 2400, 90, 0, VOL, SWELL, SHIMMER));
+TUNE(hud_toggle_off, N(2400, 2200, 90, 0, VOL, SWELL, SHIMMER));
 
-TUNE(hud_change,    N(2200, 2800, 110, 0, VOL, PAD, NONE));
+TUNE(hud_change,    N(2200, 2800, 110, 0, VOL, SWELL, NONE));
 
-/* A rising figure that arrives on a C major triad, rolled. */
-TUNE(hud_accept,    T(1568, 60, 0, VOL, PAD),
-                    T(2093, 50, 0, VOL, PAD),
-                    T(2637, 45, 0, VOL, PAD),
-                    T(3136, 45, 0, VOL, PAD));
-TUNE(hud_cancel,    T(2637,  30, 0, VOL, PAD),
-                    T(2093,  30, 0, VOL, PAD),
-                    T(1568, 140, 0, VOL, PAD));
+/* A rising figure that arrives on a C major triad, rolled -- each note blooming
+ * in rather than starting, which is what the mixer's staggered entries were
+ * imitating with three voices. */
+TUNE(hud_accept,    T(1568, 60, 0, VOL, BLOOM),
+                    T(2093, 50, 0, VOL, BLOOM),
+                    T(2637, 45, 0, VOL, BLOOM),
+                    T(3136, 45, 0, VOL, BLOOM));
+TUNE(hud_cancel,    T(2637,  30, 0, VOL, BLOOM),
+                    T(2093,  30, 0, VOL, BLOOM),
+                    T(1568, 140, 0, VOL, SWELL));
 
-TUNE(hud_link,      N(1600, 2500, 170, 0, VOL, PAD, NONE));
-TUNE(hud_link_back, N(2500, 1600, 170, 0, VOL, PAD, NONE));
+/* The long slides, with the wobble on them that this family was always
+ * reaching for. */
+TUNE(hud_link,      N(1600, 2500, 170, 0, VOL, SWELL, SHIMMER));
+TUNE(hud_link_back, N(2500, 1600, 170, 0, VOL, SWELL, SHIMMER));
 
-/* The holographic panel materialising: a G major triad, one note at a time --
- * which is what the mixer's staggered entries were imitating anyway. */
-TUNE(hud_screen,     T(1568, 80, 0, VOL, PAD),
-                     T(1976, 60, 0, VOL, PAD),
-                     T(2349, 60, 0, VOL, PAD));
-TUNE(hud_screen_out, T(2349, 60, 0, VOL, PAD),
-                     T(1976, 60, 0, VOL, PAD),
-                     T(1568, 80, 0, VOL, PAD));
+/* The holographic panel materialising: a G major triad, one note at a time. */
+TUNE(hud_screen,     N(1568, 1568, 80, 0, VOL, BLOOM, SHIMMER),
+                     N(1976, 1976, 60, 0, VOL, BLOOM, SHIMMER),
+                     N(2349, 2349, 60, 0, VOL, BLOOM, SHIMMER));
+TUNE(hud_screen_out, N(2349, 2349, 60, 0, VOL, BLOOM, SHIMMER),
+                     N(1976, 1976, 60, 0, VOL, BLOOM, SHIMMER),
+                     N(1568, 1568, 80, 0, VOL, SWELL, SHIMMER));
 
-TUNE(hud_notify,    N(1760, 2093, 120, 0, VOL, PAD, NONE));
+TUNE(hud_notify,    N(1760, 2093, 120, 0, VOL, SWELL, SHIMMER));
 
-/* Pulsing. Tension rather than a klaxon: this family does not shout, it
- * worries. */
-TUNE(hud_warning,   T(1568, 120, 60, VOL, PAD),
-                    T(1568, 120,  0, VOL, PAD));
+/* Slow and deep. Tension rather than a klaxon: this family does not shout, it
+ * worries -- and a siren on one voice worries better than a minor second on
+ * two did. */
+TUNE(hud_warning,   NR(1568, 1568, 120, 60, VOL, SWELL, SIREN, 2));
 
-/* Falling away, and staying inside the band: this family's alarm is unease
- * rather than a whoop, so it does not need the exemption the others take. */
-TUNE(hud_error,     N(1400, 1050, 320, 0, VOL, PAD, NONE));
+/* Falling away and breathing, and staying inside the band: this family's alarm
+ * is unease rather than a whoop, so it does not take the exemption the other
+ * two do. */
+TUNE(hud_error,     N(1400, 1050, 320, 0, VOL, SWELL, BREATHE));
 
 /* Coming online: a long swell that resolves into a triad. */
-TUNE(hud_boot,      N(1100, 1568, 300, 0, VOL, PAD, NONE),
-                    T(1568, 100, 0, VOL, PAD),
-                    T(1976, 100, 0, VOL, PAD),
-                    T(2349, 100, 0, VOL, PAD));
+TUNE(hud_boot,      N(1100, 1568, 300, 0, VOL, SWELL, NONE),
+                    N(1568, 1568, 100, 0, VOL, BLOOM, SHIMMER),
+                    N(1976, 1976, 100, 0, VOL, BLOOM, SHIMMER),
+                    N(2349, 2349, 100, 0, VOL, BLOOM, SHIMMER));
 
-TUNE(hud_wake,      N(2200, 2400, 80, 0, MED, PAD, NONE));
+TUNE(hud_wake,      N(2200, 2400, 80, 0, MED, SWELL, NONE));
 
 #define X(name, sym) SEQ(hud_##sym##_n),
 const struct ui_tune_set_s ui_tune_jarvis = {{UI_SOUND_LIST(X)}};
