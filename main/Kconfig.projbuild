@@ -57,7 +57,7 @@ config OHEZ_ICONS_BUILTIN
 
 choice OHEZ_BEEPER_ENGINE
     prompt "Beeper engine"
-    default OHEZ_BEEPER_ENGINE_MIXER
+    default OHEZ_BEEPER_ENGINE_SEQ
     help
         What the seventeen themed sounds are made of.
 

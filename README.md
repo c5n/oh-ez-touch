@@ -120,8 +120,8 @@ delete that build's `sdkconfig` -- or the whole build directory -- and re-run
 `set-target`.
 
 `idf.py -B build/arduitouch menuconfig` reaches everything else, including the
-board choice, the JTAG pin remap and the per-module debug output under
-**OhEzTouch**.
+board choice, the beeper engine, the JTAG pin remap and the per-module debug
+output under **OhEzTouch**.
 
 ### Simulator
 
@@ -246,19 +246,27 @@ OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
 
 #### Hearing the panel
 
-The simulator makes sound. `main/port/linux/port_beeper.c` opens an SDL audio
+The simulator makes sound -- see [The beeper](doc/beeper.md) for what it is
+making. `main/port/linux/port_beeper.c` opens an SDL audio
 device and synthesises the pulse train the panel's LEDC channel would be
 producing, so clicking around the simulator is how the chime tables get
 listened to -- there is no separate renderer and no second copy of the
 synthesis to drift out of step.
 
 It does not follow the driver's `port_beeper_tone()` calls. It takes the whole
-chime and walks `beeper_mixer_frame()` itself at the sample rate, because this
-target's FreeRTOS tick is 4 ms and a two-millisecond interleave slot cannot be
-honoured from a task here. Following the calls would render every chord four
-times coarser than the panel plays it, which is the one direction a simulator
-must not be wrong in: it would sound worse than the hardware and somebody would
-go and "fix" a table that was fine.
+chime and walks the selected engine's frame function itself at the sample rate,
+because this target's FreeRTOS tick is 4 ms and a two-millisecond interleave slot
+cannot be honoured from a task here. Following the calls would render every chord
+four times coarser than the panel plays it, which is the one direction a
+simulator must not be wrong in: it would sound worse than the hardware and
+somebody would go and "fix" a table that was fine.
+
+It is wrong in that direction in one place unless it is careful, and it is
+careful: the engine's *parameters* -- the swept pitch, the envelope, the two
+LFOs -- are re-evaluated on the engine's own five-millisecond grid and not per
+sample. Only the oscillator phase runs at the sample rate. A simulator with a
+smoother vibrato than the hardware would flatter the panel, and a table tuned
+against it would arrive on real glass sounding stepped.
 
 ```bash
 OHEZ_THEME=default ./build/linux/oh-ez-touch.elf
@@ -272,7 +280,8 @@ which is how a chime gets measured rather than judged.
 
 **What it will tell you**: rhythm, contour, intervals, whether two chimes are
 confusable, whether one outstays the gesture it answers, whether the voices of
-a chord clash, and how audible the interleaving grain is.
+a chord clash, how audible the interleaving grain is, and -- on the default
+engine -- whether an envelope or a vibrato does what its preset row claims.
 
 **What it will not tell you is how loud anything is.** The ArduiTouch's
 transducer has a sharp mechanical resonance somewhere around 2-4 kHz, so on a
@@ -491,21 +500,40 @@ every beep this firmware has ever made was, and is the promise that giving the
 panel a volume setting did not change how loud it is for anyone who never
 touches it.
 
-`test_ui_beep` covers the chime tables. There are three families and seventeen
-sounds, which is fifty-one chimes written out by hand, and every target that
-can run a test is silent -- so the first thing it checks is the boring one,
-that none of them is missing. The rest are the constraints nobody has in mind
-while writing frequencies: that they stay in the band a small piezo is loud in,
-with a named exemption for the alert sounds and a second test making sure the
-exemption is still being used; that no chime outstays the gesture it answers;
-and that nothing below a kilohertz is ever stacked, which is a property of the
-interleaving that would otherwise be enforced only by a comment.
+`test_beeper_seq` covers the default engine's arithmetic, which has more ways to
+be wrong because it multiplies: the same falling sweep, plus a glide that must
+stay monotone, an LFO that must not overflow its own multiply, a tremolo that
+must never push a note past the peak its envelope asked for, and a zero-length
+note that must be stepped over rather than divided by. It re-asserts both of the
+load-bearing ones above, the purity and the 63 counts of duty, because both are
+promises about the panel rather than about one way of arranging its notes.
+
+`test_ui_beep_chimes` and `test_ui_beep_tunes` cover the tables, one suite per
+engine. There are three families and seventeen sounds, which is fifty-one
+written out by hand *for each*, and every target that can run a test is silent
+-- so the first thing each checks is the boring one, that none of them is
+missing. The rest are the constraints nobody has in mind while writing
+frequencies: that they stay in the band a small piezo is loud in, with a named
+exemption for the alert sounds and a second test making sure the exemption is
+still being used; and that no sound outstays the gesture it answers.
+
+Each then has one rule the other cannot have. For the mixer it is that nothing
+below a kilohertz is ever stacked, which is a property of the interleaving. For
+the sequencer it is that no note carries an LFO slower than itself -- an
+ornament that does not complete a cycle is a pitch bend, and that is invisible
+in a table where the note looks like it has a vibrato and the effect row looks
+like a vibrato. It caught three of the six shipped effect rows.
+
+Both suites run in the same binary even though a panel ships one engine, because
+the set that is not selected is exactly the one nobody would notice going stale.
+That is why the two table files export different type and symbol names: they
+have to link side by side.
 
 What every file linked out of `main/` here has in common is that it touches
 neither LVGL nor the network: the settings table and the config file over it,
 the beacon parsers, the sitemap model and parser, the relay and LED payload
-rules, the multipart scanner, the control interface's tokeniser, and the chime
-tables with the mixer arithmetic under them. For the beacon parsers that is not a happy
+rules, the multipart scanner, the control interface's tokeniser, and both engines'
+sound tables with both engines' arithmetic under them. For the beacon parsers that is not a happy
 accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
 and leaves the parsing above the port layer, and the same argument moved the
 multipart scanner out of `webui_ota.cpp`. The remaining suites cover
@@ -756,15 +784,13 @@ scale stops where it does. The default of 25 is not a middle: it reproduces, to
 the count, the duty every beep this firmware has ever made -- see the file
 comment in `main/port/esp32/port_beeper.c` for how that came about.
 
-The panel has one piezo on one GPIO and one LEDC timer behind it, so a chime
-with more than one voice is *interleaved* rather than mixed: each voice holds
-the channel for two milliseconds in turn, fast enough that the ear hears a
-chord. It is a real chord and it has a real grain -- chopping a tone at 250 Hz
-puts sidebands either side of it -- which suits LCARS, is hidden under
-Reticle's slow swells, and is why Slate uses single voices for everything
-small. Nothing below about a kilohertz is ever stacked, because down there a
-slot is less than two cycles and the pitch dissolves into the slot rate; that
-is what keeps the low alert sounds monophonic, and a host test enforces it.
+The panel has one piezo on one GPIO and one LEDC timer behind it, so there is
+exactly one tone available at a time -- and two engines that spend it
+differently. The default one plays a single note with an envelope, a glide and
+an ornament on it; the other interleaves up to three voices at two milliseconds
+each to make a real chord, at the price of a grain on every one of them. Which
+is compiled in is a menuconfig choice, `CONFIG_OHEZ_BEEPER_ENGINE`, and the
+sounds are written out once for each. See [The beeper](doc/beeper.md).
 
 **The Lanbon L8 has no buzzer**, so both settings do nothing there. The
 simulator does have one -- see [Hearing the panel](#hearing-the-panel).
@@ -1084,8 +1110,8 @@ main/peripherals/     the sensors: the BME280, and the timer that decides when
 main/web/             the web interface: one renderer, one transport per target
 main/net/             WLAN credentials, and the radio state machine
 main/control/         policy on top of the port layer: when to dim, and the
-                      queue that plays a chime -- with the mixer that fits its
-                      several voices onto one piezo split out beside it, so the
+                      queue that plays a chime -- with the two engines that fit
+                      a sound onto one piezo split out beside it, so the
                       arithmetic can be tested and heard off the device
 main/sim/             the simulator's offline fixtures
 main/testif/          the simulator's control interface: the UDP command
@@ -1285,7 +1311,8 @@ Contact: c5n AT posteo DOT de
 - [x] build: Give the renderer the CPU it was short of -- 240 MHz, LVGL at ```-O2```, ```LV_USE_ASSERT_OBJ``` off on the device, and a loop that sleeps for as long as LVGL asks instead of a fixed 5 ms. See [Where the frame time goes](#where-the-frame-time-goes).
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight and BME280 drivers are translations checked against the vendor sources, not measurements.
-- [ ] control: The beeper has been listened to but not measured. Its tables and its mixer are rendered by the simulator through the firmware's own synthesis, so the rhythm, the contour and the balance between voices are real. Nothing there models the transducer: the ArduiTouch piezo's resonance is a guess, so how the chimes balance across the band and whether the low alert sounds carry across a room are still open. Two things in particular want an ear on the actual panel -- whether the interleaved chords fuse or arpeggiate, for which the lever is `BEEPER_SLOT_MS` and it has no good setting in either direction, and whether the contact ticks are audible at all at a third of the level of everything else. If they are not, raise their level rather than lengthen them: the length is what keeps them from landing inside the chime that follows.
+- [x] control, ui: Give the beeper melodies, envelopes and effects, and keep the chord mixer behind a Kconfig switch -- see [The beeper](doc/beeper.md)
+- [ ] control: The beeper has now been measured, but only in the numbers it hands the pin -- walking the shipped tables through the engine's own frame function is what caught three LFO rows that were slower than the notes carrying them. It still has not been heard on hardware. Nothing models the transducer: the ArduiTouch piezo's resonance is a guess, so how the sounds balance across the band and whether the low alert sounds carry across a room are still open. Four things want an ear on the actual panel. Whether a vibrato is audible at all through a resonance that sharp -- it may swallow a +/-1.2 % swing or exaggerate it wildly, and the simulator models neither. Whether two notes eight milliseconds apart read as an interval or as two notes, which is what decides whether LCARS should stay on the mixer. Whether the percent-with-a-cap envelopes hold up across the twelve-millisecond to four-hundred-millisecond range they claim to. And whether the contact ticks are audible at a third of the level of everything else -- if they are not, raise their level rather than lengthen them: the length is what keeps them from landing inside the chime that follows.
 - [ ] sensors: Support DS18B20 onewire sensors
 - [x] peripherals: Drive the Lanbon L8's three relays and three mood LEDs over MQTT -- see [Relays and LEDs](#relays-and-leds)
 - [ ] peripherals: The relays and the LEDs have not been run on hardware. The pin table is the openHASP and ESPHome mapping for the L8-HS, not a measurement, and the PlatformIO flags it replaces named two pins that do not exist on an ESP32.
