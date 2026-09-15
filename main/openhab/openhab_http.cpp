@@ -336,10 +336,31 @@ static enum post_result_e http_post_attempt(const char *url, const char *body)
     esp_http_client_set_header(session, "Content-Type", "text/plain");
     esp_http_client_set_post_field(session, body, (int)strlen(body));
 
-    /* perform() sends the request and reads the whole response, discarding the
-     * body -- which is all these two POSTs ever wanted. Unlike the GET above it
-     * needs no help with the connection: perform() checks keep-alive itself and
-     * closes when the server asked for it. */
+    /* perform() resumes the handle's state machine; the GET above does not
+     * leave it anywhere perform() can resume from.
+     *
+     * esp_http_client_open() sends unconditionally -- connect, then write the
+     * request line -- and never looks at client->state, which is why the GET
+     * path works on a handle in any state at all. perform() is the opposite: it
+     * switches on client->state and only sends a request from INIT, CONNECTING
+     * or CONNECTED. A finished manual GET leaves the handle in
+     * RES_ON_DATA_START, and that arm of the switch *reads a response*. So
+     * perform() drained an already-drained body, dispatched ON_FINISH and
+     * returned ESP_OK without a byte on the wire -- and
+     * esp_http_client_get_status_code() then answered with the previous GET's
+     * 200, so the command was reported as delivered.
+     *
+     * Every command after the first successful poll went this way: tapping a
+     * switch toggled the tile, logged nothing, sent nothing, and let the next
+     * poll quietly put the tile back. Only a command that happened to follow a
+     * *failed* GET worked, because that path closes the connection and leaves
+     * the handle at INIT -- which is why icons 404ing made switches work.
+     *
+     * Closing first is what puts it at INIT deliberately. It costs this request
+     * a TCP handshake; a command is a keypress, and there is no public API to
+     * hand the handle back to perform() in any other state. */
+    session_disconnect();
+
     esp_err_t err = esp_http_client_perform(session);
 
     if (err != ESP_OK)
@@ -363,23 +384,18 @@ static enum post_result_e http_post_attempt(const char *url, const char *body)
 
 int openhab_http_post_text(const char *url, const char *body)
 {
-    bool               reused = session_connected;
-    enum post_result_e result = http_post_attempt(url, body);
-
-    /* Only a transport failure on a reused connection is retried, and for the
-     * one reason the GET above is: a keep-alive the server has since hung up
-     * does not say so until the read.
+    /* No retry, because there is no longer anything a second attempt could
+     * fix. The retry existed for one failure the GET path still has: a
+     * keep-alive connection the server has since hung up accepts the request
+     * into the send buffer and only fails on the read, and opening a fresh one
+     * gets the command through. http_post_attempt() now always opens a fresh
+     * one -- it has to, to give perform() a state machine it can start from --
+     * so a POST that failed has failed on a connection made for it, and
+     * trying again immediately would only spend a second timeout on a server
+     * that is not there.
      *
-     * A status is not that. openHAB answering 404 for an item that has been
-     * renamed, or 400 for a command an item does not accept, will answer the
-     * same way a second time -- so retrying doubles the traffic and the log
-     * for every tap on a broken tile, and it did, because both cases came
-     * back as -1. */
-    if (result == POST_TRANSPORT_FAILED && reused == true)
-    {
-        ESP_LOGD(TAG, "POST %s: retrying on a new connection", url);
-        result = http_post_attempt(url, body);
-    }
-
-    return (result == POST_OK) ? 0 : -1;
+     * A refusal was never worth retrying either: openHAB answering 404 for a
+     * renamed item, or 400 for a command the item does not accept, answers the
+     * same way the second time. */
+    return (http_post_attempt(url, body) == POST_OK) ? 0 : -1;
 }
