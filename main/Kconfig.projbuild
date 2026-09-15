@@ -36,6 +36,25 @@ config OHEZ_ARDUITOUCH_JTAG_PINS
         It is a pin remap and nothing else: the board is still an ArduiTouch,
         which is why it is an option here rather than a fourth board.
 
+config OHEZ_ICONS_BUILTIN
+    bool "Answer widget icons from the set built into the firmware"
+    default y
+    help
+        Look a widget icon up in the icon set compiled into the firmware
+        before asking openHAB for it. A miss is still fetched over HTTP, so
+        this changes where the common icons come from and nothing else.
+
+        What it saves is a request per tile on every page load, and another
+        whenever an item's state changes the icon it resolves to -- the icons
+        are most of the traffic this panel makes and all of it is for a few
+        hundred images that never change.
+
+        The artwork is not in this repository (it is EPL-2.0, and this project
+        is GPL-3.0), so the set only exists once tools/build_icon_set.py has
+        been run; without it this option has nothing to find and costs nothing.
+        Turning it off is how to measure what the set costs in flash against
+        what it saves in requests.
+
 endmenu
 
 menu "Debug output"

@@ -73,6 +73,8 @@ set(OHEZ_APP_SRCS
     "config/config.cpp"
     "config/config_fields.cpp"
 
+    "icons/icon_set.cpp"
+
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
     "ui/frames/frame_default.cpp"
@@ -130,6 +132,29 @@ set(OHEZ_APP_SRCS
     "testif/testif_touch.cpp")
 
 set(OHEZ_SRCS ${OHEZ_APP_SRCS})
+
+# The built-in icon set is a generated file that may or may not be there, and
+# icons/icon_set.cpp picks it up with __has_include. That alone would not
+# survive the interesting case: the header is *created* by
+# tools/build_icon_set.py after a build has already been made without it, and
+# ninja has no reason to recompile a file over a header it never included.
+#
+# Watching the directory fixes that -- creating a file in it changes its mtime,
+# CMake re-runs, and the compile happens. The status line is the other half:
+# whether the icons are in the firmware is decided by a gitignored file, so a
+# configure that does not say which it found leaves it to be inferred later from
+# how the panel behaves.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             "${CMAKE_CURRENT_LIST_DIR}/icons")
+
+if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/icons/icon_set_data.h")
+    file(SIZE "${CMAKE_CURRENT_LIST_DIR}/icons/icon_set_data.h" ohez_icon_data_size)
+    message(STATUS "oh-ez-touch: built-in icon set present "
+                   "(icon_set_data.h, ${ohez_icon_data_size} bytes of source)")
+else()
+    message(STATUS "oh-ez-touch: no built-in icon set -- icons come from openHAB "
+                   "over HTTP; run tools/build_icon_set.py to compile them in")
+endif()
 
 # espressif__mqtt is in both lists: esp-mqtt builds for the linux target as well,
 # and every socket wait in its transport goes through select(), which is the one

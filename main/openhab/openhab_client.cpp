@@ -8,6 +8,7 @@
 
 #include "openhab_client.hpp"
 
+#include "icons/icon_set.hpp"
 #include "openhab_connector.hpp"
 #include "openhab_http.hpp"
 #include "sim/icon_fixture.hpp"
@@ -155,6 +156,18 @@ bool openhab_client_setup(void)
         ESP_LOGE(TAG, "cannot create the task");
         goto fail;
     }
+
+    /* Unconditional, and worth the line: whether the icons are in the firmware
+     * is the difference between a page load costing one request and costing
+     * seven, and it is decided by whether a gitignored generated header was
+     * there at compile time. A build that cannot say which it is leaves that to
+     * be guessed at from a packet capture. */
+    if (icon_set_count() > 0)
+        ESP_LOGI(TAG, "built-in icons: %u, %u bytes",
+                 (unsigned)icon_set_count(), (unsigned)icon_set_bytes());
+    else
+        ESP_LOGI(TAG, "no built-in icons; every icon comes from openHAB "
+                      "(see tools/build_icon_set.py)");
 
     return true;
 
@@ -319,8 +332,64 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
     res->ok = true;
 }
 
+/* Answer an icon request from the set compiled into the firmware.
+ *
+ * Copied onto the heap rather than handed out as a pointer into flash, so that
+ * a result is a result: openhab_client_result_release() frees every payload it
+ * is given, and a second ownership rule -- one flag saying "this one is not
+ * yours" -- would have to be got right on every path that drops a result, for
+ * the sake of not copying three hundred bytes.
+ *
+ * Returns false for anything it cannot answer, which is both an icon the set
+ * does not have and an allocation that failed; the caller then makes the
+ * request it would have made anyway.
+ */
+static bool perform_builtin_icon(const struct request_s *req, struct openhab_result_s *res)
+{
+    size_t len = 0;
+    const unsigned char *icon = icon_set_get_by_url(req->url, &len);
+
+    if (icon == NULL)
+        return false;
+
+    res->payload = (char *)malloc(len + 1);
+
+    if (res->payload == NULL)
+    {
+        ESP_LOGE(TAG, "out of memory for a %u byte built-in icon", (unsigned)len);
+        return false;
+    }
+
+    memcpy(res->payload, icon, len);
+    res->payload[len] = '\0';
+    res->payload_len = len;
+    res->ok = true;
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CLIENT
+    ESP_LOGD(TAG, "built-in icon, %u bytes, for %s", (unsigned)len, req->url);
+#endif
+
+    return true;
+}
+
 static void perform(const struct request_s *req, struct openhab_result_s *res)
 {
+    /* The icons the firmware has beat the ones the server would serve, and they
+     * beat them before anything else is decided -- including offline mode,
+     * whose own fixture is a sixteen-icon subset of this same set.
+     *
+     * This is the whole of the priority, and it is here rather than in the UI
+     * on purpose: a built-in icon and a fetched one then differ in nothing the
+     * caller can see. Same submit, same generation, same queue, same PNG in the
+     * same result -- the tile simply gets its answer on the next turn of the
+     * loop instead of after a round trip.
+     *
+     * A miss falls through to the network, which is what keeps a custom icon
+     * working: $OPENHAB_CONF/icons/classic/ is a per-server thing that no
+     * firmware can have been built with. */
+    if (req->type == OPENHAB_REQ_ICON && perform_builtin_icon(req, res) == true)
+        return;
+
     if (sim_offline())
     {
         perform_offline(req, res);

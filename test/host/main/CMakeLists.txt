@@ -47,12 +47,25 @@
 # is checked at all -- the host target is silent, the Lanbon has no buzzer, and
 # the ArduiTouch that does has never had this firmware on it.
 #
+# icons/icon_set.cpp joined them because it is the one file of the built-in
+# icon set that decides anything: the rest is a generated table. It resolves a
+# widget's icon *before* the network does, so once the set is compiled in its
+# rules are the ones the panel obeys and openHAB no longer gets a say -- and a
+# rule implemented wrongly there does not fail, it quietly draws a different
+# picture than the server would have. It includes nothing but libc.
+#
+# It cannot be tested against the real table: tools/build_icon_set.py generates
+# that from artwork this repository is not allowed to carry, so a fresh clone
+# has none. ICON_SET_DATA_HEADER below points the file at icon_set_fixture.h
+# instead, which is ten entries shaped like the generated ones.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_beeper_mixer.cpp"
                             "test_ble_beacon.cpp"
                             "test_config_fields.cpp"
                             "test_config_file.cpp"
+                            "test_icon_set.cpp"
                             "test_item_setters.cpp"
                             "test_multipart.cpp"
                             "test_item_state.cpp"
@@ -67,6 +80,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/icons/icon_set.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/port_storage_stdio.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
@@ -80,3 +94,19 @@ idf_component_register(SRCS "test_runner.cpp"
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main"
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main/port"
                        REQUIRES unity ArduinoJson freertos)
+
+# icon_set.cpp reads ICON_SET_DATA_HEADER instead of looking for the generated
+# table; see the note above and icon_set_fixture.h. Quoted so the preprocessor
+# sees a header name, and scoped to the one file that cares.
+#
+# CONFIG_OHEZ_ICONS_BUILTIN comes with it because this is a different project
+# from the firmware and does not read main/Kconfig.projbuild, so its sdkconfig.h
+# has never heard of the option -- and the file reads an absent one as "off",
+# which would compile the empty stub and leave every lookup test asserting
+# against nothing at all.
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../../../main/icons/icon_set.cpp"
+    TARGET_DIRECTORY ${COMPONENT_LIB}
+    PROPERTIES COMPILE_DEFINITIONS
+               "CONFIG_OHEZ_ICONS_BUILTIN=1;ICON_SET_DATA_HEADER=\"icon_set_fixture.h\""
+)
