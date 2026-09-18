@@ -577,6 +577,52 @@ static const char page_bedroom[] = R"json(
 }
 )json";
 
+/* The list endpoint's answer. The "homepage" objects are here because a real
+ * server sends them and because the parser's filter is what keeps them out of
+ * the document; a fixture without them would test a path no server takes.
+ *
+ * "demo" is the sitemap the pages above are, so picking it in offline mode
+ * lands on a screen. The other two exist to make the list a list -- they have
+ * no fixture behind them, and choosing one shows what a sitemap the server
+ * does not really serve looks like: the page fetch fails and the panel says
+ * so. */
+static const char sitemap_list[] = R"json(
+[
+  {
+    "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/demo",
+    "homepage": {
+      "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/demo/demo",
+      "leaf": false,
+      "timeout": false,
+      "widgets": []
+    },
+    "name": "demo",
+    "label": "OhEzTouch Demo"
+  },
+  {
+    "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/kitchen",
+    "homepage": {
+      "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/kitchen/kitchen",
+      "leaf": false,
+      "timeout": false,
+      "widgets": []
+    },
+    "name": "kitchen",
+    "label": "Kitchen Panel"
+  },
+  {
+    "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/garden",
+    "homepage": {
+      "link": ")json" FIXTURE_BASE R"json(/rest/sitemaps/garden/garden",
+      "leaf": false,
+      "timeout": false,
+      "widgets": []
+    },
+    "name": "garden"
+  }
+]
+)json";
+
 /* Keyed by page name, not by full path: openHAB's own URL for a sitemap's home
  * page is /rest/sitemaps/<sitemap>/<sitemap>, so keying on the path would mean
  * the simulator only rendered anything when config.json happened to name the
@@ -628,11 +674,21 @@ const char *sim_sitemap_fixture_get(const char *url)
     return NULL;
 }
 
+const char *sim_sitemap_fixture_list(void)
+{
+    return sitemap_list;
+}
+
 #else /* !CONFIG_IDF_TARGET_LINUX */
 
 const char *sim_sitemap_fixture_get(const char *url)
 {
     (void)url;
+    return NULL;
+}
+
+const char *sim_sitemap_fixture_list(void)
+{
     return NULL;
 }
 

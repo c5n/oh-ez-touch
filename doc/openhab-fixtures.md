@@ -135,6 +135,15 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
   stock server; `format=svg` is a 200.
 - A German-locale server writes the value into the label with a **decimal
   comma** (`Temperature [21,4 °C]`). All of it is stripped, comma included.
+- **`GET /rest/sitemaps` is a flat array**, one object per sitemap with `link`,
+  `name`, `label` and a `homepage` object -- and that homepage's `widgets` is
+  **empty** here, however many the page really has; the widgets only come with
+  the page request itself. About 210 bytes per sitemap. `label` is optional: a
+  `sitemap x label="..."` line supplies it and a sitemap without one has no
+  `label` key at all. This is what the settings screen and the web form offer as
+  the choice of sitemap, parsed under a filter that keeps `name` and `label` and
+  drops the rest -- `test/host/main/test_sitemap_list.cpp`, against a capture
+  from 2026-09-18.
 
 ## Where the panel and openHAB disagree
 
@@ -188,6 +197,8 @@ Worth having beside you when writing a page that is meant to fit.
 | state text | 32 bytes | `STR_STATE_TEXT_LEN` |
 | sitemap page body | 12288 bytes | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE` |
 | icon body | 5000 bytes | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
+| `/rest/sitemaps` body | 8192 bytes | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |
+| sitemaps offered | 12 | `SITEMAP_LIST_COUNT_MAX` |
 
 A real six-widget page is about 3 KB of JSON, so the page buffer is not the
 constraint it looks like.

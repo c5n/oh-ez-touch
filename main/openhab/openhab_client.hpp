@@ -48,6 +48,13 @@
 #define OPENHAB_CLIENT_PAGE_BUFFER_SIZE 12288
 #define OPENHAB_CLIENT_ICON_BUFFER_SIZE 5000
 
+/* And the list of sitemaps. A real openHAB 5.2.1 sends about 210 bytes per
+ * sitemap there -- a link, a homepage object with a link and two flags, the
+ * name and the label -- so this holds some forty of them, which is a long way
+ * past the twelve the panel will offer. It is only ever allocated while
+ * somebody is looking at the openHAB settings, on the panel or in a browser. */
+#define OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE 8192
+
 /* Deep enough for everything one page can have outstanding at once -- six
  * icons and six states -- with room for a tap arriving in the middle of it. A
  * submit that does not fit is reported to the caller rather than waited on. */
@@ -75,6 +82,7 @@ enum openhab_request_e
     OPENHAB_REQ_ICON,     /* GET a widget icon, as PNG */
     OPENHAB_REQ_STATE,    /* GET one item's state, as text */
     OPENHAB_REQ_COMMAND,  /* POST text/plain, nothing wanted back */
+    OPENHAB_REQ_SITEMAPS, /* GET the list of sitemaps, as JSON */
 };
 
 /**
@@ -143,6 +151,19 @@ bool openhab_client_request_state(const char *url, uint8_t slot, uint32_t genera
  * carries no payload and there is nothing in it to apply.
  */
 bool openhab_client_command(const char *url, const char *body);
+
+/**
+ * Fetch the list of sitemaps a server offers -- GET /rest/sitemaps.
+ *
+ * Carries OPENHAB_CLIENT_GENERATION_ALWAYS, like a command and unlike
+ * everything else here: this belongs to the settings screen and the web form,
+ * not to the tile page, so navigating to another page while the answer is in
+ * flight must not throw it away.
+ *
+ * The result is routed to openhab_sitemaps.cpp, which owns the cache both
+ * front ends read.
+ */
+bool openhab_client_request_sitemaps(const char *url);
 
 /**
  * Take at most one finished request.

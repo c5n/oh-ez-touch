@@ -18,11 +18,12 @@
 
 static const char *TAG = "webui";
 
-/* Eight are registered by webui_setup(), and the simulator's control interface
- * adds /screenshot.raw to them (main/testif/testif_shot.cpp). The spare slots
- * cost a device that registers eight a few dozen bytes of BSS, which is worth
- * not having the table overflow the next time a page is added. */
-#define WEBUI_ROUTE_MAX 10
+/* Nine are registered by webui_setup() -- /sitemaps, which the settings form
+ * asks for its list of sitemaps, is the ninth -- and the simulator's control
+ * interface adds /screenshot.raw to them (main/testif/testif_shot.cpp). The
+ * spare slots cost a device that registers nine a few dozen bytes of BSS, which
+ * is worth not having the table overflow the next time a page is added. */
+#define WEBUI_ROUTE_MAX 12
 
 static struct
 {

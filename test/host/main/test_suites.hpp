@@ -23,6 +23,7 @@ void test_multipart_run(void);
 void test_item_state_run(void);
 void test_item_urls_run(void);
 void test_outputs_run(void);
+void test_sitemap_list_run(void);
 void test_sitemap_parse_run(void);
 void test_testif_parse_run(void);
 void test_ui_beep_chimes_run(void);

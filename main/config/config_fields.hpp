@@ -120,6 +120,15 @@ struct config_field_s
     uint8_t            tab;    /* SETTINGS_SECTION only (enum settings_tab_e) */
 };
 
+/* The one row two front ends reach for by name.
+ *
+ * Both of them put a list of the server's sitemaps next to it -- the settings
+ * screen as rows under the fields, the web form as a datalist on the input --
+ * and both find the row with config_field_by_name(). Spelled once here so that
+ * renaming the row cannot leave one of them looking for a field that no longer
+ * exists, which would fail at runtime and nowhere else. */
+#define SETTINGS_FIELD_SITEMAP "oh_sitemap"
+
 /* Config itself is not standard-layout -- it mixes a private member (the name
  * of the file it was loaded from) with the public settings struct -- so
  * offsetof() on it would be ill-formed. Config::item is, and every offset in

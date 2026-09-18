@@ -31,4 +31,19 @@
  */
 const char *sim_sitemap_fixture_get(const char *url);
 
+/**
+ * The canned answer to GET /rest/sitemaps, for the settings screen's and the
+ * web form's list of sitemaps to choose from.
+ *
+ * Shaped like a real server's -- checked against openHAB 5.2.1 -- which means
+ * a "homepage" object per entry that SitemapList::parse() filters out. It
+ * lists the one sitemap the pages above make up plus two the fixtures do not
+ * have, so that offline mode shows a list worth looking at and picking one
+ * that has no fixture behind it behaves the way picking a sitemap a server
+ * does not serve behaves.
+ *
+ * @return the JSON body, or NULL on the device, which has a real server to ask
+ */
+const char *sim_sitemap_fixture_list(void);
+
 #endif /* SITEMAP_FIXTURE_HPP */

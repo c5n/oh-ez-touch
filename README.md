@@ -550,7 +550,8 @@ have to link side by side.
 
 What every file linked out of `main/` here has in common is that it touches
 neither LVGL nor the network: the settings table and the config file over it,
-the beacon parsers, the sitemap model and parser, the relay and LED payload
+the beacon parsers, the sitemap model and both its parsers -- a page, and the
+list of sitemaps a server offers -- the relay and LED payload
 rules, the multipart scanner, the control interface's tokeniser, and both engines'
 sound tables with both engines' arithmetic under them. For the beacon parsers that is not a happy
 accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
@@ -728,7 +729,7 @@ Theme (eye symbol)      | Theme family, the night variant and its schedule, and 
 Audio (speaker symbol)  | The beeper: on or off, how loud, and a **Test** button that plays the theme's boot chime at the level being edited
 System (gear symbol)    | A menu of the six below, which are set once when the panel goes on the wall and then left alone
 &nbsp;&nbsp;WLAN                      | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
-&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap
+&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap. Opening the page asks the server which sitemaps it has and lists them under the fields, with a tick beside the one in use; touch one to select it. **Reload** asks again
 &nbsp;&nbsp;MQTT (upload symbol)      | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
 &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner
 &nbsp;&nbsp;Device (pencil symbol)    | The hostname, which is also the name of the setup access point
@@ -853,6 +854,22 @@ Setting         | Default       | Description
 Host            | openhabian    | Hostname of the OpenHAB server
 Port            | 8080          | Port
 Sitemap         | oheztouch     | Name of the sitemap you've setup for this ArduiTouch device
+
+The sitemap does not have to be typed from memory. Loading this page asks the
+server what it serves -- `GET /rest/sitemaps`, which answers with every sitemap's
+name and label -- and the field offers them as a drop-down list; the line under
+it says which server was asked and what came back. The settings screen on the
+panel does the same thing with a list of rows under the Sitemap row, and a
+**Reload** button for the server that was not up a moment ago.
+
+It stays a text field either way, deliberately. A name can still be typed when
+the server cannot be reached at the moment the settings are open, when the
+sitemap is about to be created, or when the server has more sitemaps than the
+panel keeps -- it holds twelve, and says so when there are more.
+
+The list is fetched from the host and port **as they are on the page**, not as
+they are saved, so a new server can be typed in and its sitemaps picked before
+anything is stored.
 
 ##### MQTT Broker
 
@@ -1196,7 +1213,8 @@ main/ui/frames/       one per theme family: the chrome it draws around the
                       tiles, and where it lets them sit
 main/ui/items/        one per openHAB item type: the screen its tile opens
 main/openhab/         the openHAB client: the task every request waits on,
-                      and the sitemap model and parser it feeds
+                      the sitemap model and parser it feeds, and the cache of
+                      which sitemaps the server offers
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -1246,6 +1264,15 @@ go in and bytes come back; every decision about what a body means, and every
 LVGL call, stays on the task that owns the screen. `main/openhab/openhab_connector.cpp`
 is consequently a model and a parser with no idea that a network exists, which
 is what lets the host tests cover the sitemap parser.
+
+One request belongs to neither a page nor a tile: the list of sitemaps the
+server offers, which both settings front ends show beside the Sitemap field.
+`main/openhab/openhab_sitemaps.cpp` owns the fetch and the one cache behind
+both of them -- the settings screen asks when its openHAB page opens, the web
+form asks when its page is loaded, and whichever comes second usually finds the
+answer already there. It goes over the same worker and comes back on the same
+queue; what it does not carry is a generation, because a page load while it is
+in flight has nothing to do with it.
 
 Requests are stamped with a generation, bumped whenever a page is fetched, so
 that the icons and states belonging to a page navigated away from are dropped

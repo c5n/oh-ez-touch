@@ -25,6 +25,7 @@
 
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
+#include "openhab/openhab_sitemaps.hpp"
 #include "control/beeper_control.hpp"
 #include "ui_beep.hpp"
 #include "ui_motion.hpp"
@@ -150,6 +151,28 @@ static uint8_t              scan_result_count = 0;
 static bool                 scan_running = false;
 
 static uint64_t wlan_state_refresh_deadline = 0;
+
+/* The openHAB section. The Sitemap field is a text row like any other; what is
+ * new is the list of what the server actually serves, built under the fields
+ * from the cache openhab_sitemaps.cpp fills.
+ *
+ * `sitemaps_drawn` is the revision that list was built from, so the poll below
+ * rebuilds it when the answer moves and not every few milliseconds. The host
+ * and port are the ones the last fetch was asked for: the draft's, and when
+ * the draft's move away from them -- somebody edited the host -- the list is
+ * fetched again from where it would now come from. */
+static lv_obj_t *sitemap_field_row = NULL;
+static lv_obj_t *sitemap_list_obj = NULL;
+static lv_obj_t *sitemap_status_label = NULL;
+static uint32_t  sitemaps_drawn = 0;
+static char      sitemaps_host[sizeof(draft.openhab.hostname)];
+static int       sitemaps_port = 0;
+
+/* Whether the answer to the fetch in flight is worth a sound: set by the Reload
+ * button and by nothing else. The fetch that happens because the page was
+ * opened is not something anyone asked for by itself, and a panel that chimes
+ * at a page it was merely shown is a panel that chimes at nothing. */
+static bool sitemaps_announce = false;
 
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
@@ -285,6 +308,7 @@ static void screen_show_target(uint8_t target)
 }
 
 static void field_rows_build(uint8_t tab);
+static void openhab_tab_build(lv_obj_t *rows);
 static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
 static void wlan_state_update(void);
@@ -311,6 +335,13 @@ static void widget_refs_clear(void)
     }
 
     audio_demo_button = NULL;
+    sitemap_field_row = NULL;
+    sitemap_list_obj = NULL;
+    sitemap_status_label = NULL;
+    /* And with them the revision they were drawn from: the next openHAB page
+     * builds its list from whatever the cache holds by then, which is not
+     * necessarily a newer revision than this one showed. */
+    sitemaps_drawn = 0;
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
     wlan_psk_row = NULL;
@@ -924,6 +955,209 @@ static void scan_event(lv_event_t *e)
     scan_start();
 }
 
+/* ------------------------------------------------ the list of sitemaps */
+
+/* The row the list belongs to, looked up rather than held: the table is const,
+ * and a lookup on a page build is a couple of dozen string compares against
+ * carrying a pointer that two builders would have to keep in step. */
+static const struct config_field_s *sitemap_field(void)
+{
+    return config_field_by_name(SETTINGS_FIELD_SITEMAP);
+}
+
+/* Ask the server in the *draft* what it serves.
+ *
+ * The draft and not the saved configuration, which is the whole point: someone
+ * who has just typed a new host wants to see that host's sitemaps, and they
+ * want to see them before saving -- picking the sitemap is usually why they
+ * came here. */
+static void sitemaps_request(void)
+{
+    strlcpy(sitemaps_host, draft.openhab.hostname, sizeof(sitemaps_host));
+    sitemaps_port = draft.openhab.port;
+
+    openhab_sitemaps_request(sitemaps_host, (uint16_t)sitemaps_port);
+}
+
+static void sitemap_row_text(size_t index, char *buffer, size_t size)
+{
+    const char *name = openhab_sitemaps_name(index);
+
+    /* The configured one wears a tick. This list is as much a report of what
+     * the panel is set to as it is a way of changing it -- and the Sitemap row
+     * above shows the name, which on a server with a demo and a demo2 is not
+     * enough to see at a glance which of them is selected. */
+    snprintf(buffer, size, "%s%s",
+             (strcmp(name, draft.openhab.sitemap) == 0) ? LV_SYMBOL_OK " " : "", name);
+}
+
+/* Move the tick without rebuilding the list.
+ *
+ * Called from a row's own click handler, where lv_obj_clean() would delete the
+ * object whose event is still being dispatched. */
+static void sitemap_marks_update(void)
+{
+    if (sitemap_list_obj == NULL)
+        return;
+
+    uint32_t rows = lv_obj_get_child_count(sitemap_list_obj);
+
+    for (uint32_t i = 0; i < rows && i < openhab_sitemaps_count(); i++)
+    {
+        char text[VALUE_BUFFER_LEN];
+
+        sitemap_row_text(i, text, sizeof(text));
+        lv_label_set_text(lv_obj_get_child(lv_obj_get_child(sitemap_list_obj, i), 0), text);
+    }
+}
+
+static void sitemap_row_event(lv_event_t *e)
+{
+    size_t                       index = (size_t)(uintptr_t)lv_event_get_user_data(e);
+    const struct config_field_s *f = sitemap_field();
+
+    /* The list can have been replaced between the press and this call -- a
+     * refresh that landed in the same frame -- so the index is checked against
+     * what is in the cache now rather than against what was drawn. */
+    if (f == NULL || index >= openhab_sitemaps_count())
+        return;
+
+    /* Through the field rather than into the struct: a name picked from a list
+     * goes through the same width and the same character rules as one typed on
+     * the keyboard. A server cannot smuggle a '/' into the configuration by
+     * calling a sitemap after one. */
+    if (config_field_set_text(f, &draft, openhab_sitemaps_name(index)) == false)
+    {
+        BEEPER_EVENT_ERROR();
+        return;
+    }
+
+    if (sitemap_field_row != NULL)
+        row_refresh(sitemap_field_row, f);
+
+    sitemap_marks_update();
+    BEEPER_EVENT_CHANGE();
+}
+
+static void sitemap_list_rebuild(void)
+{
+    if (sitemap_list_obj == NULL)
+        return;
+
+    lv_obj_clean(sitemap_list_obj);
+
+    for (size_t i = 0; i < openhab_sitemaps_count(); i++)
+    {
+        char text[VALUE_BUFFER_LEN];
+
+        sitemap_row_text(i, text, sizeof(text));
+
+        lv_obj_t *row = row_create(sitemap_list_obj, text);
+
+        /* The label, which is what a sitemap is called rather than what it is
+         * named. openHAB does not require one; SitemapList falls back to the
+         * name, so this column is never blank. */
+        row_set_value(row, openhab_sitemaps_label(i));
+        lv_obj_add_event_cb(row, sitemap_row_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    }
+}
+
+static void sitemaps_status_update(void)
+{
+    if (sitemap_status_label == NULL)
+        return;
+
+    char   text[VALUE_BUFFER_LEN + 40];
+    size_t count = openhab_sitemaps_count();
+    size_t total = openhab_sitemaps_total();
+
+    switch (openhab_sitemaps_state())
+    {
+    case OPENHAB_SITEMAPS_FETCHING:
+        snprintf(text, sizeof(text), "Asking %s for its sitemaps...", sitemaps_host);
+        break;
+
+    case OPENHAB_SITEMAPS_READY:
+        if (count == 0)
+            snprintf(text, sizeof(text), "%s serves no sitemaps", sitemaps_host);
+        else if (total > count)
+            /* More than the panel holds. Saying so is the difference between a
+             * list that is short and a list that has been cut off -- and the
+             * Sitemap row above still takes a name that is not on it. */
+            snprintf(text, sizeof(text), "%u of %u sitemaps on %s -- the rest can be typed",
+                     (unsigned)count, (unsigned)total, sitemaps_host);
+        else
+            snprintf(text, sizeof(text), "%u sitemap%s on %s", (unsigned)count,
+                     (count == 1) ? "" : "s", sitemaps_host);
+        break;
+
+    case OPENHAB_SITEMAPS_FAILED:
+        snprintf(text, sizeof(text), "No sitemap list from %s", sitemaps_host);
+        break;
+
+    case OPENHAB_SITEMAPS_IDLE:
+    default:
+        snprintf(text, sizeof(text), "%s", "Sitemaps");
+        break;
+    }
+
+    lv_label_set_text(sitemap_status_label, text);
+}
+
+/* Follow the cache, from ui_settings_loop().
+ *
+ * Nothing here is a timer: the revision moves when the fetch does, and the
+ * endpoint comparison is two strings on a page nobody is scrolling. */
+static void sitemaps_poll(void)
+{
+    if (current_tab != SETTINGS_TAB_OPENHAB)
+        return;
+
+    /* The endpoint being edited has moved away from the one the list was
+     * fetched for -- somebody changed the host or the port -- so the list on
+     * screen is another server's and is asked for again. */
+    if (   strcmp(draft.openhab.hostname, sitemaps_host) != 0
+        || (int)draft.openhab.port != sitemaps_port)
+        sitemaps_request();
+
+    if (openhab_sitemaps_revision() == sitemaps_drawn)
+        return;
+
+    sitemaps_drawn = openhab_sitemaps_revision();
+
+    sitemap_list_rebuild();
+    sitemaps_status_update();
+
+    if (sitemaps_announce == false)
+        return;
+
+    /* Only for a fetch the Reload button asked for, and only once it has an
+     * answer: FETCHING is the request being taken, which the button already
+     * acknowledged. */
+    if (openhab_sitemaps_state() == OPENHAB_SITEMAPS_READY)
+    {
+        sitemaps_announce = false;
+        BEEPER_EVENT_NOTIFY();
+    }
+    else if (openhab_sitemaps_state() == OPENHAB_SITEMAPS_FAILED)
+    {
+        sitemaps_announce = false;
+        BEEPER_EVENT_WARNING();
+    }
+}
+
+static void sitemaps_reload_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    sitemaps_announce = true;
+    sitemaps_request();
+
+    /* A request taken, not a value moved -- the same thing the WLAN scan's
+     * button says. */
+    BEEPER_EVENT_ACCEPT();
+}
+
 /* ------------------------------------------------------------------- save */
 
 static void status_set(uint8_t tab, const char *text)
@@ -1304,7 +1538,46 @@ static void field_rows_build(uint8_t tab)
 
         row_refresh(row, f);
         lv_obj_add_event_cb(row, field_row_event, LV_EVENT_CLICKED, (void *)f);
+
+        /* Kept so that picking a sitemap from the list under these rows can
+         * refresh the row that holds it. */
+        if (f == sitemap_field())
+            sitemap_field_row = row;
     }
+}
+
+/* The openHAB section: the fields off the shared table, and under them what the
+ * server says it serves.
+ *
+ * The fetch is started here and not by a button, because opening this page is
+ * the gesture: the one thing anybody comes to it for is to point the panel at a
+ * sitemap, and a list that has to be asked for is a list most people will never
+ * see. The footer keeps a Reload for the server that was not up a moment ago. */
+static void openhab_tab_build(lv_obj_t *rows)
+{
+    field_rows_build(SETTINGS_TAB_OPENHAB);
+
+    sitemap_status_label = lv_label_create(rows);
+    lv_label_set_long_mode(sitemap_status_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(sitemap_status_label, lv_pct(100));
+    lv_obj_add_style(sitemap_status_label, &ui_style_label_state, LV_PART_MAIN);
+
+    sitemap_list_obj = ui_plain_container(rows);
+    lv_obj_set_size(sitemap_list_obj, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(sitemap_list_obj, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(sitemap_list_obj, 2, 0);
+
+    /* Whatever the cache already holds is drawn at once -- a page opened a
+     * second time, or after the web form asked the same question, has its list
+     * immediately -- and the refresh below replaces it when the answer comes.
+     *
+     * sitemaps_request() before the draw, so that the status line names the
+     * host the list is being fetched for rather than the one it last was. */
+    sitemaps_announce = false;
+    sitemaps_request();
+    sitemaps_drawn = openhab_sitemaps_revision();
+    sitemap_list_rebuild();
+    sitemaps_status_update();
 }
 
 /* The bar across the top of every settings screen, and all of it is the way
@@ -1530,6 +1803,16 @@ static void screen_show_section(uint8_t tab)
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
                             NULL);
     }
+    else if (tab == SETTINGS_TAB_OPENHAB)
+    {
+        /* The counterpart of the WLAN page's Scan, and there for the same
+         * case: the answer arrived while the server was still starting, or the
+         * sitemap wanted has only just been written. */
+        lv_obj_add_event_cb(ui_themed_button(footer, "Reload"), sitemaps_reload_event,
+                            LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)tab);
+    }
     else
     {
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
@@ -1540,6 +1823,10 @@ static void screen_show_section(uint8_t tab)
     {
     case SETTINGS_TAB_WLAN:
         wlan_tab_build(rows);
+        break;
+
+    case SETTINGS_TAB_OPENHAB:
+        openhab_tab_build(rows);
         break;
 
     case SETTINGS_TAB_INFO:
@@ -1742,6 +2029,7 @@ void ui_settings_loop(void)
         ui_settings_rebuild();
 
     scan_poll();
+    sitemaps_poll();
 
     /* The tune ends without an event. Only does anything on the Audio page,
      * where the button exists at all. */

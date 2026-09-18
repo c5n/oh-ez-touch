@@ -111,8 +111,13 @@ const struct config_field_s config_fields[] = {
     TXT("oh_host", "Host", openhab.hostname, "openhab", "hostname", "openhabian",
         SETTINGS_F_HOSTCHARS),
     SINT("oh_port", "Port", openhab.port, "openhab", "port", 8080, 1, 65535),
-    TXT("oh_sitemap", "Sitemap", openhab.sitemap, "openhab", "sitemap", "setme_sitemap",
-        SETTINGS_F_HOSTCHARS),
+    /* Still a text field, and deliberately: the panel offers what
+     * /rest/sitemaps says the server has, and a server that cannot be reached
+     * at the moment the settings are opened must not stop anyone naming a
+     * sitemap they know is there. SETTINGS_FIELD_SITEMAP is how both front ends
+     * find this row to hang that list off. */
+    TXT(SETTINGS_FIELD_SITEMAP, "Sitemap", openhab.sitemap, "openhab", "sitemap",
+        "setme_sitemap", SETTINGS_F_HOSTCHARS),
 
     SEC("MQTT Broker", SETTINGS_TAB_MQTT),
     /* Off by default: a device that has never been told about a broker must

@@ -490,3 +490,110 @@ int Sitemap::parse(const char *payload, size_t payload_len)
 
     return retval;
 }
+
+/* ------------------------------------------------------------ SitemapList */
+
+void SitemapList::clear()
+{
+    /* count first, and this is not tidiness: the web server reads this list on
+     * its own task while the UI task fills it, unlocked, the same way Config's
+     * readers are unlocked and for the same reason. Emptying it before the
+     * names change and publishing the new count only once they are all written
+     * is what keeps a reader to either the old list or the new one -- never a
+     * count that promises more names than have been stored. */
+    count = 0;
+    total = 0;
+}
+
+const char *SitemapList::getName(size_t index) const
+{
+    return (index < count) ? name[index] : "";
+}
+
+const char *SitemapList::getLabel(size_t index) const
+{
+    return (index < count) ? label[index] : "";
+}
+
+int SitemapList::parse(const char *payload, size_t payload_len)
+{
+    /* The filter. Everything openHAB sends per sitemap -- the link, and a
+     * "homepage" object with its own link, its flags and a widget array -- is
+     * dropped at the parser, so the document is two strings per sitemap
+     * whatever the server puts on the wire. A filter that is an array applies
+     * its first element to every element of the input. */
+    JsonDocument filter;
+    JsonObject   element = filter.add<JsonObject>();
+
+    element["name"] = true;
+    element["label"] = true;
+
+    JsonDocument doc;
+    /* The length is passed explicitly: the network payload is not terminated,
+     * and the char * overload parses in place without copying. */
+    DeserializationError error = deserializeJson(doc, payload, payload_len,
+                                                 DeserializationOption::Filter(filter),
+                                                 DeserializationOption::NestingLimit(10));
+
+    /* Emptied before anything can fail, so that a refresh that did not work
+     * leaves no list behind: the names on offer would be the previous server's,
+     * and nothing downstream could tell. */
+    clear();
+
+    if (error)
+    {
+        printf("SitemapList::parse: deserializeJson() failed: %s\r\n", error.c_str());
+        return -1;
+    }
+
+    JsonArray sitemaps = doc.as<JsonArray>();
+
+    /* Not an array: an openHAB error object, an HTML error page that parsed by
+     * accident, or a body from something else entirely at that address. */
+    if (sitemaps.isNull())
+    {
+        printf("SitemapList::parse: not a list of sitemaps\r\n");
+        return -1;
+    }
+
+    size_t stored = 0;
+    size_t seen = 0;
+
+    for (JsonVariant entry : sitemaps)
+    {
+        const char *entry_name = json_str(entry["name"]);
+
+        /* A sitemap with no name cannot be requested and cannot be stored, so
+         * it is not one of the choices and is not counted as one either. */
+        if (entry_name[0] == '\0')
+            continue;
+
+        seen++;
+
+        /* Counted above and dropped here: the name does not fit the field
+         * config.json keeps it in, so offering it would store a truncated one
+         * and fetch a page that does not exist. The count and the total then
+         * disagree, which is what both front ends report. */
+        if (strlen(entry_name) >= STR_SITEMAP_NAME_LEN)
+            continue;
+
+        if (stored >= SITEMAP_LIST_COUNT_MAX)
+            continue;
+
+        const char *entry_label = json_str(entry["label"]);
+
+        strlcpy(name[stored], entry_name, sizeof(name[stored]));
+        strlcpy(label[stored], (entry_label[0] != '\0') ? entry_label : entry_name,
+                sizeof(label[stored]));
+        stored++;
+    }
+
+    /* Both last, for the reason clear() gives, and the count after the total:
+     * a reader that catches the pair between the two sees a list one entry
+     * short of its own total, which reads as a full list and not as a wrong
+     * one. */
+    total = seen;
+    count = stored;
+
+    return 0;
+}

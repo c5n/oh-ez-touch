@@ -227,6 +227,16 @@ bool openhab_client_command(const char *url, const char *body)
                   OPENHAB_CLIENT_GENERATION_ALWAYS);
 }
 
+bool openhab_client_request_sitemaps(const char *url)
+{
+    /* _ALWAYS, like a command: the page the tiles are on has nothing to do
+     * with this request, and a page load while it is in flight -- which is
+     * exactly what a save from the settings screen causes -- must not cancel
+     * it. */
+    return submit(OPENHAB_REQ_SITEMAPS, url, NULL, OPENHAB_CLIENT_SLOT_NONE,
+                  OPENHAB_CLIENT_GENERATION_ALWAYS);
+}
+
 bool openhab_client_poll(struct openhab_result_s *out)
 {
     if (results == NULL)
@@ -258,6 +268,10 @@ static size_t body_capacity(enum openhab_request_e type, bool *truncate)
     case OPENHAB_REQ_ICON:
         *truncate = false;
         return OPENHAB_CLIENT_ICON_BUFFER_SIZE;
+
+    case OPENHAB_REQ_SITEMAPS:
+        *truncate = false;
+        return OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE;
 
     case OPENHAB_REQ_STATE:
     default:
@@ -305,6 +319,18 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
         }
 
         page = (const char *)icon;
+        break;
+
+    case OPENHAB_REQ_SITEMAPS:
+        page = sim_sitemap_fixture_list();
+
+        if (page == NULL)
+        {
+            ESP_LOGE(TAG, "no fixture list of sitemaps");
+            return;
+        }
+
+        len = strlen(page);
         break;
 
     case OPENHAB_REQ_STATE:

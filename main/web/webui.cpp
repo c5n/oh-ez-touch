@@ -30,6 +30,7 @@
 
 #include "config/config_fields.hpp"
 
+#include "openhab/openhab_sitemaps.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_frame_stats.h"
 #include "port/port_net.h"
@@ -175,6 +176,36 @@ static void webui_putf(struct webui_out_s *o, const char *fmt, ...)
     webui_put(o, tmp);
 }
 
+/* The same job for a JSON string body: only what a string may not contain
+ * literally. Everything that goes through this came off the network -- the
+ * sitemap names and labels a server chose -- or out of Config, and lands in a
+ * document a browser runs. */
+static void webui_put_json_escaped(struct webui_out_s *o, const char *s)
+{
+    for (; *s != '\0'; s++)
+    {
+        unsigned char c = (unsigned char)*s;
+
+        if (c == '"' || c == '\\')
+        {
+            char pair[3] = {'\\', (char)c, '\0'};
+            webui_put(o, pair);
+        }
+        else if (c < 0x20)
+        {
+            /* Control characters, which a string may not carry raw. openHAB
+             * will not send one, and a body that did would otherwise leave
+             * the page's JSON unparseable. */
+            webui_putf(o, "\\u%04x", (unsigned)c);
+        }
+        else
+        {
+            char one[2] = {(char)c, '\0'};
+            webui_put(o, one);
+        }
+    }
+}
+
 /* -------------------------------------------------------------------- page */
 
 static const char webui_page_head[] =
@@ -195,8 +226,44 @@ static const char webui_page_head[] =
     "border-radius:3px;background:#1fa3ec;color:#fff}"
     "table.s{width:100%;font-size:.82em;border-collapse:collapse}"
     "table.s td{padding:1px 0}table.s td:first-child{color:#666;width:38%}"
-    "p.n{font-size:.8em;color:#666}"
+    "p.n,span.n{font-size:.8em;color:#666}"
     "</style></head><body><div class='w'><h1>OhEzTouch</h1>";
+
+/* Fills the sitemap field's datalist from /sitemaps, and says where it got to.
+ *
+ * The one piece of script in this interface, and it earns its place: the list
+ * comes from a server the *panel* talks to, so it is not known when the page is
+ * rendered -- the fetch has usually only just been started by the handler that
+ * rendered it. The alternative is a page that shows whatever the last visit
+ * left in the cache, which is precisely the stale answer the list exists to
+ * replace.
+ *
+ * Nothing here is required for the form to work: the field is a text input with
+ * a datalist, so a browser with no script, or a device that cannot reach its
+ * openHAB, leaves a field that can still be typed into and saved.
+ *
+ * Options are built through the DOM and never through innerHTML. The names and
+ * labels in that JSON came off another machine. */
+static const char webui_page_script[] =
+    "<script>(function(){var n=0;var p=function(){"
+    "fetch('/sitemaps').then(function(r){return r.json()}).then(function(d){"
+    "var l=document.getElementById('sitemaps'),s=document.getElementById('sitemaps-state');"
+    "if(!l||!s)return;"
+    "l.innerHTML='';"
+    "d.sitemaps.forEach(function(m){var o=document.createElement('option');"
+    "o.value=m.name;o.label=m.label;l.appendChild(o)});"
+    "if(d.state=='fetching'){s.textContent='Asking '+d.host+' for its sitemaps...';"
+    /* Fifteen seconds of polling at most: the panel gives its own fetch about
+     * twelve before it calls it failed, so a page that is still being told
+     * "fetching" after this has lost the answer rather than be waiting for
+     * it. */
+    "if(++n<15)setTimeout(p,1000);return}"
+    "if(d.state=='ready'){s.textContent=d.count?(d.count+' sitemap'+(d.count==1?'':'s')+"
+    "' on '+d.host+(d.total>d.count?' (of '+d.total+' -- the rest can be typed)':'')):"
+    "(d.host+' serves no sitemaps');return}"
+    "s.textContent='No sitemap list from '+d.host"
+    "}).catch(function(){var s=document.getElementById('sitemaps-state');"
+    "if(s)s.textContent=''})};p()})();</script>";
 
 static const char webui_page_tail[] = "</div></body></html>";
 
@@ -315,11 +382,22 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
              * prefilled: saving this form must not require retyping the broker
              * password, and the page it appears in has no authentication in
              * front of it anyway. See the flag's own comment. */
-            webui_putf(o, "<input type='%s' name='%s' maxlength='%u' value='",
+            webui_putf(o, "<input type='%s' name='%s' maxlength='%u'%s value='",
                        (f->flags & SETTINGS_F_SECRET) ? "password" : "text", f->name,
-                       (unsigned)(f->size - 1));
+                       (unsigned)(f->size - 1),
+                       /* The one row with a list behind it. A datalist and not
+                        * a <select>, so that the field stays what it is: the
+                        * sitemaps the server offers are suggestions, and a
+                        * name can still be typed when the server is not up or
+                        * has more sitemaps than the panel keeps. */
+                       (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
+                           ? " list='sitemaps' autocomplete='off'" : "");
             webui_put_escaped(o, config_field_text(f, &config->item));
             webui_put(o, "'>");
+
+            if (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
+                webui_put(o, "<datalist id='sitemaps'></datalist>"
+                             "<span class='n' id='sitemaps-state'>Loading sitemaps...</span>");
             break;
 
         case SETTINGS_BOOL:
@@ -412,6 +490,12 @@ static void webui_handle_root(webui_request_t *req)
         webui_put(&out, "<fieldset><legend>WLAN</legend>"
                         "<p class='n'>Credentials stored, connecting.</p></fieldset>");
 
+    /* Opening the page is the request, the same way opening the panel's
+     * openHAB settings is: by the time the script below asks for the list, the
+     * panel is usually already waiting on the answer. */
+    openhab_sitemaps_request(webui_config->item.openhab.hostname,
+                             (uint16_t)webui_config->item.openhab.port);
+
     webui_send_status(&out);
     webui_send_wlan_form(&out);
     webui_send_form(&out, webui_config);
@@ -420,6 +504,8 @@ static void webui_handle_root(webui_request_t *req)
                     "<button type='submit'>Firmware update</button></form>"
                     "<form method='post' action='/restart'>"
                     "<button type='submit'>Restart</button></form>");
+
+    webui_put(&out, webui_page_script);
 
     webui_end_page(&out);
 }
@@ -498,6 +584,73 @@ static void webui_handle_save(webui_request_t *req)
     config->unlock();
 
     webui_redirect(req, 303, "/?saved=1");
+}
+
+/* The list of sitemaps, as JSON, for the script above.
+ *
+ * Reading, not refreshing. The page handler is what asks for a fresh list, and
+ * this is polled once a second until that answer arrives -- a request here
+ * would restart the fetch on every poll and the answer would never be reported
+ * as finished. The one exception is a list that has never been fetched at all,
+ * which is what a bookmarked /sitemaps or a script asking what the panel can
+ * see would otherwise get nothing from.
+ *
+ * "host" is echoed back because every line the script writes names it, and
+ * because the value the panel asked can differ from the value in the form: the
+ * fetch goes to the *saved* endpoint, and the field above it may have been
+ * edited since.
+ */
+static void webui_handle_sitemaps(webui_request_t *req)
+{
+    struct webui_out_s out;
+
+    if (openhab_sitemaps_state() == OPENHAB_SITEMAPS_IDLE)
+        openhab_sitemaps_request(webui_config->item.openhab.hostname,
+                                 (uint16_t)webui_config->item.openhab.port);
+
+    const char *state = "idle";
+
+    switch (openhab_sitemaps_state())
+    {
+    case OPENHAB_SITEMAPS_FETCHING:
+        state = "fetching";
+        break;
+    case OPENHAB_SITEMAPS_READY:
+        state = "ready";
+        break;
+    case OPENHAB_SITEMAPS_FAILED:
+        state = "failed";
+        break;
+    case OPENHAB_SITEMAPS_IDLE:
+    default:
+        /* The request above has only been recorded, not carried out: the loop
+         * task picks it up within milliseconds and the script asks again. */
+        break;
+    }
+
+    out.req = req;
+    out.len = 0;
+
+    webui_begin_chunked(req, "application/json");
+
+    webui_putf(&out, "{\"state\":\"%s\",\"host\":\"", state);
+    webui_put_json_escaped(&out, webui_config->item.openhab.hostname);
+    webui_putf(&out, ":%d\",\"count\":%u,\"total\":%u,\"sitemaps\":[",
+               webui_config->item.openhab.port, (unsigned)openhab_sitemaps_count(),
+               (unsigned)openhab_sitemaps_total());
+
+    for (size_t i = 0; i < openhab_sitemaps_count(); i++)
+    {
+        webui_put(&out, (i == 0) ? "{\"name\":\"" : ",{\"name\":\"");
+        webui_put_json_escaped(&out, openhab_sitemaps_name(i));
+        webui_put(&out, "\",\"label\":\"");
+        webui_put_json_escaped(&out, openhab_sitemaps_label(i));
+        webui_put(&out, "\"}");
+    }
+
+    webui_put(&out, "]}");
+    webui_flush(&out);
+    webui_end_chunked(req);
 }
 
 static void webui_handle_wifi(webui_request_t *req)
@@ -581,6 +734,7 @@ void webui_setup(Config *config)
     webui_transport_route("/", WEBUI_GET, webui_handle_root);
     webui_transport_route("/save", WEBUI_POST, webui_handle_save);
     webui_transport_route("/wifi", WEBUI_POST, webui_handle_wifi);
+    webui_transport_route("/sitemaps", WEBUI_GET, webui_handle_sitemaps);
     webui_transport_route("/restart", WEBUI_POST, webui_handle_restart);
     webui_transport_route("/restart", WEBUI_GET, webui_handle_restart);
 

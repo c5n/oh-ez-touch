@@ -39,6 +39,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
+#include "openhab/openhab_sitemaps.hpp"
 #include "peripherals/led.hpp"
 #include "peripherals/relay.hpp"
 #include "peripherals/sensor_main.hpp"
@@ -363,6 +364,12 @@ static void ohez_loop(void)
      * settings screen is how a device with no credentials gets any, so its
      * access point scan has to keep running while the station is offline. */
     ui_settings_loop();
+
+    /* And with it, for the same reason turned around: the list of sitemaps is
+     * fetched because somebody opened the openHAB settings, and on a panel
+     * that cannot reach its server that has to end in a failure the screen can
+     * report rather than in a request nothing ever times out. */
+    openhab_sitemaps_loop();
     ui_screen_loop();
     wlan_loop();
     webui_loop();

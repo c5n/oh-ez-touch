@@ -106,6 +106,7 @@ set(OHEZ_APP_SRCS
     "openhab/openhab_client.cpp"
     "openhab/openhab_connector.cpp"
     "openhab/openhab_http.cpp"
+    "openhab/openhab_sitemaps.cpp"
 
     "peripherals/sensor_bme280.cpp"
     "peripherals/sensor_main.cpp"

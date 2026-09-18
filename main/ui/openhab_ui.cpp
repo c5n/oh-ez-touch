@@ -3,6 +3,7 @@
 #include "openhab_ui.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
+#include "openhab/openhab_sitemaps.hpp"
 #include "ui_messagebox.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
@@ -1473,8 +1474,13 @@ static void results_apply_one(void)
     /* Everything below indexes widget_context[] with it. The slot comes off
      * our own queue, so this can only fail if the two ever disagree about how
      * many tiles there are -- which is exactly when an out-of-bounds write
-     * would be hardest to find. */
-    if (res.type != OPENHAB_REQ_PAGE && res.type != OPENHAB_REQ_COMMAND
+     * would be hardest to find.
+     *
+     * Named by the two kinds that carry a slot rather than by the kinds that
+     * do not: a request added later belongs to no widget far more often than
+     * it belongs to one, and the list of exceptions was one such request away
+     * from silently dropping it. */
+    if ((res.type == OPENHAB_REQ_ICON || res.type == OPENHAB_REQ_STATE)
         && res.slot >= WIDGET_COUNT_MAX)
     {
         openhab_client_result_release(&res);
@@ -1532,6 +1538,13 @@ static void results_apply_one(void)
         }
         break;
     }
+
+    case OPENHAB_REQ_SITEMAPS:
+        /* Straight on to the module that owns the list. It is not the tile
+         * page's business: nothing here changes, and the answer is for
+         * whoever is looking at the settings. */
+        openhab_sitemaps_apply(&res);
+        break;
 
     case OPENHAB_REQ_COMMAND:
     default:
