@@ -15,9 +15,11 @@
  * is the cheapest thing the software renderer draws.
  *
  *      0   44      80 84                  248 252      316 320
- *    0 +---+--------+  +--------------------+  +--------+
+ *    0 .---+--------+  +--------------------+  +--------.
  *      |####### r22 |  |  PAGE TITLE        |  | 21:47  |   34   bar
- *   34 |####+-------+  +--------------------+  +--------+
+ *   34 |####+-------+  +--------------------+  +--------'
+ *      ^ the sweep the run              the run's one cap ^
+ *        starts from
  *      |####|  <- the notch's top-left fillet is the inner sweep
  *   90 |####|
  *   96 +----+
@@ -43,6 +45,10 @@
 #define ELBOW_H   90
 #define R_OUTER   22
 #define R_NOTCH   14
+/* Half the bar's height, which is what LV_RADIUS_CIRCLE would clamp to. Spelled
+ * out because the patch that squares the clock's other end is exactly this
+ * wide, and the two must not drift apart. */
+#define R_CAP     (BAR_H / 2)
 #define GUTTER    4
 #define SPINE_GAP 6
 
@@ -109,15 +115,21 @@ static void lcars_build(lv_obj_t *parent)
     ui_frame_block(lcars.root, SPINE_W, BAR_H, ELBOW_W - SPINE_W + R_NOTCH,
                    ELBOW_H - BAR_H + R_NOTCH, ground, R_NOTCH);
 
-    /* The bar's two blocks. LV_RADIUS_CIRCLE clamps to half the height, so
-     * these are true stadiums -- the shape LCARS ends a run of blocks with. */
+    /* The bar's two blocks. A run of LCARS blocks is capped where it *ends* and
+     * butts square everywhere else, and this run ends once -- at the right edge
+     * of the screen. So the title is square at both ends, the clock is square
+     * where it faces the title and round where it faces the edge, and the only
+     * other curve in the bar is the elbow's, at the far left, which is the
+     * sweep the run starts from rather than a cap.
+     *
+     * Both blocks were stadiums before, which read as three separate lozenges
+     * laid on the bar instead of one run across it. */
     int16_t title_x = ELBOW_W + GUTTER;
     int16_t clock_w = 64;
     int16_t clock_x = LV_HOR_RES - GUTTER - clock_w;
     int16_t title_w = (int16_t)(clock_x - GUTTER - title_x);
 
-    lv_obj_t *title_block =
-        ui_frame_block(lcars.root, title_x, 0, title_w, BAR_H, primary, LV_RADIUS_CIRCLE);
+    lv_obj_t *title_block = ui_frame_block(lcars.root, title_x, 0, title_w, BAR_H, primary, 0);
     lv_obj_set_style_pad_hor(title_block, 14, 0);
     lcars.title = block_label(title_block, "", t->font_normal, ink);
     /* Both, or LONG_DOT has nothing to clip against: with a content-sized
@@ -128,10 +140,23 @@ static void lcars_build(lv_obj_t *parent)
     lv_obj_set_height(lcars.title, lv_font_get_line_height(t->font_normal));
     lv_obj_center(lcars.title);
 
-    lv_obj_t *clock_block =
-        ui_frame_block(lcars.root, clock_x, 0, clock_w, BAR_H, second, LV_RADIUS_CIRCLE);
-    lcars.clock = block_label(clock_block, "--:--", t->font_normal, ink);
-    lv_obj_center(lcars.clock);
+    /* One radius property per object, so one rounded end costs two blocks: the
+     * plate, and a square patch of the same colour over the end that has to
+     * stay flat. The same trick as the elbow above and the spine's cap below.
+     *
+     * Which is why the clock's label is not a child of the plate. The patch is
+     * a sibling drawn after it, so a label inside the plate would be drawn
+     * first and the patch would cover its left-hand digits. It goes on the root
+     * afterwards and is centred by arithmetic, exactly as the notice cell's
+     * does and for the same reason. */
+    ui_frame_block(lcars.root, clock_x, 0, clock_w, BAR_H, second, R_CAP);
+    ui_frame_block(lcars.root, clock_x, 0, R_CAP, BAR_H, second, 0);
+
+    lcars.clock = block_label(lcars.root, "--:--", t->font_normal, ink);
+    lv_obj_set_style_text_align(lcars.clock, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_width(lcars.clock, clock_w);
+    lv_obj_set_pos(lcars.clock, clock_x,
+                   (BAR_H - lv_font_get_line_height(t->font_normal)) / 2);
 
     /* The spine's cells. The status one is where the settings screen is
      * reached from, which is what the whole status bar used to be. */
