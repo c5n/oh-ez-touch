@@ -730,7 +730,7 @@ Theme (eye symbol)      | Theme family, the night variant and its schedule, and 
 Audio (speaker symbol)  | The beeper: on or off, how loud, and a **Test** button that plays the theme's boot chime at the level being edited
 System (gear symbol)    | A menu of the six below, which are set once when the panel goes on the wall and then left alone
 &nbsp;&nbsp;WLAN                      | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
-&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap -- none of which has to be typed. Opening the page asks the network which openHAB servers are on it and that server which sitemaps it has, and lists both under the fields with a tick beside the one in use; touch one to select it. **Scan** asks both questions again
+&nbsp;&nbsp;openHAB (house symbol)    | Two lists and nothing to type: the openHAB servers on the network, and the sitemaps the selected one serves, each with a tick beside the one in use. Touch one to select it. **Scan** asks both questions again, and **Manual** opens a page with the host, port and sitemap as fields, for what the network did not offer
 &nbsp;&nbsp;MQTT (upload symbol)      | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
 &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner
 &nbsp;&nbsp;Device (pencil symbol)    | The hostname, which is also the name of the setup access point
@@ -860,32 +860,34 @@ The host and the port do not have to be looked up. openHAB announces itself on
 the local network over mDNS -- `_openhab-server._tcp`, which is how its own
 phone apps find a server -- so loading this page asks, and every server that
 answers appears under the Host field as a button that fills in the host and the
-port. The panel's settings screen shows the same servers as rows. What is
-stored is the address the answer came from, in digits, because the panel has no
-way to resolve the `.local` name a server gives for itself.
+port. The panel shows the same servers as a list, and on the panel that list
+*is* the page: the fields live behind its **Manual** button. What is stored is
+the address the answer came from, in digits, because the panel has no way to
+resolve the `.local` name a server gives for itself.
 
 It finds what announces itself, which on a home network is normally
 everything -- but an access point that filters multicast, or an openHAB in a
-Docker bridge network, will not be heard. The field stays a field; nothing has
-to be discovered for it to be typed.
+Docker bridge network, will not be heard. That is what **Manual** is for, and
+why the web form keeps the fields next to the servers rather than instead of
+them: nothing has to be discovered for it to be typed.
 
-The sitemap does not have to be typed from memory either. Loading this page asks the
-server what it serves -- `GET /rest/sitemaps`, which answers with every sitemap's
-name and label -- and the field offers them as a drop-down list; the line under
-it says which server was asked and what came back. The settings screen on the
-panel does the same thing with a list of rows under the Sitemap row, and a
-**Reload** button for the server that was not up a moment ago.
+The sitemap does not have to be typed from memory either. Loading this page asks
+the selected server what it serves -- `GET /rest/sitemaps`, which answers with
+every sitemap's name and label -- and the field offers them as a drop-down list.
+On the panel they are the second list on the openHAB page, under the servers
+that fill in the host.
 
-It stays a text field either way, deliberately. A name can still be typed when
-the server cannot be reached at the moment the settings are open, when the
-sitemap is about to be created, or when the server has more sitemaps than the
-panel keeps -- it holds twelve, and says so when there are more.
+It stays a typed field behind **Manual**, deliberately. A name can still be
+entered when the server cannot be reached at the moment the settings are open,
+when the sitemap is about to be created, or when the server has more sitemaps
+than the panel keeps -- it holds twelve, and says so when there are more.
 
-On the panel the sitemap list is fetched from the host and port **as they are on
-the page**, not as they are saved, so picking a server from the scan -- or
-typing a new one -- fills the sitemap list from it immediately, before anything
-is stored. The web form fetches from the saved endpoint instead, so there the
-order is: pick a server, Save, then pick a sitemap from the reloaded page.
+On the panel the sitemap list is fetched from the host and port **as they are
+being edited**, not as they are saved, so picking a server from the scan -- or
+typing one on the Manual page -- fills the sitemap list from it immediately,
+before anything is stored. The web form fetches from the saved endpoint instead,
+so there the order is: pick a server, Save, then pick a sitemap from the
+reloaded page.
 
 ##### MQTT Broker
 

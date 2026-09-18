@@ -162,6 +162,19 @@ static uint64_t wlan_state_refresh_deadline = 0;
  * and port are the ones the last fetch was asked for: the draft's, and when
  * the draft's move away from them -- somebody edited the host -- the list is
  * fetched again from where it would now come from. */
+/* Which of the openHAB section's two pages is showing.
+ *
+ * The section is one entry in the menu and two screens under it: the lists of
+ * what is out there, and the three fields behind the Manual button. They are
+ * one section because they are one setting seen twice -- the lists write the
+ * fields, and Save on either saves the same draft -- and two pages because a
+ * 240 px screen that carried both was a page nobody could read. The flag is
+ * cleared by every way of *arriving* at the section, so the lists are what it
+ * opens on, and by Back on the manual page; a rebuild for a theme change goes
+ * through screen_show_target() and keeps it, or a night switch would throw
+ * away a half-typed hostname's page. */
+static bool openhab_manual = false;
+
 static lv_obj_t *host_field_row = NULL;
 static lv_obj_t *port_field_row = NULL;
 static lv_obj_t *sitemap_field_row = NULL;
@@ -319,8 +332,7 @@ static void screen_show_target(uint8_t target)
         screen_show_section(target);
 }
 
-static void field_rows_build(uint8_t tab, const struct config_field_s *after,
-                             void (*extra)(lv_obj_t *rows));
+static void field_rows_build(uint8_t tab);
 static void openhab_tab_build(lv_obj_t *rows);
 static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
@@ -1087,35 +1099,32 @@ static void servers_status_update(void)
     if (server_status_label == NULL)
         return;
 
-    char   text[VALUE_BUFFER_LEN + 40];
-    size_t count = openhab_discover_count();
+    /* A heading for the list, which is what the page needs it for -- there are
+     * two lists on it -- with the states that are not "here it is" saying so in
+     * its place. Short on purpose: it is read at a glance on the way past, and
+     * a sentence explaining what mDNS cannot see belongs in the README. */
+    const char *text = "Servers";
 
     switch (openhab_discover_state())
     {
     case OPENHAB_DISCOVER_SCANNING:
-        snprintf(text, sizeof(text), "%s", "Looking for openHAB servers...");
+        text = "Searching...";
         break;
 
     case OPENHAB_DISCOVER_READY:
-        if (count == 0)
-            /* Said as what it is rather than as a failure: a server behind an
-             * access point that drops multicast is not announced to this
-             * panel and never will be, and the rows above still take an
-             * address typed in by hand. */
-            snprintf(text, sizeof(text), "%s",
-                     "No openHAB announced itself -- enter the host above");
-        else
-            snprintf(text, sizeof(text), "%u openHAB server%s on this network",
-                     (unsigned)count, (count == 1) ? "" : "s");
+        /* Not a failure, and not worded as one: a server behind an access
+         * point that drops multicast is never announced to this panel, and
+         * Manual is the answer to it. */
+        if (openhab_discover_count() == 0)
+            text = "No servers found";
         break;
 
     case OPENHAB_DISCOVER_FAILED:
-        snprintf(text, sizeof(text), "%s", "Cannot look for servers");
+        text = "Scan failed";
         break;
 
     case OPENHAB_DISCOVER_IDLE:
     default:
-        snprintf(text, sizeof(text), "%s", "Servers");
         break;
     }
 
@@ -1263,37 +1272,37 @@ static void sitemaps_status_update(void)
     if (sitemap_status_label == NULL)
         return;
 
-    char   text[VALUE_BUFFER_LEN + 40];
+    char   text[VALUE_BUFFER_LEN];
     size_t count = openhab_sitemaps_count();
     size_t total = openhab_sitemaps_total();
+
+    /* The same heading as the servers list above, on the same terms. The server
+     * these belong to is the ticked row over it and is not repeated here. */
+    snprintf(text, sizeof(text), "%s", "Sitemaps");
 
     switch (openhab_sitemaps_state())
     {
     case OPENHAB_SITEMAPS_FETCHING:
-        snprintf(text, sizeof(text), "Asking %s for its sitemaps...", sitemaps_host);
+        snprintf(text, sizeof(text), "%s", "Loading...");
         break;
 
     case OPENHAB_SITEMAPS_READY:
         if (count == 0)
-            snprintf(text, sizeof(text), "%s serves no sitemaps", sitemaps_host);
+            snprintf(text, sizeof(text), "%s", "No sitemaps");
         else if (total > count)
             /* More than the panel holds. Saying so is the difference between a
-             * list that is short and a list that has been cut off -- and the
-             * Sitemap row above still takes a name that is not on it. */
-            snprintf(text, sizeof(text), "%u of %u sitemaps on %s -- the rest can be typed",
-                     (unsigned)count, (unsigned)total, sitemaps_host);
-        else
-            snprintf(text, sizeof(text), "%u sitemap%s on %s", (unsigned)count,
-                     (count == 1) ? "" : "s", sitemaps_host);
+             * list that is short and a list that has been cut off; Manual
+             * still takes a name that is not on it. */
+            snprintf(text, sizeof(text), "Sitemaps (%u of %u)", (unsigned)count,
+                     (unsigned)total);
         break;
 
     case OPENHAB_SITEMAPS_FAILED:
-        snprintf(text, sizeof(text), "No sitemap list from %s", sitemaps_host);
+        snprintf(text, sizeof(text), "%s", "No answer from the server");
         break;
 
     case OPENHAB_SITEMAPS_IDLE:
     default:
-        snprintf(text, sizeof(text), "%s", "Sitemaps");
         break;
     }
 
@@ -1349,6 +1358,21 @@ static void sitemaps_poll(void)
  * standing in front of the panel wants to choose between rescanning for
  * servers and re-asking the server it already has. The WLAN page's Scan is the
  * same promise about the same kind of thing. */
+/* Into the fields, and out of them again by the bar at the top like every
+ * other page. Declared before the footer that uses it and defined beside the
+ * Scan it sits next to. */
+static void openhab_manual_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    openhab_manual = true;
+
+    /* The chime for going a level deeper, which is what this is: the same one
+     * the index plays for opening a section. */
+    BEEPER_EVENT_LINK();
+    screen_show_section(SETTINGS_TAB_OPENHAB);
+}
+
 static void openhab_scan_event(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -1711,14 +1735,8 @@ static uint8_t tab_section_count(uint8_t tab)
     return count;
 }
 
-/* The openHAB, Sensors and Other tabs, straight off the shared table.
- *
- * `extra` is built directly after the row for field `after`, and both are NULL
- * for every section but openHAB. It is there because the list of servers
- * belongs under the Host and Port rows it fills in, and not at the foot of the
- * page under a Sitemap row it has nothing to do with. */
-static void field_rows_build(uint8_t tab, const struct config_field_s *after,
-                             void (*extra)(lv_obj_t *rows))
+/* The Sensors, Other and manual openHAB pages, straight off the shared table. */
+static void field_rows_build(uint8_t tab)
 {
     lv_obj_t *rows = tab_rows[tab];
     bool      headings = tab_section_count(tab) > 1;
@@ -1759,14 +1777,10 @@ static void field_rows_build(uint8_t tab, const struct config_field_s *after,
             port_field_row = row;
         else if (f == sitemap_field())
             sitemap_field_row = row;
-
-        if (f == after && extra != NULL)
-            extra(rows);
     }
 }
 
-/* The servers half of the openHAB page, built between the Port row and the
- * Sitemap row. */
+/* The servers half of the openHAB page. */
 static void server_rows_build(lv_obj_t *rows)
 {
     server_status_label = lv_label_create(rows);
@@ -1780,16 +1794,33 @@ static void server_rows_build(lv_obj_t *rows)
     lv_obj_set_style_pad_row(server_list_obj, 2, 0);
 }
 
-/* The openHAB section: the fields off the shared table, and under them what the
- * server says it serves.
+/* The openHAB section: two lists, and nothing to type.
  *
- * The fetch is started here and not by a button, because opening this page is
- * the gesture: the one thing anybody comes to it for is to point the panel at a
- * sitemap, and a list that has to be asked for is a list most people will never
- * see. The footer keeps a Reload for the server that was not up a moment ago. */
+ * The servers on the network, then the sitemaps the selected one serves, each
+ * under a line saying what is being looked at. That is the whole page -- the
+ * Host, Port and Sitemap rows moved behind the Manual button in the footer,
+ * because the two lists *are* those three fields for anybody whose openHAB
+ * announces itself, and a page carrying both was three rows, two headings and
+ * two lists on a screen 240 px tall.
+ *
+ * Both fetches are started here and not by a button, because opening this page
+ * is the gesture: the one thing anybody comes to it for is to point the panel
+ * at a server and a sitemap, and a list that has to be asked for is a list most
+ * people will never see. The footer keeps a Scan for the server that was not up
+ * a moment ago. */
 static void openhab_tab_build(lv_obj_t *rows)
 {
-    field_rows_build(SETTINGS_TAB_OPENHAB, port_field(), server_rows_build);
+    /* Behind the Manual button: the three fields and nothing else, for the
+     * server that does not announce itself, the sitemap that is not on the
+     * list because it has not been written yet, and the port that is not the
+     * usual one. */
+    if (openhab_manual == true)
+    {
+        field_rows_build(SETTINGS_TAB_OPENHAB);
+        return;
+    }
+
+    server_rows_build(rows);
 
     sitemap_status_label = lv_label_create(rows);
     lv_label_set_long_mode(sitemap_status_label, LV_LABEL_LONG_WRAP);
@@ -1839,6 +1870,14 @@ static void back_event(lv_event_t *e)
          * are navigation inside one. */
         ui_settings_close();
     }
+    else if (current_tab == SETTINGS_TAB_OPENHAB && openhab_manual == true)
+    {
+        /* One level inside a section rather than out of it: Back from the
+         * fields is the lists they were reached from. */
+        openhab_manual = false;
+        BEEPER_EVENT_LINK_BACK();
+        screen_show_section(SETTINGS_TAB_OPENHAB);
+    }
     else if (MENU_IS(current_tab))
     {
         BEEPER_EVENT_LINK_BACK();
@@ -1861,6 +1900,12 @@ static void back_bar_create(const char *title)
 
 static void index_event(lv_event_t *e)
 {
+    /* Arriving at a section is arriving at its first page. Not in
+     * screen_show_target(), which is also what ui_settings_rebuild() goes
+     * through: a theme change -- including the automatic night one, at any
+     * moment -- must leave the page it happens on where it was. */
+    openhab_manual = false;
+
     /* Here and not in screen_show_target(): that function is also the
      * programmatic entry from ui_settings_open(), which is how a pristine
      * device lands on the WLAN tab with nobody having touched anything. */
@@ -1968,7 +2013,12 @@ static void screen_show_section(uint8_t tab)
 
     widget_refs_clear();
 
-    back_bar_create(target_title(tab));
+    /* The manual page is the one screen whose title is not its section's: it
+     * is a page of the openHAB section rather than the section itself, and a
+     * bar that said "openHAB" on both would leave Back looking like it had
+     * done nothing. */
+    back_bar_create((tab == SETTINGS_TAB_OPENHAB && openhab_manual == true) ? "openHAB Server"
+                                                                            : target_title(tab));
 
     int32_t vres = lv_display_get_vertical_resolution(NULL);
 
@@ -2047,12 +2097,15 @@ static void screen_show_section(uint8_t tab)
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
                             NULL);
     }
-    else if (tab == SETTINGS_TAB_OPENHAB)
+    else if (tab == SETTINGS_TAB_OPENHAB && openhab_manual == false)
     {
-        /* The counterpart of the WLAN page's Scan, and there for the same
+        /* Scan is the counterpart of the WLAN page's, and there for the same
          * cases: a server that was still starting when the page opened, or a
-         * sitemap that has only just been written. */
+         * sitemap that has only just been written. Manual is the way to the
+         * fields, for everything the network did not offer. */
         lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), openhab_scan_event,
+                            LV_EVENT_CLICKED, NULL);
+        lv_obj_add_event_cb(ui_themed_button(footer, "Manual"), openhab_manual_event,
                             LV_EVENT_CLICKED, NULL);
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)tab);
@@ -2078,7 +2131,7 @@ static void screen_show_section(uint8_t tab)
         break;
 
     default:
-        field_rows_build(tab, NULL, NULL);
+        field_rows_build(tab);
         break;
     }
 
@@ -2119,6 +2172,7 @@ void ui_settings_open(enum settings_tab_e tab)
 
     scan_result_count = 0;
     scan_running = false;
+    openhab_manual = false;
 
     screen = ui_screen_create();
 
@@ -2179,6 +2233,11 @@ const char *ui_settings_page_name(void)
 {
     if (ui_settings_is_open() == false)
         return NULL;
+
+    /* The one page that is not its section: a script that walked into the
+     * fields should be told so, the same way the bar above them says so. */
+    if (current_tab == SETTINGS_TAB_OPENHAB && openhab_manual == true)
+        return "openHAB Server";
 
     return target_title(current_tab);
 }

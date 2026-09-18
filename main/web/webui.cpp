@@ -257,16 +257,15 @@ static const char webui_page_script[] =
     "l.innerHTML='';"
     "d.sitemaps.forEach(function(m){var o=document.createElement('option');"
     "o.value=m.name;o.label=m.label;l.appendChild(o)});"
-    "if(d.state=='fetching'){s.textContent='Asking '+d.host+' for its sitemaps...';"
+    "if(d.state=='fetching'){s.textContent='Loading...';"
     /* Fifteen seconds of polling at most: the panel gives its own fetch about
      * twelve before it calls it failed, so a page that is still being told
      * "fetching" after this has lost the answer rather than be waiting for
      * it. */
     "if(++n<15)setTimeout(p,1000);return}"
     "if(d.state=='ready'){s.textContent=d.count?(d.count+' sitemap'+(d.count==1?'':'s')+"
-    "' on '+d.host+(d.total>d.count?' (of '+d.total+' -- the rest can be typed)':'')):"
-    "(d.host+' serves no sitemaps');return}"
-    "s.textContent='No sitemap list from '+d.host"
+    "(d.total>d.count?' of '+d.total:'')):'No sitemaps';return}"
+    "s.textContent='No answer from '+d.host"
     "}).catch(function(){var s=document.getElementById('sitemaps-state');"
     "if(s)s.textContent=''})};p()})();</script>";
 
@@ -289,15 +288,14 @@ static const char webui_servers_script[] =
     "b.onclick=function(){var h=document.querySelector('[name=oh_host]'),"
     "o=document.querySelector('[name=oh_port]');"
     "if(h)h.value=m.host;if(o)o.value=m.port};l.appendChild(b)});"
-    "if(d.state=='scanning'){s.textContent='Looking for openHAB servers...';"
+    "if(d.state=='scanning'){s.textContent='Searching...';"
     /* The panel's own window is two and a half seconds; eight tries is ample
      * for the answer and short enough that a page left open is not polling
      * this for ever. */
     "if(++n<8)setTimeout(p,1000);return}"
     "if(d.state=='ready'){s.textContent=d.count?"
-    "'Found on this network -- pick one to fill in the host and port:':"
-    "'No openHAB announced itself on this network';return}"
-    "s.textContent=d.state=='failed'?'Cannot look for servers':''"
+    "'Pick one to fill in the host and port:':'No servers found';return}"
+    "s.textContent=d.state=='failed'?'Scan failed':''"
     "}).catch(function(){var s=document.getElementById('servers-state');"
     "if(s)s.textContent=''})};p()})();</script>";
 
@@ -433,13 +431,13 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
 
             if (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
                 webui_put(o, "<datalist id='sitemaps'></datalist>"
-                             "<span class='n' id='sitemaps-state'>Loading sitemaps...</span>");
+                             "<span class='n' id='sitemaps-state'>Loading...</span>");
             /* Under the Host row, because that is the row it fills in -- and
              * the Port row with it, which is why this is a list of buttons
              * rather than a datalist on the input. */
             else if (strcmp(f->name, SETTINGS_FIELD_HOST) == 0)
                 webui_put(o, "<span class='n' id='servers-state'>"
-                             "Looking for openHAB servers...</span><div id='servers'></div>");
+                             "Searching...</span><div id='servers'></div>");
             break;
 
         case SETTINGS_BOOL:
