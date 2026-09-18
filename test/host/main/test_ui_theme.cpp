@@ -46,7 +46,8 @@ static void test_name_lookup_ignores_case(void)
     TEST_ASSERT_EQUAL_INT(UI_THEME_LCARS, ui_theme_from_name("lcars"));
     TEST_ASSERT_EQUAL_INT(UI_THEME_LCARS, ui_theme_from_name("LcArS"));
     TEST_ASSERT_EQUAL_INT(UI_THEME_JARVIS, ui_theme_from_name("jarvis"));
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name("DEFAULT"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("MATERIAL"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("mAtErIaL"));
 
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_AUTO, ui_night_mode_from_name("AUTO"));
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_ON, ui_night_mode_from_name("On"));
@@ -54,11 +55,17 @@ static void test_name_lookup_ignores_case(void)
 
 static void test_unknown_names_fall_back_to_the_first_entry(void)
 {
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name("Klingon"));
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name(""));
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name("LCARS2"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("Klingon"));
+    /* The name this family used to have. A config.json written before the
+     * rename still says "Default", and it is not in the table any more -- so
+     * what keeps those panels on the theme they were already showing is this
+     * fallback and nothing else. It is only correct while Material is the
+     * entry the fallback names; see UI_THEME_FALLBACK. */
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("Default"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name(""));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("LCARS2"));
     /* A prefix must not match either: strcasecmp(), not strncasecmp(). */
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name("LCAR"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("LCAR"));
 
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, ui_night_mode_from_name("maybe"));
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, ui_night_mode_from_name(""));
@@ -68,16 +75,16 @@ static void test_unknown_names_fall_back_to_the_first_entry(void)
  * straight in, so NULL has to mean "the default" rather than crash. */
 static void test_null_name_falls_back_to_the_first_entry(void)
 {
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, ui_theme_from_name(NULL));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name(NULL));
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, ui_night_mode_from_name(NULL));
 }
 
 /* Config is a global, so a loadConfig() that returns early leaves item
  * zero-initialised. That has to name a valid theme, which it only does while
- * the two enums start at their default. */
-static void test_zero_is_the_default_variant(void)
+ * both enums start at the entry their fallback names. */
+static void test_zero_is_the_fallback_variant(void)
 {
-    TEST_ASSERT_EQUAL_INT(0, UI_THEME_DEFAULT);
+    TEST_ASSERT_EQUAL_INT(0, UI_THEME_FALLBACK);
     TEST_ASSERT_EQUAL_INT(0, UI_NIGHT_OFF);
 }
 
@@ -86,9 +93,9 @@ static void test_zero_is_the_default_variant(void)
  * of the table. */
 static void test_out_of_range_ids_name_the_default(void)
 {
-    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_DEFAULT,
+    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_MATERIAL,
                              ui_theme_name((enum ui_theme_family_e)UI_THEME_FAMILY_COUNT));
-    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_DEFAULT,
+    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_MATERIAL,
                              ui_theme_name((enum ui_theme_family_e)99));
     TEST_ASSERT_EQUAL_STRING(UI_NIGHT_NAME_OFF,
                              ui_night_mode_name((enum ui_night_mode_e)UI_NIGHT_MODE_COUNT));
@@ -106,6 +113,6 @@ void test_ui_theme_run(void)
     RUN_TEST(test_name_lookup_ignores_case);
     RUN_TEST(test_unknown_names_fall_back_to_the_first_entry);
     RUN_TEST(test_null_name_falls_back_to_the_first_entry);
-    RUN_TEST(test_zero_is_the_default_variant);
+    RUN_TEST(test_zero_is_the_fallback_variant);
     RUN_TEST(test_out_of_range_ids_name_the_default);
 }

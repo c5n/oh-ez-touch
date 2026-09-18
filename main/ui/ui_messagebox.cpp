@@ -204,7 +204,8 @@ void Messagebox::build(void)
  * -- but these are local properties worked out from the table, and a style
  * refresh cannot redo those. Before this was its own function they were simply
  * left standing: a box raised under JARVIS and still up when the panel went
- * back to Slate kept JARVIS's black title ink, on Slate's dark red bar. */
+ * back to Material kept JARVIS's black title ink, on Material's dark red
+ * bar. */
 void Messagebox::restyle(void)
 {
     if (mb == NULL)
@@ -251,11 +252,11 @@ void Messagebox::restyle(void)
         /* The Restart button takes the bar's fill rather than the theme's own
          * button surface, and has to: ui_style_info and ui_style_btn are the
          * same colour in four of the six variants -- a panel and a button are
-         * the same kind of surface in Slate and in LCARS -- so a button
-         * painted the usual way and then put on this box sinks into it. Slate
-         * and JARVIS save it with the hairline border they give their buttons;
-         * LCARS gives its none, and there the word sat on the panel with
-         * nothing around it at all.
+         * the same kind of surface in Material and in LCARS -- so a button
+         * painted the usual way and then put on this box sinks into it.
+         * Material and JARVIS save it with the hairline border they give
+         * their buttons; LCARS gives its none, and there the word sat on the
+         * panel with nothing around it at all.
          *
          * The bar has already solved exactly this, in every variant, or its
          * title would not be readable either. Only the fill and the ink come

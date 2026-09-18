@@ -1,7 +1,7 @@
 /**
- * @file frame_default.cpp
+ * @file frame_material.cpp
  *
- * "Slate": the theme you leave on. One reading per card, big enough to see
+ * "Material": the theme you leave on. One reading per card, big enough to see
  * from the doorway, and nothing else competing with it.
  *
  * Its structural idea is that there is no chrome *object* at all. The top
@@ -43,7 +43,7 @@ static struct
     lv_obj_t *title;
     lv_obj_t *link;
     lv_obj_t *notice;
-} slate;
+} material;
 
 /* Quiet: this is context, not content. The tiles are what the eye should
  * land on, so everything up here is the caption face at partial opacity. */
@@ -61,46 +61,46 @@ static lv_obj_t *band_label(lv_obj_t *parent, const char *text, lv_opa_t opa)
     return label;
 }
 
-static void slate_build(lv_obj_t *parent)
+static void material_build(lv_obj_t *parent)
 {
-    slate.root = ui_frame_container(parent);
-    lv_obj_set_pos(slate.root, 0, 0);
-    lv_obj_set_size(slate.root, lv_pct(100), BAND_H);
-    lv_obj_set_style_pad_hor(slate.root, EDGE, 0);
+    material.root = ui_frame_container(parent);
+    lv_obj_set_pos(material.root, 0, 0);
+    lv_obj_set_size(material.root, lv_pct(100), BAND_H);
+    lv_obj_set_style_pad_hor(material.root, EDGE, 0);
     /* Only ever seen between the link readout and the notice glyph: the clock
      * and the title are spaced apart by the row itself. Without it those two
      * touch, and "wired, and something is wrong" reads as one glyph. */
-    lv_obj_set_style_pad_column(slate.root, 6, 0);
-    lv_obj_set_flex_flow(slate.root, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(slate.root, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER,
-                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(material.root, 6, 0);
+    lv_obj_set_flex_flow(material.root, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(material.root, LV_FLEX_ALIGN_SPACE_BETWEEN,
+                          LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    ui_frame_settings_target(slate.root);
+    ui_frame_settings_target(material.root);
 
-    slate.clock = band_label(slate.root, "--:--", LV_OPA_70);
+    material.clock = band_label(material.root, "--:--", LV_OPA_70);
 
-    slate.title = band_label(slate.root, "", LV_OPA_60);
-    lv_obj_set_flex_grow(slate.title, 1);
-    lv_obj_set_style_text_align(slate.title, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_style_text_letter_space(slate.title, 1, 0);
+    material.title = band_label(material.root, "", LV_OPA_60);
+    lv_obj_set_flex_grow(material.title, 1);
+    lv_obj_set_style_text_align(material.title, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_letter_space(material.title, 1, 0);
 
-    slate.link = band_label(slate.root, LV_SYMBOL_POWER, LV_OPA_60);
+    material.link = band_label(material.root, LV_SYMBOL_POWER, LV_OPA_60);
 
     /* At the end of the band, and the only thing up here at full opacity. The
      * band is deliberately quiet -- context, not content -- so the one glyph
      * that is content has to break that rule to be seen at all. */
-    slate.notice = ui_frame_notice(slate.root);
+    material.notice = ui_frame_notice(material.root);
 }
 
-static void slate_destroy(void)
+static void material_destroy(void)
 {
-    if (slate.root != NULL)
-        lv_obj_delete(slate.root);
+    if (material.root != NULL)
+        lv_obj_delete(material.root);
 
-    slate = {};
+    material = {};
 }
 
-static lv_area_t slate_content_area(void)
+static lv_area_t material_content_area(void)
 {
     lv_area_t a;
 
@@ -112,9 +112,9 @@ static lv_area_t slate_content_area(void)
     return a;
 }
 
-static void slate_set_title(const char *title)
+static void material_set_title(const char *title)
 {
-    if (slate.title == NULL)
+    if (material.title == NULL)
         return;
 
     /* Upper case, because at 16 px and 60% opacity a page name reads better as
@@ -127,41 +127,42 @@ static void slate_set_title(const char *title)
 
     upper[i] = '\0';
 
-    lv_label_set_text(slate.title, upper);
+    lv_label_set_text(material.title, upper);
 }
 
-static void slate_set_clock(const char *text)
+static void material_set_clock(const char *text)
 {
-    if (slate.clock == NULL)
+    if (material.clock == NULL)
         return;
 
-    /* Slate does not tick. The blinking colon is a habit from a panel that had
-     * nothing else to say it was alive; this one has a whole grid of readings,
-     * and a calm theme should not have something flashing in the corner of it. */
+    /* Material does not tick. The blinking colon is a habit from a panel that
+     * had nothing else to say it was alive; this one has a whole grid of
+     * readings, and a calm theme should not have something flashing in the
+     * corner of it. */
     char steady[8];
 
     ui_frame_clock_steady(steady, sizeof(steady), text);
-    lv_label_set_text(slate.clock, steady);
+    lv_label_set_text(material.clock, steady);
 }
 
-static void slate_set_link(bool online, int rssi)
+static void material_set_link(bool online, int rssi)
 {
-    if (slate.link == NULL)
+    if (material.link == NULL)
         return;
 
     if (online == false)
-        lv_label_set_text(slate.link, LV_SYMBOL_REFRESH);
+        lv_label_set_text(material.link, LV_SYMBOL_REFRESH);
     else if (rssi < 0)
-        lv_label_set_text(slate.link, LV_SYMBOL_SHUFFLE);
+        lv_label_set_text(material.link, LV_SYMBOL_SHUFFLE);
     else
-        lv_label_set_text_fmt(slate.link, "%d%% " LV_SYMBOL_WIFI, rssi);
+        lv_label_set_text_fmt(material.link, "%d%% " LV_SYMBOL_WIFI, rssi);
 }
 
-static void slate_set_notice(enum ui_notice_e notice)
+static void material_set_notice(enum ui_notice_e notice)
 {
-    ui_frame_notice_set(slate.notice, notice);
+    ui_frame_notice_set(material.notice, notice);
 }
 
-const struct ui_frame_ops_s ui_frame_default = {
-    slate_build,     slate_destroy,  slate_content_area, slate_set_title,
-    slate_set_clock, slate_set_link, slate_set_notice,   NULL};
+const struct ui_frame_ops_s ui_frame_material = {
+    material_build,     material_destroy,  material_content_area, material_set_title,
+    material_set_clock, material_set_link, material_set_notice,   NULL};

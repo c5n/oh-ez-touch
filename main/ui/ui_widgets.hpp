@@ -37,7 +37,7 @@ lv_obj_t *ui_plain_container(lv_obj_t *parent);
  *
  * The pressed state is styled as well as the checked one, and deliberately
  * with the same surface: without it a button's only feedback is the plate
- * deformation from ui_style_press_active, and only Slate asks for one --
+ * deformation from ui_style_press_active, and only Material asks for one --
  * LCARS and JARVIS both set press_grow to 0 because they acknowledge a press
  * by changing colour. On those two an unstyled button acknowledged nothing.
  *

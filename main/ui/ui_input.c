@@ -11,7 +11,7 @@
  * gesture on a page was LVGL doing something else entirely -- a press that
  * travels still ends as a click on whatever was under its *start*, because a
  * tile is not inside a scrollable container and so nothing ever takes the
- * click away. In the Default theme the back tile happens to sit at the top
+ * click away. In the Material theme the back tile happens to sit at the top
  * left, where a right-swipe begins, so the page went back and the mechanism
  * was never questioned. In LCARS the same swipe starts on the spine and opened
  * the settings screen; in JARVIS it starts on a bracket and did nothing. And a

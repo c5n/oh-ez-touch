@@ -223,8 +223,8 @@ OHEZ_THEME=lcars ./build/linux/oh-ez-touch.elf
 OHEZ_THEME=jarvis OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 ```
 
-`OHEZ_THEME` takes `default` (Slate -- warm paper, flat cards, one teal
-accent), `lcars` (the spine-and-elbow frame, blocks coloured by item type) or
+`OHEZ_THEME` takes `material` (warm paper, flat cards, one teal accent),
+`lcars` (the spine-and-elbow frame, blocks coloured by item type) or
 `jarvis` (Reticle -- corner brackets, hairlines and ring gauges), and
 `OHEZ_NIGHT` takes `off`, `on` or `auto`; anything unrecognised means the
 default. `OHEZ_NIGHT_FROM` and
@@ -283,9 +283,9 @@ inventing a defect the hardware has not got, which is the same mistake as the
 paragraph above and is why the fix is in the renderer rather than in a table.
 
 ```bash
-OHEZ_THEME=default ./build/linux/oh-ez-touch.elf
-OHEZ_THEME=lcars   ./build/linux/oh-ez-touch.elf
-OHEZ_THEME=jarvis  ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=material ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=lcars    ./build/linux/oh-ez-touch.elf
+OHEZ_THEME=jarvis   ./build/linux/oh-ez-touch.elf
 ```
 
 The beeper has to be enabled in the settings, as on the panel. `SDL_AUDIODRIVER=disk`
@@ -402,7 +402,7 @@ There are three, one per theme family:
 
 | family | face | licence |
 | --- | --- | --- |
-| `ui` | Barlow -- Slate | OFL 1.1 |
+| `ui` | Barlow -- Material | OFL 1.1 |
 | `hud` | Rajdhani -- Reticle | OFL 1.1 |
 | `lcars` | Antonio -- LCARS | OFL 1.1 |
 
@@ -443,8 +443,12 @@ place a canary after the object to catch one that does not.
 `test_ui_theme` covers the theme name lookups in `main/ui/ui_theme.hpp`. They are
 the only funnel between a theme's name and its enum, and four callers pass
 through them -- the config file, the web form, the environment overrides and the
-compiled-in defaults -- none of which checks the result, so the fallback to the
-default theme has to hold for a typo, an empty string and a NULL alike.
+compiled-in defaults -- none of which checks the result, so the fallback has to
+hold for a typo, an empty string and a NULL alike. It also holds for `Default`,
+the name this family had before it was renamed to Material: a `config.json`
+written by an older firmware names a theme that is no longer in the table, and
+what keeps that panel on the look it was already showing is the fallback and
+nothing else.
 
 `test_config_fields` covers the settings table in `main/config/config_fields.cpp`
 -- the one description of every setting, walked by the web form, the panel's
@@ -766,7 +770,7 @@ Daylight Saving | 0             | Daylight saving +1 hour
 
 Setting         | Default       | Description
 --------------- | ------------- | -------------
-Theme           | Default       | Look of the user interface: ```Default```, ```LCARS``` or ```JARVIS```
+Theme           | Material      | Look of the user interface: ```Material```, ```LCARS``` or ```JARVIS```
 Night mode      | off           | ```off```, ```on```, or ```auto``` to follow the clock
 Night from      | 22            | Hour the night variant starts, when night mode is ```auto```
 Night to        | 6             | Hour the night variant ends, when night mode is ```auto```
@@ -774,6 +778,15 @@ Night to        | 6             | Hour the night variant ends, when night mode i
 The theme takes effect as soon as it is saved, on the screen as well as in the
 browser. ```auto``` needs the clock, so it only starts working once NTP has
 answered.
+
+```Material``` was called ```Default``` before, and only the name changed --
+the same warm paper, flat cards and teal accent. A panel upgrading from an
+older firmware keeps the look it had without being touched: the name in its
+```config.json``` is no longer one the firmware knows, and an unknown theme
+name selects this one. Anything that *writes* the name, though -- an MQTT
+```config/theme``` payload, an ```OHEZ_THEME``` in a script -- should be
+changed, because the old spelling now works by falling back rather than by
+being understood.
 
 ##### LCD Backlight Dimming
 
@@ -977,7 +990,7 @@ mosquitto_pub -t oheztouch/oheztouch-new/sound/set -m error
 The name is matched case-insensitively. An empty payload plays nothing, so
 clearing the topic is safe; anything else that is not on the list is logged and
 ignored. What each one actually sounds like is the theme's decision and nothing
-else's -- ```notify``` on a Slate panel and ```notify``` on an LCARS one are
+else's -- ```notify``` on a Material panel and ```notify``` on an LCARS one are
 two different sounds, and switching the theme switches them, which is the point
 of asking for a *sound* rather than for a frequency.
 
@@ -1246,7 +1259,7 @@ mechanisms used to do this job and disagreed about all of it, so "deeper" and
 **A frame per family.** `main/ui/frames/` is where a theme stops being a
 palette. Each family builds its own chrome and then answers `content_area()`
 with the rectangle the tile grid may have, which is what lets LCARS put a
-spine down the left edge, Slate have no chrome objects at all, and Reticle
+spine down the left edge, Material have no chrome objects at all, and Reticle
 draw two hairlines -- without the page knowing about any of it. The grid is
 solved by `ui_geometry.hpp`, which is deliberately free of `<lvgl.h>` so the
 host tests can check every family against the tile-size floor.

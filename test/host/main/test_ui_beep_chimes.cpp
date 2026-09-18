@@ -63,7 +63,7 @@ static void test_every_family_has_every_sound(void)
  * identical lines. */
 static void test_the_families_do_not_share_a_set(void)
 {
-    TEST_ASSERT_EQUAL_PTR(&ui_chime_default, ui_chime_sets[UI_THEME_DEFAULT]);
+    TEST_ASSERT_EQUAL_PTR(&ui_chime_material, ui_chime_sets[UI_THEME_MATERIAL]);
     TEST_ASSERT_EQUAL_PTR(&ui_chime_lcars, ui_chime_sets[UI_THEME_LCARS]);
     TEST_ASSERT_EQUAL_PTR(&ui_chime_jarvis, ui_chime_sets[UI_THEME_JARVIS]);
 

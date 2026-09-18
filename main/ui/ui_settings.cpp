@@ -606,8 +606,9 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     lv_textarea_set_password_mode(overlay_textarea, password);
     lv_textarea_set_text(overlay_textarea, value);
     /* Without a style of its own the field would be lv_theme_simple's white on
-     * the Default variant's white panel -- an invisible input. The row style is
-     * the right one to borrow: this is what a row looks like being edited. */
+     * the Material variant's white panel -- an invisible input. The row style
+     * is the right one to borrow: this is what a row looks like being
+     * edited. */
     lv_obj_add_style(overlay_textarea, &ui_style_btn, LV_PART_MAIN);
     lv_obj_set_width(overlay_textarea, lv_pct(100));
 
@@ -1196,7 +1197,7 @@ static void info_tab_build(lv_obj_t *rows)
     /* Eleven rows do not fit 240 px, so the scrollbar is on screen and needs a
      * colour of the theme's rather than lv_theme_simple's grey. The slider's
      * indicator colour is the right one to borrow: a scrollbar thumb is the
-     * same idea, and for the Default theme it happens to be the very grey
+     * same idea, and for the Material theme it happens to be the very grey
      * lv_theme_simple was supplying. */
     lv_obj_set_style_bg_color(table, lv_color_hex(ui_style_theme()->slider_indic.bg),
                               LV_PART_SCROLLBAR);

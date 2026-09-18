@@ -80,7 +80,7 @@ const char *ui_frame_notice_glyph(enum ui_notice_e notice)
     {
     /* A bell, a warning triangle and a cross. Three glyphs rather than one in
      * three colours, because the families disagree about how much colour the
-     * chrome may carry -- Slate's band is one dim ink and LCARS's cells are
+     * chrome may carry -- Material's band is one dim ink and LCARS's cells are
      * all colour -- and a shape reads the same in both. */
     case UI_NOTICE_INFO:    return LV_SYMBOL_BELL;
     case UI_NOTICE_WARNING: return LV_SYMBOL_WARNING;

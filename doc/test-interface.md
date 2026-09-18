@@ -125,7 +125,7 @@ back bar (`tap 20 20`) or by `settings`/`nav`, not by a gesture.
 
 That was not always so, and the history is worth knowing because a test written
 against the old behaviour still passes for the wrong reason. There was never a
-gesture handler on a tile page: a swipe "went back" only in the Default theme,
+gesture handler on a tile page: a swipe "went back" only in the Material theme,
 where the back tile sits where a right-swipe begins, and LVGL delivered the
 click to it. In LCARS the same swipe opened the settings screen and in JARVIS
 it did nothing -- and a swipe across the top row of a page turned a light on.
@@ -193,7 +193,7 @@ screen, so a script can bracket a visit.
   },
   "item": { "open": true, "type": "slider", "slot": 5 },
   "settings": { "open": false },
-  "theme": { "family": "Default", "night": false },
+  "theme": { "family": "Material", "night": false },
   "backlight": { "brightness": 100, "dimmed": false }
 }
 ```

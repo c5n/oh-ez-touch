@@ -17,7 +17,7 @@
  *
  * That is what this replaces. A family builds its own chrome and then says
  * which rectangle is left for the grid, so LCARS can put a spine down the left
- * edge and an elbow across the top, Default can have no chrome objects at all,
+ * edge and an elbow across the top, Material can have no chrome objects at all,
  * and JARVIS can draw two hairlines and a telemetry strip -- without the page
  * knowing anything about any of it.
  *
@@ -86,7 +86,7 @@ struct ui_frame_ops_s
  * the page carrying a fallback of its own. */
 extern const struct ui_frame_ops_s ui_frame_classic;
 
-extern const struct ui_frame_ops_s ui_frame_default;
+extern const struct ui_frame_ops_s ui_frame_material;
 extern const struct ui_frame_ops_s ui_frame_lcars;
 extern const struct ui_frame_ops_s ui_frame_jarvis;
 

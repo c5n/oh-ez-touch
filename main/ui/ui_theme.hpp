@@ -13,24 +13,32 @@
 #include <stddef.h>  /* NULL: the lookups below take an unset name */
 #include <strings.h> /* strcasecmp(): POSIX, present in both newlib and glibc */
 
-#define UI_THEME_NAME_DEFAULT "Default"
-#define UI_THEME_NAME_LCARS   "LCARS"
-#define UI_THEME_NAME_JARVIS  "JARVIS"
+#define UI_THEME_NAME_MATERIAL "Material"
+#define UI_THEME_NAME_LCARS    "LCARS"
+#define UI_THEME_NAME_JARVIS   "JARVIS"
 
 #define UI_NIGHT_NAME_OFF  "off"
 #define UI_NIGHT_NAME_ON   "on"
 #define UI_NIGHT_NAME_AUTO "auto"
 
-/* UI_THEME_DEFAULT is deliberately 0: Config is a global, and a loadConfig()
- * that bails out early leaves item zero-initialised -- that still has to name a
- * valid theme. The order must match ui_theme_names[] and the web dropdown. */
+/* Entry 0 is deliberately a real theme rather than a "none": Config is a
+ * global, and a loadConfig() that bails out early leaves item zero-initialised
+ * -- that still has to name something drawable. The order must match
+ * ui_theme_names[] and the web dropdown. */
 enum ui_theme_family_e
 {
-    UI_THEME_DEFAULT = 0,
+    UI_THEME_MATERIAL = 0,
     UI_THEME_LCARS,
     UI_THEME_JARVIS,
     UI_THEME_FAMILY_COUNT
 };
+
+/* Spelled separately from UI_THEME_MATERIAL wherever what is meant is "the one
+ * an unknown name lands on" rather than "this particular look". They are the
+ * same family and were the same word until it was renamed; keeping the two
+ * meanings apart is what stops a future reordering from quietly making the
+ * fallback whichever theme happens to be first. */
+#define UI_THEME_FALLBACK UI_THEME_MATERIAL
 
 enum ui_night_mode_e
 {
@@ -41,7 +49,7 @@ enum ui_night_mode_e
 };
 
 static const char *const ui_theme_names[UI_THEME_FAMILY_COUNT] = {
-    UI_THEME_NAME_DEFAULT,
+    UI_THEME_NAME_MATERIAL,
     UI_THEME_NAME_LCARS,
     UI_THEME_NAME_JARVIS};
 
@@ -53,7 +61,7 @@ static const char *const ui_night_mode_names[UI_NIGHT_MODE_COUNT] = {
 static inline const char *ui_theme_name(enum ui_theme_family_e family)
 {
     if ((unsigned)family >= UI_THEME_FAMILY_COUNT)
-        return ui_theme_names[UI_THEME_DEFAULT];
+        return ui_theme_names[UI_THEME_FALLBACK];
 
     return ui_theme_names[family];
 }
@@ -78,7 +86,7 @@ static inline enum ui_theme_family_e ui_theme_from_name(const char *name)
             if (strcasecmp(name, ui_theme_names[i]) == 0)
                 return (enum ui_theme_family_e)i;
 
-    return UI_THEME_DEFAULT;
+    return UI_THEME_FALLBACK;
 }
 
 static inline enum ui_night_mode_e ui_night_mode_from_name(const char *name)

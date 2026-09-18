@@ -37,7 +37,7 @@ lv_style_t ui_style_info_error;
  * at. The line between the two is simply whether anything differs. */
 #define BORDER_THIN  (LV_DPI_DEF / 50 >= 1 ? LV_DPI_DEF / 50 : 1)
 #define RADIUS_TILE  (LV_DPI_DEF / 15)
-/* Slate's cards. Generous on purpose: at 96x93 an 18 px radius is what makes
+/* Material's cards. Generous on purpose: at 96x93 an 18 px radius is what makes
  * the shape read as a sheet resting on the ground rather than as a button. */
 #define RADIUS_CARD  18
 #define RADIUS_PANEL (LV_DPI_DEF / 20)
@@ -106,7 +106,7 @@ lv_style_t ui_style_info_error;
  * outright. Every field would need an exception, and the exceptions would be
  * the table again.
  *
- * UI_THEME_DEFAULT's day entry must reproduce the look this project had before
+ * UI_THEME_MATERIAL's day entry must reproduce the look this project had before
  * it was themeable, which is why it also carries the five greys lv_theme_simple
  * used to supply underneath (0xF5F5F5 screen, 0x616161 screen text, 0xFFFFFF
  * window, 0xE0E0E0 table cell, 0x9E9E9E slider indicator). Those are
@@ -114,7 +114,7 @@ lv_style_t ui_style_info_error;
  * main(GREY) -- read out of the theme, not guessed. */
 static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
 
-    /* ---------------------------------------------------- Default -- "Slate"
+    /* --------------------------------------------------------------- Material
      * Warm paper, flat white cards, and exactly one saturated colour on the
      * screen -- a deep teal that means "this is on". The blue-on-silver the UI
      * was born with had a gradient on every surface and a marker in four
@@ -126,7 +126,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
      * radius round as a stroked arc, which is what makes the card look like it
      * is resting on it. */
     {
-        UI_THEME_NAME_DEFAULT " Day", UI_THEME_DEFAULT, false,
+        UI_THEME_NAME_MATERIAL " Day", UI_THEME_MATERIAL, false,
         /* screen       */ SURF(0xF2F0EC, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x6A6E76),
         /* tile         */ SURF(0xFFFFFF, CK, NON, FULLO, 0xE2DED7, 1, FULLO, EK, RADIUS_CARD, 0x1B1D21),
         /* tile_pressed */ SURF(0xE8E4DC, CK, NON, MK, CK, MK, MK, EK, MK, 0x1B1D21),
@@ -149,10 +149,10 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, UI_SOUND_SET_DEFAULT),
+    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, UI_SOUND_SET_MATERIAL),
     },
     {
-        UI_THEME_NAME_DEFAULT " Night", UI_THEME_DEFAULT, true,
+        UI_THEME_NAME_MATERIAL " Night", UI_THEME_MATERIAL, true,
         /* screen       */ SURF(0x14161A, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x8A9099),
         /* tile         */ SURF(0x1E2126, CK, NON, FULLO, 0x2C3037, 1, FULLO, EK, RADIUS_CARD, 0xE8E4DC),
         /* tile_pressed */ SURF(0x262A31, CK, NON, MK, CK, MK, MK, EK, MK, 0xFFFFFF),
@@ -175,7 +175,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_default, 3, 2, 8, 8, UI_SOUND_SET_DEFAULT),
+    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, UI_SOUND_SET_MATERIAL),
     },
 
     /* ------------------------------------------------------------------ LCARS
@@ -387,7 +387,7 @@ static void apply_surface(lv_style_t *style, const struct ui_surface_s *s)
  * LV_BTN_STATE_PRESSED; v9 has no such call, so the port reproduced that look
  * as the primary colour darkened twice over. A variant that wants the same
  * leaves the two backgrounds at UI_COLOR_KEEP and gets the derivation -- which
- * is what makes the Default variant identical to the old code by construction,
+ * is what makes the Material variant identical to the old code by construction,
  * with no hand-computed hex to get wrong. LCARS, which presses *lighter*, names
  * its colours outright. */
 static void apply_pressed(lv_style_t *style, const struct ui_surface_s *s, uint32_t accent)
@@ -434,7 +434,7 @@ static void apply_glow(lv_style_t *style)
 void ui_style_select(enum ui_theme_family_e family, bool night)
 {
     if ((unsigned)family >= UI_THEME_FAMILY_COUNT)
-        family = UI_THEME_DEFAULT;
+        family = UI_THEME_FALLBACK;
 
     theme = &ui_themes[UI_STYLE_INDEX(family, night)];
 }

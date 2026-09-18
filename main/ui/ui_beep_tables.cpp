@@ -26,8 +26,8 @@
  * Nothing stacked ever goes below BEEPER_POLY_MIN_HZ. Interleaving gives each
  * voice a two-millisecond slot, which is four cycles at 2 kHz and under two
  * below one, and under two the ear hears the slot rate instead of the note.
- * That is why the LCARS and Slate alerts are single voices: they are the only
- * chimes that live down there. test_ui_beep.cpp enforces it.
+ * That is why the LCARS and Material alerts are single voices: they are the
+ * only chimes that live down there. test_ui_beep.cpp enforces it.
  *
  * ---------------------------------------------------------------- the voices
  *
@@ -42,7 +42,7 @@
  * Reticle uses them for triads and lets slow envelopes hide the grain.
  * Everything is a PAD and everything sweeps; affirmative rises.
  *
- * Slate uses them hardly at all, and that is the design rather than a
+ * Material uses them hardly at all, and that is the design rather than a
  * shortfall. It is the family that must not draw attention, single voices have
  * no grain to hide, and a dyad is saved for the two moments where something
  * arrives or leaves.
@@ -85,86 +85,86 @@
 #define PAD   BEEPER_SHAPE_PAD
 #define FLAT  BEEPER_SHAPE_FLAT
 
-/* ------------------------------------------------------------------ Slate
+/* --------------------------------------------------------------- Material
  *
  * Restrained, consonant, and mostly one voice. */
 
-MONO(slate_press,     N(2093, 2093, 12, 0, LOW, PLUCK));
-MONO(slate_tick,      N(2349, 2349, 10, 0, LOW, PLUCK));
-MONO(slate_tick_back, N(1976, 1976, 10, 0, LOW, PLUCK));
-MONO(slate_change,    N(2093, 2093, 25, 0, VOL, PLUCK));
-MONO(slate_wake,      N(2093, 2093, 40, 0, MED, PLUCK));
+MONO(material_press,     N(2093, 2093, 12, 0, LOW, PLUCK));
+MONO(material_tick,      N(2349, 2349, 10, 0, LOW, PLUCK));
+MONO(material_tick_back, N(1976, 1976, 10, 0, LOW, PLUCK));
+MONO(material_change,    N(2093, 2093, 25, 0, VOL, PLUCK));
+MONO(material_wake,      N(2093, 2093, 40, 0, MED, PLUCK));
 
 /* Two notes a fourth apart, in sequence rather than together: going somewhere
  * is a move, and a move is two things one after the other. */
-MONO(slate_link,      N(2093, 2093, 30, 10, VOL, PLUCK),
-                      N(2794, 2794, 40, 0, VOL, PLUCK));
-MONO(slate_link_back, N(2794, 2794, 30, 10, VOL, PLUCK),
-                      N(2093, 2093, 40, 0, VOL, PLUCK));
+MONO(material_link,      N(2093, 2093, 30, 10, VOL, PLUCK),
+                         N(2794, 2794, 40, 0, VOL, PLUCK));
+MONO(material_link_back, N(2794, 2794, 30, 10, VOL, PLUCK),
+                         N(2093, 2093, 40, 0, VOL, PLUCK));
 
-MONO(slate_notify,    N(2093, 2093, 30, 8, VOL, PLUCK),
-                      N(2637, 2637, 45, 0, VOL, PLUCK));
-MONO(slate_warning,   N(1568, 1568, 80, 60, VOL, FLAT),
-                      N(1568, 1568, 80, 0, VOL, FLAT));
+MONO(material_notify,    N(2093, 2093, 30, 8, VOL, PLUCK),
+                         N(2637, 2637, 45, 0, VOL, PLUCK));
+MONO(material_warning,   N(1568, 1568, 80, 60, VOL, FLAT),
+                         N(1568, 1568, 80, 0, VOL, FLAT));
 
-/* The one Slate chime that is deliberately outside the piezo's good band, and
- * the one that has to stay a single voice because of it. */
-MONO(slate_error,     N(660, 660, 90, 40, VOL, FLAT),
-                      N(440, 440, 180, 0, VOL, FLAT));
+/* The one Material chime that is deliberately outside the piezo's good band,
+ * and the one that has to stay a single voice because of it. */
+MONO(material_error,     N(660, 660, 90, 40, VOL, FLAT),
+                         N(440, 440, 180, 0, VOL, FLAT));
 
 /* Arrival and departure: the two places a second voice is worth its grain. */
-static const struct beeper_note_s slate_on_lead[]  = {N(2093, 2093, 20, 5, VOL, PLUCK),
-                                                      N(2637, 2637, 35, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_on_pad[]   = {N(3136, 3136, 35, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_toggle_on[] = {V(slate_on_lead),
-                                                        VAT(slate_on_pad, 25)};
+static const struct beeper_note_s material_on_lead[]  = {N(2093, 2093, 20, 5, VOL, PLUCK),
+                                                         N(2637, 2637, 35, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_on_pad[]   = {N(3136, 3136, 35, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_toggle_on[] = {V(material_on_lead),
+                                                           VAT(material_on_pad, 25)};
 
-static const struct beeper_note_s slate_off_lead[] = {N(2637, 2637, 20, 5, VOL, PLUCK),
-                                                      N(2093, 2093, 35, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_off_pad[]  = {N(1568, 1568, 35, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_toggle_off[] = {V(slate_off_lead),
-                                                         VAT(slate_off_pad, 25)};
+static const struct beeper_note_s material_off_lead[] = {N(2637, 2637, 20, 5, VOL, PLUCK),
+                                                         N(2093, 2093, 35, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_off_pad[]  = {N(1568, 1568, 35, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_toggle_off[] = {V(material_off_lead),
+                                                            VAT(material_off_pad, 25)};
 
 /* A major third, arriving a moment late: "done". */
-static const struct beeper_note_s slate_acc_lead[] = {N(2093, 2093, 50, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_acc_pad[]  = {N(2637, 2637, 30, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_accept[]  = {V(slate_acc_lead),
-                                                      VAT(slate_acc_pad, 20)};
+static const struct beeper_note_s material_acc_lead[] = {N(2093, 2093, 50, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_acc_pad[]  = {N(2637, 2637, 30, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_accept[]  = {V(material_acc_lead),
+                                                         VAT(material_acc_pad, 20)};
 
-static const struct beeper_note_s slate_can_lead[] = {N(2637, 2637, 50, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_can_pad[]  = {N(2093, 2093, 30, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_cancel[]  = {V(slate_can_lead),
-                                                      VAT(slate_can_pad, 20)};
+static const struct beeper_note_s material_can_lead[] = {N(2637, 2637, 50, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_can_pad[]  = {N(2093, 2093, 30, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_cancel[]  = {V(material_can_lead),
+                                                         VAT(material_can_pad, 20)};
 
-static const struct beeper_note_s slate_open_lead[] = {N(2093, 2093, 25, 5, VOL, PLUCK),
-                                                       N(2637, 2637, 25, 5, VOL, PLUCK),
-                                                       N(3136, 3136, 45, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_open_pad[]  = {N(2093, 2093, 45, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_screen[]   = {V(slate_open_lead),
-                                                       VAT(slate_open_pad, 60)};
+static const struct beeper_note_s material_open_lead[] = {N(2093, 2093, 25, 5, VOL, PLUCK),
+                                                          N(2637, 2637, 25, 5, VOL, PLUCK),
+                                                          N(3136, 3136, 45, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_open_pad[]  = {N(2093, 2093, 45, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_screen[]   = {V(material_open_lead),
+                                                          VAT(material_open_pad, 60)};
 
-static const struct beeper_note_s slate_shut_lead[] = {N(3136, 3136, 25, 5, VOL, PLUCK),
-                                                       N(2637, 2637, 25, 5, VOL, PLUCK),
-                                                       N(2093, 2093, 45, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_shut_pad[]  = {N(1568, 1568, 45, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_screen_out[] = {V(slate_shut_lead),
-                                                         VAT(slate_shut_pad, 60)};
+static const struct beeper_note_s material_shut_lead[] = {N(3136, 3136, 25, 5, VOL, PLUCK),
+                                                          N(2637, 2637, 25, 5, VOL, PLUCK),
+                                                          N(2093, 2093, 45, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_shut_pad[]  = {N(1568, 1568, 45, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_screen_out[] = {V(material_shut_lead),
+                                                            VAT(material_shut_pad, 60)};
 
-static const struct beeper_note_s slate_boot_lead[] = {N(2093, 2093, 45, 10, VOL, PLUCK),
-                                                       N(2637, 2637, 45, 10, VOL, PLUCK),
-                                                       N(3136, 3136, 120, 0, VOL, PLUCK)};
-static const struct beeper_note_s slate_boot_pad[]  = {N(2093, 2093, 120, 0, VOL, PLUCK)};
-static const struct beeper_voice_s slate_boot[]     = {V(slate_boot_lead),
-                                                       VAT(slate_boot_pad, 110)};
+static const struct beeper_note_s material_boot_lead[] = {N(2093, 2093, 45, 10, VOL, PLUCK),
+                                                          N(2637, 2637, 45, 10, VOL, PLUCK),
+                                                          N(3136, 3136, 120, 0, VOL, PLUCK)};
+static const struct beeper_note_s material_boot_pad[]  = {N(2093, 2093, 120, 0, VOL, PLUCK)};
+static const struct beeper_voice_s material_boot[]     = {V(material_boot_lead),
+                                                          VAT(material_boot_pad, 110)};
 
 /* Somebody is at the door -- MQTT only, see ui_beep.hpp. Two struck tones a
  * fourth apart, high then low, and one voice: a doorbell is a doorbell, and
  * this family does not decorate. */
-MONO(slate_door_chime, N(2637, 2637, 90, 25, VOL, PLUCK),
-                       N(2093, 2093, 170, 0, VOL, PLUCK));
+MONO(material_door_chime, N(2637, 2637, 90, 25, VOL, PLUCK),
+                          N(2093, 2093, 170, 0, VOL, PLUCK));
 
-#define X(name, sym) CHIME(slate_##sym),
-const struct ui_chime_set_s ui_chime_default = {{UI_SOUND_LIST(X)}};
+#define X(name, sym) CHIME(material_##sym),
+const struct ui_chime_set_s ui_chime_material = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------------ LCARS
@@ -447,7 +447,7 @@ const struct ui_chime_set_s ui_chime_jarvis = {{UI_SOUND_LIST(X)}};
  * points straight at the three objects. */
 
 const struct ui_chime_set_s *const ui_chime_sets[UI_THEME_FAMILY_COUNT] = {
-    &ui_chime_default,
+    &ui_chime_material,
     &ui_chime_lcars,
     &ui_chime_jarvis};
 

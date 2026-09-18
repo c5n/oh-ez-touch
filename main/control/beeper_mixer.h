@@ -29,7 +29,7 @@
  * the ear hears the slot rate instead of the note. The two pressures fix the
  * numbers below between them, and they leave a grain on every chord -- right
  * for LCARS, which is machines acknowledging an instruction, and the reason
- * the Slate tables use single voices for everything small.
+ * the Material tables use single voices for everything small.
  *
  * Two rules come out of it, and one of them is enforced by a host test because
  * a comment would not be enough:

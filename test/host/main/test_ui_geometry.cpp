@@ -40,8 +40,8 @@ struct family_case_s
 };
 
 static const struct family_case_s families[] = {
-    /* Slate: a 30 px band of bare ground, then the grid edge to edge. */
-    {"Slate", {3, 2, 8, 8}, 320, 240 - 30},
+    /* Material: a 30 px band of bare ground, then the grid edge to edge. */
+    {"Material", {3, 2, 8, 8}, 320, 240 - 30},
     /* LCARS: inset in the crook of the elbow, (52,42) to (315,235). */
     {"LCARS", {3, 2, 6, 0}, 264, 194},
     /* Reticle: between the two hairlines, 22 px strip and 18 px rail. */

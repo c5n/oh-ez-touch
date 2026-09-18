@@ -41,7 +41,7 @@ static const char shipped_json[] =
     "{"
     "\"general\":{\"hostname\":\"oheztouch-new\"},"
     "\"ntp\":{\"hostname\":\"pool.ntp.org\",\"gmt_offset\":1,\"daylightsaving\":false},"
-    "\"ui\":{\"theme\":\"Default\",\"night_mode\":\"off\",\"night_from\":22,\"night_to\":6},"
+    "\"ui\":{\"theme\":\"Material\",\"night_mode\":\"off\",\"night_from\":22,\"night_to\":6},"
     "\"backlight\":{\"activity_timeout\":60,\"normal_brightness\":100,"
     "\"dim_brightness\":40},"
     "\"beeper\":{\"enabled\":true,\"volume\":25},"
@@ -159,7 +159,7 @@ static void test_no_file_gives_the_built_in_defaults(void)
     TEST_ASSERT_EQUAL_STRING("oheztouch-new", config.item.general.hostname);
     TEST_ASSERT_EQUAL_STRING("pool.ntp.org", config.item.ntp.hostname);
     TEST_ASSERT_EQUAL_INT(1, config.item.ntp.gmt_offset);
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, config.item.ui.theme);
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, config.item.ui.theme);
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, config.item.ui.night_mode);
     TEST_ASSERT_EQUAL_UINT(22, config.item.ui.night_from);
     TEST_ASSERT_EQUAL_INT(100, config.item.backlight.normal_brightness);
@@ -292,7 +292,7 @@ static void test_saved_file_has_the_expected_paths(void)
 
     /* A theme is stored by name, never by index: the numbering may move
      * between firmware versions and the name may not. */
-    TEST_ASSERT_NOT_NULL(strstr(buf, "\"theme\":\"Default\""));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"theme\":\"Material\""));
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"night_mode\":\"off\""));
 
     /* A bool is a JSON bool, so the file stays hand-editable. */
@@ -370,7 +370,7 @@ static void test_an_unknown_enum_name_falls_back(void)
 
     TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
 
-    TEST_ASSERT_EQUAL_INT(UI_THEME_DEFAULT, config.item.ui.theme);
+    TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, config.item.ui.theme);
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, config.item.ui.night_mode);
 
     /* And case does not matter, as it does not in the web form's POST. */

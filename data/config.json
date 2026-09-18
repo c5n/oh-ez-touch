@@ -11,7 +11,7 @@
     },
     "ui":
     {
-        "theme":        "Default",
+        "theme":        "Material",
         "night_mode":   "off",
         "night_from":   22,
         "night_to":     6

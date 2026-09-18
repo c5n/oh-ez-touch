@@ -212,7 +212,7 @@ static void test_value_text_survives_an_out_of_range_enum(void)
     item.ui.theme = (enum ui_theme_family_e)99;
 
     config_field_value_text(row("theme"), &item, buffer, sizeof(buffer));
-    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_DEFAULT, buffer);
+    TEST_ASSERT_EQUAL_STRING(UI_THEME_NAME_MATERIAL, buffer);
 }
 
 /* Every non-secret row has to render into the MQTT client's value buffer, and

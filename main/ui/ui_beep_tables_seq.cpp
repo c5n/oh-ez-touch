@@ -36,12 +36,12 @@
  *
  * Where the mixer had a voice enter late -- a fifth joining a root twenty-five
  * milliseconds in -- the note simply follows, which is a gesture this panel
- * already used for Slate's link sound.
+ * already used for Material's link sound.
  *
  * ---------------------------------------------------------------- the voices
  *
- * Slate is restrained, consonant, and short. It must not draw attention, so it
- * gains the least from the new engine and is written to gain the least.
+ * Material is restrained, consonant, and short. It must not draw attention,
+ * so it gains the least from the new engine and is written to gain the least.
  *
  * LCARS is struck and gone: nothing eases, everything is dry, and the figures
  * are stepped rather than swept -- see the note above that family for what
@@ -112,7 +112,7 @@
 #define PULSE   BEEPER_SEQ_FX_PULSE
 #define CHIRP   BEEPER_SEQ_FX_CHIRP
 
-/* ------------------------------------------------------------------ Slate
+/* --------------------------------------------------------------- Material
  *
  * Restrained and consonant, and that is the design rather than a shortfall: it
  * is the family that must not draw attention, so it is also the one with the
@@ -124,70 +124,70 @@
  * struck thing and a tapped one. And the warning is a repeat rather than two
  * notes, which is what `repeat` is for.
  *
- * Nothing here sweeps, nothing wobbles. Slate has no use for either. */
+ * Nothing here sweeps, nothing wobbles. Material has no use for either. */
 
-TUNE(slate_press,     T(2093, 12, 0, LOW, PLUCK));
-TUNE(slate_tick,      T(2349, 10, 0, LOW, PLUCK));
-TUNE(slate_tick_back, T(1976, 10, 0, LOW, PLUCK));
-TUNE(slate_change,    T(2093, 25, 0, VOL, PLUCK));
-TUNE(slate_wake,      T(2093, 40, 0, MED, BELL));
+TUNE(material_press,     T(2093, 12, 0, LOW, PLUCK));
+TUNE(material_tick,      T(2349, 10, 0, LOW, PLUCK));
+TUNE(material_tick_back, T(1976, 10, 0, LOW, PLUCK));
+TUNE(material_change,    T(2093, 25, 0, VOL, PLUCK));
+TUNE(material_wake,      T(2093, 40, 0, MED, BELL));
 
 /* Two notes a fourth apart, in sequence: going somewhere is a move, and a move
  * is two things one after the other. The second one lands rather than strikes. */
-TUNE(slate_link,      T(2093, 30, 10, VOL, PLUCK),
-                      T(2794, 40,  0, VOL, BELL));
-TUNE(slate_link_back, T(2794, 30, 10, VOL, PLUCK),
-                      T(2093, 40,  0, VOL, BELL));
+TUNE(material_link,      T(2093, 30, 10, VOL, PLUCK),
+                         T(2794, 40,  0, VOL, BELL));
+TUNE(material_link_back, T(2794, 30, 10, VOL, PLUCK),
+                         T(2093, 40,  0, VOL, BELL));
 
-TUNE(slate_notify,    T(2093, 30, 8, VOL, PLUCK),
-                      T(2637, 45, 0, VOL, BELL));
+TUNE(material_notify,    T(2093, 30, 8, VOL, PLUCK),
+                         T(2637, 45, 0, VOL, BELL));
 
 /* Two strikes, said once. The mixer needed two notes written out for this;
  * a repeat is what a cadence is, and the envelope restarts on the second. */
-TUNE(slate_warning,   NR(1568, 1568, 80, 60, VOL, CLICK, NONE, 2));
+TUNE(material_warning,   NR(1568, 1568, 80, 60, VOL, CLICK, NONE, 2));
 
-/* The one Slate tune deliberately outside the piezo's good band. Being hard to
- * ignore is the point, and it costs loudness to get it. FLAT on purpose: this
+/* The one Material tune deliberately outside the piezo's good band. Being hard
+ * to ignore is the point, and it costs loudness to get it. FLAT on purpose: this
  * is the one sound that is allowed to click at both ends. */
-TUNE(slate_error,     T(660,  90, 40, VOL, FLAT),
-                      T(440, 180,  0, VOL, FLAT));
+TUNE(material_error,     T(660,  90, 40, VOL, FLAT),
+                         T(440, 180,  0, VOL, FLAT));
 
 /* Arrival and departure. The mixer stacked a third over these; three notes
  * rising through the same interval say the same thing in sequence. */
-TUNE(slate_toggle_on,  T(2093, 20, 5, VOL, PLUCK),
-                       T(2637, 18, 0, VOL, PLUCK),
-                       T(3136, 17, 0, VOL, BELL));
-TUNE(slate_toggle_off, T(2637, 20, 5, VOL, PLUCK),
-                       T(2093, 18, 0, VOL, PLUCK),
-                       T(1568, 17, 0, VOL, BELL));
+TUNE(material_toggle_on,  T(2093, 20, 5, VOL, PLUCK),
+                          T(2637, 18, 0, VOL, PLUCK),
+                          T(3136, 17, 0, VOL, BELL));
+TUNE(material_toggle_off, T(2637, 20, 5, VOL, PLUCK),
+                          T(2093, 18, 0, VOL, PLUCK),
+                          T(1568, 17, 0, VOL, BELL));
 
 /* A major third, the upper note arriving a moment later: "done". */
-TUNE(slate_accept,    T(2093, 20, 0, VOL, PLUCK),
-                      T(2637, 30, 0, VOL, BELL));
-TUNE(slate_cancel,    T(2637, 20, 0, VOL, PLUCK),
-                      T(2093, 30, 0, VOL, BELL));
+TUNE(material_accept,    T(2093, 20, 0, VOL, PLUCK),
+                         T(2637, 30, 0, VOL, BELL));
+TUNE(material_cancel,    T(2637, 20, 0, VOL, PLUCK),
+                         T(2093, 30, 0, VOL, BELL));
 
-TUNE(slate_screen,     T(2093, 25, 5, VOL, PLUCK),
-                       T(2637, 25, 5, VOL, PLUCK),
-                       T(3136, 45, 0, VOL, BELL));
-TUNE(slate_screen_out, T(3136, 25, 5, VOL, PLUCK),
-                       T(2637, 25, 5, VOL, PLUCK),
-                       T(2093, 45, 0, VOL, BELL));
+TUNE(material_screen,     T(2093, 25, 5, VOL, PLUCK),
+                          T(2637, 25, 5, VOL, PLUCK),
+                          T(3136, 45, 0, VOL, BELL));
+TUNE(material_screen_out, T(3136, 25, 5, VOL, PLUCK),
+                          T(2637, 25, 5, VOL, PLUCK),
+                          T(2093, 45, 0, VOL, BELL));
 
-/* The one Slate sound long enough to settle rather than stop. */
-TUNE(slate_boot,      T(2093,  45, 10, VOL, PLUCK),
-                      T(2637,  45, 10, VOL, PLUCK),
-                      T(3136, 120,  0, VOL, BELL));
+/* The one Material sound long enough to settle rather than stop. */
+TUNE(material_boot,      T(2093,  45, 10, VOL, PLUCK),
+                         T(2637,  45, 10, VOL, PLUCK),
+                         T(3136, 120,  0, VOL, BELL));
 
 /* Somebody is at the door -- MQTT only, see ui_beep.hpp. A doorbell in this
  * family is a doorbell: two struck tones a fourth apart, high then low, left
- * to ring. The only thing that makes it Slate rather than generic is that it
+ * to ring. The only thing that makes it Material rather than generic is that it
  * does not do anything else. */
-TUNE(slate_door_chime, T(2637,  90, 25, VOL, BELL),
-                       T(2093, 170,  0, VOL, BELL));
+TUNE(material_door_chime, T(2637,  90, 25, VOL, BELL),
+                          T(2093, 170,  0, VOL, BELL));
 
-#define X(name, sym) SEQ(slate_##sym##_n),
-const struct ui_tune_set_s ui_tune_default = {{UI_SOUND_LIST(X)}};
+#define X(name, sym) SEQ(material_##sym##_n),
+const struct ui_tune_set_s ui_tune_material = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------------ LCARS
@@ -460,7 +460,7 @@ const struct ui_tune_set_s ui_tune_jarvis = {{UI_SOUND_LIST(X)}};
  * points straight at the three objects. */
 
 const struct ui_tune_set_s *const ui_tune_sets[UI_THEME_FAMILY_COUNT] = {
-    &ui_tune_default,
+    &ui_tune_material,
     &ui_tune_lcars,
     &ui_tune_jarvis};
 

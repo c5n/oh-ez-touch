@@ -180,7 +180,8 @@ static void config_apply_env_overrides(config_item_t &item)
 
         case SETTINGS_ENUM:
             /* An unknown name selects the first option rather than nothing,
-             * so a typo here gives the default theme. */
+             * so a typo in OHEZ_THEME gives Material rather than no theme at
+             * all. */
             config_field_write(f, &item, config_field_enum_from_name(f, value));
             break;
 

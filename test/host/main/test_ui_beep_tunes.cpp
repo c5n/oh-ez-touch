@@ -74,7 +74,7 @@ static void test_the_families_do_not_share_a_set(void)
      * every other test in this file. */
     for (int s = 0; s < UI_SOUND_COUNT; s++)
     {
-        const struct beeper_seq_note_s *a = ui_tune_default.chime[s].notes;
+        const struct beeper_seq_note_s *a = ui_tune_material.chime[s].notes;
         const struct beeper_seq_note_s *b = ui_tune_lcars.chime[s].notes;
         const struct beeper_seq_note_s *c = ui_tune_jarvis.chime[s].notes;
 

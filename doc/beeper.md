@@ -30,7 +30,7 @@ better at *intervals*. Which matters depends on the family:
 
 | family | under the sequencer | under the mixer |
 | --- | --- | --- |
-| Slate | barely different -- ten of its eighteen were single voices already | |
+| Material | barely different -- ten of its eighteen were single voices already | |
 | Reticle | better: its swells finally get the vibrato they were reaching for | |
 | LCARS | | better where it stacks: the toggles, the acknowledgements and the standing alert are intervals, and an arpeggio is not a chord |
 
@@ -195,7 +195,7 @@ gesture on a touchscreen means "somebody is at the door", so it is reachable
 over MQTT and nowhere else -- see *Playing a sound* in the README. It is in the
 vocabulary rather than bolted on beside it so that what a door sounds like is a
 theme's decision, the same as everything else, and so that the table tests hold
-it to the same policy. Each family answers it differently: Slate strikes two
+it to the same policy. Each family answers it differently: Material strikes two
 tones and lets them ring, LCARS does the same but is the one sound in that
 family that is allowed a bell rather than a stab, and Reticle blooms in and
 thins out.

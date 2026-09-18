@@ -72,9 +72,9 @@ enum ui_entry_e
  *
  * The press is three numbers rather than one because the families genuinely
  * disagree about it: LCARS changes colour the instant it is touched and takes
- * its time coming back, which is what a machine in the show does, while Default
- * eases both ways. A hold before the return is what makes a tap shorter than
- * the transition still visible. */
+ * its time coming back, which is what a machine in the show does, while
+ * Material eases both ways. A hold before the return is what makes a tap
+ * shorter than the transition still visible. */
 struct ui_motion_cfg_s
 {
     uint8_t  entry;         /* enum ui_entry_e */

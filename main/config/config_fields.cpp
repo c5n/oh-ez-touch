@@ -85,7 +85,7 @@ const struct config_field_s config_fields[] = {
      * Stored by name for the same reason: a file written by one firmware and
      * read by another that has since gained a theme must not silently select
      * a different one because the numbering moved. */
-    SEL("theme", "Theme", ui.theme, "ui", "theme", UI_THEME_NAME_DEFAULT,
+    SEL("theme", "Theme", ui.theme, "ui", "theme", UI_THEME_NAME_MATERIAL,
         ui_theme_names, UI_THEME_FAMILY_COUNT),
     SEL("night_mode", "Night mode", ui.night_mode, "ui", "night_mode", UI_NIGHT_NAME_OFF,
         ui_night_mode_names, UI_NIGHT_MODE_COUNT),

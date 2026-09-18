@@ -7,7 +7,7 @@
 # its header comment; this script is the same information in runnable form.
 #
 # Three families, one per theme:
-#   ui      -- Slate's face, Barlow (SIL OFL 1.1). A slightly condensed
+#   ui      -- Material's face, Barlow (SIL OFL 1.1). A slightly condensed
 #              humanist signage face with a tall x-height and open apertures,
 #              which is what "legible from across the room" wants.
 #   hud     -- Reticle's face, Rajdhani (SIL OFL 1.1). Flat-sided, low

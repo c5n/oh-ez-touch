@@ -52,7 +52,7 @@ typedef struct ui_chime_set_s ui_sound_set_s;
 
 /* The alpha byte of a 0xRRGGBB colour is unused, so it carries the sentinel:
  * UI_COLOR_KEEP means "do not set this property at all". That is how
- * ui_style_tile_pressed keeps the tile's own border, and how the Default
+ * ui_style_tile_pressed keeps the tile's own border, and how the Material
  * variant sets exactly the properties the v7-derived code set -- no more, no
  * less. UI_METRIC_KEEP is the same idea for the numeric properties, and
  * UI_ENUM_KEEP for the two that are enums with a meaningful zero. */
@@ -117,7 +117,7 @@ struct ui_theme_s
      * ui_style_btn_checked have always been this colour darkened twice over
      * rather than two colours of their own; a variant that wants that leaves
      * their bg at UI_COLOR_KEEP and gets the derivation, which is what makes
-     * the Default variant identical to the old code by construction. LCARS,
+     * the Material variant identical to the old code by construction. LCARS,
      * which presses *lighter*, names its colours outright. */
     uint32_t accent;
 
