@@ -280,11 +280,25 @@ frame function the panel walks -- there is no second copy of the synthesis to
 drift out of step.
 
 It re-evaluates the engine's parameters on the engine's own five-millisecond
-grid and carries only the oscillator phase at sample resolution. Sampling the
+grid and carries only the oscillator at finer resolution. Sampling the
 parameters per sample would give the simulator a smoother vibrato than the
 hardware has, which is the one direction a simulator must not be wrong in: it
 would flatter the panel, and a table tuned against it would arrive on real glass
 sounding stepped.
+
+The oscillator itself is sampled eight times per output sample and averaged.
+One comparison per sample -- which is what it was -- aliases badly: a pulse has
+harmonics without end, everything above half the sample rate folds back to a
+frequency unrelated to the note, and a steady note measured 4 to 10 per cent
+inharmonic content in the audible band against 0.2 to 0.6 per cent now. The
+demonstration tune is what exposed it, because it holds notes long enough for a
+folded partial to be heard as a pitch and sweeps slowly enough for one to be
+heard running the wrong way.
+
+That artefact belongs to this renderer and not to the panel: LEDC drives the pin
+with a real square wave, nothing is sampled, so nothing folds. Which makes it
+the same mistake as the paragraph above, in the same direction, and is why it
+was fixed in `port_beeper.c` rather than by softening a table.
 
 ## Tests
 

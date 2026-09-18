@@ -29,6 +29,33 @@
  * step, because it is the same function the device walks -- which is what
  * beeper_mixer_frame() being pure is for.
  *
+ * ------------------------------------------------------- the one artefact
+ *
+ * A pulse has harmonics without end, and this is a sampled medium, so every
+ * harmonic above half the sample rate folds back down -- and it lands at a
+ * frequency that has nothing to do with the note. A D7 at 2349 Hz put partials
+ * at 1020 and 1328 Hz; B7 at 3951 put one at 588 Hz, a fifth of the amplitude
+ * of the note itself. It got worse as the volume went *down*, because the
+ * shipped master of 25 makes the duty 12.5 % and a narrow pulse is spectrally
+ * far richer than a square. On a slow sweep the folded partials ran downward
+ * while the note rose, which is the sound everybody recognises as aliasing.
+ *
+ * None of which the panel does. LEDC drives the pin with a real square wave:
+ * nothing is sampled, so nothing folds, the harmonics stay harmonic, and they
+ * sit above the piezo's resonance where it cannot radiate them anyway. So this
+ * was the simulator inventing a defect the hardware has not got -- the one
+ * direction it must not be wrong in, again, and the reason the fix is here
+ * rather than in a table.
+ *
+ * OVERSAMPLE below is the whole of it: the pulse is sampled eight times per
+ * output sample and averaged, so a sample straddling an edge comes out
+ * part-way rather than all the way. What it explicitly does NOT do is
+ * re-evaluate the engine: render_advance() still runs on output samples, so
+ * the sweep, the envelope and both LFOs are still read on the panel's own
+ * five-millisecond grid. That distinction is the whole of the section above,
+ * and oversampling the oscillator does not touch it -- it removes an artefact
+ * of this renderer, not a coarseness of the hardware.
+ *
  * ------------------------------------------------------------ what it is not
  *
  * A caricature of the transducer, and it should be listened to as one. The
@@ -56,6 +83,14 @@ static const char *TAG = "port_beeper";
 #define RATE        48000
 #define BUFFER      512
 
+/* Sub-samples of the pulse per output sample -- see "the one artefact" in the
+ * header. Eight, because that is where the measurement stopped paying: the
+ * inharmonic content of a note at the shipped master volume falls from about
+ * four to ten per cent of the audible band to a fifth of one per cent, and
+ * sixteen takes it to a seventh. It costs eight comparisons a sample on a
+ * desktop, which is nothing, and it is the only number here that a listener
+ * would notice being wrong. */
+#define OVERSAMPLE  8
 /* Well under full scale: these are square waves, and several of them at once. */
 #define OUTPUT_GAIN 0.8
 
@@ -90,7 +125,8 @@ struct render_s
     uint8_t                      index;
 #endif
 
-    double phase; /* 0..1 through the current period */
+    double phase; /* 0..1 through the current period, advanced OVERSAMPLE
+                   * times per output sample */
     double hp_x;  /* the high-pass filter's last input and output */
     double hp_y;
 };
@@ -231,13 +267,26 @@ static void audio_cb(void *userdata, Uint8 *stream, int len)
              * acoustic peak. Generated as a pulse and not as a scaled sine
              * because the harmonics of a 12 % and a 50 % pulse are completely
              * different, and that difference is the whole point of the volume
-             * setting having somewhere to go. */
+             * setting having somewhere to go.
+             *
+             * Sampled OVERSAMPLE times and averaged, which is the same thing as
+             * asking what fraction of this output sample's period the pulse was
+             * actually high -- see the header. A single comparison per sample
+             * is what put a 588 Hz tone under a 3951 Hz note. */
             double duty = ((double)slot->level / (double)BEEPER_LEVEL_MAX) * 0.5;
+            double step = (double)slot->freq / (double)(RATE * OVERSAMPLE);
+            unsigned high = 0;
 
-            r->phase += (double)slot->freq / (double)RATE;
-            r->phase -= floor(r->phase);
+            for (int sub = 0; sub < OVERSAMPLE; sub++)
+            {
+                r->phase += step;
+                r->phase -= floor(r->phase);
 
-            level = (r->phase < duty) ? 1.0 : 0.0;
+                if (r->phase < duty)
+                    high++;
+            }
+
+            level = (double)high / (double)OVERSAMPLE;
         }
 
         if (render_playing(r) == true)

@@ -264,9 +264,23 @@ somebody would go and "fix" a table that was fine.
 It is wrong in that direction in one place unless it is careful, and it is
 careful: the engine's *parameters* -- the swept pitch, the envelope, the two
 LFOs -- are re-evaluated on the engine's own five-millisecond grid and not per
-sample. Only the oscillator phase runs at the sample rate. A simulator with a
-smoother vibrato than the hardware would flatter the panel, and a table tuned
-against it would arrive on real glass sounding stepped.
+sample. Only the oscillator runs faster. A simulator with a smoother vibrato
+than the hardware would flatter the panel, and a table tuned against it would
+arrive on real glass sounding stepped.
+
+The oscillator is sampled eight times per output sample and averaged, which is
+the same thing as asking what fraction of each sample period the pulse was
+actually high. Without that it was one comparison per sample, and a pulse has
+harmonics without end: everything above half the sample rate folded back to a
+frequency unrelated to the note, putting a 588 Hz tone under a note at 3951 Hz
+at a fifth of its amplitude, and making slow sweeps grow whistles that ran
+downward while the note rose. It was worse at low volume, because the shipped
+master of 25 makes the duty 12.5 % and a narrow pulse is spectrally richer than
+a square. **The panel does none of that** -- LEDC drives the pin with a real
+square wave, nothing is sampled, so nothing folds and the harmonics stay above
+the piezo's resonance where it cannot radiate them. That was the simulator
+inventing a defect the hardware has not got, which is the same mistake as the
+paragraph above and is why the fix is in the renderer rather than in a table.
 
 ```bash
 OHEZ_THEME=default ./build/linux/oh-ez-touch.elf
