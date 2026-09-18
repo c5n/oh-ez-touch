@@ -698,6 +698,8 @@ Fill in your network and password in the WLAN section and press Connect. The Ard
 
 If the device is already provisioned but cannot reach its network, it raises the same AccessPoint for ten minutes and then keeps retrying quietly. It is an open network and the firmware update endpoint is unauthenticated, which is why it does not stay up indefinitely.
 
+**The station speaks WPA2, not WPA3.** ```CONFIG_ESP_WIFI_ENABLE_WPA3_SAE``` is off in ```sdkconfig.defaults.esp32``` and that file says what it bought: 37 KB of an app partition with little to spare. A mixed-mode WPA2/WPA3 access point -- which is what a router offering WPA3 almost always is -- accepts this panel as a WPA2 client and nothing changes. An access point configured for WPA3 *only* will not let it associate at all, and the symptom is a panel that raises its own AccessPoint and keeps retrying. Turn the option back on and rebuild if that is the network it has to live on.
+
 #### Web interface
 Everything the device serves, on port 80:
 

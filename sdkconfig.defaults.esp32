@@ -95,3 +95,39 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 # created with plain xTaskCreate(), so the scheduler places them on whichever
 # core is free, and LVGL is only ever touched from the task this symbol moves.
 CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
+
+# Three things IDF turns on by default that this firmware never asks for.
+# Checked against the source rather than assumed: there is no https, no
+# esp_crt_bundle_attach, no AF_INET6 and no ip6 anywhere in main/.
+#
+# IPv6 is 24.6 KB of the 27 KB these three save, and the safe one besides: the
+# panel only ever reads and reports an IPv4 address, so a v6-only network was
+# never going to work here whatever lwIP was compiled with.
+#
+# Turning https off is worth about two, and the reason to do it is not the two.
+# It is that most of what looks like it should go with it does not: the ~160 KB
+# of mbedTLS and tf-psa-crypto in this image belongs to the WiFi supplicant, and
+# with https gone tf-psa-crypto sheds 378 bytes and mbedx509 none at all.
+#
+# The certificate bundle costs nothing today -- x509_crt_bundle.S links zero
+# bytes because nothing calls esp_crt_bundle_attach() -- and is turned off so
+# that it stays that way by decision rather than by luck.
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
+CONFIG_LWIP_IPV6=n
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+
+# WPA3, which is a trade rather than a cleanup and is recorded as one: it takes
+# libwpa_supplicant from 69.6 KB to 34.2 KB and another 3 KB of crypto with it,
+# 37 KB in all, and in exchange this panel can no longer join a WPA3-only access
+# point. WPA2 and mixed-mode WPA2/WPA3 networks are unaffected, which is nearly
+# all of them. OWE goes with it on both sides; the setup access point is open on
+# purpose, so encrypting it opportunistically was never the plan.
+#
+# What is NOT here, because it does not work: CONFIG_ESP_WIFI_MBEDTLS_CRYPTO=n.
+# That is where the remaining ~160 KB of mbedTLS and tf-psa-crypto lives -- held
+# in by the supplicant, not by anything this firmware calls -- but turning it off
+# fails to link on IDF v6.1, with sha1_vector undefined out of the supplicant's
+# own sha1.c. The crypto is effectively mandatory while WiFi is on.
+CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_SOFTAP=n
