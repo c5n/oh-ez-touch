@@ -135,6 +135,16 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
   stock server; `format=svg` is a 200.
 - A German-locale server writes the value into the label with a **decimal
   comma** (`Temperature [21,4 °C]`). All of it is stripped, comma included.
+- **openHAB announces itself over mDNS**, as `_openhab-server._tcp.local` on
+  the REST port and `_openhab-server-ssl._tcp.local` on 8443, with the TXT
+  record `uri=/rest` on both. A unicast-response query -- the `QU` bit, which
+  lets a client use an ordinary ephemeral socket instead of joining the group
+  -- is answered in one packet carrying PTR, A, TXT and SRV, in 56 to 70 ms on
+  a wired network. The SRV record's owner name is a compression pointer into
+  the middle of the PTR record's data, which itself ends in a pointer to the
+  question, so a parser that does not follow pointers finds nothing. That
+  packet is in `test/host/main/test_mdns_query.cpp` byte for byte, captured on
+  2026-09-18, and is what the settings screen's list of servers is built from.
 - **`GET /rest/sitemaps` is a flat array**, one object per sitemap with `link`,
   `name`, `label` and a `homepage` object -- and that homepage's `widgets` is
   **empty** here, however many the page really has; the widgets only come with
@@ -199,6 +209,8 @@ Worth having beside you when writing a page that is meant to fit.
 | icon body | 5000 bytes | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
 | `/rest/sitemaps` body | 8192 bytes | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |
 | sitemaps offered | 12 | `SITEMAP_LIST_COUNT_MAX` |
+| servers an mDNS scan lists | 8 | `OPENHAB_DISCOVER_COUNT_MAX` |
+| mDNS response read | 512 bytes | `MDNS_QUERY_PACKET_MAX` |
 
 A real six-widget page is about 3 KB of JSON, so the page buffer is not the
 constraint it looks like.

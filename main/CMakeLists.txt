@@ -104,6 +104,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_widgets.cpp"
 
     "openhab/openhab_client.cpp"
+    "openhab/openhab_discover.cpp"
     "openhab/openhab_connector.cpp"
     "openhab/openhab_http.cpp"
     "openhab/openhab_sitemaps.cpp"
@@ -125,6 +126,7 @@ set(OHEZ_APP_SRCS
     "web/webui_transport_esp32.cpp"
     "web/webui_transport_linux.cpp"
 
+    "net/mdns_query.c"
     "net/wlan.cpp"
     "net/wlan_radio.cpp"
 
@@ -182,6 +184,11 @@ if(NOT OHEZ_LINUX)
     # implementations, and why port/linux/port_esp_timer.c has to define the one
     # function esp-mqtt calls. spiffs likewise excludes esp_spiffs.c on linux.
     list(APPEND OHEZ_REQUIRES spiffs)
+
+    # The BSD sockets openhab_discover.cpp asks mDNS its one question over.
+    # Device only, and not because the code is: on the linux target those
+    # headers are the host's own and lwIP is not in the build at all.
+    list(APPEND OHEZ_REQUIRES lwip)
 
     # The Bluetooth controller and the NimBLE host. Device only: there is no
     # controller on a desktop that port_ble could drive, so the linux side gets

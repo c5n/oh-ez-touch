@@ -108,9 +108,11 @@ const struct config_field_s config_fields[] = {
     UINT("beeper_vol", "Volume [%]", beeper.volume, "beeper", "volume", 25, 0, 100),
 
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
-    TXT("oh_host", "Host", openhab.hostname, "openhab", "hostname", "openhabian",
+    /* The two an mDNS scan fills in. SETTINGS_FIELD_HOST and _PORT are how
+     * both front ends find these rows to hang that list off. */
+    TXT(SETTINGS_FIELD_HOST, "Host", openhab.hostname, "openhab", "hostname", "openhabian",
         SETTINGS_F_HOSTCHARS),
-    SINT("oh_port", "Port", openhab.port, "openhab", "port", 8080, 1, 65535),
+    SINT(SETTINGS_FIELD_PORT, "Port", openhab.port, "openhab", "port", 8080, 1, 65535),
     /* Still a text field, and deliberately: the panel offers what
      * /rest/sitemaps says the server has, and a server that cannot be reached
      * at the moment the settings are opened must not stop anyone naming a

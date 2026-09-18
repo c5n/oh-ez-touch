@@ -39,6 +39,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
+#include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "peripherals/led.hpp"
 #include "peripherals/relay.hpp"
@@ -370,6 +371,12 @@ static void ohez_loop(void)
      * that cannot reach its server that has to end in a failure the screen can
      * report rather than in a request nothing ever times out. */
     openhab_sitemaps_loop();
+
+    /* And the scan that finds the server those sitemaps come from, for the
+     * same reason again: it is asked for from the settings screen, which is
+     * reachable on a panel that has no openHAB and no network worth the
+     * name. */
+    openhab_discover_loop();
     ui_screen_loop();
     wlan_loop();
     webui_loop();

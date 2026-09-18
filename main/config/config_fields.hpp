@@ -120,13 +120,17 @@ struct config_field_s
     uint8_t            tab;    /* SETTINGS_SECTION only (enum settings_tab_e) */
 };
 
-/* The one row two front ends reach for by name.
+/* The three rows two front ends reach for by name.
  *
- * Both of them put a list of the server's sitemaps next to it -- the settings
- * screen as rows under the fields, the web form as a datalist on the input --
- * and both find the row with config_field_by_name(). Spelled once here so that
- * renaming the row cannot leave one of them looking for a field that no longer
- * exists, which would fail at runtime and nowhere else. */
+ * Both of them hang a list off these: the servers that answered an mDNS query
+ * fill the host and the port, and the sitemaps that server offers fill the
+ * third -- as rows under the fields on the settings screen, as a datalist and
+ * a line of links in the web form. Both find the rows with
+ * config_field_by_name(). Spelled once here so that renaming one cannot leave
+ * a front end looking for a field that no longer exists, which would fail at
+ * runtime and nowhere else. */
+#define SETTINGS_FIELD_HOST "oh_host"
+#define SETTINGS_FIELD_PORT "oh_port"
 #define SETTINGS_FIELD_SITEMAP "oh_sitemap"
 
 /* Config itself is not standard-layout -- it mixes a private member (the name

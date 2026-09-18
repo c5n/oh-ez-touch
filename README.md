@@ -551,7 +551,8 @@ have to link side by side.
 What every file linked out of `main/` here has in common is that it touches
 neither LVGL nor the network: the settings table and the config file over it,
 the beacon parsers, the sitemap model and both its parsers -- a page, and the
-list of sitemaps a server offers -- the relay and LED payload
+list of sitemaps a server offers -- the mDNS query that finds those servers in
+the first place, the relay and LED payload
 rules, the multipart scanner, the control interface's tokeniser, and both engines'
 sound tables with both engines' arithmetic under them. For the beacon parsers that is not a happy
 accident but the reason `main/port/port_ble.h` yields raw advertisement bytes
@@ -729,7 +730,7 @@ Theme (eye symbol)      | Theme family, the night variant and its schedule, and 
 Audio (speaker symbol)  | The beeper: on or off, how loud, and a **Test** button that plays the theme's boot chime at the level being edited
 System (gear symbol)    | A menu of the six below, which are set once when the panel goes on the wall and then left alone
 &nbsp;&nbsp;WLAN                      | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Touch one to fill in its name and go straight to the password. **Save** stores the credentials and reconnects.
-&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap. Opening the page asks the server which sitemaps it has and lists them under the fields, with a tick beside the one in use; touch one to select it. **Reload** asks again
+&nbsp;&nbsp;openHAB (house symbol)    | Host, port and sitemap -- none of which has to be typed. Opening the page asks the network which openHAB servers are on it and that server which sitemaps it has, and lists both under the fields with a tick beside the one in use; touch one to select it. **Scan** asks both questions again
 &nbsp;&nbsp;MQTT (upload symbol)      | Broker, port, credentials, and what to publish -- see [MQTT](#mqtt)
 &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner
 &nbsp;&nbsp;Device (pencil symbol)    | The hostname, which is also the name of the setup access point
@@ -855,7 +856,20 @@ Host            | openhabian    | Hostname of the OpenHAB server
 Port            | 8080          | Port
 Sitemap         | oheztouch     | Name of the sitemap you've setup for this ArduiTouch device
 
-The sitemap does not have to be typed from memory. Loading this page asks the
+The host and the port do not have to be looked up. openHAB announces itself on
+the local network over mDNS -- `_openhab-server._tcp`, which is how its own
+phone apps find a server -- so loading this page asks, and every server that
+answers appears under the Host field as a button that fills in the host and the
+port. The panel's settings screen shows the same servers as rows. What is
+stored is the address the answer came from, in digits, because the panel has no
+way to resolve the `.local` name a server gives for itself.
+
+It finds what announces itself, which on a home network is normally
+everything -- but an access point that filters multicast, or an openHAB in a
+Docker bridge network, will not be heard. The field stays a field; nothing has
+to be discovered for it to be typed.
+
+The sitemap does not have to be typed from memory either. Loading this page asks the
 server what it serves -- `GET /rest/sitemaps`, which answers with every sitemap's
 name and label -- and the field offers them as a drop-down list; the line under
 it says which server was asked and what came back. The settings screen on the
@@ -867,9 +881,11 @@ the server cannot be reached at the moment the settings are open, when the
 sitemap is about to be created, or when the server has more sitemaps than the
 panel keeps -- it holds twelve, and says so when there are more.
 
-The list is fetched from the host and port **as they are on the page**, not as
-they are saved, so a new server can be typed in and its sitemaps picked before
-anything is stored.
+On the panel the sitemap list is fetched from the host and port **as they are on
+the page**, not as they are saved, so picking a server from the scan -- or
+typing a new one -- fills the sitemap list from it immediately, before anything
+is stored. The web form fetches from the saved endpoint instead, so there the
+order is: pick a server, Save, then pick a sitemap from the reloaded page.
 
 ##### MQTT Broker
 
@@ -1213,8 +1229,9 @@ main/ui/frames/       one per theme family: the chrome it draws around the
                       tiles, and where it lets them sit
 main/ui/items/        one per openHAB item type: the screen its tile opens
 main/openhab/         the openHAB client: the task every request waits on,
-                      the sitemap model and parser it feeds, and the cache of
-                      which sitemaps the server offers
+                      the sitemap model and parser it feeds, and the caches of
+                      which servers are on the network and which sitemaps they
+                      offer
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -1222,7 +1239,8 @@ main/ble/             the BLE beacon scanner: the advertisement parsers, and
 main/peripherals/     the sensors: the BME280, and the timer that decides when
                       the next reading is taken
 main/web/             the web interface: one renderer, one transport per target
-main/net/             WLAN credentials, and the radio state machine
+main/net/             WLAN credentials, the radio state machine, and the one
+                      mDNS question this firmware asks
 main/control/         policy on top of the port layer: when to dim, and the
                       queue that plays a chime -- with the two engines that fit
                       a sound onto one piezo split out beside it, so the
@@ -1273,6 +1291,19 @@ form asks when its page is loaded, and whichever comes second usually finds the
 answer already there. It goes over the same worker and comes back on the same
 queue; what it does not carry is a generation, because a page load while it is
 in flight has nothing to do with it.
+
+One thing the panel asks the *network* rather than a server, and it is the only
+DNS in the firmware: which openHAB servers are here.
+`main/openhab/openhab_discover.cpp` sends the mDNS query in
+`main/net/mdns_query.c` from a UDP socket of its own and reads the answers from
+the loop without blocking, in the manner of the WLAN scan it stands beside on
+the settings screen -- one 44 byte datagram, sent twice against the loss that
+multicast over WiFi is prone to, and a two and a half second window. There is
+no `espressif/mdns` component behind it: that brings a task, a cache and tens
+of kilobytes to ask a question this asks in a fixed 44 bytes, and it builds for
+the device only, where what is here runs unchanged on the host and is covered
+by the tests. The whole feature, both lists and both front ends, costs about
+4 KB of flash.
 
 Requests are stamped with a generation, bumped whenever a page is fetched, so
 that the icons and states belonging to a page navigated away from are dropped

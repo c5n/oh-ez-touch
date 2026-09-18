@@ -30,6 +30,7 @@
 
 #include "config/config_fields.hpp"
 
+#include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_frame_stats.h"
@@ -224,6 +225,10 @@ static const char webui_page_head[] =
     "input[type=checkbox]{margin-right:6px}"
     "button{width:100%;padding:10px;margin:4px 0;font-size:1em;border:0;"
     "border-radius:3px;background:#1fa3ec;color:#fff}"
+    /* The found servers, which are a row of choices rather than the page's
+     * verbs and must not look like Save does. */
+    "button.s{width:auto;padding:5px 9px;margin:3px 5px 3px 0;font-size:.85em;"
+    "background:#5a6570}"
     "table.s{width:100%;font-size:.82em;border-collapse:collapse}"
     "table.s td{padding:1px 0}table.s td:first-child{color:#666;width:38%}"
     "p.n,span.n{font-size:.8em;color:#666}"
@@ -263,6 +268,37 @@ static const char webui_page_script[] =
     "(d.host+' serves no sitemaps');return}"
     "s.textContent='No sitemap list from '+d.host"
     "}).catch(function(){var s=document.getElementById('sitemaps-state');"
+    "if(s)s.textContent=''})};p()})();</script>";
+
+/* And the same for the servers openHAB announced. Clicking one fills the Host
+ * and Port fields rather than saving anything: what the panel found is a
+ * suggestion, and the form is still submitted by the one Save button at the
+ * bottom.
+ *
+ * The fields are reached by their POST argument name, which is the same name
+ * config_fields[] gives them and the same one the form renders -- there is no
+ * second spelling of it here. */
+static const char webui_servers_script[] =
+    "<script>(function(){var n=0;var p=function(){"
+    "fetch('/servers').then(function(r){return r.json()}).then(function(d){"
+    "var l=document.getElementById('servers'),s=document.getElementById('servers-state');"
+    "if(!l||!s)return;"
+    "l.innerHTML='';"
+    "d.servers.forEach(function(m){var b=document.createElement('button');"
+    "b.type='button';b.className='s';b.textContent=m.label+'  '+m.host+':'+m.port;"
+    "b.onclick=function(){var h=document.querySelector('[name=oh_host]'),"
+    "o=document.querySelector('[name=oh_port]');"
+    "if(h)h.value=m.host;if(o)o.value=m.port};l.appendChild(b)});"
+    "if(d.state=='scanning'){s.textContent='Looking for openHAB servers...';"
+    /* The panel's own window is two and a half seconds; eight tries is ample
+     * for the answer and short enough that a page left open is not polling
+     * this for ever. */
+    "if(++n<8)setTimeout(p,1000);return}"
+    "if(d.state=='ready'){s.textContent=d.count?"
+    "'Found on this network -- pick one to fill in the host and port:':"
+    "'No openHAB announced itself on this network';return}"
+    "s.textContent=d.state=='failed'?'Cannot look for servers':''"
+    "}).catch(function(){var s=document.getElementById('servers-state');"
     "if(s)s.textContent=''})};p()})();</script>";
 
 static const char webui_page_tail[] = "</div></body></html>";
@@ -398,6 +434,12 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
             if (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
                 webui_put(o, "<datalist id='sitemaps'></datalist>"
                              "<span class='n' id='sitemaps-state'>Loading sitemaps...</span>");
+            /* Under the Host row, because that is the row it fills in -- and
+             * the Port row with it, which is why this is a list of buttons
+             * rather than a datalist on the input. */
+            else if (strcmp(f->name, SETTINGS_FIELD_HOST) == 0)
+                webui_put(o, "<span class='n' id='servers-state'>"
+                             "Looking for openHAB servers...</span><div id='servers'></div>");
             break;
 
         case SETTINGS_BOOL:
@@ -491,10 +533,11 @@ static void webui_handle_root(webui_request_t *req)
                         "<p class='n'>Credentials stored, connecting.</p></fieldset>");
 
     /* Opening the page is the request, the same way opening the panel's
-     * openHAB settings is: by the time the script below asks for the list, the
-     * panel is usually already waiting on the answer. */
+     * openHAB settings is: by the time the scripts below ask for the two
+     * lists, the panel is usually already waiting on the answers. */
     openhab_sitemaps_request(webui_config->item.openhab.hostname,
                              (uint16_t)webui_config->item.openhab.port);
+    openhab_discover_request();
 
     webui_send_status(&out);
     webui_send_wlan_form(&out);
@@ -506,6 +549,7 @@ static void webui_handle_root(webui_request_t *req)
                     "<button type='submit'>Restart</button></form>");
 
     webui_put(&out, webui_page_script);
+    webui_put(&out, webui_servers_script);
 
     webui_end_page(&out);
 }
@@ -653,6 +697,58 @@ static void webui_handle_sitemaps(webui_request_t *req)
     webui_end_chunked(req);
 }
 
+/* The openHAB servers that answered an mDNS query, as JSON, for the script
+ * above. A read like /sitemaps is, and for the same reason -- a scan started on
+ * every poll would never be reported as finished -- except when nothing has
+ * ever been looked for.
+ */
+static void webui_handle_servers(webui_request_t *req)
+{
+    struct webui_out_s out;
+
+    if (openhab_discover_state() == OPENHAB_DISCOVER_IDLE)
+        openhab_discover_request();
+
+    const char *state = "idle";
+
+    switch (openhab_discover_state())
+    {
+    case OPENHAB_DISCOVER_SCANNING:
+        state = "scanning";
+        break;
+    case OPENHAB_DISCOVER_READY:
+        state = "ready";
+        break;
+    case OPENHAB_DISCOVER_FAILED:
+        state = "failed";
+        break;
+    case OPENHAB_DISCOVER_IDLE:
+    default:
+        break;
+    }
+
+    out.req = req;
+    out.len = 0;
+
+    webui_begin_chunked(req, "application/json");
+
+    webui_putf(&out, "{\"state\":\"%s\",\"count\":%u,\"servers\":[", state,
+               (unsigned)openhab_discover_count());
+
+    for (size_t i = 0; i < openhab_discover_count(); i++)
+    {
+        webui_put(&out, (i == 0) ? "{\"label\":\"" : ",{\"label\":\"");
+        webui_put_json_escaped(&out, openhab_discover_label(i));
+        webui_put(&out, "\",\"host\":\"");
+        webui_put_json_escaped(&out, openhab_discover_host(i));
+        webui_putf(&out, "\",\"port\":%u}", (unsigned)openhab_discover_port(i));
+    }
+
+    webui_put(&out, "]}");
+    webui_flush(&out);
+    webui_end_chunked(req);
+}
+
 static void webui_handle_wifi(webui_request_t *req)
 {
     char ssid[WLAN_SSID_SIZE];
@@ -735,6 +831,7 @@ void webui_setup(Config *config)
     webui_transport_route("/save", WEBUI_POST, webui_handle_save);
     webui_transport_route("/wifi", WEBUI_POST, webui_handle_wifi);
     webui_transport_route("/sitemaps", WEBUI_GET, webui_handle_sitemaps);
+    webui_transport_route("/servers", WEBUI_GET, webui_handle_servers);
     webui_transport_route("/restart", WEBUI_POST, webui_handle_restart);
     webui_transport_route("/restart", WEBUI_GET, webui_handle_restart);
 

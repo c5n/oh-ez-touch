@@ -34,6 +34,7 @@ extern "C" void app_main(void)
     test_frame_stats_run();
     test_icon_set_run();
     test_item_setters_run();
+    test_mdns_query_run();
     test_multipart_run();
     test_testif_parse_run();
     test_item_state_run();

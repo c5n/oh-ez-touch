@@ -25,6 +25,7 @@
 
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
+#include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "control/beeper_control.hpp"
 #include "ui_beep.hpp"
@@ -161,6 +162,8 @@ static uint64_t wlan_state_refresh_deadline = 0;
  * and port are the ones the last fetch was asked for: the draft's, and when
  * the draft's move away from them -- somebody edited the host -- the list is
  * fetched again from where it would now come from. */
+static lv_obj_t *host_field_row = NULL;
+static lv_obj_t *port_field_row = NULL;
 static lv_obj_t *sitemap_field_row = NULL;
 static lv_obj_t *sitemap_list_obj = NULL;
 static lv_obj_t *sitemap_status_label = NULL;
@@ -168,11 +171,20 @@ static uint32_t  sitemaps_drawn = 0;
 static char      sitemaps_host[sizeof(draft.openhab.hostname)];
 static int       sitemaps_port = 0;
 
-/* Whether the answer to the fetch in flight is worth a sound: set by the Reload
- * button and by nothing else. The fetch that happens because the page was
- * opened is not something anyone asked for by itself, and a panel that chimes
- * at a page it was merely shown is a panel that chimes at nothing. */
+/* And the same for the scan that finds the servers those sitemaps come from --
+ * openHAB announces itself over mDNS, so the Host and Port rows can be filled
+ * in from a list as well. Above the sitemap list on the page, because it comes
+ * first in every sense: pick a server, then pick what it serves. */
+static lv_obj_t *server_list_obj = NULL;
+static lv_obj_t *server_status_label = NULL;
+static uint32_t  servers_drawn = 0;
+
+/* Whether the answers now in flight are worth a sound: set by the Scan button
+ * and by nothing else. What happens because the page was opened is not
+ * something anyone asked for by itself, and a panel that chimes at a page it
+ * was merely shown is a panel that chimes at nothing. */
 static bool sitemaps_announce = false;
+static bool servers_announce = false;
 
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
@@ -307,7 +319,8 @@ static void screen_show_target(uint8_t target)
         screen_show_section(target);
 }
 
-static void field_rows_build(uint8_t tab);
+static void field_rows_build(uint8_t tab, const struct config_field_s *after,
+                             void (*extra)(lv_obj_t *rows));
 static void openhab_tab_build(lv_obj_t *rows);
 static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
@@ -335,6 +348,11 @@ static void widget_refs_clear(void)
     }
 
     audio_demo_button = NULL;
+    host_field_row = NULL;
+    port_field_row = NULL;
+    server_list_obj = NULL;
+    server_status_label = NULL;
+    servers_drawn = 0;
     sitemap_field_row = NULL;
     sitemap_list_obj = NULL;
     sitemap_status_label = NULL;
@@ -955,15 +973,193 @@ static void scan_event(lv_event_t *e)
     scan_start();
 }
 
-/* ------------------------------------------------ the list of sitemaps */
+/* -------------------------------------------------- the list of servers */
 
-/* The row the list belongs to, looked up rather than held: the table is const,
- * and a lookup on a page build is a couple of dozen string compares against
- * carrying a pointer that two builders would have to keep in step. */
+/* The rows the two lists fill in, looked up rather than held: the table is
+ * const, and a lookup on a page build is a couple of dozen string compares
+ * against carrying pointers that two builders would have to keep in step. */
+static const struct config_field_s *host_field(void)
+{
+    return config_field_by_name(SETTINGS_FIELD_HOST);
+}
+
+static const struct config_field_s *port_field(void)
+{
+    return config_field_by_name(SETTINGS_FIELD_PORT);
+}
+
 static const struct config_field_s *sitemap_field(void)
 {
     return config_field_by_name(SETTINGS_FIELD_SITEMAP);
 }
+
+static void server_row_text(size_t index, char *buffer, size_t size)
+{
+    bool current = (   openhab_discover_port(index) == (uint16_t)draft.openhab.port
+                    && strcmp(openhab_discover_host(index), draft.openhab.hostname) == 0);
+
+    /* The label openHAB advertises for itself -- "openhab" out of
+     * "openhab._openhab-server._tcp.local" -- with a tick when the rows above
+     * already name this one. */
+    snprintf(buffer, size, "%s%s", current ? LV_SYMBOL_OK " " : "",
+             openhab_discover_label(index));
+}
+
+/* The counterpart of sitemap_marks_update(), and it exists for the same
+ * reason: this runs from a row's own click handler, where lv_obj_clean() would
+ * delete the object whose event is still being dispatched. */
+static void server_marks_update(void)
+{
+    if (server_list_obj == NULL)
+        return;
+
+    uint32_t rows = lv_obj_get_child_count(server_list_obj);
+
+    for (uint32_t i = 0; i < rows && i < openhab_discover_count(); i++)
+    {
+        char text[VALUE_BUFFER_LEN];
+
+        server_row_text(i, text, sizeof(text));
+        lv_label_set_text(lv_obj_get_child(lv_obj_get_child(server_list_obj, i), 0), text);
+    }
+}
+
+static void server_row_event(lv_event_t *e)
+{
+    size_t                       index = (size_t)(uintptr_t)lv_event_get_user_data(e);
+    const struct config_field_s *host = host_field();
+    const struct config_field_s *port = port_field();
+
+    if (host == NULL || port == NULL || index >= openhab_discover_count())
+        return;
+
+    /* Through the fields, so that an address off the network goes through the
+     * same width and the same character rules as one typed on the keyboard --
+     * and so that a port outside the row's range is clamped rather than
+     * stored. */
+    if (config_field_set_text(host, &draft, openhab_discover_host(index)) == false)
+    {
+        BEEPER_EVENT_ERROR();
+        return;
+    }
+
+    config_field_set_number(port, &draft, openhab_discover_port(index));
+
+    if (host_field_row != NULL)
+        row_refresh(host_field_row, host);
+
+    if (port_field_row != NULL)
+        row_refresh(port_field_row, port);
+
+    server_marks_update();
+    BEEPER_EVENT_CHANGE();
+
+    /* Nothing asks for the sitemaps here. sitemaps_poll() sees the endpoint
+     * move on the next turn of the loop and fetches them from the server just
+     * chosen, which is the whole point of that comparison being there. */
+}
+
+static void server_list_rebuild(void)
+{
+    if (server_list_obj == NULL)
+        return;
+
+    lv_obj_clean(server_list_obj);
+
+    for (size_t i = 0; i < openhab_discover_count(); i++)
+    {
+        char text[VALUE_BUFFER_LEN];
+        char value[VALUE_BUFFER_LEN];
+
+        server_row_text(i, text, sizeof(text));
+        snprintf(value, sizeof(value), "%s:%u", openhab_discover_host(i),
+                 (unsigned)openhab_discover_port(i));
+
+        lv_obj_t *row = row_create(server_list_obj, text);
+
+        row_set_value(row, value);
+        lv_obj_add_event_cb(row, server_row_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    }
+}
+
+static void servers_status_update(void)
+{
+    if (server_status_label == NULL)
+        return;
+
+    char   text[VALUE_BUFFER_LEN + 40];
+    size_t count = openhab_discover_count();
+
+    switch (openhab_discover_state())
+    {
+    case OPENHAB_DISCOVER_SCANNING:
+        snprintf(text, sizeof(text), "%s", "Looking for openHAB servers...");
+        break;
+
+    case OPENHAB_DISCOVER_READY:
+        if (count == 0)
+            /* Said as what it is rather than as a failure: a server behind an
+             * access point that drops multicast is not announced to this
+             * panel and never will be, and the rows above still take an
+             * address typed in by hand. */
+            snprintf(text, sizeof(text), "%s",
+                     "No openHAB announced itself -- enter the host above");
+        else
+            snprintf(text, sizeof(text), "%u openHAB server%s on this network",
+                     (unsigned)count, (count == 1) ? "" : "s");
+        break;
+
+    case OPENHAB_DISCOVER_FAILED:
+        snprintf(text, sizeof(text), "%s", "Cannot look for servers");
+        break;
+
+    case OPENHAB_DISCOVER_IDLE:
+    default:
+        snprintf(text, sizeof(text), "%s", "Servers");
+        break;
+    }
+
+    lv_label_set_text(server_status_label, text);
+}
+
+static void servers_poll(void)
+{
+    /* Only while the page that shows it is up, like sitemaps_poll(): the
+     * answer to a scan started here must not chime at somebody who has since
+     * walked to another page. */
+    if (current_tab != SETTINGS_TAB_OPENHAB)
+        return;
+
+    if (openhab_discover_revision() == servers_drawn)
+        return;
+
+    servers_drawn = openhab_discover_revision();
+
+    server_list_rebuild();
+    servers_status_update();
+
+    if (servers_announce == false)
+        return;
+
+    if (openhab_discover_state() == OPENHAB_DISCOVER_READY)
+    {
+        servers_announce = false;
+
+        /* What the WLAN scan says about its own two outcomes, for the same two
+         * outcomes: something to show, or nothing. */
+        if (openhab_discover_count() > 0)
+            BEEPER_EVENT_NOTIFY();
+        else
+            BEEPER_EVENT_WARNING();
+    }
+    else if (openhab_discover_state() == OPENHAB_DISCOVER_FAILED)
+    {
+        servers_announce = false;
+        BEEPER_EVENT_WARNING();
+    }
+}
+
+/* ------------------------------------------------ the list of sitemaps */
 
 /* Ask the server in the *draft* what it serves.
  *
@@ -1146,9 +1342,19 @@ static void sitemaps_poll(void)
     }
 }
 
-static void sitemaps_reload_event(lv_event_t *e)
+/* One button for both questions this page asks the network.
+ *
+ * Not two. They are one gesture -- "look again" -- and the difference between
+ * them is an implementation detail of which protocol answers which: nobody
+ * standing in front of the panel wants to choose between rescanning for
+ * servers and re-asking the server it already has. The WLAN page's Scan is the
+ * same promise about the same kind of thing. */
+static void openhab_scan_event(lv_event_t *e)
 {
     LV_UNUSED(e);
+
+    servers_announce = true;
+    openhab_discover_request();
 
     sitemaps_announce = true;
     sitemaps_request();
@@ -1505,8 +1711,14 @@ static uint8_t tab_section_count(uint8_t tab)
     return count;
 }
 
-/* The openHAB, Sensors and Other tabs, straight off the shared table. */
-static void field_rows_build(uint8_t tab)
+/* The openHAB, Sensors and Other tabs, straight off the shared table.
+ *
+ * `extra` is built directly after the row for field `after`, and both are NULL
+ * for every section but openHAB. It is there because the list of servers
+ * belongs under the Host and Port rows it fills in, and not at the foot of the
+ * page under a Sitemap row it has nothing to do with. */
+static void field_rows_build(uint8_t tab, const struct config_field_s *after,
+                             void (*extra)(lv_obj_t *rows))
 {
     lv_obj_t *rows = tab_rows[tab];
     bool      headings = tab_section_count(tab) > 1;
@@ -1539,11 +1751,33 @@ static void field_rows_build(uint8_t tab)
         row_refresh(row, f);
         lv_obj_add_event_cb(row, field_row_event, LV_EVENT_CLICKED, (void *)f);
 
-        /* Kept so that picking a sitemap from the list under these rows can
-         * refresh the row that holds it. */
-        if (f == sitemap_field())
+        /* Kept so that a choice made in one of the lists below can refresh the
+         * row that now holds it. */
+        if (f == host_field())
+            host_field_row = row;
+        else if (f == port_field())
+            port_field_row = row;
+        else if (f == sitemap_field())
             sitemap_field_row = row;
+
+        if (f == after && extra != NULL)
+            extra(rows);
     }
+}
+
+/* The servers half of the openHAB page, built between the Port row and the
+ * Sitemap row. */
+static void server_rows_build(lv_obj_t *rows)
+{
+    server_status_label = lv_label_create(rows);
+    lv_label_set_long_mode(server_status_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(server_status_label, lv_pct(100));
+    lv_obj_add_style(server_status_label, &ui_style_label_state, LV_PART_MAIN);
+
+    server_list_obj = ui_plain_container(rows);
+    lv_obj_set_size(server_list_obj, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(server_list_obj, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(server_list_obj, 2, 0);
 }
 
 /* The openHAB section: the fields off the shared table, and under them what the
@@ -1555,7 +1789,7 @@ static void field_rows_build(uint8_t tab)
  * see. The footer keeps a Reload for the server that was not up a moment ago. */
 static void openhab_tab_build(lv_obj_t *rows)
 {
-    field_rows_build(SETTINGS_TAB_OPENHAB);
+    field_rows_build(SETTINGS_TAB_OPENHAB, port_field(), server_rows_build);
 
     sitemap_status_label = lv_label_create(rows);
     lv_label_set_long_mode(sitemap_status_label, LV_LABEL_LONG_WRAP);
@@ -1578,6 +1812,16 @@ static void openhab_tab_build(lv_obj_t *rows)
     sitemaps_drawn = openhab_sitemaps_revision();
     sitemap_list_rebuild();
     sitemaps_status_update();
+
+    /* And the scan, for the same reason and on the same terms: opening this
+     * page is the gesture. It costs one 44 byte datagram, and a panel being
+     * configured for the first time is exactly where "which server?" is the
+     * question with no good answer to type. */
+    servers_announce = false;
+    openhab_discover_request();
+    servers_drawn = openhab_discover_revision();
+    server_list_rebuild();
+    servers_status_update();
 }
 
 /* The bar across the top of every settings screen, and all of it is the way
@@ -1806,9 +2050,9 @@ static void screen_show_section(uint8_t tab)
     else if (tab == SETTINGS_TAB_OPENHAB)
     {
         /* The counterpart of the WLAN page's Scan, and there for the same
-         * case: the answer arrived while the server was still starting, or the
-         * sitemap wanted has only just been written. */
-        lv_obj_add_event_cb(ui_themed_button(footer, "Reload"), sitemaps_reload_event,
+         * cases: a server that was still starting when the page opened, or a
+         * sitemap that has only just been written. */
+        lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), openhab_scan_event,
                             LV_EVENT_CLICKED, NULL);
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)tab);
@@ -1834,7 +2078,7 @@ static void screen_show_section(uint8_t tab)
         break;
 
     default:
-        field_rows_build(tab);
+        field_rows_build(tab, NULL, NULL);
         break;
     }
 
@@ -2030,6 +2274,7 @@ void ui_settings_loop(void)
 
     scan_poll();
     sitemaps_poll();
+    servers_poll();
 
     /* The tune ends without an event. Only does anything on the Audio page,
      * where the button exists at all. */

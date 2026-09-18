@@ -18,6 +18,15 @@
 # only two modules with no other front end at all -- no widget, no setting --
 # so a test is the only place their behaviour is written down twice.
 #
+# net/mdns_query.c is here for the reason the multipart scanner below is, only
+# more so: it reads a packet a stranger on the network composed, on the task
+# that draws, and the shapes that matter are the ones no openHAB ever sends --
+# a name that never terminates, a compression pointer that points at itself or
+# forwards, a record whose length runs past the end. None of those can be
+# produced by asking a real server nicely, and each of them would hang or
+# misread the panel rather than fail to find a host. What is in the file is
+# libc and arithmetic; the socket is above it in openhab_discover.cpp.
+#
 # web/multipart.c joined them when the firmware upload's scanner was split out
 # of webui_ota.cpp. That file called esp_ota_begin() and esp_ota_write()
 # directly, which made all of it device-only, so the one path in this firmware
@@ -86,6 +95,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_frame_stats.cpp"
                             "test_icon_set.cpp"
                             "test_item_setters.cpp"
+                            "test_mdns_query.cpp"
                             "test_multipart.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
@@ -111,6 +121,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_frame_stats.c"
