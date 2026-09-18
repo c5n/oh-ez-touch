@@ -143,7 +143,7 @@ press with no release in between would do nothing at all.
 | --- | --- |
 | `ping` | `ok <uptime_ms>` |
 | `screen` | `ok {json}` -- see below |
-| `status` | `ok {json}` -- version, uptime, heap, network, openHAB, MQTT |
+| `status` | `ok {json}` -- version, uptime, heap, frame time, network, openHAB, MQTT |
 | `config [<name>]` | `ok {json}` -- one setting, or all of them |
 | `shot` | `ok <url>` -- where the framebuffer is |
 
@@ -237,6 +237,38 @@ the rest open a screen; the link types navigate.
 
 `config` reports a `SETTINGS_F_SECRET` field -- the MQTT password -- as `***`,
 for the same reason the MQTT client will not publish it.
+
+## What `status` returns
+
+Most of it names itself. The one object worth a paragraph is `frame`, which is
+the only place the panel's rendering speed is reported at all:
+
+```json
+"frame": { "valid": true, "age_ms": 240, "window_ms": 3652, "frames": 64,
+           "fps": 17.5, "frame_us": 1224, "worst_us": 2665,
+           "render_us": 1119, "wait_us": 1,
+           "pixels": 20277, "flushes": 2.1 }
+```
+
+**`render_us` and `wait_us` are the pair to assert on**, not `fps`. They split
+a frame into the time LVGL's software renderer spent drawing it and the time it
+spent waiting for the panel to accept the previous strip, which is what decides
+whether a change made the panel faster or only moved the cost. On the simulator
+`wait_us` is always about zero -- SDL's flush returns when it is done, so there
+is nothing to wait for -- and on a device it is the SPI transfer. The README's
+"Where the frame time goes" is what to read them against.
+
+The numbers describe one closed **window**, not the instant they are read.
+A window closes after 64 frames or 10 seconds, whichever comes first, so a busy
+screen reports a fresh second of drawing and a still one keeps its last real
+measurement rather than decaying to zero. `age_ms` says how long ago that
+window closed and `window_ms` how long it covered.
+
+**`valid` is false until the first window closes**, and everything else is zero
+then. A script that reads `fps` without checking it will assert against a panel
+that has not drawn yet. The reliable way to make a window close is to cause
+drawing and then wait: `set theme <name>` repaints the whole screen and is the
+bluntest instrument available.
 
 ## Screenshots
 

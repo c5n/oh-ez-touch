@@ -33,6 +33,7 @@
 #include "port/ohez_port.h"
 #include "ui/items/item_screen.hpp"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_frame_stats.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
@@ -278,6 +279,29 @@ const char *testif_cmd_status(const testif_cmd_t *cmd, char *out, size_t out_siz
     openhab["page"]    = openhab_ui_page_state_name();
 
     doc["mqtt"]["connected"] = ohez_mqtt_connected();
+
+    /* The whole object, not a frame rate: what a script wants to assert on is
+     * the split between "render" and "wait", because that is what says whether
+     * a change made the renderer faster or only made it wait longer. "valid" is
+     * false until a window with frames in it has closed, and a harness that
+     * reads the others before then is reading zeroes. */
+    ui_frame_stats_t stats;
+
+    ui_frame_stats_get((uint32_t)port_millis(), &stats);
+
+    JsonObject frame = doc["frame"].to<JsonObject>();
+
+    frame["valid"]      = stats.valid;
+    frame["age_ms"]     = stats.age_ms;
+    frame["window_ms"]  = stats.window_ms;
+    frame["frames"]     = stats.frames;
+    frame["fps"]        = stats.fps_x10 / 10.0;
+    frame["frame_us"]   = stats.frame_us;
+    frame["worst_us"]   = stats.frame_us_max;
+    frame["render_us"]  = stats.render_us;
+    frame["wait_us"]    = stats.wait_us;
+    frame["pixels"]     = stats.pixels;
+    frame["flushes"]    = stats.flushes_x10 / 10.0;
 
     return emit(doc, out, out_size);
 }

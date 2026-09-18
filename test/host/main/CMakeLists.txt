@@ -65,6 +65,17 @@
 # has none. ICON_SET_DATA_HEADER below points the file at icon_set_fixture.h
 # instead, which is ten entries shaped like the generated ones.
 #
+# ui/ui_frame_stats.c joined them the day the frame started being measured, and
+# the split that let it is the same one beeper_control.cpp got: the event
+# callbacks that time a frame need a display and live in ui_frame_probe.c, and
+# what came out is sums, a window and a mean, including nothing but libc. The
+# two decisions worth a test are not the averaging -- an empty window is
+# discarded rather than published, so an untouched panel keeps the last frame
+# rate it really had, and every comparison is on an unsigned difference so the
+# 32-bit millisecond clock can roll over inside a window. Neither is visible
+# from anywhere else: what the status page shows is one struct, and a wrong one
+# looks exactly like a slow panel.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_beeper_mixer.cpp"
@@ -72,6 +83,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ble_beacon.cpp"
                             "test_config_fields.cpp"
                             "test_config_file.cpp"
+                            "test_frame_stats.cpp"
                             "test_icon_set.cpp"
                             "test_item_setters.cpp"
                             "test_multipart.cpp"
@@ -100,6 +112,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_frame_stats.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."

@@ -48,10 +48,10 @@ static const char *TAG = "port_display";
  * Two of them, from internal DMA-capable memory: a static array is not
  * guaranteed to be either. 320 * 24 * 2 = 15360 bytes each.
  *
- * Taller strips are the one obvious lever left on the frame rate, and it is
- * left alone deliberately rather than for want of noticing. LVGL redraws in
- * partial mode one strip at a time and walks the object tree again for each, so
- * a tile 93 px tall falls across five strips here and three at 40 lines, and
+ * Taller strips look like a lever on the frame rate, and they are left alone
+ * deliberately rather than for want of noticing. LVGL redraws in partial mode
+ * one strip at a time and walks the object tree again for each, so a tile 93 px
+ * tall falls across five strips here and three at 40 lines, and
  * every style lookup behind those draws is repeated with it -- and those
  * lookups are not cached, because LV_OBJ_STYLE_CACHE has to stay 0 for the live
  * theme switch (lv_conf.h says why). The transfer itself is the same number of
@@ -70,7 +70,13 @@ static const char *TAG = "port_display";
  * already reports it: the "Free heap" row on the web status page (and
  * <prefix>/system/heap over MQTT) once WiFi and the BLE scanner are both up.
  * That is the headroom the extra 20 KB would have to come out of. There is no
- * PSRAM on any of these boards, so all of it is internal. */
+ * PSRAM on any of these boards, so all of it is internal.
+ *
+ * And one number says whether it is worth asking. The two buffers already
+ * overlap the render of one strip with the transfer of the last, so a taller
+ * strip speeds up a full repaint only if the render is losing that race --
+ * which the "Renderer" and "Waiting for panel" rows beside the heap one now
+ * report. If the wait dominates, this lever buys nothing at all. */
 #define DRAW_BUFFER_LINES   24
 #define DRAW_BUFFER_BYTES   (PORT_DISPLAY_WIDTH * DRAW_BUFFER_LINES * 2)
 

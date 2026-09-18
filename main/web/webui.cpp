@@ -31,6 +31,7 @@
 #include "config/config_fields.hpp"
 
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_frame_stats.h"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "webui_ota.hpp"
@@ -231,6 +232,43 @@ static void webui_send_status(struct webui_out_s *o)
     webui_putf(o, "<tr><td>IP</td><td>%s</td></tr>", net.ip);
     webui_putf(o, "<tr><td>MAC</td><td>%s</td></tr>", net.mac);
     webui_putf(o, "<tr><td>Free heap</td><td>%u bytes</td></tr>", (unsigned)port_free_heap());
+
+    /* The frame, in the three numbers that decide what to do about it: how fast
+     * the screen is going, how much of a frame the software renderer took, and
+     * how much of it was spent waiting for the panel to accept the last strip.
+     * Which of the last two is larger is the whole question -- see the README's
+     * "Where the frame time goes". One row saying so replaces all of them until
+     * a window has closed, because a panel that has not drawn yet has no frame
+     * rate and 0.0 fps would read like one. */
+    ui_frame_stats_t frame;
+
+    ui_frame_stats_get((uint32_t)port_millis(), &frame);
+
+    if (frame.valid == false)
+    {
+        webui_put(o, "<tr><td>Frame</td><td>not measured yet</td></tr>");
+    }
+    else
+    {
+        webui_putf(o, "<tr><td>Frame rate</td><td>%u.%u fps (%u frames over %u ms, "
+                      "%u ms ago)</td></tr>",
+                   (unsigned)(frame.fps_x10 / 10), (unsigned)(frame.fps_x10 % 10),
+                   (unsigned)frame.frames, (unsigned)frame.window_ms,
+                   (unsigned)frame.age_ms);
+
+        webui_putf(o, "<tr><td>Frame time</td><td>%u us mean, %u us worst</td></tr>",
+                   (unsigned)frame.frame_us, (unsigned)frame.frame_us_max);
+
+        webui_putf(o, "<tr><td>Renderer</td><td>%u us</td></tr>",
+                   (unsigned)frame.render_us);
+
+        webui_putf(o, "<tr><td>Waiting for panel</td><td>%u us</td></tr>",
+                   (unsigned)frame.wait_us);
+
+        webui_putf(o, "<tr><td>Flushed</td><td>%u px in %u.%u strips</td></tr>",
+                   (unsigned)frame.pixels,
+                   (unsigned)(frame.flushes_x10 / 10), (unsigned)(frame.flushes_x10 % 10));
+    }
 
     if (wlan_ap_ssid() != NULL)
     {

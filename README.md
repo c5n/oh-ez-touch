@@ -902,6 +902,9 @@ Topic                        | Published        | Value
 ```system/git```             | on connect       | The commit this firmware was built from
 ```system/uptime```          | every interval   | Seconds since boot
 ```system/heap```            | every interval   | Free heap in bytes
+```system/fps```             | every interval   | Frames per second, one decimal. Absent until the screen has drawn
+```system/render_us```       | every interval   | Of a frame, microseconds in the software renderer
+```system/wait_us```         | every interval   | Of a frame, microseconds waiting for the panel. See [Where the frame time goes](#where-the-frame-time-goes)
 ```system/ip```              | every interval   | The station address
 ```system/ssid```            | every interval   | The network, or the interface name on the simulator
 ```system/rssi```            | every interval   | dBm. Absent where there is no radio
@@ -1304,8 +1307,18 @@ The CPU side is where the settings below apply. `main/port/esp32/port_display.c`
 renders into two DMA-capable buffers and alternates them, so the render of one
 strip overlaps the transfer of the last; keeping the render under the 3 ms that
 strip's transfer takes is what makes the SPI figure above the real floor rather
-than a component of a larger one. Four things go into that:
+than a component of a larger one. Five things go into that:
 
+- **Core 1, not core 0.** `CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1` in
+  `sdkconfig.defaults.esp32`. LVGL runs on the main task and IDF starts that
+  task on core 0, which is also where it pins the WiFi task, the Bluetooth
+  controller, the NimBLE host and the esp_timer task -- so the renderer shared
+  one core with both radios while core 1 ran the idle task. The cache is the
+  other half: the ESP32 has one 32 KB instruction/data cache *per core*, and on
+  core 0 the blend loops and the font glyphs streaming out of flash behind them
+  were being evicted by radio code. The SPI flush-done interrupt follows the
+  task to core 1 with it, because the ISR belongs to whichever core called
+  `spi_bus_initialize()`.
 - **240 MHz, not 160.** `CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240` in
   `sdkconfig.defaults.esp32`. IDF defaults to 160, which is half again less of
   the one resource the renderer is short of, for power a mains-powered wall
@@ -1335,13 +1348,73 @@ to avoid it would move the cost onto every blended pixel instead. And
 `main/ui/ui_motion.hpp` rules out every property that would promote an object to
 a layer.
 
-The one lever left is the strip height, `DRAW_BUFFER_LINES`. Taller strips mean
-the object tree is walked fewer times per frame -- a 93 px tile falls across
-five strips at 24 lines and three at 40 -- but the buffers are claimed before
-WiFi and Bluetooth are up, so the extra 20 KB would come out of their heap and
-fail as a radio that will not start rather than as a slower screen. The number
-that settles it is the **Free heap** row on the web status page of a panel with
-both radios running; `port_display.c` says what to do with it.
+#### Measuring it
+
+Every figure above this line is arithmetic or a build setting. **None of them
+is a measurement**, because no panel has run this firmware yet -- so the panel
+now measures itself, and the same code runs in the simulator.
+
+`main/ui/ui_frame_probe.c` hangs seven event callbacks on the display. LVGL
+already brackets a frame with them and simply does not keep the result:
+`REFR_START`/`REFR_READY` around the whole refresh, `RENDER_START`/`RENDER_READY`
+around the drawing, `FLUSH_START` with the strip's area as its parameter, and
+`FLUSH_WAIT_START`/`FLUSH_WAIT_FINISH` around the wait for the previous
+transfer. The drawing span *contains* the waits, so subtracting them is what
+separates the two costs this section is about.
+`main/ui/ui_frame_stats.c` averages them over a window -- 64 frames or ten
+seconds, whichever comes first -- and the answer comes out in three places:
+the **Frame** rows on the web status page, `<prefix>/system/fps`,
+`system/render_us` and `system/wait_us` over MQTT, and the `frame` object of the
+test interface's `status`.
+
+**`render_us` against `wait_us` is the number that decides what to do next.**
+If the wait dominates, the panel is SPI-bound at the 31 ms above and only the
+bus clock -- the first lever below -- can help it. If the renderer dominates,
+the three CPU-side levers after it are worth their risk.
+
+#### What is left, and what it needs
+
+Four levers remain, and all four need a board rather than an argument --
+which is exactly what the section above now provides:
+
+- **80 MHz SPI on the ArduiTouch boards.** The only lever that touches the
+  31 ms itself. `board_pins.h` already records that SCLK 18 / MOSI 23 / MISO 19
+  are an exact SPI3 IOMUX match, so the ESP32 side can drive 80 MHz; the Lanbon
+  routes through the GPIO matrix and cannot. An ILI9341 is already well past its
+  datasheet write cycle at 40 MHz, so whether it takes 80 is a measurement and
+  not a specification question. It fails as visible corruption, not as a brick.
+- **Flash in QIO mode.** `CONFIG_ESPTOOLPY_FLASHMODE_DIO` today. LVGL's draw
+  code and the 1.3 MB of font glyphs are all executed and read straight out of
+  flash through that 32 KB cache, and QIO roughly halves what a miss costs to
+  fill. It fails as a module that will not boot and has to be reflashed, which
+  is why it is not taken blind.
+- **`LV_ATTRIBUTE_FAST_MEM` as `IRAM_ATTR`.** It is empty in `lv_conf.h`, and in
+  this build it covers precisely the hot set: the RGB565 fill and image blends,
+  the ARGB8888 blend the icons use, the glyph draw, the line fills and the
+  shadow blur. The map file says about 33 KB of IRAM is free -- but that is the
+  pool `CONFIG_ESP_WIFI_IRAM_OPT=n` freed to fit the Bluetooth controller in, so
+  the cost has to be read off the map before it is spent.
+- **The strip height, `DRAW_BUFFER_LINES`.** Taller strips mean the object tree
+  is walked fewer times per frame -- a 93 px tile falls across five strips at 24
+  lines and three at 40. But the second buffer already overlaps the render of
+  one strip with the transfer of the last, so this only speeds up a full repaint
+  if the render is *losing* that race, and `render_us` against the ~3 ms a strip
+  takes to ship says whether it is. Only then is it worth the 20 KB, which comes
+  out of a heap WiFi and Bluetooth have not claimed yet: the buffers are
+  allocated before either starts, so it would fail as a radio that will not come
+  up rather than as a slow screen. The **Free heap** row on the web status page
+  of a panel with both radios running is the headroom that would have to absorb
+  it; `port_display.c` says what to do with the number.
+
+One more thing worth knowing before any of the four are taken. LVGL waits for
+the DMA in `while(disp->flushing);` -- `wait_for_flushing()` in `lv_refr.c`,
+which busy-spins whenever no `flush_wait_cb` is set, and this project sets none.
+It does not make a frame late, because the spin ends when the transfer does; it
+means the CPU looks fully occupied while it has nothing to do, and that the
+CPU-side levers buy less than their share of a frame suggests. Replacing it with
+a task notification given from `on_color_trans_done()` is a small change and a
+hang if the notification is ever missed, so it belongs after the first
+measurement from a real panel and not before.
 
 ### Contributing
 
@@ -1377,6 +1450,8 @@ Contact: c5n AT posteo DOT de
 - [ ] doc: Retake the screenshots -- ```doc/img/browser_*.png``` still show the removed AutoConnect pages, and ```doc/img/arduitouch_main.jpeg``` shows the pre-overhaul UI
 - [x] build: Replace ```-O0```. ```CONFIG_COMPILER_OPTIMIZATION_SIZE``` saves 138 KB, at the predicted end of the estimate; C++ exceptions and RTTI are off by default under ESP-IDF.
 - [x] build: Give the renderer the CPU it was short of -- 240 MHz, LVGL at ```-O2```, ```LV_USE_ASSERT_OBJ``` off on the device, and a loop that sleeps for as long as LVGL asks instead of a fixed 5 ms. See [Where the frame time goes](#where-the-frame-time-goes).
+- [x] build, ui: Give the renderer a core of its own and a way to prove it -- the main task moves to core 1, off the one IDF pins the WiFi task, the Bluetooth controller and the NimBLE host to, and the frame now measures itself: seven LVGL display events split a frame into the time the software renderer spent drawing it and the time it spent waiting for the panel, reported on the web status page, over MQTT and through the test interface. See [Where the frame time goes](#where-the-frame-time-goes).
+- [ ] build: Four display levers are written up and none is taken, because each one needs a panel rather than an argument: 80 MHz SPI on the ArduiTouch boards, flash in QIO mode, ```LV_ATTRIBUTE_FAST_MEM``` in IRAM, and a taller ```DRAW_BUFFER_LINES```. [What is left, and what it needs](#what-is-left-and-what-it-needs) says what each would cost and how it would fail; the ```render_us``` against ```wait_us``` reading from a running board is what picks between them.
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [x] control, ui: Give the beeper melodies, envelopes and effects, and keep the chord mixer behind a Kconfig switch -- see [The beeper](doc/beeper.md)

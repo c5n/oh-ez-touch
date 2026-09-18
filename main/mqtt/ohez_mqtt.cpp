@@ -19,6 +19,9 @@
  *   <prefix>/system/git              the commit this was built from
  *   <prefix>/system/uptime           seconds since boot
  *   <prefix>/system/heap             free heap in bytes
+ *   <prefix>/system/fps              frames per second, one decimal
+ *   <prefix>/system/render_us        of a frame, in the software renderer
+ *   <prefix>/system/wait_us          of a frame, waiting for the panel
  *   <prefix>/system/ip               the station address
  *   <prefix>/system/ssid             the network, or the interface name
  *   <prefix>/system/rssi             dBm -- absent on a wired host
@@ -102,6 +105,7 @@
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_frame_stats.h"
 #include "version.h"
 
 #include <stdio.h>
@@ -437,6 +441,29 @@ static void publish_system(Config &config)
 
     snprintf(value, sizeof(value), "%u", (unsigned)port_free_heap());
     publish("system/heap", value);
+
+    /* Three topics rather than one, and the two microsecond figures are the
+     * reason: a frame rate on its own says a panel is slow, and these say which
+     * half of it to go and look at. Skipped entirely until a window has closed,
+     * for the reason the other absent topics here are skipped -- whatever
+     * subscribes to these is typed, and a 0 that means "not measured" arriving
+     * in a Number item is worse than the topic not being there yet. */
+    ui_frame_stats_t frame;
+
+    ui_frame_stats_get((uint32_t)port_millis(), &frame);
+
+    if (frame.valid)
+    {
+        snprintf(value, sizeof(value), "%u.%u",
+                 (unsigned)(frame.fps_x10 / 10), (unsigned)(frame.fps_x10 % 10));
+        publish("system/fps", value);
+
+        snprintf(value, sizeof(value), "%u", (unsigned)frame.render_us);
+        publish("system/render_us", value);
+
+        snprintf(value, sizeof(value), "%u", (unsigned)frame.wait_us);
+        publish("system/wait_us", value);
+    }
 
     port_net_info(&net);
 

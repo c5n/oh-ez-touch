@@ -16,6 +16,7 @@ void test_beeper_seq_run(void);
 void test_ble_beacon_run(void);
 void test_config_fields_run(void);
 void test_config_file_run(void);
+void test_frame_stats_run(void);
 void test_icon_set_run(void);
 void test_item_setters_run(void);
 void test_multipart_run(void);

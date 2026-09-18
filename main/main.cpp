@@ -46,6 +46,7 @@
 #include "testif/testif.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_beep.hpp"
+#include "ui/ui_frame_probe.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
@@ -228,6 +229,12 @@ static void ohez_setup(void)
     tft_backlight.setup();
 
     lv_display_t *disp = port_display_init();
+
+    /* Straight after the display and before any widget exists, so the very
+     * first frame is counted. It only registers event callbacks; what they are
+     * for is in ui_frame_probe.c, and where they come out is the web status
+     * page, <prefix>/system/fps and the test interface's `status`. */
+    ui_frame_probe_attach(disp);
 
     port_indev_init(disp);
 
