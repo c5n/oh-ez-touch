@@ -5,7 +5,7 @@
  * one spent on the note instead.
  *
  * The expressive engine's tables -- see CONFIG_OHEZ_BEEPER_ENGINE. The whole
- * file is guarded, because the polyphonic engine has its own fifty-one in
+ * file is guarded, because the polyphonic engine has its own fifty-four in
  * ui_beep_tables.cpp and a panel carries only the set it plays. Both are linked
  * at once by the host tests, which is why the two export different names.
  *
@@ -43,9 +43,9 @@
  * Slate is restrained, consonant, and short. It must not draw attention, so it
  * gains the least from the new engine and is written to gain the least.
  *
- * LCARS is struck and gone: nothing eases, everything is dry, and the chirps --
- * a note swept most of the band in under a tenth of a second -- are the whole
- * sound of the thing.
+ * LCARS is struck and gone: nothing eases, everything is dry, and the figures
+ * are stepped rather than swept -- see the note above that family for what
+ * changed and why.
  *
  * Reticle swells: everything eases, everything sweeps, affirmative rises and
  * dismissal falls. It is the family with the most to gain here, because a slow
@@ -179,96 +179,192 @@ TUNE(slate_boot,      T(2093,  45, 10, VOL, PLUCK),
                       T(2637,  45, 10, VOL, PLUCK),
                       T(3136, 120,  0, VOL, BELL));
 
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp. A doorbell in this
+ * family is a doorbell: two struck tones a fourth apart, high then low, left
+ * to ring. The only thing that makes it Slate rather than generic is that it
+ * does not do anything else. */
+TUNE(slate_door_chime, T(2637,  90, 25, VOL, BELL),
+                       T(2093, 170,  0, VOL, BELL));
+
 #define X(name, sym) SEQ(slate_##sym##_n),
 const struct ui_tune_set_s ui_tune_default = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------------ LCARS
  *
- * Struck and gone. This is the family that loses the most -- the blips in the
- * show are stacked fourths and fifths, and an arpeggio is not a chord -- so it
- * is also the one that takes the most back.
+ * Reworked to sit as close to a TNG console as one pin can get, and the first
+ * thing that meant was taking the sweeps out.
  *
- * STAB is the envelope of the thing: an edge, a drop, a short hold. On a
- * ten-millisecond blip that is three milliseconds of fall onto a plateau and
- * two of release, which is a machine acknowledging an instruction rather than
- * a bell being hit.
+ * Read the caveat in ui_beep.hpp first: this is a square wave from a piezo and
+ * the sounds it is imitating are sampled, layered and reverberant. What can be
+ * carried across is *structure* -- contour, rhythm, register and interval --
+ * and structure is most of what makes a sound recognisable. What cannot is
+ * timbre. Nobody should read this table expecting a recording, and every
+ * description below is a characterisation of what those sounds do rather than
+ * a measurement of one.
  *
- * The chirps were always one voice doing the work, and they get what the mixer
- * could not give them. GLIDE walks the period instead of the frequency: a
- * linear sweep in hertz crosses its first octave in a third of the note and
- * then crawls, which is why the old ones sounded top-heavy. CHIRP is that plus
- * a hard tremolo, which is most of what a "working" sound is.
+ * Four properties are doing the work:
  *
- * And the two alert cadences are repeats now, with the effect rows carrying
- * what the second voice used to: a wobble under the warning where a tritone
- * was, and a hard pulse under the whoops. */
+ *   STEPPED, NOT SWEPT. This is the big one and it is what most of this
+ *   rework is. A console blip in the show is two to four discrete tones, each
+ *   fifteen to forty milliseconds, butted together with a few milliseconds
+ *   between -- not a glide. The previous table spent its two most-used sounds
+ *   (link, link_back) on a note swept most of the band in ninety
+ *   milliseconds, which is a science-fiction scanning noise and is not what a
+ *   panel does when somebody touches it. Two sweeps survive, and both earn it:
+ *   the hail rises because a hail rises, and the klaxon whoops because a
+ *   klaxon whoops.
+ *
+ *   FALLING AS OFTEN AS RISING. The single most identifiable console sound is
+ *   a two-tone that drops -- "bee-doo". The old table rose almost everywhere,
+ *   because rising reads as affirmative and the vocabulary is mostly
+ *   affirmative. Here the drop is given to the two gestures that are not
+ *   going anywhere: switching something off, and waking the panel.
+ *
+ *   SHORT. A console acknowledges in under a tenth of a second. Everything
+ *   here except the three alerts and the door is inside 150 ms, which is well
+ *   under what the policy allows -- the policy is a ceiling, and this family
+ *   sits a long way below it on purpose.
+ *
+ *   ONE REGISTER. The show's panel sounds are bright and narrow, so these live
+ *   between about 1.5 and 3.5 kHz and lean on rhythm and contour to be told
+ *   apart rather than on range. The alerts break out of it downwards, which is
+ *   exactly what the alerts do.
+ *
+ * STAB is still the envelope of the thing: an edge, a drop, a short hold. On a
+ * fifteen-millisecond blip that is under a millisecond of attack onto a
+ * plateau, which is a machine acknowledging an instruction rather than a bell
+ * being hit. BELL appears once, on the door, because a door is not a console.
+ *
+ * The effect rows that survive are the ones with somewhere real to be: GLIDE
+ * on the hail, CHIRP on the klaxon, WOBBLE on the standing alert, PULSE on the
+ * held note the boot sequence lands on. */
 
-/* The panel blip: a fifth, rolled rather than stacked. */
-TUNE(lcars_press,     T(1976, 9, 0, LOW, STAB),
-                      T(2960, 9, 0, LOW, STAB));
+/* The contact tap, layer one -- see the policy in ui_beep.hpp. One dry blip and
+ * nothing else.
+ *
+ * It was a rolled fifth, which is a small figure, and a small figure is a
+ * statement: layer one is not allowed to say anything except "the glass felt
+ * you". Every two-tone in this family now belongs to an outcome, so that a
+ * gesture reads as "tap ... answer" rather than as two answers. */
+TUNE(lcars_press,     T(2349, 12, 0, LOW, STAB));
 
-/* Keypads in the show are dry single blips, so these stay struck and dry. */
-TUNE(lcars_tick,      T(2400, 18, 0, LOW, PLUCK));
-TUNE(lcars_tick_back, T(2000, 18, 0, LOW, PLUCK));
+/* Keypads are dry single blips, and stay that way. Direction is the whole of
+ * the difference between them, which is all a key needs to carry. */
+TUNE(lcars_tick,      T(2794, 16, 0, LOW, STAB));
+TUNE(lcars_tick_back, T(2093, 16, 0, LOW, STAB));
 
-TUNE(lcars_toggle_on,  T(1976, 10, 0, VOL, STAB),
-                       T(2960, 10, 8, VOL, STAB),
-                       T(2349, 14, 0, VOL, STAB),
-                       T(3520, 14, 0, VOL, STAB));
-TUNE(lcars_toggle_off, T(2349, 10, 0, VOL, STAB),
-                       T(3520, 10, 8, VOL, STAB),
-                       T(1976, 14, 0, VOL, STAB),
-                       T(2960, 14, 0, VOL, STAB));
+/* A control actuated. Two tones a fourth apart, and the falling one is the
+ * console sound everybody can hum -- so it goes on the gesture that is *not*
+ * affirmative, which is the one that reaches for it. */
+TUNE(lcars_toggle_on,  T(1976, 22, 6, VOL, STAB),
+                       T(2637, 30, 0, VOL, STAB));
+TUNE(lcars_toggle_off, T(2637, 22, 6, VOL, STAB),
+                       T(1976, 30, 0, VOL, STAB));
 
-TUNE(lcars_change,    T(1800, 10, 0, VOL, STAB),
-                      T(2700, 10, 8, VOL, STAB),
-                      T(2600, 10, 0, VOL, STAB),
-                      T(3900, 10, 0, VOL, STAB));
+/* Input registered: three narrow steps, tight, over before the finger is. Steps
+ * of a tone rather than of a fourth, which is what keeps it from being heard as
+ * the toggle. */
+TUNE(lcars_change,    T(2093, 16, 5, VOL, STAB),
+                      T(2349, 16, 5, VOL, STAB),
+                      T(2794, 22, 0, VOL, STAB));
 
-/* The computer acknowledging: rising, in fourths, the last one held. */
-TUNE(lcars_accept,    T(1976, 15, 0, VOL, STAB),
-                      T(2637, 15, 10, VOL, STAB),
-                      T(2637, 25, 0, VOL, STAB),
-                      T(3520, 25, 0, VOL, BELL));
-TUNE(lcars_cancel,    T(2637, 15, 0, VOL, STAB),
-                      T(3520, 15, 10, VOL, STAB),
-                      T(1976, 25, 0, VOL, STAB),
-                      T(2637, 25, 0, VOL, BELL));
+/* The computer acknowledging an instruction: two blips and a held third. The
+ * hold is what separates an acknowledgement from a keystroke -- and it is a
+ * hold rather than a ring, because STAB's release is capped at forty
+ * milliseconds however long the note is. */
+TUNE(lcars_accept,    T(2093, 20, 6, VOL, STAB),
+                      T(2637, 20, 6, VOL, STAB),
+                      T(3136, 70, 0, VOL, STAB));
+TUNE(lcars_cancel,    T(2637, 20, 6, VOL, STAB),
+                      T(2093, 20, 6, VOL, STAB),
+                      T(1568, 70, 0, VOL, STAB));
 
-/* The chirp: one note swept most of the band in ninety milliseconds, which is
- * the "working" sound. The mixer doubled it a fourth up and swept it linearly;
- * one note glided and pulsed is closer to the show than two were. */
-TUNE(lcars_link,      N(1200, 2800, 90, 0, VOL, STAB, CHIRP));
-TUNE(lcars_link_back, N(2800, 1200, 90, 0, VOL, STAB, CHIRP));
+/* Moving about inside a panel: the stutter. Two strikes on one pitch and then
+ * a step away from it, which is the rhythm the show's panels make when a
+ * selection lands, and which nothing else in this family has -- so link is told
+ * from toggle by its rhythm rather than by its pitches.
+ *
+ * `repeat` is what spells the stutter: the envelope restarts on the second
+ * pass, so it is two strikes rather than one note with a gap cut in it. */
+TUNE(lcars_link,      NR(2093, 2093, 12, 8, VOL, STAB, NONE, 2),
+                      T(3136, 26, 0, VOL, STAB));
+TUNE(lcars_link_back, NR(3136, 3136, 12, 8, VOL, STAB, NONE, 2),
+                      T(2093, 26, 0, VOL, STAB));
 
-TUNE(lcars_screen,     T(1400, 25, 8, VOL, STAB),
-                       T(1900, 25, 8, VOL, STAB),
-                       N(2500, 2900, 55, 0, VOL, STAB, GLIDE));
-TUNE(lcars_screen_out, T(2500, 25, 8, VOL, STAB),
-                       T(1900, 25, 8, VOL, STAB),
-                       N(1400, 1100, 55, 0, VOL, STAB, GLIDE));
+/* A surface arriving over the one you were on: two rising pairs, the second
+ * starting above the first and landing held. Four blips in under a tenth of a
+ * second is the panel-reconfiguring cluster, and the pairing is what makes it
+ * a cluster rather than a scale. */
+TUNE(lcars_screen,     T(1760, 14,  5, VOL, STAB),
+                       T(2637, 14, 12, VOL, STAB),
+                       T(2093, 14,  5, VOL, STAB),
+                       T(3136, 34,  0, VOL, STAB));
+TUNE(lcars_screen_out, T(3136, 14,  5, VOL, STAB),
+                       T(2093, 14, 12, VOL, STAB),
+                       T(2637, 14,  5, VOL, STAB),
+                       T(1760, 34,  0, VOL, STAB));
 
-TUNE(lcars_notify,    N(1760, 2093, 60, 0, VOL, STAB, GLIDE));
+/* The hail. An unsolicited banner is the panel getting somebody's attention
+ * from across a room, which is the one thing in this vocabulary the incoming
+ * hail chime is for -- so this is the one place a rise is worth a sweep rather
+ * than steps, and it lands on a held tone above it.
+ *
+ * GLIDE rather than a linear sweep: walking the period is geometric, so the
+ * octave and a fifth here is heard as an even rise instead of as a rush to the
+ * top and a crawl. */
+TUNE(lcars_notify,    N(2093, 3136, 50, 10, VOL, STAB, GLIDE),
+                      T(3520, 60, 0, VOL, STAB));
 
-/* Held and repeated, with a wobble where the mixer stacked a tritone. Neither
- * is a pleasant interval, which is the point of both. */
-TUNE(lcars_warning,   NR(1400, 1400, 90, 50, VOL, CLICK, WOBBLE, 2));
+/* The standing alert: an alternating two-tone cadence, the lower of the pair
+ * warbling. Not a klaxon -- a klaxon is what the next one is -- but a thing
+ * that will not stop until somebody deals with it, which is what an alert
+ * condition short of the red one sounds like.
+ *
+ * CLICK rather than STAB, because the point of these is that they are gated
+ * tones rather than struck ones. The WOBBLE is only on the lower note: on both
+ * it is a siren, and on one it is unease. */
+TUNE(lcars_warning,   T(1568, 95, 45, VOL, CLICK),
+                      N(1319, 1319, 95, 45, VOL, CLICK, WOBBLE),
+                      T(1568, 95, 45, VOL, CLICK),
+                      N(1319, 1319, 110, 0, VOL, CLICK, WOBBLE));
 
-/* The red alert cadence, near enough: two low whoops, evenly spaced, with a
- * hard tremolo putting the grain on them. Everything in it is below the band
- * and that is deliberate -- see may_go_low() in the tests. */
-TUNE(lcars_error,     NR(520, 380, 200, 60, VOL, FLAT, PULSE, 2));
+/* The klaxon. A whoop that falls an octave, twice, with a hard grain over it --
+ * and the whole of it below the piezo's good band, which is the exemption
+ * may_go_low() in the tests exists for and the only sound in this family that
+ * takes it. Being impossible to ignore is worth more here than being loud.
+ *
+ * CHIRP is a glide plus a hard tremolo, and both halves are the point: the
+ * glide is what makes it a whoop rather than a slide, and the tremolo at 20 Hz
+ * is the grain that keeps a square wave from sounding like a test tone. */
+TUNE(lcars_error,     NR(660, 330, 230, 90, VOL, FLAT, CHIRP, 2));
 
-/* Four blips up onto a held note: the computer coming online, and the one tune
- * long enough to be a statement rather than an acknowledgement. */
-TUNE(lcars_boot,      T(1400,  45, 10, VOL, STAB),
-                      T(1760,  45, 10, VOL, STAB),
-                      T(2093,  45, 10, VOL, STAB),
-                      T(2637, 140,  0, VOL, BELL));
+/* Coming online. Three steps up and a held note, and the held note pulses --
+ * the one sustained tone in this family, and a sustained tone that is doing
+ * something is the sound of a machine still working rather than one that has
+ * finished. The only tune here long enough to be a statement. */
+TUNE(lcars_boot,      T(1568, 40, 10, VOL, STAB),
+                      T(1976, 40, 10, VOL, STAB),
+                      T(2349, 40, 10, VOL, STAB),
+                      N(2794, 2794, 150, 0, VOL, STAB, PULSE));
 
-TUNE(lcars_wake,      T(1976, 17, 0, MED, STAB),
-                      T(2960, 18, 0, MED, STAB));
+/* The tap that woke the display, and the whole of the feedback for it -- the
+ * pointer is suppressed for 200 ms afterwards, so nothing else sounds. The
+ * falling two-tone, at the level that is audible in a dark room without being
+ * an announcement. */
+TUNE(lcars_wake,      T(2794, 14, 0, MED, STAB),
+                      T(2093, 20, 0, MED, STAB));
+
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp.
+ *
+ * The one sound in this family that is not a console, and it does not pretend
+ * to be one: two tones a fourth apart, high then low, struck and left to ring.
+ * BELL rather than STAB is the whole difference -- an instant attack and a long
+ * decay, where every other sound here is an attack onto a plateau and a cut.
+ * A door announces a person; a console answers a finger, and they should not
+ * sound alike across a room. */
+TUNE(lcars_door_chime, T(2637, 160, 30, VOL, BELL),
+                       T(1976, 260,  0, VOL, BELL));
 
 #define X(name, sym) SEQ(lcars_##sym##_n),
 const struct ui_tune_set_s ui_tune_lcars = {{UI_SOUND_LIST(X)}};
@@ -343,6 +439,13 @@ TUNE(hud_boot,      N(1100, 1568, 300, 0, VOL, SWELL, NONE),
                     N(2349, 2349, 100, 0, VOL, BLOOM, SHIMMER));
 
 TUNE(hud_wake,      N(2200, 2400, 80, 0, MED, SWELL, NONE));
+
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp. This family does not
+ * strike things, so its doorbell blooms in and falls away rather than ringing:
+ * a soft arrival, and a slower one under it. Both long enough to carry the
+ * shimmer, which is the floor the LFO test enforces. */
+TUNE(hud_door_chime, N(2093, 2093, 140, 20, VOL, BLOOM, SHIMMER),
+                     N(1568, 1568, 240,  0, VOL, SWELL, SHIMMER));
 
 #define X(name, sym) SEQ(hud_##sym##_n),
 const struct ui_tune_set_s ui_tune_jarvis = {{UI_SOUND_LIST(X)}};

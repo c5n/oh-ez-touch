@@ -5,7 +5,7 @@
  * one at a time.
  *
  * The polyphonic engine's tables -- see CONFIG_OHEZ_BEEPER_ENGINE. The whole
- * file is guarded, because the other engine has its own fifty-one in
+ * file is guarded, because the other engine has its own fifty-four in
  * ui_beep_tables_seq.cpp and a panel carries only the set it plays.
  *
  * Separate from ui_beep.cpp so that the tables can be linked by the host tests,
@@ -31,10 +31,13 @@
  *
  * ---------------------------------------------------------------- the voices
  *
- * LCARS uses chords everywhere, because the panel blips in the show are
- * stacked intervals rather than tones -- a fourth or a fifth, struck and gone
- * -- and because the grain interleaving leaves is exactly right for a machine
- * acknowledging an instruction.
+ * LCARS uses chords where an interval is what is wanted and single voices
+ * where a figure is, which is the same editorial line ui_beep_tables_seq.cpp
+ * draws and the reason the two families read alike across the engines: the
+ * contours, the rhythms and the registers here are the ones written out at
+ * length over there, and that is the file to read for why each one is what it
+ * is. What this engine adds is the stacking, and it is spent on the three
+ * sounds where the show's panels are audibly an interval rather than a tone.
  *
  * Reticle uses them for triads and lets slow envelopes hide the grain.
  * Everything is a PAD and everything sweeps; affirmative rises.
@@ -154,112 +157,178 @@ static const struct beeper_note_s slate_boot_pad[]  = {N(2093, 2093, 120, 0, VOL
 static const struct beeper_voice_s slate_boot[]     = {V(slate_boot_lead),
                                                        VAT(slate_boot_pad, 110)};
 
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp. Two struck tones a
+ * fourth apart, high then low, and one voice: a doorbell is a doorbell, and
+ * this family does not decorate. */
+MONO(slate_door_chime, N(2637, 2637, 90, 25, VOL, PLUCK),
+                       N(2093, 2093, 170, 0, VOL, PLUCK));
+
 #define X(name, sym) CHIME(slate_##sym),
 const struct ui_chime_set_s ui_chime_default = {{UI_SOUND_LIST(X)}};
 #undef X
 
 /* ------------------------------------------------------------------ LCARS
  *
- * Stacked fourths and fifths, struck and gone, plus the chirps that are the
- * whole sound of the thing: a note swept a long way in under a tenth of a
- * second. Nothing eases -- these are machines acknowledging an instruction. */
+ * Reworked alongside the sequencer's copy, and to the same brief: get as close
+ * to a TNG console as one pin allows. The reasoning behind every contour,
+ * rhythm and register here is written out at length in ui_beep_tables_seq.cpp,
+ * because it is editorial rather than a property of either engine, and one copy
+ * of it is enough. In short: stepped rather than swept, falling as often as
+ * rising, short, and in one bright register with the alerts breaking out of it
+ * downwards.
+ *
+ * What this engine adds is the stacking, and it is spent where the show's
+ * panels are audibly an interval rather than a tone -- the toggles, the
+ * acknowledgements, the panel clusters, the standing alert and the note the
+ * boot sequence lands on. The blips, the stutter, the keys and the klaxon stay
+ * single voices: two of them are too short for the ear to fuse anything out of
+ * six interleave slots, one is about rhythm rather than pitch, and the last
+ * lives entirely below BEEPER_POLY_MIN_HZ. */
 
-/* The panel blip. A fifth, because the ones in the show are intervals rather
- * than tones, and that is the single thing this driver could not do before. */
-static const struct beeper_note_s lcars_press_a[] = {N(1976, 1976, 18, 0, LOW, PLUCK)};
-static const struct beeper_note_s lcars_press_b[] = {N(2960, 2960, 18, 0, LOW, PLUCK)};
-static const struct beeper_voice_s lcars_press[]  = {V(lcars_press_a), V(lcars_press_b)};
+/* The contact tap, layer one. One dry blip, one voice: a twelve-millisecond
+ * note is six interleave slots, and layer one is not allowed to say anything
+ * except "the glass felt you" in any case. */
+MONO(lcars_press,     N(2349, 2349, 12, 0, LOW, PLUCK));
 
-/* Keypads in the show are dry single blips, so these stay one voice. */
-MONO(lcars_tick,      N(2400, 2400, 18, 0, LOW, PLUCK));
-MONO(lcars_tick_back, N(2000, 2000, 18, 0, LOW, PLUCK));
+/* Keys are dry single blips. Direction is the whole of the difference. */
+MONO(lcars_tick,      N(2794, 2794, 16, 0, LOW, PLUCK));
+MONO(lcars_tick_back, N(2093, 2093, 16, 0, LOW, PLUCK));
 
-static const struct beeper_note_s lcars_on_a[]  = {N(1976, 1976, 20, 8, VOL, PLUCK),
-                                                   N(2349, 2349, 28, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_on_b[]  = {N(2960, 2960, 20, 8, VOL, PLUCK),
-                                                   N(3520, 3520, 28, 0, VOL, PLUCK)};
+/* A control actuated: two steps a fourth apart, each doubled a fourth up. The
+ * falling one is the console sound everybody can hum, so it goes on the
+ * gesture that is not affirmative. */
+static const struct beeper_note_s lcars_on_a[]  = {N(1976, 1976, 22, 6, VOL, PLUCK),
+                                                   N(2637, 2637, 30, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_on_b[]  = {N(2637, 2637, 22, 6, VOL, PLUCK),
+                                                   N(3520, 3520, 30, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_toggle_on[] = {V(lcars_on_a), V(lcars_on_b)};
 
-static const struct beeper_note_s lcars_off_a[] = {N(2349, 2349, 20, 8, VOL, PLUCK),
-                                                   N(1976, 1976, 28, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_off_b[] = {N(3520, 3520, 20, 8, VOL, PLUCK),
-                                                   N(2960, 2960, 28, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_off_a[] = {N(2637, 2637, 22, 6, VOL, PLUCK),
+                                                   N(1976, 1976, 30, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_off_b[] = {N(3520, 3520, 22, 6, VOL, PLUCK),
+                                                   N(2637, 2637, 30, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_toggle_off[] = {V(lcars_off_a), V(lcars_off_b)};
 
-static const struct beeper_note_s lcars_chg_a[] = {N(1800, 1800, 20, 8, VOL, PLUCK),
-                                                   N(2600, 2600, 20, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_chg_b[] = {N(2700, 2700, 20, 8, VOL, PLUCK),
-                                                   N(3900, 3900, 20, 0, VOL, PLUCK)};
+/* Input registered: three narrow steps, over before the finger is. Steps of a
+ * tone rather than of a fourth, which is what keeps it from being heard as the
+ * toggle above. */
+static const struct beeper_note_s lcars_chg_a[] = {N(2093, 2093, 16, 5, VOL, PLUCK),
+                                                   N(2349, 2349, 16, 5, VOL, PLUCK),
+                                                   N(2794, 2794, 22, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_chg_b[] = {N(2794, 2794, 16, 5, VOL, PLUCK),
+                                                   N(3136, 3136, 16, 5, VOL, PLUCK),
+                                                   N(3725, 3725, 22, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_change[] = {V(lcars_chg_a), V(lcars_chg_b)};
 
-/* The computer acknowledging: two tones, rising, in parallel fourths. */
-static const struct beeper_note_s lcars_acc_a[] = {N(1976, 1976, 30, 10, VOL, PLUCK),
-                                                   N(2637, 2637, 50, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_acc_b[] = {N(2637, 2637, 30, 10, VOL, PLUCK),
-                                                   N(3520, 3520, 50, 0, VOL, PLUCK)};
+/* The computer acknowledging an instruction: two blips and a held third. The
+ * second voice drops out for the hold rather than doubling it -- a chord that
+ * resolves to one tone is a gesture, and a fourth above 3136 is outside the
+ * band anyway. */
+static const struct beeper_note_s lcars_acc_a[] = {N(2093, 2093, 20, 6, VOL, PLUCK),
+                                                   N(2637, 2637, 20, 6, VOL, PLUCK),
+                                                   N(3136, 3136, 70, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_acc_b[] = {N(2794, 2794, 20, 6, VOL, PLUCK),
+                                                   N(3520, 3520, 20, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_accept[] = {V(lcars_acc_a), V(lcars_acc_b)};
 
-static const struct beeper_note_s lcars_can_a[] = {N(2637, 2637, 30, 10, VOL, PLUCK),
-                                                   N(1976, 1976, 50, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_can_b[] = {N(3520, 3520, 30, 10, VOL, PLUCK),
-                                                   N(2637, 2637, 50, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_can_a[] = {N(2637, 2637, 20, 6, VOL, PLUCK),
+                                                   N(2093, 2093, 20, 6, VOL, PLUCK),
+                                                   N(1568, 1568, 70, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_can_b[] = {N(3520, 3520, 20, 6, VOL, PLUCK),
+                                                   N(2794, 2794, 20, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_cancel[] = {V(lcars_can_a), V(lcars_can_b)};
 
-/* The chirp, doubled a fourth up: one note swept most of the band in ninety
- * milliseconds, which is the "working" sound. */
-static const struct beeper_note_s lcars_link_a[] = {N(1200, 2800, 90, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_link_b[] = {N(1600, 3730, 90, 0, VOL, PLUCK)};
-static const struct beeper_voice_s lcars_link[]  = {V(lcars_link_a), V(lcars_link_b)};
+/* Moving about inside a panel: the stutter. Two strikes on one pitch and then a
+ * step away from it. One voice, because what tells this from the toggle is its
+ * rhythm and a second voice would only blur it. */
+MONO(lcars_link,      N(2093, 2093, 12, 8, VOL, PLUCK),
+                      N(2093, 2093, 12, 8, VOL, PLUCK),
+                      N(3136, 3136, 26, 0, VOL, PLUCK));
+MONO(lcars_link_back, N(3136, 3136, 12, 8, VOL, PLUCK),
+                      N(3136, 3136, 12, 8, VOL, PLUCK),
+                      N(2093, 2093, 26, 0, VOL, PLUCK));
 
-static const struct beeper_note_s lcars_back_a[] = {N(2800, 1200, 90, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_back_b[] = {N(3730, 1600, 90, 0, VOL, PLUCK)};
-static const struct beeper_voice_s lcars_link_back[] = {V(lcars_back_a), V(lcars_back_b)};
-
-static const struct beeper_note_s lcars_open_a[] = {N(1400, 1400, 25, 8, VOL, PLUCK),
-                                                    N(1900, 1900, 25, 8, VOL, PLUCK),
-                                                    N(2500, 2900, 55, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_open_b[] = {N(2100, 2100, 25, 8, VOL, PLUCK),
-                                                    N(2850, 2850, 25, 8, VOL, PLUCK),
-                                                    N(3750, 3900, 55, 0, VOL, PLUCK)};
+/* A surface arriving over the one you were on: two rising pairs, the second
+ * starting above the first and landing held, both doubled. */
+static const struct beeper_note_s lcars_open_a[] = {N(1760, 1760, 14,  5, VOL, PLUCK),
+                                                    N(2637, 2637, 14, 12, VOL, PLUCK),
+                                                    N(2093, 2093, 14,  5, VOL, PLUCK),
+                                                    N(3136, 3136, 34,  0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_open_b[] = {N(2349, 2349, 14,  5, VOL, PLUCK),
+                                                    N(3520, 3520, 14, 12, VOL, PLUCK),
+                                                    N(2794, 2794, 14,  5, VOL, PLUCK),
+                                                    N(3725, 3725, 34,  0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_screen[] = {V(lcars_open_a), V(lcars_open_b)};
 
-static const struct beeper_note_s lcars_shut_a[] = {N(2500, 2500, 25, 8, VOL, PLUCK),
-                                                    N(1900, 1900, 25, 8, VOL, PLUCK),
-                                                    N(1400, 1100, 55, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_shut_b[] = {N(3750, 3750, 25, 8, VOL, PLUCK),
-                                                    N(2850, 2850, 25, 8, VOL, PLUCK),
-                                                    N(2100, 1650, 55, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_shut_a[] = {N(3136, 3136, 14,  5, VOL, PLUCK),
+                                                    N(2093, 2093, 14, 12, VOL, PLUCK),
+                                                    N(2637, 2637, 14,  5, VOL, PLUCK),
+                                                    N(1760, 1760, 34,  0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_shut_b[] = {N(3725, 3725, 14,  5, VOL, PLUCK),
+                                                    N(2794, 2794, 14, 12, VOL, PLUCK),
+                                                    N(3520, 3520, 14,  5, VOL, PLUCK),
+                                                    N(2349, 2349, 34,  0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_screen_out[] = {V(lcars_shut_a), V(lcars_shut_b)};
 
-static const struct beeper_note_s lcars_note_a[] = {N(1760, 2093, 60, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_note_b[] = {N(2637, 3136, 60, 0, VOL, PLUCK)};
-static const struct beeper_voice_s lcars_notify[] = {V(lcars_note_a), V(lcars_note_b)};
+/* The hail: the one rise in this family worth a sweep rather than steps, onto a
+ * held tone with a fourth arriving under it. Linear in hertz is all this engine
+ * sweeps -- the sequencer's copy glides through the period instead, which is
+ * the one audible difference between the two versions of this sound. */
+static const struct beeper_note_s lcars_note_a[] = {N(2093, 3136, 50, 10, VOL, PLUCK),
+                                                    N(3520, 3520, 60, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_note_b[] = {N(2637, 2637, 60, 0, VOL, PLUCK)};
+static const struct beeper_voice_s lcars_notify[] = {V(lcars_note_a),
+                                                     VAT(lcars_note_b, 60)};
 
-/* A tritone, held: the interval that never sounds like good news. */
-static const struct beeper_note_s lcars_warn_a[] = {N(1400, 1400, 90, 50, VOL, FLAT),
-                                                    N(1400, 1400, 90, 0, VOL, FLAT)};
-static const struct beeper_note_s lcars_warn_b[] = {N(1980, 1980, 90, 50, VOL, FLAT),
-                                                    N(1980, 1980, 90, 0, VOL, FLAT)};
+/* The standing alert: an alternating two-tone cadence, each note carrying a
+ * tritone over it. Not a klaxon -- a klaxon is what the next one is -- but a
+ * thing that will not stop until somebody deals with it. The sequencer warbles
+ * the lower note instead; a stacked tritone is what this engine has and it is
+ * the interval that never sounds like good news. */
+static const struct beeper_note_s lcars_warn_a[] = {N(1568, 1568, 95, 45, VOL, FLAT),
+                                                    N(1319, 1319, 95, 45, VOL, FLAT),
+                                                    N(1568, 1568, 95, 45, VOL, FLAT),
+                                                    N(1319, 1319, 110, 0, VOL, FLAT)};
+static const struct beeper_note_s lcars_warn_b[] = {N(2217, 2217, 95, 45, VOL, FLAT),
+                                                    N(1865, 1865, 95, 45, VOL, FLAT),
+                                                    N(2217, 2217, 95, 45, VOL, FLAT),
+                                                    N(1865, 1865, 110, 0, VOL, FLAT)};
 static const struct beeper_voice_s lcars_warning[] = {V(lcars_warn_a), V(lcars_warn_b)};
 
-/* The red alert cadence, near enough: two low whoops, evenly spaced. A single
- * voice, and it has to be -- everything here is below BEEPER_POLY_MIN_HZ. */
-MONO(lcars_error, N(520, 380, 200, 60, VOL, FLAT),
-                  N(520, 380, 200, 0, VOL, FLAT));
+/* The klaxon. A whoop that falls an octave, twice, and the whole of it below
+ * the piezo's good band -- which is the exemption may_go_low() exists for, and
+ * also why it has to stay a single voice: everything in it is under
+ * BEEPER_POLY_MIN_HZ. Being impossible to ignore is worth more here than being
+ * loud. */
+MONO(lcars_error, N(660, 330, 230, 90, VOL, FLAT),
+                  N(660, 330, 230, 0, VOL, FLAT));
 
-/* Four blips up onto a held fourth: the computer coming online, which is the
- * one chime long enough to be a statement rather than an acknowledgement. */
-static const struct beeper_note_s lcars_boot_a[] = {N(1400, 1400, 45, 10, VOL, PLUCK),
-                                                    N(1760, 1760, 45, 10, VOL, PLUCK),
-                                                    N(2093, 2093, 45, 10, VOL, PLUCK),
-                                                    N(2637, 2637, 140, 0, VOL, PLUCK)};
-static const struct beeper_note_s lcars_boot_b[] = {N(3520, 3520, 140, 0, VOL, PLUCK)};
+/* Coming online: three steps up and a held note, with a fourth joining it at
+ * the moment it lands. The only chime here long enough to be a statement
+ * rather than an acknowledgement. */
+static const struct beeper_note_s lcars_boot_a[] = {N(1568, 1568, 40, 10, VOL, PLUCK),
+                                                    N(1976, 1976, 40, 10, VOL, PLUCK),
+                                                    N(2349, 2349, 40, 10, VOL, PLUCK),
+                                                    N(2794, 2794, 150, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_boot_b[] = {N(3725, 3725, 150, 0, VOL, PLUCK)};
 static const struct beeper_voice_s lcars_boot[]  = {V(lcars_boot_a),
-                                                    VAT(lcars_boot_b, 165)};
+                                                    VAT(lcars_boot_b, 150)};
 
-static const struct beeper_note_s lcars_wake_a[] = {N(1976, 1976, 35, 0, MED, PLUCK)};
-static const struct beeper_note_s lcars_wake_b[] = {N(2960, 2960, 35, 0, MED, PLUCK)};
-static const struct beeper_voice_s lcars_wake[]  = {V(lcars_wake_a), V(lcars_wake_b)};
+/* The tap that woke the display, and the whole of the feedback for it. The
+ * falling two-tone, at the level that is audible in a dark room without being
+ * an announcement. */
+MONO(lcars_wake, N(2794, 2794, 14, 0, MED, PLUCK),
+                 N(2093, 2093, 20, 0, MED, PLUCK));
+
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp. The one sound in this
+ * family that is not a console: two tones a fourth apart, high then low, the
+ * second left ringing with a fourth under it. A door announces a person and a
+ * console answers a finger, and they should not sound alike across a room. */
+static const struct beeper_note_s lcars_door_a[] = {N(2637, 2637, 160, 30, VOL, PLUCK),
+                                                    N(1976, 1976, 260, 0, VOL, PLUCK)};
+static const struct beeper_note_s lcars_door_b[] = {N(1568, 1568, 260, 0, VOL, PLUCK)};
+static const struct beeper_voice_s lcars_door_chime[] = {V(lcars_door_a),
+                                                         VAT(lcars_door_b, 190)};
 
 #define X(name, sym) CHIME(lcars_##sym),
 const struct ui_chime_set_s ui_chime_lcars = {{UI_SOUND_LIST(X)}};
@@ -354,6 +423,16 @@ static const struct beeper_voice_s hud_boot[]  = {V(hud_boot_a), VAT(hud_boot_b,
 static const struct beeper_note_s hud_wake_a[] = {N(2200, 2400, 80, 0, MED, PAD)};
 static const struct beeper_note_s hud_wake_b[] = {N(2933, 3200, 80, 0, MED, PAD)};
 static const struct beeper_voice_s hud_wake[]  = {V(hud_wake_a), V(hud_wake_b)};
+
+/* Somebody is at the door -- MQTT only, see ui_beep.hpp. This family does not
+ * strike things, so its doorbell arrives and thins rather than ringing: a
+ * third over the first tone, and another over the second as it settles. */
+static const struct beeper_note_s hud_door_a[] = {N(2093, 2093, 140, 20, VOL, PAD),
+                                                  N(1568, 1568, 240, 0, VOL, PAD)};
+static const struct beeper_note_s hud_door_b[] = {N(2637, 2637, 140, 0, VOL, PAD)};
+static const struct beeper_note_s hud_door_c[] = {N(1976, 1976, 240, 0, VOL, PAD)};
+static const struct beeper_voice_s hud_door_chime[] = {V(hud_door_a), V(hud_door_b),
+                                                       VAT(hud_door_c, 160)};
 
 #define X(name, sym) CHIME(hud_##sym),
 const struct ui_chime_set_s ui_chime_jarvis = {{UI_SOUND_LIST(X)}};

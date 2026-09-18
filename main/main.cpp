@@ -278,6 +278,13 @@ static void ohez_setup(void)
     relay_setup();
     led_setup();
 
+    /* And the beeper, for the same reason and in the same place: `sound/set`
+     * is a subtree of the command tree like `relay/+/set` is, and the module
+     * that owns the sounds is the one that claims it. Unlike those two it is
+     * on every board -- the Lanbon has no buzzer, but it also has no way to
+     * know that here, and port_beeper is where the silence lives. */
+    ui_beep_mqtt_setup();
+
     ohez_mqtt_setup(&config);
 
     /* After the MQTT client, which is where its findings go, and last of the

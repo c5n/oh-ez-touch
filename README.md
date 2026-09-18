@@ -509,7 +509,7 @@ load-bearing ones above, the purity and the 63 counts of duty, because both are
 promises about the panel rather than about one way of arranging its notes.
 
 `test_ui_beep_chimes` and `test_ui_beep_tunes` cover the tables, one suite per
-engine. There are three families and seventeen sounds, which is fifty-one
+engine. There are three families and eighteen sounds, which is fifty-four
 written out by hand *for each*, and every target that can run a test is silent
 -- so the first thing each checks is the boring one, that none of them is
 missing. The rest are the constraints nobody has in mind while writing
@@ -795,6 +795,11 @@ sounds are written out once for each. See [The beeper](doc/beeper.md).
 **The Lanbon L8 has no buzzer**, so both settings do nothing there. The
 simulator does have one -- see [Hearing the panel](#hearing-the-panel).
 
+Every sound the theme in force defines can also be played over MQTT, including
+one the interface itself never plays -- see
+[Playing a sound](#playing-a-sound). Turning the beeper off here silences that
+too; it is the same gate.
+
 ##### Openhab Server
 
 Setting         | Default       | Description
@@ -855,9 +860,9 @@ Publish non-beacon devices    | off     | Publish plain BLE devices too, not onl
 ### MQTT
 
 The client publishes what the panel knows about itself, subscribes to one
-wildcard through which every setting can be written, and -- on a board that
-has them -- to two more through which its relays and LEDs are driven. It is
-off by default; the
+wildcard through which every setting can be written, to one topic that plays a
+sound, and -- on a board that has them -- to two more through which its relays
+and LEDs are driven. It is off by default; the
 settings are on the ```MQTT``` tab of the settings screen and in the web
 interface.
 
@@ -926,6 +931,48 @@ a retained command on every reconnect costs nothing.
 
 There is no authentication in front of any of this, which is also true of the
 web interface. Both belong on a network you trust.
+
+#### Playing a sound
+
+```sound/set``` plays one sound of the theme in force. The payload is the
+sound's name, and the eighteen of them are the vocabulary in
+```main/ui/ui_beep.hpp```:
+
+```
+press        tick         tick_back    toggle_on    toggle_off   change
+accept       cancel       link         link_back    screen       screen_out
+notify       warning      error        boot         wake         door_chime
+```
+
+```bash
+mosquitto_pub -t oheztouch/oheztouch-new/sound/set -m door_chime
+mosquitto_pub -t oheztouch/oheztouch-new/sound/set -m notify
+mosquitto_pub -t oheztouch/oheztouch-new/sound/set -m error
+```
+
+The name is matched case-insensitively. An empty payload plays nothing, so
+clearing the topic is safe; anything else that is not on the list is logged and
+ignored. What each one actually sounds like is the theme's decision and nothing
+else's -- ```notify``` on a Slate panel and ```notify``` on an LCARS one are
+two different sounds, and switching the theme switches them, which is the point
+of asking for a *sound* rather than for a frequency.
+
+```door_chime``` is the one nothing on the panel plays by itself. No gesture on
+a touchscreen means "somebody is at the door", so it exists for this topic: wire
+it to a doorbell and the panel answers it in the voice of whatever theme is on.
+
+Two things to know about it, and both are deliberate:
+
+- **This is the one topic here that is an event rather than a state**, and so
+  the one where a *retained* message is dropped rather than applied. Everything
+  else is replayed by the broker after a reconnect on purpose -- that is what
+  puts the relays back in the state the installation thinks they are in. A
+  panel that beeped every time the broker restarted would be a panel somebody
+  unplugs, so a retained ```sound/set``` is ignored and only a live publish
+  sounds. Publish without ```-r```.
+- **It obeys the beeper settings.** A panel with the beeper switched off, or
+  with the volume at zero, stays quiet; there is no way to make the panel make
+  a noise it was told not to make.
 
 ### Relays and LEDs
 
@@ -1317,6 +1364,7 @@ Contact: c5n AT posteo DOT de
 - [x] peripherals: Drive the Lanbon L8's three relays and three mood LEDs over MQTT -- see [Relays and LEDs](#relays-and-leds)
 - [ ] peripherals: The relays and the LEDs have not been run on hardware. The pin table is the openHASP and ESPHome mapping for the L8-HS, not a measurement, and the PlatformIO flags it replaces named two pins that do not exist on an ESP32.
 - [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
+- [x] ui, mqtt: Rework the LCARS sounds against the console they are named after -- stepped figures rather than sweeps -- add a door chime that only a broker can ring, and let MQTT play any sound of the theme in force, see [Playing a sound](#playing-a-sound)
 - [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.
 - [ ] mqtt: Home Assistant style discovery, so the topics above do not have to be wired up by hand
 - [x] ble: Scan for BLE beacons and publish them over MQTT -- iBeacon, Eddystone UID/URL/TLM, see [Bluetooth LE beacons](#bluetooth-le-beacons)

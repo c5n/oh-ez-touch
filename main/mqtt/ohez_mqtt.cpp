@@ -41,12 +41,21 @@
  *   <prefix>/config/<field>/set      write that field
  *   <prefix>/relay/<n>/set           switch a relay      -- peripherals/relay.cpp
  *   <prefix>/led/<name>/set          set an LED          -- peripherals/led.cpp
+ *   <prefix>/sound/set               play a themed sound -- ui/ui_beep.cpp
  *
- * Only the first of those is this file's own. The other two are registered
- * through ohez_mqtt_subscribe() by the modules that own the hardware, which
- * is what keeps a pin out of the MQTT client and a broker out of a driver;
- * this file knows only that something asked for `relay/+/set` and wants to be
- * called back on the application's task when one arrives.
+ * Only the first of those is this file's own. The other three are registered
+ * by the modules that own what they drive, which is what keeps a pin out of
+ * the MQTT client and a broker out of a driver; this file knows only that
+ * something asked for `relay/+/set` and wants to be called back on the
+ * application's task when one arrives.
+ *
+ * The last of them is registered through ohez_mqtt_subscribe_live() instead,
+ * and it is the only one: every other topic here carries the current value of
+ * something, so a subscriber that missed an update wants the newest one and a
+ * retained replay after a reconnect is exactly right. A sound is an event.
+ * Replaying one means the panel beeps every time the broker comes back, which
+ * is why retained deliveries are dropped for that subtree and only for that
+ * subtree -- see ohez_mqtt_subscribe_live().
  *
  * The config/ half is not a hand-written list. It is config_fields[] -- the
  * same table the web form and the panel's settings screen walk -- so MQTT is a
@@ -137,8 +146,8 @@ static const char *TAG = "ohez_mqtt";
  * and the LEDs subscribing too there are now six more of those to replay. */
 #define MQTT_COMMAND_QUEUE_DEPTH 16
 
-/* How many modules may own a subtree of the command tree. Three are taken:
- * the settings here, the relays and the LEDs. */
+/* How many modules may own a subtree of the command tree. Four are taken:
+ * the settings here, the relays, the LEDs and the beeper. */
 #define MQTT_SUBSCRIPTIONS_MAX 6
 
 /* Half a minute, against esp-mqtt's 120 second default. The broker declares us
@@ -155,6 +164,9 @@ struct mqtt_command_s
 {
     char topic[MQTT_SUFFIX_MAX];
     char value[MQTT_VALUE_MAX];
+    bool retained; /* the broker replayed this from its store, rather than
+                    * somebody publishing it just now -- see
+                    * ohez_mqtt_subscribe_live() */
 };
 
 /* Who wants which subtree. Read by the client's task on connect and written
@@ -164,6 +176,7 @@ struct mqtt_subscription_s
 {
     const char          *filter;
     ohez_mqtt_command_fn handler;
+    bool                 live_only; /* skip the broker's retained replays */
 };
 
 /* The settings the running client is working from: a snapshot rather than a
@@ -558,6 +571,15 @@ static void command_enqueue(esp_mqtt_event_handle_t event)
     memcpy(cmd.value, event->data, len);
     cmd.value[len] = '\0';
 
+    /* Carried rather than acted on here: whether it matters is the
+     * subscriber's question, and the subscribers run on the other task. MQTT
+     * sets this on delivery only for a message that came out of the broker's
+     * store in answer to a fresh subscription -- a live publish to an
+     * established subscription arrives with it clear -- so it reads as "this
+     * is a replay", which is precisely the distinction
+     * ohez_mqtt_subscribe_live() is about. */
+    cmd.retained = event->retain;
+
     /* Dropped rather than waited for: this is the client's task, and blocking
      * it would stop the very loop that empties the queue. */
     if (mqtt_commands == NULL || xQueueSend(mqtt_commands, &cmd, 0) != pdTRUE)
@@ -670,8 +692,16 @@ static void commands_dispatch(void)
             if (topic_matches(mqtt_subs[i].filter, cmd.topic) == false)
                 continue;
 
-            mqtt_subs[i].handler(cmd.topic, cmd.value);
+            /* Counted as handled either way: somebody owns this topic, and the
+             * "nothing handles" warning below is about a subscription that
+             * outlived its module rather than about a message that module
+             * deliberately ignored. */
             handled = true;
+
+            if (cmd.retained == true && mqtt_subs[i].live_only == true)
+                continue;
+
+            mqtt_subs[i].handler(cmd.topic, cmd.value);
         }
 
         if (handled == false)
@@ -853,7 +883,7 @@ static void reconfigure(Config &config)
 
 /* ---------------------------------------------------------------------- API */
 
-bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler)
+static bool subscribe_add(const char *filter, ohez_mqtt_command_fn handler, bool live_only)
 {
     if (filter == NULL || handler == NULL)
         return false;
@@ -866,6 +896,7 @@ bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler)
 
     mqtt_subs[mqtt_sub_count].filter = filter;
     mqtt_subs[mqtt_sub_count].handler = handler;
+    mqtt_subs[mqtt_sub_count].live_only = live_only;
     mqtt_sub_count++;
 
     /* Registrations all happen during setup, before there is a client. This
@@ -875,6 +906,16 @@ bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler)
         subscribe_one(mqtt_client, mqtt_subs[mqtt_sub_count - 1]);
 
     return true;
+}
+
+bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler)
+{
+    return subscribe_add(filter, handler, false);
+}
+
+bool ohez_mqtt_subscribe_live(const char *filter, ohez_mqtt_command_fn handler)
+{
+    return subscribe_add(filter, handler, true);
 }
 
 void ohez_mqtt_setup(Config *config)

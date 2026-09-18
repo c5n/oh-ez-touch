@@ -1,13 +1,13 @@
 /* Unit tests for the chime tables in main/ui/ui_beep_tables.cpp.
  *
- * There are three families and seventeen sounds, which is fifty-one chimes
+ * There are three families and eighteen sounds, which is fifty-four chimes
  * written out by hand -- and every target that can run a test is silent. The
  * host has no buzzer, the Lanbon has no buzzer, and the ArduiTouch that does
  * has never had this firmware on it. So a chime that is missing, or backwards,
  * or four times too long, is invisible until somebody flashes a panel.
  *
  * The first test here is the boring one, and it is the one that will actually
- * fire. A ui_chime_set_s built from sixteen CHIME() entries instead of seventeen
+ * fire. A ui_chime_set_s built from seventeen CHIME() entries instead of eighteen
  * compiles without a warning and zero-fills the rest -- and beeper_play()
  * returns early on exactly that shape, so the symptom is one gesture in the
  * interface silently making no sound. (The X-macro in ui_beep.hpp is meant to
@@ -85,6 +85,59 @@ static void test_the_sound_names_are_present_and_distinct(void)
 
         for (int other = 0; other < s; other++)
             TEST_ASSERT_TRUE(strcmp(ui_sound_names[s], ui_sound_names[other]) != 0);
+    }
+}
+
+/* The names are also a wire format now: `sound/set` carries one as its payload
+ * and ui_sound_from_name() turns it back into a sound -- see ui_beep.hpp. Both
+ * ends of that are worth pinning down, because the failure is a log line on a
+ * panel nobody is watching rather than anything visible here.
+ *
+ * In this suite rather than the tune one because the character-set test above
+ * is the other half of the same question, and the lookup is engine-blind. */
+static void test_every_name_is_accepted_back(void)
+{
+    for (int s = 0; s < UI_SOUND_COUNT; s++)
+        TEST_ASSERT_EQUAL_MESSAGE(s, (int)ui_sound_from_name(ui_sound_names[s]),
+                                  ui_sound_names[s]);
+
+    /* Typed by a person into a broker rule, so the case it arrives in is not
+     * something to have an opinion about. */
+    TEST_ASSERT_EQUAL(UI_SOUND_DOOR_CHIME, ui_sound_from_name("DOOR_CHIME"));
+    TEST_ASSERT_EQUAL(UI_SOUND_ACCEPT, ui_sound_from_name("Accept"));
+
+    /* And everything else is refused rather than silently landing on sound
+     * zero, which is the contact tick and would be the quietest possible way
+     * to get this wrong. */
+    TEST_ASSERT_EQUAL(UI_SOUND_COUNT, ui_sound_from_name(""));
+    TEST_ASSERT_EQUAL(UI_SOUND_COUNT, ui_sound_from_name("door chime"));
+    TEST_ASSERT_EQUAL(UI_SOUND_COUNT, ui_sound_from_name("door_chimes"));
+    TEST_ASSERT_EQUAL(UI_SOUND_COUNT, ui_sound_from_name(NULL));
+}
+
+/* The door chime has no call site, by design -- an installation knows somebody
+ * is at the door and a touchscreen does not, so it is reachable over MQTT and
+ * nowhere else. That makes it the one sound in the vocabulary a person cannot
+ * find by using the panel, and therefore the one a table could quietly leave
+ * as a copy of its neighbour without anybody noticing.
+ *
+ * The completeness test above already refuses an empty entry. This refuses a
+ * lazy one. */
+static void test_the_door_chime_is_its_own_sound(void)
+{
+    for (int f = 0; f < UI_THEME_FAMILY_COUNT; f++)
+    {
+        const struct beeper_chime_s *door = &ui_chime_sets[f]->chime[UI_SOUND_DOOR_CHIME];
+        const char                  *name = where(f, UI_SOUND_DOOR_CHIME);
+
+        for (int s = 0; s < UI_SOUND_COUNT; s++)
+        {
+            if (s == UI_SOUND_DOOR_CHIME)
+                continue;
+
+            TEST_ASSERT_TRUE_MESSAGE(door->voices != ui_chime_sets[f]->chime[s].voices,
+                                     name);
+        }
     }
 }
 
@@ -258,6 +311,8 @@ void test_ui_beep_chimes_run(void)
     RUN_TEST(test_every_family_has_every_sound);
     RUN_TEST(test_the_families_do_not_share_a_set);
     RUN_TEST(test_the_sound_names_are_present_and_distinct);
+    RUN_TEST(test_every_name_is_accepted_back);
+    RUN_TEST(test_the_door_chime_is_its_own_sound);
     RUN_TEST(test_frequencies_stay_inside_the_piezo_band);
     RUN_TEST(test_an_exempt_sound_really_does_go_low);
     RUN_TEST(test_nothing_below_the_polyphony_floor_is_stacked);

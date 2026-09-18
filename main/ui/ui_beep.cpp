@@ -1,8 +1,9 @@
 /**
  * @file ui_beep.cpp
  *
- * Playing a themed sound: the mute gate, the layering backstop, and the press
- * hook every pressable object goes through.
+ * Playing a themed sound: the mute gate, the layering backstop, the press hook
+ * every pressable object goes through, and the one topic a broker can ask for
+ * a sound on.
  *
  * The tables themselves are in ui_beep_tables.cpp or ui_beep_tables_seq.cpp
  * depending on the engine, neither of which includes LVGL so that the host
@@ -11,9 +12,14 @@
  */
 #include "ui_beep.hpp"
 
+#include "mqtt/ohez_mqtt.hpp"
 #include "ui_style.hpp"
 
 #include <lvgl.h>
+
+#include "esp_log.h"
+
+static const char *TAG = "ui_beep";
 
 /* The backstop under the layering policy.
  *
@@ -126,4 +132,55 @@ void ui_beep_attach_press(lv_obj_t *obj)
         return;
 
     lv_obj_add_event_cb(obj, press_event, LV_EVENT_PRESSED, NULL);
+}
+
+/* ------------------------------------------------------------------- MQTT */
+
+/* `sound/set`: play the named sound from the theme in force.
+ *
+ * The payload is a name out of ui_sound_names[] -- "accept", "door_chime",
+ * "error" -- rather than the topic naming the sound and the payload being
+ * ignored. Three reasons, and the third is the one that decided it. An
+ * installation wants one openHAB String item pointed at one topic, not
+ * eighteen. A `<something>/set` whose payload does nothing is a shape nobody
+ * else in this firmware has. And a name that is not in the vocabulary can be
+ * *said so*, which a wildcard subtree cannot do: `sound/+/set` would match
+ * `sound/dooor_chime/set` and the only symptom would be silence.
+ *
+ * An empty payload plays nothing and is not an error. That is what somebody
+ * publishing a zero-length retained message to clear the topic sends, and
+ * clearing a topic should not be the last thing it ever does.
+ *
+ * Runs on the application's task, from ohez_mqtt_loop(), which is the task
+ * that owns LVGL -- so ui_beep_play()'s lv_tick_get() and its two statics are
+ * reached from the one place they are reached from everywhere else. Both of
+ * its gates still apply: a panel with the beeper switched off in the settings
+ * stays silent, and so does one that has not finished starting up. */
+static void sound_command(const char *topic, const char *value)
+{
+    LV_UNUSED(topic);
+
+    enum ui_sound_e sound;
+
+    if (value[0] == '\0')
+        return;
+
+    sound = ui_sound_from_name(value);
+
+    if (sound == UI_SOUND_COUNT)
+    {
+        ESP_LOGW(TAG, "no sound called %s", value);
+        return;
+    }
+
+    ui_beep_play(sound);
+}
+
+void ui_beep_mqtt_setup(void)
+{
+    /* _live rather than plain subscribe: a retained message on this topic is
+     * the broker replaying an old request, and a panel that plays the last
+     * sound it was asked for every time the broker restarts is one somebody
+     * unplugs. See ohez_mqtt_subscribe_live() and the note in ui_beep.hpp. */
+    ohez_mqtt_subscribe_live("sound/set", sound_command);
 }

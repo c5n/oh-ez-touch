@@ -60,6 +60,7 @@ static inline bool may_go_low(enum ui_sound_e sound)
     case UI_SOUND_WARNING:
     case UI_SOUND_BOOT:
     case UI_SOUND_WAKE:
+    case UI_SOUND_DOOR_CHIME:
     case UI_SOUND_COUNT:
         return false;
     }
@@ -73,7 +74,7 @@ static inline bool is_feedback(enum ui_sound_e sound)
            sound == UI_SOUND_TICK_BACK || sound == UI_SOUND_CHANGE;
 }
 
-/* "lcars/screen_out", for a failure message that says which of the fifty-one. */
+/* "lcars/screen_out", for a failure message that says which of the fifty-four. */
 static inline const char *where(int family, enum ui_sound_e sound)
 {
     static char buf[64];

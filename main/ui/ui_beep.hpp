@@ -17,7 +17,7 @@
  * expecting a recording.
  *
  * Deliberately free of <lvgl.h>: the table files include this and nothing
- * else, which is what lets the host tests link fifty-one hand-written sounds
+ * else, which is what lets the host tests link fifty-four hand-written sounds
  * per engine on a target that has no display and no buzzer. Same argument that
  * keeps ui_geometry.hpp clean. The one function here that needs an object takes
  * it through the forward declaration below.
@@ -54,10 +54,31 @@
  * ui_beep_play() has a backstop for the same reason a belt has braces --
  * see UI_BEEP_TICK_MIN_GAP_MS in ui_beep.cpp.
  *
- * Two things stay silent on purpose, and this is where to find out why rather
- * than to notice a gap and fill it: MQTT and OTA. A panel that chirps at three
- * in the morning because a broker blipped is a defect, and a firmware update
- * is driven from a browser by somebody who is not looking at the panel.
+ * One thing stays silent on purpose, and this is where to find out why rather
+ * than to notice a gap and fill it: OTA. A firmware update is driven from a
+ * browser by somebody who is not looking at the panel.
+ *
+ * ------------------------------------------------------------ MQTT, and door
+ *
+ * MQTT used to be the second of those, on the grounds that a panel which
+ * chirps at three in the morning because a broker blipped is a defect. That
+ * ground still holds and is now enforced rather than stated:
+ * ui_beep_mqtt_setup() registers `sound/set` through
+ * ohez_mqtt_subscribe_live(), so a *retained* message -- the only kind a
+ * reconnect replays -- never reaches a handler. What is left is somebody
+ * publishing on purpose, which is an installation asking the panel to make a
+ * noise, and that is the whole point of the topic.
+ *
+ * Every sound in the vocabulary is reachable that way, including the ones the
+ * UI plays for itself: there is nothing to be gained by letting a broker play
+ * sixteen of the eighteen and guess about the rest. UI_SOUND_DOOR_CHIME is the
+ * one that exists only for it. No gesture on this panel means "somebody is at
+ * the door", so there is deliberately no BEEPER_EVENT_DOOR_CHIME() below and
+ * no call site to go looking for -- a doorbell is a thing an installation
+ * knows about and a touchscreen does not. It is in the vocabulary rather than
+ * bolted on beside it so that what a door sounds like is a theme's decision,
+ * the same as everything else here, and so that the host tests hold it to the
+ * same policy as everything else here.
  */
 
 #include "control/beeper_control.hpp"
@@ -65,6 +86,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <strings.h>
 
 /* As LVGL declares it, so including <lvgl.h> here is not necessary. Repeating
  * an identical typedef is legal, and this header is included by a translation
@@ -75,7 +97,7 @@ typedef struct _lv_obj_t lv_obj_t;
  *
  * The enum and all three families' tables are generated from this list, so a
  * family that forgets a chime is a compile error naming the array it is
- * missing -- rather than a seventeen-element positional initialiser silently
+ * missing -- rather than an eighteen-element positional initialiser silently
  * shifted by one, which is what the old seven-entry tables would have become. */
 #define UI_SOUND_LIST(X)                                                       \
     /* contact acknowledged, before anything has been decided             */   \
@@ -104,7 +126,9 @@ typedef struct _lv_obj_t lv_obj_t;
     /* the firmware is ready. Once per power-up, and the Test button      */   \
     X(BOOT, boot)                                                              \
     /* the tap that woke the display and was consumed by waking it        */   \
-    X(WAKE, wake)
+    X(WAKE, wake)                                                              \
+    /* somebody is at the door. No gesture means this -- MQTT only        */   \
+    X(DOOR_CHIME, door_chime)
 
 enum ui_sound_e
 {
@@ -128,12 +152,36 @@ static const char *const ui_sound_names[UI_SOUND_COUNT] = {
 #undef X
 };
 
+/* A name back to its sound, or UI_SOUND_COUNT for one that is not in the
+ * vocabulary.
+ *
+ * This is how `sound/set` reads its payload -- see ui_beep_mqtt_setup() -- and
+ * it is here rather than in ui_beep.cpp so that the host tests can reach it:
+ * ui_beep.cpp needs <lvgl.h> and they have none, and a lookup that quietly
+ * stopped matching would turn every message on that subtree into a warning
+ * line nobody is reading.
+ *
+ * Case-insensitive because these names travel through a broker, where they are
+ * typed by a person into a rule or a command line rather than generated, and
+ * "DOOR_CHIME" failing while "door_chime" works is a trap with no upside. */
+static inline enum ui_sound_e ui_sound_from_name(const char *name)
+{
+    if (name == NULL)
+        return UI_SOUND_COUNT;
+
+    for (int s = 0; s < UI_SOUND_COUNT; s++)
+        if (strcasecmp(name, ui_sound_names[s]) == 0)
+            return (enum ui_sound_e)s;
+
+    return UI_SOUND_COUNT;
+}
+
 /* One set per family, shared by its day and night variants -- a theme does not
  * sound different after dark.
  *
  * Two engines, two note formats, so two sets of tables and two types to hold
  * them. They MUST NOT share a symbol or a struct tag: test/host links both
- * table files into one binary, because fifty-one hand-written sounds each are
+ * table files into one binary, because fifty-four hand-written sounds each are
  * the only place either set is checked at all, and two different definitions of
  * one `struct ui_sound_s` would be an ODR violation that LTO eventually
  * notices.
@@ -206,6 +254,17 @@ void ui_beep_set_enabled(bool en);
  * a colour field are dragged rather than pressed, so the motion feedback would
  * be wrong on them and the acknowledgement is still right. */
 void ui_beep_attach_press(lv_obj_t *obj);
+
+/* Claim `sound/set` on the broker, so that an installation can play any sound
+ * of the theme in force by publishing its name from ui_sound_names[].
+ *
+ * Called from main.cpp before ohez_mqtt_setup(), the same as relay_setup() and
+ * led_setup() and for the same reason: the client asks the broker for every
+ * registered filter when it connects. Costs nothing on a panel with MQTT
+ * switched off -- there is no connection to subscribe on -- and nothing on one
+ * with the beeper switched off either, because ui_beep_play() is still the only
+ * way in and both of its gates are still in front of it. */
+void ui_beep_mqtt_setup(void);
 
 /* The call sites keep macro names: what a gesture sounds like is a theme's
  * business, but *which* gesture happened is the UI's. */

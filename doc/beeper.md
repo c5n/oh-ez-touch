@@ -2,7 +2,7 @@
 
 The panel has one piezo, on one GPIO, driven by one LEDC timer -- and the
 frequency is a property of the timer. So there is exactly one tone available at
-any instant, and that one tone is the entire budget for seventeen themed sounds
+any instant, and that one tone is the entire budget for eighteen themed sounds
 across three theme families.
 
 There are two engines here, and they spend that budget differently. Neither is
@@ -30,11 +30,14 @@ better at *intervals*. Which matters depends on the family:
 
 | family | under the sequencer | under the mixer |
 | --- | --- | --- |
-| Slate | barely different -- ten of its seventeen were single voices already | |
+| Slate | barely different -- ten of its eighteen were single voices already | |
 | Reticle | better: its swells finally get the vibrato they were reaching for | |
-| LCARS | | better: its blips are stacked fourths and fifths, and an arpeggio is not a chord |
+| LCARS | | better where it stacks: the toggles, the acknowledgements and the standing alert are intervals, and an arpeggio is not a chord |
 
-LCARS is the reason the mixer is still here rather than deleted.
+LCARS is the reason the mixer is still here rather than deleted -- though less
+so than it was, because the rework described under *The three families* took
+most of that family's sweeps out and put stepped figures in their place, and a
+stepped figure is a thing one voice can say.
 
 ## Choosing one
 
@@ -46,7 +49,7 @@ LCARS is the reason the mixer is still here rather than deleted.
   interleaved on the one piezo*)
 
 It is a build-time choice because each engine has its own note format and
-therefore its own tables: the fifty-one sounds are written out twice, once for
+therefore its own tables: the fifty-four sounds are written out twice, once for
 each, and a panel carries only the set it plays. A runtime switch would put both
 sets in flash for a choice nobody changes twice.
 
@@ -154,6 +157,53 @@ one per engine, and the design policy is the same for both:
   everything else. The layering policy it belongs to is in `main/ui/ui_beep.hpp`
   and is worth reading before touching any of this.
 
+### LCARS, and what it is imitating
+
+The family is named after a console, and the table was reworked to sound like
+one rather than like science fiction in general. What that came down to is four
+properties, all of them structural, because structure is the part a piezo can
+carry and timbre is the part it cannot:
+
+- **Stepped, not swept.** A blip on that console is two to four discrete tones
+  butted together, fifteen to forty milliseconds each -- not a glide. The table
+  used to spend its two most-used sounds on a note swept most of the band in
+  ninety milliseconds, which is a scanning noise rather than a panel answering
+  a finger. Two sweeps survive: the hail rises because a hail rises, and the
+  klaxon whoops because a klaxon whoops.
+- **Falling as often as rising.** The most recognisable console sound is a
+  two-tone that drops. The old table rose nearly everywhere, because rising
+  reads as affirmative and the vocabulary is mostly affirmative; the drop now
+  belongs to the two gestures that are not going anywhere -- switching
+  something off, and waking the panel.
+- **Short.** Everything but the three alerts and the door is inside 150 ms,
+  which is a long way under what the policy allows. The policy is a ceiling and
+  this family sits well below it on purpose.
+- **One register.** Between about 1.5 and 3.5 kHz, leaning on rhythm and
+  contour to be told apart rather than on range. The alerts break out of it
+  downwards, which is what alerts do.
+
+Nobody should read the result as a recording. It is a square wave from a piezo
+and the sounds it is imitating are sampled, layered and reverberant; what
+carries across is contour, rhythm, register and interval, and that is most of
+what makes a sound recognisable but it is not all of it. The table comments say
+which of them each sound is spending.
+
+### The door chime
+
+`UI_SOUND_DOOR_CHIME` is the eighteenth, and the only one with no call site. No
+gesture on a touchscreen means "somebody is at the door", so it is reachable
+over MQTT and nowhere else -- see *Playing a sound* in the README. It is in the
+vocabulary rather than bolted on beside it so that what a door sounds like is a
+theme's decision, the same as everything else, and so that the table tests hold
+it to the same policy. Each family answers it differently: Slate strikes two
+tones and lets them ring, LCARS does the same but is the one sound in that
+family that is allowed a bell rather than a stab, and Reticle blooms in and
+thins out.
+
+A test in each suite asserts it is not a copy of its neighbour, which is a check
+the other seventeen do not need: they are all reachable by using the panel, and
+a wrong one would be noticed.
+
 Under the mixer there is one more: nothing below `BEEPER_POLY_MIN_HZ` is ever
 stacked, because a two-millisecond slot down there is less than two cycles and
 the pitch dissolves into the slot rate. The sequencer has no polyphony and so no
@@ -184,7 +234,10 @@ sounding stepped.
   foreground note at the shipped master volume of 25 still lands on sixty-three
   counts of duty.
 - `test_ui_beep_chimes.cpp` / `test_ui_beep_tunes.cpp` -- the tables, against the
-  shared policy in `test_ui_beep_policy.hpp`.
+  shared policy in `test_ui_beep_policy.hpp`. The chime suite also covers
+  `ui_sound_from_name()`, which is what turns a `sound/set` payload back into a
+  sound: that lookup has no other front end, and a name that stopped matching
+  would be a log line on a panel nobody is watching.
 
 Both sets are checked even though a panel ships one, because the set that is not
 selected is exactly the one nobody would notice going stale. That is why the two

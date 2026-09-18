@@ -114,4 +114,23 @@ typedef void (*ohez_mqtt_command_fn)(const char *topic, const char *value);
  */
 bool ohez_mqtt_subscribe(const char *filter, ohez_mqtt_command_fn handler);
 
+/**
+ * The same, for a subtree whose messages are events rather than states.
+ *
+ * Identical in every way but one: a message the broker delivers because it was
+ * *retained* is not passed on. MQTT sets the retain flag on delivery only when
+ * the message comes out of the broker's store in answer to a fresh
+ * subscription -- a live publish to an established subscription arrives with it
+ * clear -- so this is exactly "somebody asked for this just now" against
+ * "somebody asked for this at some point in the past".
+ *
+ * That distinction is a feature for a relay, which wants its retained `set`
+ * replayed after a reboot so the panel comes back in the state the installation
+ * thinks it is in. It is a defect for anything that makes a noise or shows a
+ * banner: a panel that chirps every time the broker restarts is a panel
+ * somebody unplugs. ui/ui_beep.cpp is the caller, and the reasoning is written
+ * out at greater length there.
+ */
+bool ohez_mqtt_subscribe_live(const char *filter, ohez_mqtt_command_fn handler);
+
 #endif // OHEZ_MQTT_HPP

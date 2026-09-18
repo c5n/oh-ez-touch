@@ -1,7 +1,7 @@
 /* Unit tests for the tune tables in main/ui/ui_beep_tables_seq.cpp.
  *
  * The same job test_ui_beep_chimes.cpp does for the other engine, and for the
- * same reason: three families and seventeen sounds is fifty-one tunes written
+ * same reason: three families and eighteen sounds is fifty-four tunes written
  * out by hand, and every target that can run a test is silent. A tune that is
  * missing, or backwards, or four times too long, is invisible until somebody
  * flashes a panel.
@@ -12,7 +12,7 @@
  * ui_beep.hpp are for.
  *
  * The first test here is the boring one and the one that will actually fire: a
- * ui_tune_set_s built from sixteen entries instead of seventeen compiles
+ * ui_tune_set_s built from seventeen entries instead of eighteen compiles
  * without a warning and zero-fills the rest, and beeper_play_seq() returns
  * early on exactly that shape -- so the symptom is one gesture in the interface
  * silently making no sound.
@@ -45,7 +45,7 @@
 
 static void test_every_family_has_every_sound(void)
 {
-    /* The one that matters. Sixteen entries where seventeen were meant is a
+    /* The one that matters. Seventeen entries where eighteen were meant is a
      * zero-filled {NULL, 0}, which plays nothing at all. */
     for (int f = 0; f < UI_THEME_FAMILY_COUNT; f++)
     {
@@ -74,6 +74,28 @@ static void test_the_families_do_not_share_a_set(void)
         TEST_ASSERT_TRUE(a != b);
         TEST_ASSERT_TRUE(b != c);
         TEST_ASSERT_TRUE(a != c);
+    }
+}
+
+/* The counterpart in the chime suite is test_the_door_chime_is_its_own_sound(),
+ * and the reason for both is the same: the door chime has no call site, so it
+ * is the one sound nobody can find by using the panel and therefore the one a
+ * table could quietly leave as a copy of its neighbour. */
+static void test_the_door_chime_is_its_own_tune(void)
+{
+    for (int f = 0; f < UI_THEME_FAMILY_COUNT; f++)
+    {
+        const struct beeper_seq_s *door = &ui_tune_sets[f]->chime[UI_SOUND_DOOR_CHIME];
+        const char                *name = where(f, UI_SOUND_DOOR_CHIME);
+
+        for (int s = 0; s < UI_SOUND_COUNT; s++)
+        {
+            if (s == UI_SOUND_DOOR_CHIME)
+                continue;
+
+            TEST_ASSERT_TRUE_MESSAGE(door->notes != ui_tune_sets[f]->chime[s].notes,
+                                     name);
+        }
     }
 }
 
@@ -397,6 +419,7 @@ void test_ui_beep_tunes_run(void)
     RUN_TEST(test_every_family_has_every_sound);
     RUN_TEST(test_the_families_do_not_share_a_set);
     RUN_TEST(test_every_sound_has_a_name);
+    RUN_TEST(test_the_door_chime_is_its_own_tune);
 
     RUN_TEST(test_every_tune_stays_in_the_piezos_band);
     RUN_TEST(test_an_exempt_sound_really_does_go_low);
