@@ -85,6 +85,19 @@ void ui_beep_play(enum ui_sound_e sound)
     if (enabled == false)
         return;
 
+    /* The demonstration tune owns the piezo while it runs.
+     *
+     * Not politeness: the queue plays items one after another, so a press tick
+     * raised during those thirty seconds would not interrupt the tune, it
+     * would be stored and fired at the end of it -- and a finger that walked a
+     * settings list meanwhile would empty four of them in a burst when the
+     * music stopped. Dropping them is the only behaviour that is not
+     * surprising. The one press worth hearing is the one that stops the tune,
+     * and that is an outcome rather than a tick: by the time it sounds,
+     * beeper_demo_stop() has already run and this gate has opened again. */
+    if (beeper_demo_playing() == true)
+        return;
+
     if ((unsigned)sound >= UI_SOUND_COUNT)
         return;
 

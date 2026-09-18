@@ -25,6 +25,12 @@
  *   - what replaces it is the vibrato excursion. A note written at the top of
  *     the band with a deep enough effect row swings out of it on its own, and
  *     that failure would otherwise only show up on a panel.
+ *
+ * The demonstration tune in control/beeper_song.c is here too, at the foot.
+ * It is a tune table that only this engine has, this is the suite compiled with
+ * this engine selected, and it is held to every rule the families are held to
+ * except the two that are about being a *chime* -- its whole purpose is to be
+ * half a minute long.
  */
 
 #include <string.h>
@@ -32,6 +38,7 @@
 #include <unity.h>
 
 #include "control/beeper_seq.h"
+#include "control/beeper_song.h"
 #include "test_suites.hpp"
 #include "test_ui_beep_policy.hpp"
 #include "ui/ui_beep.hpp"
@@ -414,6 +421,137 @@ static void test_each_family_sounds_like_itself(void)
     }
 }
 
+/* ------------------------------------------------- the demonstration tune */
+
+/* The piece is thirty seconds, and its own movement headings say how that is
+ * spent. Nothing else in the firmware would notice if a later edit made it
+ * twenty or fifty -- there is no ceiling on it the way there is on a chime, the
+ * settings button would still work, and the comments would simply be wrong.
+ *
+ * Two seconds of slack either side, so this is a guard against a movement being
+ * doubled or dropped rather than a re-statement of the table. */
+#define SONG_TARGET_MS 30000
+#define SONG_SLACK_MS  2000
+
+static void test_the_demo_song_is_about_half_a_minute(void)
+{
+    uint32_t ms = beeper_seq_duration_ms(beeper_song());
+
+    TEST_ASSERT_TRUE_MESSAGE(ms >= SONG_TARGET_MS - SONG_SLACK_MS, "demo song too short");
+    TEST_ASSERT_TRUE_MESSAGE(ms <= SONG_TARGET_MS + SONG_SLACK_MS, "demo song too long");
+}
+
+static void test_the_demo_song_fits_one_queue_item(void)
+{
+    /* `count` is a uint8_t and beeper_play_seq() sends the whole tune by value,
+     * so a piece that grew past 255 notes would not be truncated at the queue
+     * -- it would be silently miscounted where the table is declared, and play
+     * whatever the low eight bits came to. */
+    size_t notes = (size_t)beeper_song()->count;
+
+    TEST_ASSERT_TRUE_MESSAGE(notes > 0, "demo song is empty");
+    TEST_ASSERT_TRUE_MESSAGE(notes <= 255, "demo song will not fit a uint8_t count");
+    TEST_ASSERT_NOT_NULL(beeper_song()->notes);
+}
+
+static void test_the_demo_song_stays_in_the_piezos_band(void)
+{
+    /* Including what the vibratos swing it to, which is the whole reason this
+     * uses beeper_seq_freq_range() rather than reading the table: the finale
+     * runs up to B7, and B7 with a SHIMMER on it would be 2 Hz inside the
+     * ceiling while B7 with a SIREN would be 400 Hz outside it. */
+    uint16_t lo = 0;
+    uint16_t hi = 0;
+
+    beeper_seq_freq_range(beeper_song(), &lo, &hi);
+
+    TEST_ASSERT_TRUE_MESSAGE(lo >= BEEPER_BAND_LO_HZ, "demo song goes below the band");
+    TEST_ASSERT_TRUE_MESSAGE(hi <= BEEPER_BAND_HI_HZ, "demo song goes above the band");
+}
+
+static void test_no_demo_note_carries_an_lfo_slower_than_itself(void)
+{
+    /* The same rule the families are held to, and the one the piece is most
+     * likely to break: the ornaments movement exists to let each effect be
+     * heard, and an effect that does not complete a cycle inside its note is
+     * heard as a bend instead -- which would make that movement demonstrate
+     * the opposite of what it is labelled. */
+    const struct beeper_seq_s *song = beeper_song();
+
+    for (uint8_t i = 0; i < song->count; i++)
+    {
+        const struct beeper_seq_note_s *n  = &song->notes[i];
+        const struct beeper_seq_fx_s   *fx = beeper_seq_fx_preset(n->fx);
+        uint16_t                        rate;
+
+        TEST_ASSERT_TRUE_MESSAGE(n->env < BEEPER_SEQ_ENV_COUNT, "demo song: bad envelope");
+        TEST_ASSERT_TRUE_MESSAGE(n->fx < BEEPER_SEQ_FX_COUNT, "demo song: bad effect");
+        TEST_ASSERT_TRUE_MESSAGE(n->volume > 0 && n->volume <= 100, "demo song: bad volume");
+        TEST_ASSERT_TRUE_MESSAGE(n->duration_ms >= BEEPER_SEQ_STEP_MS,
+                                 "demo song: note shorter than a step");
+
+        rate = (fx->vib_rate_chz > fx->trem_rate_chz) ? fx->vib_rate_chz
+                                                      : fx->trem_rate_chz;
+
+        if (rate == 0)
+            continue;
+
+        TEST_ASSERT_TRUE_MESSAGE((uint32_t)n->duration_ms * rate >= 100000u,
+                                 "demo song: an LFO slower than the note carrying it");
+    }
+}
+
+static void test_the_demo_song_plays_every_preset(void)
+{
+    /* The point of the piece. The themed families between them leave rows
+     * unheard -- that is what the "every preset is used by somebody" test above
+     * is really saying, since one family using a row once is enough for it --
+     * and this is the one table that is supposed to name all sixteen.
+     *
+     * So this is a stronger assertion than that one, and it is the assertion
+     * that would fire if somebody added a ninth envelope and did not put it in
+     * the demonstration, which is exactly the moment to be told. */
+    const struct beeper_seq_s *song = beeper_song();
+
+    bool env_used[BEEPER_SEQ_ENV_COUNT] = {false};
+    bool fx_used[BEEPER_SEQ_FX_COUNT]   = {false};
+
+    for (uint8_t i = 0; i < song->count; i++)
+    {
+        if (song->notes[i].env < BEEPER_SEQ_ENV_COUNT)
+            env_used[song->notes[i].env] = true;
+
+        if (song->notes[i].fx < BEEPER_SEQ_FX_COUNT)
+            fx_used[song->notes[i].fx] = true;
+    }
+
+    for (uint8_t i = 0; i < BEEPER_SEQ_ENV_COUNT; i++)
+        TEST_ASSERT_TRUE_MESSAGE(env_used[i], "the demo song never plays some envelope");
+
+    for (uint8_t i = 0; i < BEEPER_SEQ_FX_COUNT; i++)
+        TEST_ASSERT_TRUE_MESSAGE(fx_used[i], "the demo song never plays some effect");
+}
+
+static void test_the_demo_song_uses_repeat(void)
+{
+    /* `repeat` is a field of the note format that no themed family needs more
+     * than twice, and the trills movement is where it is actually shown off. A
+     * piece with every repeat flattened to 1 would still pass everything above
+     * and would have stopped demonstrating one of the six things in the struct. */
+    const struct beeper_seq_s *song = beeper_song();
+    bool                       repeated = false;
+
+    for (uint8_t i = 0; i < song->count; i++)
+        if (song->notes[i].repeat > 1)
+            repeated = true;
+
+    TEST_ASSERT_TRUE_MESSAGE(repeated, "the demo song never repeats a note");
+
+    /* And the struck count has to exceed the written one, which is the same
+     * claim from the other side: it says the engine really does expand them. */
+    TEST_ASSERT_TRUE(beeper_seq_note_count(song) > song->count);
+}
+
 void test_ui_beep_tunes_run(void)
 {
     RUN_TEST(test_every_family_has_every_sound);
@@ -434,4 +572,11 @@ void test_ui_beep_tunes_run(void)
     RUN_TEST(test_no_note_carries_an_lfo_slower_than_itself);
     RUN_TEST(test_every_preset_is_used_by_somebody);
     RUN_TEST(test_each_family_sounds_like_itself);
+
+    RUN_TEST(test_the_demo_song_is_about_half_a_minute);
+    RUN_TEST(test_the_demo_song_fits_one_queue_item);
+    RUN_TEST(test_the_demo_song_stays_in_the_piezos_band);
+    RUN_TEST(test_no_demo_note_carries_an_lfo_slower_than_itself);
+    RUN_TEST(test_the_demo_song_plays_every_preset);
+    RUN_TEST(test_the_demo_song_uses_repeat);
 }

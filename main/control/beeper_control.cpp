@@ -1,5 +1,6 @@
 #include "beeper_control.hpp"
 
+#include "beeper_song.h"
 #include "debug.h"
 
 #include <stdio.h>
@@ -54,6 +55,20 @@ static QueueHandle_t xRequestQueue = NULL;
 static volatile bool    beeper_enabled;
 static volatile uint8_t beeper_master = 25;
 
+/* Bumped by beeper_stop(), snapshotted by the task when it takes an item off
+ * the queue. Anything sounding is abandoned the moment the two differ.
+ *
+ * A counter rather than a "cancel" flag, and the difference is a race the flag
+ * loses: a stop that arrives while the queue is empty and the task is blocked
+ * in xQueueReceive() would leave a flag set with nothing to apply it to, and
+ * the next sound queued -- seconds later, by something unrelated -- would be
+ * cancelled before it started. Nothing has to clear a generation.
+ *
+ * Written from the LVGL task and read by the beeper task. A 32-bit aligned
+ * load and store on both targets, so there is nothing to tear; volatile stops
+ * the walk's read being hoisted out of the loop it exists to break. */
+static volatile uint32_t beeper_generation;
+
 static void beeper_task(void *parameter);
 
 /* pdMS_TO_TICKS() rounds down, and the simulator's tick is four milliseconds,
@@ -82,7 +97,7 @@ static void beeper_delay(TickType_t *last_wake, uint16_t ms)
  * than accumulated, so a frame that was preempted shortens the note it was in
  * instead of stretching the whole tune -- which for a vibrato would also slide
  * its phase. */
-static void beeper_walk(const struct beeper_seq_s *seq)
+static void beeper_walk(const struct beeper_seq_s *seq, uint32_t generation)
 {
     TickType_t started   = xTaskGetTickCount();
     TickType_t last_wake = started;
@@ -94,8 +109,8 @@ static void beeper_walk(const struct beeper_seq_s *seq)
 
         /* Rechecked here, not only at the queue, so that unchecking "Enable
          * beeper" stops the note that is sounding rather than the one after
-         * it. */
-        if (beeper_enabled == false)
+         * it. beeper_stop() is the same idea without the setting attached. */
+        if (beeper_enabled == false || beeper_generation != generation)
             break;
 
         uint32_t t_ms = (uint32_t)(xTaskGetTickCount() - started) * portTICK_PERIOD_MS;
@@ -127,7 +142,7 @@ static void beeper_walk(const struct beeper_seq_s *seq)
  * The chime clock is recomputed from the real tick count at every frame rather
  * than accumulated, so a frame that was preempted shortens the note it was in
  * instead of stretching the whole chime. */
-static void beeper_walk(const struct beeper_chime_s *chime)
+static void beeper_walk(const struct beeper_chime_s *chime, uint32_t generation)
 {
     TickType_t started   = xTaskGetTickCount();
     TickType_t last_wake = started;
@@ -140,8 +155,8 @@ static void beeper_walk(const struct beeper_chime_s *chime)
 
         /* Rechecked here, not only at the queue, so that unchecking "Enable
          * beeper" stops the note that is sounding rather than the one after
-         * it. */
-        if (beeper_enabled == false)
+         * it. beeper_stop() is the same idea without the setting attached. */
+        if (beeper_enabled == false || beeper_generation != generation)
             break;
 
         uint32_t t_ms = (uint32_t)(xTaskGetTickCount() - started) * portTICK_PERIOD_MS;
@@ -279,6 +294,145 @@ void beeper_set_enabled(bool enabled)
         xQueueReset(xRequestQueue);
 }
 
+void beeper_stop(void)
+{
+    /* The order matters, and it is: stop new work reaching the task, then
+     * cancel what it already has, then silence the hardware.
+     *
+     * Bumping the generation first would leave a window in which the task
+     * finishes early, takes the *next* queued item and starts it at the new
+     * generation -- which would survive the reset that was meant to clear it.
+     * Resetting first cannot go wrong the other way: an item dequeued between
+     * the two lines carries the old generation and is cancelled by the bump. */
+    if (xRequestQueue != NULL)
+        xQueueReset(xRequestQueue);
+
+    /* Spelled out rather than ++, which C++20 deprecates on a volatile -- and
+     * the deprecation has a point worth answering: a read-modify-write is not
+     * atomic. It is safe here because there is exactly one writer. beeper_stop()
+     * is reachable only from the LVGL task, and the beeper task never does
+     * anything but compare. */
+    beeper_generation = beeper_generation + 1;
+
+    /* And the half of it the task cannot do: on a target that renders a tune
+     * whole, the task's grip on it is a delay rather than a loop, so the sound
+     * would keep coming out of the audio device until its natural end. */
+    port_beeper_stop();
+}
+
+/* ------------------------------------------------------ the demonstration */
+
+/* When the tune is due to end, in ticks, and whether one was started at all.
+ *
+ * A deadline rather than a flag the task clears, and the reason is that the
+ * task would have to recognise the tune to clear it -- comparing the item it
+ * just finished against beeper_song()'s pointer, which is a coupling the task
+ * has no other use for. The tune is one queue item and nothing preempts it, so
+ * its end is known the moment it starts, to within a frame.
+ *
+ * Only ever touched from the LVGL task: started from a button, polled from
+ * ui_settings_loop() and ui_beep_play(). The beeper task does not read it. */
+#if CONFIG_OHEZ_BEEPER_ENGINE_SEQ
+
+static bool       demo_active;
+static TickType_t demo_ends;
+
+bool beeper_demo_available(void)
+{
+    return true;
+}
+
+bool beeper_demo_start(void)
+{
+    const struct beeper_seq_s *song = beeper_song();
+    uint32_t                   ms   = beeper_seq_duration_ms(song);
+
+    /* Asked before anything is queued, because beeper_play_seq() is silently a
+     * no-op when the beeper is off and the caller would otherwise be told a
+     * tune was playing that nobody can hear. */
+    if (beeper_enabled == false || ms == 0)
+        return false;
+
+    /* Whatever is sounding gets out of the way: the tune starts from its first
+     * note rather than behind a press tick. */
+    beeper_stop();
+
+    beeper_play_seq(song);
+
+    demo_ends   = xTaskGetTickCount() + pdMS_TO_TICKS(ms);
+    demo_active = true;
+
+    return true;
+}
+
+void beeper_demo_stop(void)
+{
+    if (demo_active == false)
+        return;
+
+    demo_active = false;
+
+    beeper_stop();
+}
+
+bool beeper_demo_playing(void)
+{
+    if (demo_active == false)
+        return false;
+
+    /* Signed difference, so this stays right across the tick counter's wrap --
+     * which on a 32-bit tick at 1 kHz is once every seven weeks, and is exactly
+     * the kind of thing that would be found by somebody's panel rather than by
+     * anybody's test. */
+    if ((int32_t)(xTaskGetTickCount() - demo_ends) >= 0)
+        demo_active = false;
+
+    return demo_active;
+}
+
+#else
+
+/* No tune under the polyphonic engine -- see beeper_song.h for why that is a
+ * decision rather than an omission. Stubs rather than an #if at the call site,
+ * so ui_settings.cpp stays free of the preprocessor. */
+
+bool beeper_demo_available(void) { return false; }
+bool beeper_demo_start(void) { return false; }
+void beeper_demo_stop(void) {}
+bool beeper_demo_playing(void) { return false; }
+
+#endif /* CONFIG_OHEZ_BEEPER_ENGINE_SEQ */
+
+/* Wait out a tune the port layer is rendering for us, and come back early if
+ * it was cancelled.
+ *
+ * In slices rather than in one vTaskDelay(), which is what this used to be and
+ * was fine while the longest sound was half a second. port_beeper_stop() takes
+ * the tune away from the audio callback immediately, so without this the panel
+ * would fall silent at once and then refuse to make another sound until the
+ * cancelled one's nominal end -- half a minute, for the demonstration tune,
+ * with the task asleep the whole time and every press queued behind it.
+ *
+ * Twenty milliseconds is under a frame of the display and a hundred times the
+ * tune's own resolution, so the slicing costs fifty wakeups a second while a
+ * sound is playing and nothing at all when one is not. */
+#define BEEPER_WAIT_SLICE_MS 20
+
+static void beeper_render_wait(uint32_t ms, uint32_t generation)
+{
+    while (ms > 0)
+    {
+        uint32_t slice = (ms > BEEPER_WAIT_SLICE_MS) ? BEEPER_WAIT_SLICE_MS : ms;
+
+        if (beeper_enabled == false || beeper_generation != generation)
+            return;
+
+        vTaskDelay(pdMS_TO_TICKS(slice));
+
+        ms -= slice;
+    }
+}
+
 static void beeper_task(void *parameter)
 {
     (void)parameter;
@@ -292,15 +446,20 @@ static void beeper_task(void *parameter)
          * tick is 4 ms -- and would have spun a core for nothing. */
         if (xQueueReceive(xRequestQueue, &item, portMAX_DELAY) == pdTRUE)
         {
+            /* Snapshotted before a note sounds, so that a stop racing this
+             * dequeue cancels the item it was aimed at rather than the one
+             * after it. */
+            uint32_t generation = beeper_generation;
+
             /* The simulator would rather render the whole thing at audio
              * resolution than be handed one slot every four milliseconds. It
              * returns immediately, so the wait is here: both targets have to
              * serialise chimes the same way, and on the device that falls out
              * of walking the frames. */
             if (beeper_render(&item, beeper_master) == true)
-                vTaskDelay(pdMS_TO_TICKS(beeper_item_duration_ms(&item)));
+                beeper_render_wait(beeper_item_duration_ms(&item), generation);
             else
-                beeper_walk(&item);
+                beeper_walk(&item, generation);
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
             static UBaseType_t stack_free = 0;

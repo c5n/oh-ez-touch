@@ -143,6 +143,15 @@ bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
 }
 #endif
 
+/* Nothing was handed over, so there is nothing to abandon: the walk lives in
+ * beeper_control and breaks by itself. All that is left is to take the drive
+ * off the pin, and doing it here rather than leaving it to the walk's own exit
+ * is what makes a stop silent immediately instead of one frame later. */
+void port_beeper_stop(void)
+{
+    port_beeper_tone(0, 0);
+}
+
 #else /* !OHEZ_HAS_BEEPER */
 
 bool port_beeper_init(void)
@@ -173,5 +182,9 @@ bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
     return false;
 }
 #endif
+
+void port_beeper_stop(void)
+{
+}
 
 #endif /* OHEZ_HAS_BEEPER */

@@ -110,6 +110,12 @@ static uint8_t current_tab = SETTINGS_TAB_COUNT;
 static lv_obj_t *tab_rows[SETTINGS_TAB_COUNT];
 static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
 
+/* The Audio page's Demo button, kept so that its label can be flipped to Stop
+ * and back. Cleared by widget_refs_clear() with the rest of them: the settings
+ * screen is rebuilt whole on a theme change, and a pointer that outlived one
+ * would be into a deleted object. */
+static lv_obj_t *audio_demo_button = NULL;
+
 /* The keyboard or the confirmation prompt -- only ever one at a time, and a
  * child of the screen rather than of lv_layer_top(), because open() hides that
  * layer to keep the Messagebox banner off this screen. */
@@ -304,6 +310,7 @@ static void widget_refs_clear(void)
         tab_status[i] = NULL;
     }
 
+    audio_demo_button = NULL;
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
     wlan_psk_row = NULL;
@@ -992,6 +999,68 @@ static void audio_test_event(lv_event_t *e)
     status_set(SETTINGS_TAB_AUDIO, draft.beeper.enabled ? "" : "Beeper is off");
 }
 
+/* Say what the Demo button does next, and put the status line with it.
+ *
+ * Called from the button's own handler and from ui_settings_loop(), because the
+ * tune ends by itself: a button that still said "Stop" half a minute after the
+ * sound stopped would be lying, and there is no event to hang the correction
+ * on. Cheap enough to call every frame -- it compares two strings and usually
+ * finds them equal. */
+static void audio_demo_refresh(void)
+{
+    if (audio_demo_button == NULL)
+        return;
+
+    bool        playing = beeper_demo_playing();
+    const char *want    = playing ? "Stop" : "Demo";
+    lv_obj_t   *label   = lv_obj_get_child(audio_demo_button, 0);
+
+    if (label != NULL && strcmp(lv_label_get_text(label), want) != 0)
+        lv_label_set_text(label, want);
+
+    if (playing == false && strcmp(lv_label_get_text(tab_status[SETTINGS_TAB_AUDIO]),
+                                   "Playing the demo") == 0)
+        status_set(SETTINGS_TAB_AUDIO, "");
+}
+
+/* Start or stop the half-minute piece that plays the engine's whole vocabulary
+ * -- see the note above beeper_demo_available() in beeper_control.hpp.
+ *
+ * The draft's volume and enable, exactly as Test does and for the same reason:
+ * this is the control you judge a level with, and a level you cannot hear until
+ * after you have saved it is not a control. ui_settings_close() puts the live
+ * values back.
+ *
+ * Nothing here knows which engine is compiled in. The button is not built at
+ * all when there is no tune, so this cannot be reached in that build -- which
+ * is the whole point of beeper_demo_available() being a function rather than a
+ * macro somebody would have to #if on. */
+static void audio_demo_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    if (beeper_demo_playing() == true)
+    {
+        beeper_demo_stop();
+        status_set(SETTINGS_TAB_AUDIO, "Stopped");
+        audio_demo_refresh();
+        return;
+    }
+
+    beeper_set_volume((uint8_t)draft.beeper.volume);
+    beeper_set_enabled(draft.beeper.enabled);
+    ui_beep_set_enabled(draft.beeper.enabled);
+
+    if (beeper_demo_start() == false)
+    {
+        status_set(SETTINGS_TAB_AUDIO, "Beeper is off");
+        return;
+    }
+
+    status_set(SETTINGS_TAB_AUDIO, "Playing the demo");
+    audio_demo_refresh();
+}
+
 static void wlan_save_event(lv_event_t *e)
 {
     LV_UNUSED(e);
@@ -1296,6 +1365,9 @@ static void screen_show_menu(uint8_t menu)
 
     m = MENU_AT(menu);
 
+    /* A menu is never the Audio page, so this always leaves it. */
+    beeper_demo_stop();
+
     lv_obj_clean(screen);
     current_tab = menu;
 
@@ -1358,6 +1430,18 @@ static void screen_show_section(uint8_t tab)
     if (tab >= SETTINGS_TAB_COUNT)
         return;
 
+    /* The demonstration belongs to the page its button is on: this is about to
+     * delete that button, and a tune still playing with nothing left to stop it
+     * is the thing to avoid.
+     *
+     * Conditional, and that is the whole reason this is not simply at the top
+     * of both builders: rebuilding the Audio page is how a *theme change*
+     * reaches it, and the automatic night schedule can ask for one at any
+     * moment. Stopping the music because the clock crossed eight is not
+     * something anybody would connect to a cause. */
+    if (tab != SETTINGS_TAB_AUDIO)
+        beeper_demo_stop();
+
     lv_obj_clean(screen);
     current_tab = tab;
 
@@ -1417,6 +1501,22 @@ static void screen_show_section(uint8_t tab)
     {
         lv_obj_add_event_cb(ui_themed_button(footer, "Test"), audio_test_event,
                             LV_EVENT_CLICKED, NULL);
+
+        /* Only where there is something to demonstrate. The polyphonic engine
+         * has no tune, and a button that reported "nothing to play" would be
+         * worse than an absent one -- see beeper_song.h. */
+        if (beeper_demo_available() == true)
+        {
+            audio_demo_button = ui_themed_button(footer, "Demo");
+
+            lv_obj_add_event_cb(audio_demo_button, audio_demo_event,
+                                LV_EVENT_CLICKED, NULL);
+
+            /* Built mid-tune if the user left the page and came back: the
+             * label has to arrive saying Stop. */
+            audio_demo_refresh();
+        }
+
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
                             (void *)(uintptr_t)tab);
     }
@@ -1516,6 +1616,15 @@ void ui_settings_close(void)
     rebuild_pending = false;
 
     widget_refs_clear();
+
+    /* Before the chime, not after: ui_beep_play() drops everything while the
+     * demonstration is sounding -- see the note there -- so closing the screen
+     * on a playing tune would otherwise swallow its own closing sound.
+     *
+     * Usually already done, because the Audio page's back bar goes to the
+     * settings root first and screen_show_menu() stops it there. This is for
+     * the programmatic close, which has no back bar to go through. */
+    beeper_demo_stop();
 
     BEEPER_EVENT_SCREEN_OUT();
 
@@ -1629,6 +1738,10 @@ void ui_settings_loop(void)
         ui_settings_rebuild();
 
     scan_poll();
+
+    /* The tune ends without an event. Only does anything on the Audio page,
+     * where the button exists at all. */
+    audio_demo_refresh();
 
     if (port_millis() >= wlan_state_refresh_deadline)
     {

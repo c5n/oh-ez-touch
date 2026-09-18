@@ -41,7 +41,11 @@
 #
 # control/beeper_common.c, control/beeper_mixer.c and control/beeper_seq.c joined
 # them when the beeper went polyphonic, and the split is the same one
-# ui_geometry.hpp already had. Both engines are here because both ship: one is
+# ui_geometry.hpp already had. control/beeper_song.c came later and for the same
+# reason its header gives: it is a table of eighty notes and nothing else, the
+# thing that plays it is a task, and the only claim anyone can check without a
+# buzzer is that the notes obey the engine's rules -- which is exactly what
+# test_ui_beep_tunes.cpp now does at its foot. Both engines are here because both ship: one is
 # selected at build time and the other is one menuconfig entry away. beeper_control.cpp is a
 # queue, a task and vTaskDelay(), none of which can be reached here; what came
 # out of it includes nothing but <stdint.h>, and is the part that decides what
@@ -83,6 +87,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_common.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_seq.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_song.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables_seq.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
@@ -137,6 +142,7 @@ set_source_files_properties(
 
 set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables_seq.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_song.c"
     "${CMAKE_CURRENT_LIST_DIR}/test_ui_beep_tunes.cpp"
     TARGET_DIRECTORY ${COMPONENT_LIB}
     PROPERTIES COMPILE_DEFINITIONS "CONFIG_OHEZ_BEEPER_ENGINE_SEQ=1")

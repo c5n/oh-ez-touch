@@ -91,6 +91,21 @@ bool port_beeper_render_seq(const struct beeper_seq_s *seq, uint8_t master);
 bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master);
 #endif
 
+/**
+ * Abandon whatever port_beeper_render*() was handed, and go silent.
+ *
+ * The counterpart to the crack above, and it exists for the same reason: on a
+ * target that renders the whole tune itself, beeper_control has no per-frame
+ * grip on it to let go of. On the panel there is nothing to abandon -- the
+ * walk is in beeper_control and it checks for itself -- so this only has to
+ * silence the channel.
+ *
+ * Idempotent, and safe with nothing playing. Called from the LVGL task rather
+ * than from the beeper task, so an implementation that shares state with an
+ * audio callback has to lock.
+ */
+void port_beeper_stop(void);
+
 #ifdef __cplusplus
 }
 #endif

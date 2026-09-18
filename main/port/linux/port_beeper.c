@@ -55,6 +55,7 @@ static const char *TAG = "port_beeper";
 
 #define RATE        48000
 #define BUFFER      512
+
 /* Well under full scale: these are square waves, and several of them at once. */
 #define OUTPUT_GAIN 0.8
 
@@ -346,4 +347,25 @@ bool port_beeper_render(const struct beeper_chime_s *chime, uint8_t master)
     /* Yes: beeper_control waits out the chime's length rather than walking it,
      * which keeps the two targets serialising chimes the same way. */
     return true;
+}
+
+/* Drop the walk, wherever it had got to.
+ *
+ * The panel's version of this is nearly nothing, because there the frames are
+ * walked by a task that can simply stop; here the tune was handed over whole
+ * and the audio callback owns it, so this is the only way back.
+ *
+ * Under the device lock, because render is exactly the structure audio_cb()
+ * reads from another thread, and the whole of that structure's contract is
+ * that only the callback touches it while the device is unlocked. Clearing it
+ * through render_stop() rather than by hand is what keeps the two engines'
+ * different notions of "playing" in one place. */
+void port_beeper_stop(void)
+{
+    if (device == 0)
+        return;
+
+    SDL_LockAudioDevice(device);
+    render_stop(&render);
+    SDL_UnlockAudioDevice(device);
 }

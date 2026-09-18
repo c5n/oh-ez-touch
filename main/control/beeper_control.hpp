@@ -56,6 +56,59 @@ void beeper_play_seq(const struct beeper_seq_s *seq);
 void beeper_play(const struct beeper_chime_s *chime);
 #endif
 
+/* Abandon whatever is sounding and everything queued behind it.
+ *
+ * The mute gate could always do this -- beeper_set_enabled(false) empties the
+ * queue and the walk rechecks the flag every frame -- but that is a *setting*,
+ * and a caller that wants to cut one sound short should not have to switch the
+ * panel's sound off and back on to do it. Nothing needed the distinction while
+ * every sound was under a second; the demonstration tune is half a minute, and
+ * a toggle that cannot stop what it started is not a toggle.
+ *
+ * Works on both targets, which is the part that needed the port layer: on the
+ * panel the walk breaks at its next frame, and on the simulator the tune was
+ * handed to an audio callback whole and only port_beeper_stop() can take it
+ * back. A sound queued *after* this call is unaffected -- what is cancelled is
+ * what was outstanding when it ran, not the beeper. */
+void beeper_stop(void);
+
+/* --------------------------------------------------- the demonstration tune
+ *
+ * A half-minute piece that plays the engine's whole vocabulary in order --
+ * every envelope, every effect, sweeps both ways, repeats and a dynamic range
+ * -- so that what the presets actually sound like can be heard rather than
+ * read off a table. The settings screen's Audio page has the button; there is
+ * no other caller and nothing plays it by itself.
+ *
+ * Deliberately behind an opaque façade rather than exported as a tune. Only
+ * the sequencer has one, so a caller holding a `struct beeper_seq_s *` would
+ * need a preprocessor conditional, and ui_settings.cpp having one would be the
+ * second #if in the UI layer -- see the note about the first in ui_beep.hpp.
+ * beeper_demo_available() answers the same question at runtime and costs
+ * nothing, because the mixer build compiles the other three to no-ops. */
+
+/* Whether this build has one. False under the polyphonic engine, where the
+ * tune does not exist and the button should not be drawn. */
+bool beeper_demo_available(void);
+
+/* Start it, from the beginning, cancelling anything already sounding.
+ *
+ * @return false when there is nothing to play or the beeper is switched off,
+ *   in which case nothing started and beeper_demo_playing() stays false.
+ */
+bool beeper_demo_start(void);
+
+/* Stop it early. A no-op when it is not playing. */
+void beeper_demo_stop(void);
+
+/* Whether it is sounding now.
+ *
+ * Polled rather than notified -- ui_settings_loop() and ui_beep_play() both
+ * ask, and neither wants a callback from the beeper task. It goes false by
+ * itself when the tune reaches its end, so a caller that only ever calls
+ * beeper_demo_start() does not leak a "playing" state. */
+bool beeper_demo_playing(void);
+
 /* Bring the PWM up, silent. */
 void beeper_setup(void);
 

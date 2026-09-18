@@ -795,6 +795,13 @@ sounds are written out once for each. See [The beeper](doc/beeper.md).
 **The Lanbon L8 has no buzzer**, so both settings do nothing there. The
 simulator does have one -- see [Hearing the panel](#hearing-the-panel).
 
+The **Demo** button on this page plays a thirty-second piece that runs through
+every envelope, every effect, both sweeps, the repeat count and the full level
+range, so that what the presets sound like can be heard rather than read off a
+table -- see [The beeper](doc/beeper.md). It uses the volume being edited, like
+**Test**, and the button becomes **Stop** while it runs. It is only there on a
+build using the default engine; the polyphonic one has no such piece.
+
 Every sound the theme in force defines can also be played over MQTT, including
 one the interface itself never plays -- see
 [Playing a sound](#playing-a-sound). Turning the beeper off here silences that
@@ -1365,6 +1372,7 @@ Contact: c5n AT posteo DOT de
 - [ ] peripherals: The relays and the LEDs have not been run on hardware. The pin table is the openHASP and ESPHome mapping for the L8-HS, not a measurement, and the PlatformIO flags it replaces named two pins that do not exist on an ESP32.
 - [x] mqtt: Add an MQTT client -- sensor readings, the theme, system information, and every setting readable and writable, see [MQTT](#mqtt)
 - [x] ui, mqtt: Rework the LCARS sounds against the console they are named after -- stepped figures rather than sweeps -- add a door chime that only a broker can ring, and let MQTT play any sound of the theme in force, see [Playing a sound](#playing-a-sound)
+- [x] control, ui: Add a thirty-second demonstration tune that plays every envelope, effect, sweep and repeat the sequencer has, on a Demo button on the Audio settings page -- and ```beeper_stop()``` under it, because until then the only way to cut a sound short was to switch the beeper off. See [The demonstration tune](doc/beeper.md#the-demonstration-tune)
 - [ ] mqtt: Support TLS. ```CONFIG_MQTT_TRANSPORT_SSL``` is off and the client speaks plain TCP; turning it on needs a certificate to store and a setting to configure it from.
 - [ ] mqtt: Home Assistant style discovery, so the topics above do not have to be wired up by hand
 - [x] ble: Scan for BLE beacons and publish them over MQTT -- iBeacon, Eddystone UID/URL/TLM, see [Bluetooth LE beacons](#bluetooth-le-beacons)

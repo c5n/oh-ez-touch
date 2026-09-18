@@ -210,6 +210,68 @@ the pitch dissolves into the slot rate. The sequencer has no polyphony and so no
 such rule; what replaces it is the vibrato excursion, which can swing a note
 written inside the band out of it.
 
+## The demonstration tune
+
+`main/control/beeper_song.c` is thirty seconds that play the sequencer's whole
+vocabulary in order, and it exists because the two sections above are prose
+about sound. Nobody can hear the difference between `STAB` and `PLUCK` from
+"an edge, a drop, a short hold" against "instant, then away", and no themed
+family puts two envelopes side by side -- so until this, comparing two rows
+meant editing a table, rebuilding and pressing something.
+
+Seven movements, and the middle five are deliberately didactic rather than
+musical:
+
+| | | |
+| --- | --- | --- |
+| I | 2.9 s | a tune, so the rest is heard inside music rather than as test tones |
+| II | 5.4 s | one figure, read eight times, once per envelope row |
+| III | 3.9 s | the same rise linear and then as a `GLIDE`, back to back |
+| IV | 5.6 s | one held pitch through `SHIMMER`, `WOBBLE`, `SIREN`, `BREATHE`, `PULSE` |
+| V | 3.5 s | `repeat` as a trill, and a two-octave run |
+| VI | 2.1 s | one pitch at nine levels -- the per-note `volume` on its own |
+| VII | 6.5 s | the theme again, ornamented |
+
+It is eighty notes, which is one queue item: `count` is a `uint8_t` and
+`beeper_play_seq()` sends the tune by value, so the whole piece either plays or
+does not. It is exempt from exactly two of the rules the themed tables obey --
+`BEEPER_SEQ_NOTES_MAX` and the 700 ms ceiling -- because both of those are about
+being a *chime*, something that answers a gesture and holds up the next one.
+Everything else applies and `test_ui_beep_tunes.cpp` checks it: the band
+including vibrato excursion, the LFO floor, the step floor, and that every one
+of the sixteen presets is actually named.
+
+**Sequencer only.** The mixer has a different note format and a different set of
+things worth showing off, and writing a second piece for an engine behind a
+menuconfig switch is work nobody asked for. `beeper_demo_available()` answers
+false there and the button is not drawn -- which is why that is a function
+rather than something the UI would have to `#if` on.
+
+### Playing it
+
+Settings → **Audio** → **Demo**. The button becomes **Stop** while it runs and
+goes back by itself when the tune ends. It uses the volume *being edited* rather
+than the saved one, exactly as **Test** does and for the same reason: a level
+you cannot hear until after you have kept it is not a control.
+
+Three things it does that are worth knowing:
+
+- **The UI goes quiet while it plays.** Not politeness -- the queue is serial,
+  so a press tick raised during those thirty seconds would not interrupt the
+  tune, it would be stored and fired at the end of it. `ui_beep_play()` drops
+  them instead.
+- **Leaving the Audio page stops it**, because that page is where the only
+  control is. A theme change is the exception: it rebuilds the same page, and
+  the automatic night schedule can ask for one at any moment.
+- **Stopping is immediate**, which needed something that did not exist.
+  `beeper_set_enabled(false)` could always cut a sound short, but it is a
+  *setting*; `beeper_stop()` is the same thing without one attached. On the
+  panel the walk breaks at its next frame. On the simulator the tune was handed
+  to an audio callback whole, so `port_beeper_stop()` is the only way back --
+  and `beeper_control` waits out a rendered tune in 20 ms slices rather than one
+  `vTaskDelay()`, or a cancelled piece would leave the task asleep for the
+  remainder of its nominal half minute with every press queued behind it.
+
 ## Hearing it
 
 See [Hearing the panel](../README.md#hearing-the-panel). The simulator
@@ -237,7 +299,11 @@ sounding stepped.
   shared policy in `test_ui_beep_policy.hpp`. The chime suite also covers
   `ui_sound_from_name()`, which is what turns a `sound/set` payload back into a
   sound: that lookup has no other front end, and a name that stopped matching
-  would be a log line on a panel nobody is watching.
+  would be a log line on a panel nobody is watching. The tune suite carries the
+  demonstration tune at its foot, including the one assertion that is about the
+  piece's *purpose* rather than its arithmetic -- that it still names every
+  envelope and every effect, so that adding a ninth row and forgetting to
+  demonstrate it is a failing test rather than a silence.
 
 Both sets are checked even though a panel ships one, because the set that is not
 selected is exactly the one nobody would notice going stale. That is why the two

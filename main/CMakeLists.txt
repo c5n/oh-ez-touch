@@ -64,7 +64,8 @@ set(OHEZ_CONTROL_SRCS
     "control/beeper_common.c"
     "control/beeper_control.cpp"
     "control/beeper_mixer.c"
-    "control/beeper_seq.c")
+    "control/beeper_seq.c"
+    "control/beeper_song.c")
 
 # One directory per concern. Only main.cpp stays at the top; config/ holds the
 # settings and the one field table that both the panel's settings screen and the
