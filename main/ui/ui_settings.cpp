@@ -711,8 +711,11 @@ static void field_row_event(lv_event_t *e)
 
     case SETTINGS_ENUM:
     {
-        /* Cycled rather than picked from a list: every enum in the table has
-         * three options, so a dropdown and a roller both stay compiled out. */
+        /* Cycled rather than picked from a list: the longest enum in the table
+         * is four options, so a dropdown and a roller both stay compiled out.
+         * It is f->count that decides, so a fifth costs nothing here -- but
+         * the tap becomes a worse way to reach the last one with every option
+         * added, and somewhere past a handful this wants a list after all. */
         int32_t next = config_field_read(f, &draft) + 1;
 
         if (next >= (int32_t)f->count)

@@ -33,6 +33,7 @@ better at *intervals*. Which matters depends on the family:
 | Material | barely different -- ten of its eighteen were single voices already | |
 | Reticle | better: its swells finally get the vibrato they were reaching for | |
 | LCARS | | better where it stacks: the toggles, the acknowledgements and the standing alert are intervals, and an arpeggio is not a chord |
+| Classic | identical, and that is the design: it is six fixed-pitch square waves recovered from the UI this panel had before either engine existed, so it uses one envelope, no sweep and no effect | identical |
 
 LCARS is the reason the mixer is still here rather than deleted -- though less
 so than it was, because the rework described under *The three families* took

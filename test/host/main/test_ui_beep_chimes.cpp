@@ -66,10 +66,13 @@ static void test_the_families_do_not_share_a_set(void)
     TEST_ASSERT_EQUAL_PTR(&ui_chime_material, ui_chime_sets[UI_THEME_MATERIAL]);
     TEST_ASSERT_EQUAL_PTR(&ui_chime_lcars, ui_chime_sets[UI_THEME_LCARS]);
     TEST_ASSERT_EQUAL_PTR(&ui_chime_jarvis, ui_chime_sets[UI_THEME_JARVIS]);
+    TEST_ASSERT_EQUAL_PTR(&ui_chime_classic, ui_chime_sets[UI_THEME_CLASSIC]);
 
-    TEST_ASSERT_TRUE(ui_chime_sets[0] != ui_chime_sets[1]);
-    TEST_ASSERT_TRUE(ui_chime_sets[1] != ui_chime_sets[2]);
-    TEST_ASSERT_TRUE(ui_chime_sets[0] != ui_chime_sets[2]);
+    /* Every pair, rather than the neighbours: with four families the chain of
+     * three comparisons stopped covering all six. */
+    for (int a = 0; a < UI_THEME_FAMILY_COUNT; a++)
+        for (int b = a + 1; b < UI_THEME_FAMILY_COUNT; b++)
+            TEST_ASSERT_TRUE(ui_chime_sets[a] != ui_chime_sets[b]);
 }
 
 static void test_the_sound_names_are_present_and_distinct(void)

@@ -71,17 +71,22 @@ static void test_every_family_has_every_sound(void)
 static void test_the_families_do_not_share_a_set(void)
 {
     /* A copy-paste that left two families pointing at one table would pass
-     * every other test in this file. */
-    for (int s = 0; s < UI_SOUND_COUNT; s++)
-    {
-        const struct beeper_seq_note_s *a = ui_tune_material.chime[s].notes;
-        const struct beeper_seq_note_s *b = ui_tune_lcars.chime[s].notes;
-        const struct beeper_seq_note_s *c = ui_tune_jarvis.chime[s].notes;
+     * every other test in this file.
+     *
+     * Walked off ui_tune_sets[] rather than off the four objects by name: with
+     * four families the named version was three comparisons short of every
+     * pair, and it would have gone on compiling. */
+    TEST_ASSERT_EQUAL_PTR(&ui_tune_material, ui_tune_sets[UI_THEME_MATERIAL]);
+    TEST_ASSERT_EQUAL_PTR(&ui_tune_lcars, ui_tune_sets[UI_THEME_LCARS]);
+    TEST_ASSERT_EQUAL_PTR(&ui_tune_jarvis, ui_tune_sets[UI_THEME_JARVIS]);
+    TEST_ASSERT_EQUAL_PTR(&ui_tune_classic, ui_tune_sets[UI_THEME_CLASSIC]);
 
-        TEST_ASSERT_TRUE(a != b);
-        TEST_ASSERT_TRUE(b != c);
-        TEST_ASSERT_TRUE(a != c);
-    }
+    for (int s = 0; s < UI_SOUND_COUNT; s++)
+        for (int a = 0; a < UI_THEME_FAMILY_COUNT; a++)
+            for (int b = a + 1; b < UI_THEME_FAMILY_COUNT; b++)
+                TEST_ASSERT_TRUE_MESSAGE(
+                    ui_tune_sets[a]->chime[s].notes != ui_tune_sets[b]->chime[s].notes,
+                    where(a, (enum ui_sound_e)s));
 }
 
 /* The counterpart in the chime suite is test_the_door_chime_is_its_own_sound(),

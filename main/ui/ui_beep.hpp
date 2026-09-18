@@ -208,12 +208,14 @@ typedef struct ui_tune_set_s ui_sound_set_s;
 extern const struct ui_tune_set_s ui_tune_material;
 extern const struct ui_tune_set_s ui_tune_lcars;
 extern const struct ui_tune_set_s ui_tune_jarvis;
+extern const struct ui_tune_set_s ui_tune_classic;
 
 extern const struct ui_tune_set_s *const ui_tune_sets[UI_THEME_FAMILY_COUNT];
 
 #define UI_SOUND_SET_MATERIAL ui_tune_material
-#define UI_SOUND_SET_LCARS   ui_tune_lcars
-#define UI_SOUND_SET_JARVIS  ui_tune_jarvis
+#define UI_SOUND_SET_LCARS    ui_tune_lcars
+#define UI_SOUND_SET_JARVIS   ui_tune_jarvis
+#define UI_SOUND_SET_CLASSIC  ui_tune_classic
 
 #else
 
@@ -227,12 +229,14 @@ typedef struct ui_chime_set_s ui_sound_set_s;
 extern const struct ui_chime_set_s ui_chime_material;
 extern const struct ui_chime_set_s ui_chime_lcars;
 extern const struct ui_chime_set_s ui_chime_jarvis;
+extern const struct ui_chime_set_s ui_chime_classic;
 
 extern const struct ui_chime_set_s *const ui_chime_sets[UI_THEME_FAMILY_COUNT];
 
 #define UI_SOUND_SET_MATERIAL ui_chime_material
-#define UI_SOUND_SET_LCARS   ui_chime_lcars
-#define UI_SOUND_SET_JARVIS  ui_chime_jarvis
+#define UI_SOUND_SET_LCARS    ui_chime_lcars
+#define UI_SOUND_SET_JARVIS   ui_chime_jarvis
+#define UI_SOUND_SET_CLASSIC  ui_chime_classic
 
 #endif
 

@@ -48,6 +48,7 @@ static void test_name_lookup_ignores_case(void)
     TEST_ASSERT_EQUAL_INT(UI_THEME_JARVIS, ui_theme_from_name("jarvis"));
     TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("MATERIAL"));
     TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, ui_theme_from_name("mAtErIaL"));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_CLASSIC, ui_theme_from_name("classic"));
 
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_AUTO, ui_night_mode_from_name("AUTO"));
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_ON, ui_night_mode_from_name("On"));

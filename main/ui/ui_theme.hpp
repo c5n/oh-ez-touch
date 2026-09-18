@@ -16,6 +16,7 @@
 #define UI_THEME_NAME_MATERIAL "Material"
 #define UI_THEME_NAME_LCARS    "LCARS"
 #define UI_THEME_NAME_JARVIS   "JARVIS"
+#define UI_THEME_NAME_CLASSIC  "Classic"
 
 #define UI_NIGHT_NAME_OFF  "off"
 #define UI_NIGHT_NAME_ON   "on"
@@ -30,6 +31,11 @@ enum ui_theme_family_e
     UI_THEME_MATERIAL = 0,
     UI_THEME_LCARS,
     UI_THEME_JARVIS,
+    /* Appended rather than put where it belongs chronologically, and that is
+     * the whole reason it is last: entry 0 is what an unknown name resolves to
+     * and what a zero-initialised Config names, so moving anything already in
+     * this list would change what an existing config.json means. */
+    UI_THEME_CLASSIC,
     UI_THEME_FAMILY_COUNT
 };
 
@@ -51,7 +57,8 @@ enum ui_night_mode_e
 static const char *const ui_theme_names[UI_THEME_FAMILY_COUNT] = {
     UI_THEME_NAME_MATERIAL,
     UI_THEME_NAME_LCARS,
-    UI_THEME_NAME_JARVIS};
+    UI_THEME_NAME_JARVIS,
+    UI_THEME_NAME_CLASSIC};
 
 static const char *const ui_night_mode_names[UI_NIGHT_MODE_COUNT] = {
     UI_NIGHT_NAME_OFF,

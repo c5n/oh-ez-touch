@@ -224,8 +224,9 @@ OHEZ_THEME=jarvis OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 ```
 
 `OHEZ_THEME` takes `material` (warm paper, flat cards, one teal accent),
-`lcars` (the spine-and-elbow frame, blocks coloured by item type) or
-`jarvis` (Reticle -- corner brackets, hairlines and ring gauges), and
+`lcars` (the spine-and-elbow frame, blocks coloured by item type), `jarvis`
+(Reticle -- corner brackets, hairlines and ring gauges) or `classic` (the
+blue-on-silver look the UI was born with), and
 `OHEZ_NIGHT` takes `off`, `on` or `auto`; anything unrecognised means the
 default. `OHEZ_NIGHT_FROM` and
 `OHEZ_NIGHT_TO` set the hours the `auto` window spans (22 and 6 by default).
@@ -770,7 +771,7 @@ Daylight Saving | 0             | Daylight saving +1 hour
 
 Setting         | Default       | Description
 --------------- | ------------- | -------------
-Theme           | Material      | Look of the user interface: ```Material```, ```LCARS``` or ```JARVIS```
+Theme           | Material      | Look of the user interface: ```Material```, ```LCARS```, ```JARVIS``` or ```Classic```
 Night mode      | off           | ```off```, ```on```, or ```auto``` to follow the clock
 Night from      | 22            | Hour the night variant starts, when night mode is ```auto```
 Night to        | 6             | Hour the night variant ends, when night mode is ```auto```
@@ -778,6 +779,15 @@ Night to        | 6             | Hour the night variant ends, when night mode i
 The theme takes effect as soon as it is saved, on the screen as well as in the
 browser. ```auto``` needs the clock, so it only starts working once NTP has
 answered.
+
+```Classic``` is the blue-on-silver look this panel had before it was
+themeable: a white-to-silver gradient on every raised surface, a hairline round
+each tile, a 4 px marker carrying state, and the plain status row of clock,
+page name, signal and link glyph. It is not a reconstruction -- the palette is
+the table this firmware shipped with, recovered from the commit that replaced
+it, so the greys are exact. The one thing that is a recreation is the face: the
+original was set in Roboto, which is no longer in the firmware, so Classic uses
+Barlow like Material does.
 
 ```Material``` was called ```Default``` before, and only the name changed --
 the same warm paper, flat cards and teal accent. A panel upgrading from an
@@ -1260,9 +1270,12 @@ mechanisms used to do this job and disagreed about all of it, so "deeper" and
 palette. Each family builds its own chrome and then answers `content_area()`
 with the rectangle the tile grid may have, which is what lets LCARS put a
 spine down the left edge, Material have no chrome objects at all, and Reticle
-draw two hairlines -- without the page knowing about any of it. The grid is
-solved by `ui_geometry.hpp`, which is deliberately free of `<lvgl.h>` so the
-host tests can check every family against the tile-size floor.
+draw two hairlines -- without the page knowing about any of it. Classic uses
+the shared one in `ui_frame_common.cpp`, which is the status row every family
+had before any of them had chrome of its own and is why that frame was kept
+after nothing pointed at it. The grid is solved by `ui_geometry.hpp`, which is
+deliberately free of `<lvgl.h>` so the host tests can check every family
+against the tile-size floor.
 
 None of a frame is properties, so `lv_obj_report_style_change()` cannot reach
 it: a live theme change tears the old family's chrome down *before*
@@ -1465,6 +1478,7 @@ Contact: c5n AT posteo DOT de
 - [x] build: Give the renderer the CPU it was short of -- 240 MHz, LVGL at ```-O2```, ```LV_USE_ASSERT_OBJ``` off on the device, and a loop that sleeps for as long as LVGL asks instead of a fixed 5 ms. See [Where the frame time goes](#where-the-frame-time-goes).
 - [x] build, ui: Give the renderer a core of its own and a way to prove it -- the main task moves to core 1, off the one IDF pins the WiFi task, the Bluetooth controller and the NimBLE host to, and the frame now measures itself: seven LVGL display events split a frame into the time the software renderer spent drawing it and the time it spent waiting for the panel, reported on the web status page, over MQTT and through the test interface. See [Where the frame time goes](#where-the-frame-time-goes).
 - [ ] build: Four display levers are written up and none is taken, because each one needs a panel rather than an argument: 80 MHz SPI on the ArduiTouch boards, flash in QIO mode, ```LV_ATTRIBUTE_FAST_MEM``` in IRAM, and a taller ```DRAW_BUFFER_LINES```. [What is left, and what it needs](#what-is-left-and-what-it-needs) says what each would cost and how it would fail; the ```render_us``` against ```wait_us``` reading from a running board is what picks between them.
+- [x] ui, test: Bring the original look back as a fourth family, ```Classic``` -- the blue-on-silver the UI was born with, recovered from the commit that replaced it rather than rebuilt from the photograph, with the six fixed-pitch square waves it beeped with restored in both beeper engines.
 - [x] ota: Wrap ```src/ota/basic_ota.cpp``` in ```#if USE_ARDUINO_BASIC_OTA``` -- deleted outright instead, together with the Arduino framework.
 - [ ] main: The device firmware built here has not been run on hardware. The display, touch, backlight and BME280 drivers are translations checked against the vendor sources, not measurements.
 - [x] control, ui: Give the beeper melodies, envelopes and effects, and keep the chord mixer behind a Kconfig switch -- see [The beeper](doc/beeper.md)

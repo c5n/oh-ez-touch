@@ -46,6 +46,10 @@ static const struct family_case_s families[] = {
     {"LCARS", {3, 2, 6, 0}, 264, 194},
     /* Reticle: between the two hairlines, 22 px strip and 18 px rail. */
     {"Reticle", {3, 2, 6, 6}, 320, 240 - 22 - 1 - 18},
+    /* Classic: a 33 px status bar (LV_DPI_DEF / 3), then the rest, edge to
+     * edge. The tightest of the four -- a 2 px gutter and a 2 px margin -- and
+     * the reason it is in this table rather than taken on trust. */
+    {"Classic", {3, 2, 2, 2}, 320, 240 - 33},
 };
 
 #define FAMILY_COUNT (sizeof(families) / sizeof(families[0]))

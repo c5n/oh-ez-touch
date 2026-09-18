@@ -438,6 +438,100 @@ static const struct beeper_voice_s hud_door_chime[] = {V(hud_door_a), V(hud_door
 const struct ui_chime_set_s ui_chime_jarvis = {{UI_SOUND_LIST(X)}};
 #undef X
 
+/* --------------------------------------------------------------- Classic
+ *
+ * Not written, recovered. The blue-on-silver UI had six macros of fixed-pitch
+ * square waves in ui_beep.hpp, gated abruptly on and off and shared by every
+ * theme, and this is those six notes at those six pitches: C7 2093, E7 2637,
+ * G7 3136, A6 1760, and the low E3 165 / C3 131 pair the error used.
+ *
+ * FLAT throughout, which is not laziness: a square wave switched on at full
+ * duty and off again is exactly what FLAT is, and the click at both ends is
+ * what made the old panel sound like a doorbell. Giving it a PLUCK would make
+ * it sound better and stop it being this theme.
+ *
+ * Eighteen events, six figures. The original had one macro per *kind* of thing
+ * and called it from wherever that kind happened -- BEEPER_EVENT_CHANGE() from
+ * a value, a toggle and a settings field alike -- so the repetition below is
+ * the mapping those call sites had, not a table half filled in. The figures
+ * are named so it can be read at a glance.
+ *
+ * Two departures, and both are the panel's own policy overruling the artefact.
+ * The original played everything at one level; here the same blip appears at
+ * LOW when it is the glass acknowledging a finger and at VOL when it is the
+ * outcome of one, with the wake blip at MED between them. A press as loud as
+ * an outcome is the fastest way to make this panel unpleasant -- ui_beep.hpp
+ * says so, and the chime suite enforces it. And
+ * WARNING cannot have the error's low pair, because only UI_SOUND_ERROR is
+ * exempt from the piezo band; it takes the falling figure instead, which is the
+ * most downward thing the original owned that stays in the band. */
+
+#define CLASSIC_BLIP  N(2093, 2093, 5, 0, LOW, FLAT)
+#define CLASSIC_BEEP  N(2093, 2093, 5, 0, VOL, FLAT)
+#define CLASSIC_RISE  N(2093, 2093, 20, 10, VOL, FLAT),                        \
+                      N(2637, 2637, 10, 0, VOL, FLAT)
+#define CLASSIC_FALL  N(2637, 2637, 10, 5, VOL, FLAT),                         \
+                      N(2093, 2093, 10, 5, VOL, FLAT),                         \
+                      N(1760, 1760, 20, 0, VOL, FLAT)
+#define CLASSIC_OPEN  N(2093, 2093, 10, 0, VOL, FLAT),                         \
+                      N(2637, 2637, 10, 0, VOL, FLAT),                         \
+                      N(3136, 3136, 20, 0, VOL, FLAT)
+#define CLASSIC_CLOSE N(3136, 3136, 10, 0, VOL, FLAT),                         \
+                      N(2637, 2637, 10, 0, VOL, FLAT),                         \
+                      N(2093, 2093, 20, 0, VOL, FLAT)
+#define CLASSIC_ALERT N(165, 165, 50, 0, VOL, FLAT),                           \
+                      N(131, 131, 100, 0, VOL, FLAT)
+
+/* Contact, and the two grain sounds the original did not distinguish. */
+MONO(classic_press,       CLASSIC_BLIP);
+MONO(classic_tick,        CLASSIC_BLIP);
+MONO(classic_tick_back,   CLASSIC_BLIP);
+
+/* A switch, a value, a settings field: all BEEPER_EVENT_CHANGE() once, and all
+ * outcomes rather than contact, so the same note at the foreground level. */
+MONO(classic_toggle_on,   CLASSIC_BEEP);
+MONO(classic_toggle_off,  CLASSIC_BEEP);
+MONO(classic_change,      CLASSIC_BEEP);
+
+/* Committing and dismissing both closed a window, and sounded like it. */
+MONO(classic_accept,      CLASSIC_CLOSE);
+MONO(classic_cancel,      CLASSIC_CLOSE);
+
+/* The two the original was most particular about: a rising fourth to go in,
+ * and a three-note fall to come back out. */
+MONO(classic_link,        CLASSIC_RISE);
+MONO(classic_link_back,   CLASSIC_FALL);
+
+/* The C-E-G arpeggio a window opened with, and its retrograde. */
+MONO(classic_screen,      CLASSIC_OPEN);
+MONO(classic_screen_out,  CLASSIC_CLOSE);
+
+MONO(classic_notify,      CLASSIC_OPEN);
+MONO(classic_warning,     CLASSIC_FALL);
+MONO(classic_error,       CLASSIC_ALERT);
+
+MONO(classic_boot,        CLASSIC_OPEN);
+MONO(classic_wake,        N(2093, 2093, 5, 0, MED, FLAT));
+
+/* The one sound with nothing to recover: MQTT and the door chime both postdate
+ * this look by years. Two struck tones a fourth apart, high then low, from the
+ * only notes the original ever played -- a doorbell built out of its own
+ * vocabulary rather than borrowed off the arpeggio next to it. */
+MONO(classic_door_chime,  N(2093, 2093, 90, 25, VOL, FLAT),
+                          N(1760, 1760, 170, 0, VOL, FLAT));
+
+#define X(name, sym) CHIME(classic_##sym),
+const struct ui_chime_set_s ui_chime_classic = {{UI_SOUND_LIST(X)}};
+#undef X
+
+#undef CLASSIC_BLIP
+#undef CLASSIC_BEEP
+#undef CLASSIC_RISE
+#undef CLASSIC_FALL
+#undef CLASSIC_OPEN
+#undef CLASSIC_CLOSE
+#undef CLASSIC_ALERT
+
 /* ------------------------------------------------------------ enumeration
  *
  * For the host tests, which walk every family against every entry. The names
@@ -449,7 +543,8 @@ const struct ui_chime_set_s ui_chime_jarvis = {{UI_SOUND_LIST(X)}};
 const struct ui_chime_set_s *const ui_chime_sets[UI_THEME_FAMILY_COUNT] = {
     &ui_chime_material,
     &ui_chime_lcars,
-    &ui_chime_jarvis};
+    &ui_chime_jarvis,
+    &ui_chime_classic};
 
 /* No #else, and no stub. icons/icon_set.cpp has one because it declares
  * functions somebody calls; this file declares only data, and an empty

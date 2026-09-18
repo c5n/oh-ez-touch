@@ -451,6 +451,70 @@ TUNE(hud_door_chime, N(2093, 2093, 140, 20, VOL, BLOOM, SHIMMER),
 const struct ui_tune_set_s ui_tune_jarvis = {{UI_SOUND_LIST(X)}};
 #undef X
 
+/* --------------------------------------------------------------- Classic
+ *
+ * The same six figures as the mixer's copy, at the same six pitches, and the
+ * reasoning is written out there rather than twice -- it is editorial and not a
+ * property of either engine. The short version: these are not composed, they
+ * are recovered. The blue-on-silver UI had six macros of fixed-pitch square
+ * waves shared by every theme, and this is them.
+ *
+ * FLAT and NONE on every note, and that is the point. This engine's whole
+ * argument is that a swept tone with an envelope reads as a sound rather than
+ * as a beep; Classic is what the panel sounded like before anybody made that
+ * argument, so it declines all of it. It is the one family here that uses no
+ * effect and one envelope. */
+
+#define CLASSIC_BLIP  T(2093, 5, 0, LOW, FLAT)
+#define CLASSIC_BEEP  T(2093, 5, 0, VOL, FLAT)
+#define CLASSIC_RISE  T(2093, 20, 10, VOL, FLAT), T(2637, 10, 0, VOL, FLAT)
+#define CLASSIC_FALL  T(2637, 10, 5, VOL, FLAT), T(2093, 10, 5, VOL, FLAT),    \
+                      T(1760, 20, 0, VOL, FLAT)
+#define CLASSIC_OPEN  T(2093, 10, 0, VOL, FLAT), T(2637, 10, 0, VOL, FLAT),    \
+                      T(3136, 20, 0, VOL, FLAT)
+#define CLASSIC_CLOSE T(3136, 10, 0, VOL, FLAT), T(2637, 10, 0, VOL, FLAT),    \
+                      T(2093, 20, 0, VOL, FLAT)
+#define CLASSIC_ALERT T(165, 50, 0, VOL, FLAT), T(131, 100, 0, VOL, FLAT)
+
+TUNE(classic_press,      CLASSIC_BLIP);
+TUNE(classic_tick,       CLASSIC_BLIP);
+TUNE(classic_tick_back,  CLASSIC_BLIP);
+
+TUNE(classic_toggle_on,  CLASSIC_BEEP);
+TUNE(classic_toggle_off, CLASSIC_BEEP);
+TUNE(classic_change,     CLASSIC_BEEP);
+
+TUNE(classic_accept,     CLASSIC_CLOSE);
+TUNE(classic_cancel,     CLASSIC_CLOSE);
+
+TUNE(classic_link,       CLASSIC_RISE);
+TUNE(classic_link_back,  CLASSIC_FALL);
+
+TUNE(classic_screen,     CLASSIC_OPEN);
+TUNE(classic_screen_out, CLASSIC_CLOSE);
+
+TUNE(classic_notify,     CLASSIC_OPEN);
+TUNE(classic_warning,    CLASSIC_FALL);
+TUNE(classic_error,      CLASSIC_ALERT);
+
+TUNE(classic_boot,       CLASSIC_OPEN);
+TUNE(classic_wake,       T(2093, 5, 0, MED, FLAT));
+
+/* The one sound with nothing to recover -- see the mixer's copy. */
+TUNE(classic_door_chime, T(2093, 90, 25, VOL, FLAT), T(1760, 170, 0, VOL, FLAT));
+
+#define X(name, sym) SEQ(classic_##sym##_n),
+const struct ui_tune_set_s ui_tune_classic = {{UI_SOUND_LIST(X)}};
+#undef X
+
+#undef CLASSIC_BLIP
+#undef CLASSIC_BEEP
+#undef CLASSIC_RISE
+#undef CLASSIC_FALL
+#undef CLASSIC_OPEN
+#undef CLASSIC_CLOSE
+#undef CLASSIC_ALERT
+
 /* ------------------------------------------------------------ enumeration
  *
  * For the host tests, which walk every family against every entry. The names
@@ -462,7 +526,8 @@ const struct ui_tune_set_s ui_tune_jarvis = {{UI_SOUND_LIST(X)}};
 const struct ui_tune_set_s *const ui_tune_sets[UI_THEME_FAMILY_COUNT] = {
     &ui_tune_material,
     &ui_tune_lcars,
-    &ui_tune_jarvis};
+    &ui_tune_jarvis,
+    &ui_tune_classic};
 
 /* No #else, and no stub. icons/icon_set.cpp has one because it declares
  * functions somebody calls; this file declares only data, and an empty

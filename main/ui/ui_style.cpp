@@ -106,10 +106,11 @@ lv_style_t ui_style_info_error;
  * outright. Every field would need an exception, and the exceptions would be
  * the table again.
  *
- * UI_THEME_MATERIAL's day entry must reproduce the look this project had before
- * it was themeable, which is why it also carries the five greys lv_theme_simple
- * used to supply underneath (0xF5F5F5 screen, 0x616161 screen text, 0xFFFFFF
- * window, 0xE0E0E0 table cell, 0x9E9E9E slider indicator). Those are
+ * UI_THEME_CLASSIC's day entry is the one that has to reproduce the look this
+ * project had before it was themeable -- it was Material's until Material was
+ * redesigned -- which is why it carries the five greys lv_theme_simple used to
+ * supply underneath (0xF5F5F5 screen, 0x616161 screen text, 0xFFFFFF window,
+ * 0xE0E0E0 table cell, 0x9E9E9E slider indicator). Those are
  * lv_palette_lighten(GREY, 4) / darken(GREY, 2) / white / lighten(GREY, 2) /
  * main(GREY) -- read out of the theme, not guessed. */
 static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
@@ -316,6 +317,80 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
     /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, UI_SOUND_SET_JARVIS),
+    },
+
+    /* ---------------------------------------------------------------- Classic
+     * The blue-on-silver look the UI was born with, brought back as a family of
+     * its own: LV_THEME_DEFAULT_COLOR_PRIMARY was LV_COLOR_MAKE(0x00, 0x80,
+     * 0xFF) and the borders were a near-black navy. A white-to-silver gradient
+     * on every raised surface, a 2 px black hairline at 30 % round each tile,
+     * and state carried by a 4 px all-round marker -- blue for navigation,
+     * neutral for anything operable.
+     *
+     * These two rows are not a reconstruction from the photograph. They are the
+     * rows this table shipped with, recovered verbatim from the commit that
+     * replaced them (`ui: redesign Default as "Slate"`), which is why the
+     * lv_theme_simple greys underneath are still exact rather than approximated
+     * -- 0xF5F5F5 screen, 0x616161 screen text, 0xFFFFFF window, 0xE0E0E0 table
+     * cell, 0x9E9E9E slider indicator.
+     *
+     * One thing is a recreation rather than a restoration, and it is the face.
+     * The original was set in Roboto, which left the tree when Barlow and
+     * Rajdhani replaced it; FONT_UI_* is Barlow, a humanist sans in the same
+     * register. Restoring Roboto would cost a fourth font family -- about 86 KB
+     * of a partition with 139 KB free -- for letterforms almost nobody would
+     * name. */
+    {
+        UI_THEME_NAME_CLASSIC " Day", UI_THEME_CLASSIC, false,
+        /* screen       */ SURF(0xF5F5F5, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x616161),
+        /* tile         */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x000000, 2, OP30, EK, RADIUS_TILE, 0x000000),
+        /* tile_pressed */ SURF(CK, CK, EK, MK, CK, MK, MK, EK, MK, 0xC0C0C0),
+        /* window       */ SURF(0xFFFFFF, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
+        /* header       */ SURF(0x0080FF, CK, NON, FULLO, CK, 0, MK, EK, 5, 0xFFFFFF),
+        /* btn          */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_TILE, 0x000000),
+        /* btn_checked  */ SURF(CK, CK, EK, MK, CK, MK, MK, EK, MK, 0xC0C0C0),
+        /* slider       */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
+        /* slider_indic */ SURF(0x9E9E9E, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
+        /* knob         */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
+        /* cell         */ SURF(0xE0E0E0, CK, EK, FULLO, 0xC0C0C0, 1, MK, EK, MK, CK),
+        /* swatch       */ SURF(CK, CK, EK, FULLO, 0x000000, 1, MK, EK, MK, CK),
+        /* info         */ SURF(0xC0C0C0, CK, EK, FULLO, 0x000000, 4, MK, EK, MK, 0x000000),
+        /* accent       */ 0x0080FF,
+        /* link         */ MARK(0x2196F3, 4, FULLO, EK),
+        /* active       */ MARK(CK, 4, MK, EK),
+        /* info warn/err*/ 0xFFEB3B, 0xF44336,
+        /* icon         */ 0x000000, 0, 80, 140, 50,
+        /* glow         */ 0x000000, 0, 0,
+        /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
+                              UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
+    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, UI_SOUND_SET_CLASSIC),
+    },
+    {
+        UI_THEME_NAME_CLASSIC " Night", UI_THEME_CLASSIC, true,
+        /* screen       */ SURF(0x101418, CK, NON, FULLO, CK, MK, MK, EK, MK, 0xB8B0A4),
+        /* tile         */ SURF(0x232A31, 0x161B20, VER, FULLO, 0xC0C0C0, 2, OP30, EK, RADIUS_TILE, 0xE8E0D4),
+        /* tile_pressed */ SURF(0x1E3A4C, 0x2A5670, VER, MK, CK, MK, MK, EK, MK, 0xE8E0D4),
+        /* window       */ SURF(0x14191E, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
+        /* header       */ SURF(0x2A6E96, CK, NON, FULLO, CK, 0, MK, EK, 5, 0xF0E8DC),
+        /* btn          */ SURF(0x232A31, 0x161B20, VER, FULLO, 0x8A8276, BORDER_THIN, OP70, EK, RADIUS_TILE, 0xE8E0D4),
+        /* btn_checked  */ SURF(0x1E3A4C, 0x2A5670, VER, MK, CK, MK, MK, EK, MK, 0xF0E8DC),
+        /* slider       */ SURF(0x1A2026, CK, NON, FULLO, 0x39424B, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
+        /* slider_indic */ SURF(0x4A90B8, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
+        /* knob         */ SURF(0x39424B, CK, NON, FULLO, 0x8A8276, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
+        /* cell         */ SURF(0x1A2026, CK, EK, FULLO, 0x39424B, 1, MK, EK, MK, CK),
+        /* swatch       */ SURF(CK, CK, EK, FULLO, 0x8A8276, 1, MK, EK, MK, CK),
+        /* info         */ SURF(0x2A3138, CK, EK, FULLO, 0x8A8276, 4, MK, EK, MK, 0xE8E0D4),
+        /* accent       */ 0x2A6E96,
+        /* link         */ MARK(0x4A90B8, 4, FULLO, EK),
+        /* active       */ MARK(0x8A8276, 4, FULLO, EK),
+        /* info warn/err*/ 0x8A6A1E, 0x8A2A22,
+        /* icon         */ 0x8A8276, 255, 110, 140, 50,
+        /* glow         */ 0x000000, 0, 0,
+        /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
+    /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
+                              UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
+    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, UI_SOUND_SET_CLASSIC),
     },
 };
 
