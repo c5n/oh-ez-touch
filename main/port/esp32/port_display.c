@@ -76,7 +76,11 @@ static const char *TAG = "port_display";
  * overlap the render of one strip with the transfer of the last, so a taller
  * strip speeds up a full repaint only if the render is losing that race --
  * which the "Renderer" and "Waiting for panel" rows beside the heap one now
- * report. If the wait dominates, this lever buys nothing at all. */
+ * report. If the wait dominates, this lever buys nothing at all.
+ *
+ * The buffer is sized on the landscape width, which is the larger of the two
+ * axes: a portrait panel draws 24-line strips of 240 px into exactly the same
+ * buffers. */
 #define DRAW_BUFFER_LINES   24
 #define DRAW_BUFFER_BYTES   (PORT_DISPLAY_WIDTH * DRAW_BUFFER_LINES * 2)
 
@@ -116,11 +120,12 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
     esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
 }
 
-lv_display_t *port_display_init(void)
+lv_display_t *port_display_init(bool portrait)
 {
     /* Before the panel IO, which needs the display to hand to
      * lv_display_flush_ready() from the trans-done callback. */
-    lv_display_t *disp = lv_display_create(PORT_DISPLAY_WIDTH, PORT_DISPLAY_HEIGHT);
+    lv_display_t *disp = lv_display_create(PORT_DISPLAY_HOR_RES(portrait),
+                                           PORT_DISPLAY_HOR_RES(!portrait));
     assert(disp != NULL);
 
     spi_bus_config_t bus = {
@@ -173,7 +178,13 @@ lv_display_t *port_display_init(void)
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
 
-    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, true));
+    /* Portrait drops the swap and keeps the mirrors: the panel's own 240x320
+     * grid then faces up, and which edge that calls "up" is a property of the
+     * glass, not of anything here. A board that comes out upside down wants
+     * both mirror flags flipped -- and its touch mapping re-checked against the
+     * picture, in port_indev.c. Verified on the bench: landscape, all boards;
+     * portrait, simulator only so far. */
+    ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, !portrait));
 #if OHEZ_PANEL_ILI9341
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
 #else
@@ -199,9 +210,10 @@ lv_display_t *port_display_init(void)
     lv_display_set_buffers(disp, buf1, buf2, DRAW_BUFFER_BYTES,
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    ESP_LOGI(TAG, "%s on SPI%d at %d MHz, 2 x %d byte DMA buffers",
+    ESP_LOGI(TAG, "%s on SPI%d at %d MHz, %s, 2 x %d byte DMA buffers",
              OHEZ_PANEL_ILI9341 ? "ILI9341" : "ST7789",
              (int)OHEZ_LCD_SPI_HOST + 1,
+             portrait ? "portrait 240x320" : "landscape 320x240",
              OHEZ_LCD_PIXEL_CLOCK_HZ / 1000000, DRAW_BUFFER_BYTES);
 
     return disp;

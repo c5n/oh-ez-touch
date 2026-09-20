@@ -866,7 +866,7 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
      * as in where their content rectangle starts. */
     struct ui_geom_rect_s cell;
 
-    if (ui_grid_cell(&ui_style_theme()->grid, (int16_t)lv_obj_get_width(parent),
+    if (ui_grid_cell(ui_style_grid(), (int16_t)lv_obj_get_width(parent),
                      (int16_t)lv_obj_get_height(parent), slot, &cell) == false)
         return;
 

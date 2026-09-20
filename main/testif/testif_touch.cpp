@@ -253,10 +253,12 @@ static const char *swipe_points(int32_t x1, int32_t y1, int32_t x2, int32_t y2, 
 static bool swipe_direction(const char *name, int32_t cx, int32_t cy,
                             int32_t *x1, int32_t *y1, int32_t *x2, int32_t *y2)
 {
+    /* The live resolution, so a portrait panel's swipes cross it rather than
+     * the landscape rectangle PORT_DISPLAY_WIDTH/HEIGHT describe. */
     const int32_t left   = SWIPE_EDGE_INSET;
-    const int32_t right  = PORT_DISPLAY_WIDTH - 1 - SWIPE_EDGE_INSET;
+    const int32_t right  = lv_display_get_horizontal_resolution(NULL) - 1 - SWIPE_EDGE_INSET;
     const int32_t top    = SWIPE_EDGE_INSET;
-    const int32_t bottom = PORT_DISPLAY_HEIGHT - 1 - SWIPE_EDGE_INSET;
+    const int32_t bottom = lv_display_get_vertical_resolution(NULL) - 1 - SWIPE_EDGE_INSET;
 
     if (strcmp(name, "right") == 0)
     {
@@ -299,8 +301,8 @@ const char *testif_cmd_swipe(const testif_cmd_t *cmd, char *out, size_t out_size
      * through a point the caller names. It is the form a test normally wants --
      * "swipe right" to dismiss an item screen -- and it always clears the two
      * thresholds, which the explicit form is free not to. */
-    int32_t cx = PORT_DISPLAY_WIDTH / 2;
-    int32_t cy = PORT_DISPLAY_HEIGHT / 2;
+    int32_t cx = lv_display_get_horizontal_resolution(NULL) / 2;
+    int32_t cy = lv_display_get_vertical_resolution(NULL) / 2;
 
     if (swipe_direction(cmd->argv[1], cx, cy, &x1, &y1, &x2, &y2) == true)
     {

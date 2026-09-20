@@ -102,7 +102,18 @@ OHEZ_THEME=jarvis OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 `OHEZ_THEME` takes `material`, `lcars`, `jarvis` or `classic`. `OHEZ_NIGHT`
 takes `off`, `on` or `auto`. An unrecognized value selects the default.
 `OHEZ_NIGHT_FROM` and `OHEZ_NIGHT_TO` set the hours of the `auto` window
-(22 and 6 by default).
+(22 and 6 by default). `OHEZ_ORIENTATION` takes `landscape` or `portrait`:
+the window opens at 240x320 and every theme re-lays-out upright.
+
+```bash
+OHEZ_ORIENTATION=portrait OHEZ_THEME=lcars ./build/linux/oh-ez-touch.elf
+```
+
+An override is applied to the settings in memory, so it is what the next
+*save* writes: a run started with `OHEZ_ORIENTATION=portrait` whose settings
+are then saved -- from the panel, the web form, the REST API or MQTT -- stores
+`portrait` in the config file, and later runs boot upright without the
+variable.
 
 The clock follows the *configured* GMT offset, not the host's timezone. That
 is what the panel would show. `OHEZ_NIGHT=auto` can be watched crossing its

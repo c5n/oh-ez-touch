@@ -15,6 +15,7 @@
 
 #include <unity.h>
 
+#include "ui/ui_orientation.hpp"
 #include "ui/ui_theme.hpp"
 #include "test_suites.hpp"
 
@@ -35,6 +36,17 @@ static void test_every_night_mode_name_round_trips(void)
         enum ui_night_mode_e mode = (enum ui_night_mode_e)i;
 
         TEST_ASSERT_EQUAL_INT(mode, ui_night_mode_from_name(ui_night_mode_name(mode)));
+    }
+}
+
+static void test_every_orientation_name_round_trips(void)
+{
+    for (int i = 0; i < UI_ORIENTATION_COUNT; i++)
+    {
+        enum ui_orientation_e orientation = (enum ui_orientation_e)i;
+
+        TEST_ASSERT_EQUAL_INT(orientation,
+                              ui_orientation_from_name(ui_orientation_name(orientation)));
     }
 }
 
@@ -70,6 +82,13 @@ static void test_unknown_names_fall_back_to_the_first_entry(void)
 
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, ui_night_mode_from_name("maybe"));
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, ui_night_mode_from_name(""));
+
+    /* Landscape is the layout every existing config.json means by not naming
+     * an orientation, so it is what anything unknown has to resolve to. */
+    TEST_ASSERT_EQUAL_INT(UI_ORIENTATION_LANDSCAPE, ui_orientation_from_name("diagonal"));
+    TEST_ASSERT_EQUAL_INT(UI_ORIENTATION_LANDSCAPE, ui_orientation_from_name(""));
+    TEST_ASSERT_EQUAL_INT(UI_ORIENTATION_LANDSCAPE, ui_orientation_from_name(NULL));
+    TEST_ASSERT_EQUAL_INT(UI_ORIENTATION_PORTRAIT, ui_orientation_from_name("PORTRAIT"));
 }
 
 /* getenv() returns NULL for an unset variable and the simulator passes that
@@ -87,6 +106,7 @@ static void test_zero_is_the_fallback_variant(void)
 {
     TEST_ASSERT_EQUAL_INT(0, UI_THEME_FALLBACK);
     TEST_ASSERT_EQUAL_INT(0, UI_NIGHT_OFF);
+    TEST_ASSERT_EQUAL_INT(0, UI_ORIENTATION_FALLBACK);
 }
 
 /* An out-of-range enum -- a value cast in from a stale config or a newer
@@ -111,6 +131,7 @@ void test_ui_theme_run(void)
 
     RUN_TEST(test_every_theme_name_round_trips);
     RUN_TEST(test_every_night_mode_name_round_trips);
+    RUN_TEST(test_every_orientation_name_round_trips);
     RUN_TEST(test_name_lookup_ignores_case);
     RUN_TEST(test_unknown_names_fall_back_to_the_first_entry);
     RUN_TEST(test_null_name_falls_back_to_the_first_entry);

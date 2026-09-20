@@ -49,6 +49,14 @@ static const char *TAG = "port_indev";
 
 static esp_lcd_touch_handle_t touch;
 
+/* Which way up the display was created. The two process_coordinates callbacks
+ * are registered by pointer, so the orientation reaches them as a file static
+ * rather than as an argument. */
+static bool touch_portrait;
+
+#define SCREEN_W ((int32_t)PORT_DISPLAY_HOR_RES(touch_portrait))
+#define SCREEN_H ((int32_t)PORT_DISPLAY_HOR_RES(!touch_portrait))
+
 static inline uint16_t clamp_to(int32_t value, int32_t limit)
 {
     if (value < 0)
@@ -84,20 +92,37 @@ static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *
         int32_t raw_x = x[i];
         int32_t raw_y = y[i];
 
-        int32_t screen_x = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * PORT_DISPLAY_WIDTH) / OHEZ_TOUCH_CAL_X_SPAN;
-        int32_t screen_y = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * PORT_DISPLAY_HEIGHT) / OHEZ_TOUCH_CAL_Y_SPAN;
+        int32_t screen_x;
+        int32_t screen_y;
+
+        if (touch_portrait)
+        {
+            /* Portrait drops the axis swap, the same change the panel's MADCTL
+             * gets in port_display.c: the screen's x comes from the
+             * controller's x again. The calibration spans stay with the axes
+             * they were measured on. Bench-verified in landscape only -- a
+             * board that reads upside down or mirrored in portrait flips here,
+             * next to OHEZ_TOUCH_FLIP, not in the calibration numbers. */
+            screen_x = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * SCREEN_W) / OHEZ_TOUCH_CAL_Y_SPAN;
+            screen_y = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * SCREEN_H) / OHEZ_TOUCH_CAL_X_SPAN;
+        }
+        else
+        {
+            screen_x = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * SCREEN_W) / OHEZ_TOUCH_CAL_X_SPAN;
+            screen_y = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * SCREEN_H) / OHEZ_TOUCH_CAL_Y_SPAN;
+        }
 
 #if OHEZ_TOUCH_FLIP
-        screen_x = (PORT_DISPLAY_WIDTH - 1) - screen_x;
-        screen_y = (PORT_DISPLAY_HEIGHT - 1) - screen_y;
+        screen_x = (SCREEN_W - 1) - screen_x;
+        screen_y = (SCREEN_H - 1) - screen_y;
 #endif
 
         /* Clamped, where TFT_eSPI's getTouch() rejected the whole reading if
          * either axis landed outside the screen. A press a couple of pixels
          * past the edge is a press on the widget at the edge, not a press that
          * did not happen -- and the bezel makes those common. */
-        x[i] = clamp_to(screen_x, PORT_DISPLAY_WIDTH - 1);
-        y[i] = clamp_to(screen_y, PORT_DISPLAY_HEIGHT - 1);
+        x[i] = clamp_to(screen_x, SCREEN_W - 1);
+        y[i] = clamp_to(screen_y, SCREEN_H - 1);
     }
 }
 
@@ -116,14 +141,23 @@ static void ft5x06_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y
 
     for (uint8_t i = 0; i < count; i++)
     {
-        /* The controller reports the panel's own portrait 240x320 grid. The
-         * display is used in landscape, so the axes swap, and the resulting y
-         * runs the wrong way. This is what main.cpp did by hand. */
         int32_t raw_x = x[i];
         int32_t raw_y = y[i];
 
-        x[i] = clamp_to(raw_y, PORT_DISPLAY_WIDTH - 1);
-        y[i] = clamp_to((PORT_DISPLAY_HEIGHT - 1) - raw_x, PORT_DISPLAY_HEIGHT - 1);
+        if (touch_portrait)
+        {
+            /* The controller reports the panel's own portrait 240x320 grid,
+             * which is what the display shows now: the identity mapping. */
+            x[i] = clamp_to(raw_x, SCREEN_W - 1);
+            y[i] = clamp_to(raw_y, SCREEN_H - 1);
+        }
+        else
+        {
+            /* Landscape: the axes swap, and the resulting y runs the wrong
+             * way. This is what main.cpp did by hand. */
+            x[i] = clamp_to(raw_y, SCREEN_W - 1);
+            y[i] = clamp_to((SCREEN_H - 1) - raw_x, SCREEN_H - 1);
+        }
     }
 }
 
@@ -187,11 +221,13 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     data->point.y = last_y;
 }
 
-void port_indev_init(lv_display_t *disp)
+void port_indev_init(lv_display_t *disp, bool portrait)
 {
+    touch_portrait = portrait;
+
     esp_lcd_touch_config_t config = {
-        .x_max = PORT_DISPLAY_WIDTH,
-        .y_max = PORT_DISPLAY_HEIGHT,
+        .x_max = (uint16_t)SCREEN_W,
+        .y_max = (uint16_t)SCREEN_H,
         .rst_gpio_num = GPIO_NUM_NC,
         .int_gpio_num = GPIO_NUM_NC,
         .levels = {
@@ -235,9 +271,10 @@ void port_indev_init(lv_display_t *disp)
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(OHEZ_TOUCH_SPI_HOST, &io_config, &io));
     ESP_ERROR_CHECK(esp_lcd_touch_new_spi_xpt2046(io, &config, &touch));
 
-    ESP_LOGI(TAG, "XPT2046 on CS %d%s%s", OHEZ_TOUCH_PIN_CS,
+    ESP_LOGI(TAG, "XPT2046 on CS %d%s%s%s", OHEZ_TOUCH_PIN_CS,
              OHEZ_TOUCH_OWN_BUS ? ", own SPI bus" : "",
-             OHEZ_TOUCH_FLIP ? ", flipped" : "");
+             OHEZ_TOUCH_FLIP ? ", flipped" : "",
+             portrait ? ", portrait" : "");
 #endif
 
 #if OHEZ_TOUCH_FT5X06

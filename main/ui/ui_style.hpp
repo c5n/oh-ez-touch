@@ -164,8 +164,13 @@ struct ui_theme_s
      * table is still .rodata. */
     const struct ui_frame_ops_s *frame;
 
-    /* How the tiles pack into whatever rectangle the frame leaves. */
+    /* How the tiles pack into whatever rectangle the frame leaves, in each
+     * orientation. The portrait one is the landscape one with the axes
+     * swapped -- three by two becomes two by three -- but written out, because
+     * a family is free to spend its margins differently upright and the host
+     * tests check both against the finger floor. */
     struct ui_grid_s grid;
+    struct ui_grid_s grid_portrait;
 
     /* What it sounds like. Per family, shared by day and night: a theme does
      * not sound different after dark. */
@@ -173,6 +178,20 @@ struct ui_theme_s
 };
 
 void ui_style_select(enum ui_theme_family_e family, bool night);
+
+/* Which way up the panel is mounted. Called once from main.cpp with the
+ * config value, before the first widget: the orientation is a boot-time
+ * setting (SETTINGS_F_RESTART), so there is no request/apply pair here the
+ * way there is for the theme. */
+void ui_style_set_orientation(bool portrait);
+
+/* Which of the theme's two grids the tiles pack into: grid_portrait when the
+ * panel is upright, grid otherwise. The accessor, rather than the frames or
+ * the page reading ui_style_theme()->grid directly, so the choice is made
+ * here and only here. */
+const struct ui_grid_s *ui_style_grid(void);
+
+bool ui_style_portrait(void);
 
 /* Build every shared style from the selected variant. Idempotent: it resets
  * each style first, so ui_style_apply() can call it again on a live UI. */

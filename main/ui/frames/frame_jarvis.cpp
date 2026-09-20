@@ -29,6 +29,12 @@
  * The scan dot on the bottom rail advances one cell a second. Sixteen pixels
  * of invalidation per second is the cheapest "this thing is alive" signal
  * there is, and it is the only thing on the screen that moves at rest.
+ *
+ * Portrait is the same drawing between the same strip and rail: both are
+ * LV_HOR_RES wide, the 160 px scan path still fits a 240 px screen, and the
+ * theme table's portrait grid packs the middle as two columns of three
+ * 111 x 85 tiles -- wider than they are tall now, which the brackets and the
+ * R28 ring absorb without a second layout.
  */
 #include "ui_frame.hpp"
 

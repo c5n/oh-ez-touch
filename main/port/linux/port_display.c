@@ -19,9 +19,12 @@
 
 static const char *TAG = "port_display";
 
-lv_display_t *port_display_init(void)
+lv_display_t *port_display_init(bool portrait)
 {
-    lv_display_t *disp = lv_sdl_window_create(PORT_DISPLAY_WIDTH, PORT_DISPLAY_HEIGHT);
+    int32_t hres = PORT_DISPLAY_HOR_RES(portrait);
+    int32_t vres = PORT_DISPLAY_HOR_RES(!portrait);
+
+    lv_display_t *disp = lv_sdl_window_create(hres, vres);
 
     if (disp == NULL)
     {
@@ -34,7 +37,9 @@ lv_display_t *port_display_init(void)
     lv_sdl_window_set_zoom(disp, 2.0f);
     lv_sdl_window_set_title(disp, "OhEzTouch");
 
-    ESP_LOGI(TAG, "SDL window %dx%d at zoom 2.0", PORT_DISPLAY_WIDTH, PORT_DISPLAY_HEIGHT);
+    /* The mouse is SDL's pointer, scaled by the same driver, so nothing else
+     * has to know which way up the window is. */
+    ESP_LOGI(TAG, "SDL window %dx%d at zoom 2.0", (int)hres, (int)vres);
 
     return disp;
 }

@@ -41,8 +41,8 @@
     {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_ULONG, 0, 0, 0, 0}
 #define CHK(nm, lbl, fld, jp, jk, dv, fl) \
     {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 1, SETTINGS_BOOL, 0, 0, (fl), 0}
-#define SEL(nm, lbl, fld, jp, jk, dv, tbl, n) \
-    {(nm), (lbl), (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), 0, 0}
+#define SEL(nm, lbl, fld, jp, jk, dv, tbl, n, fl) \
+    {(nm), (lbl), (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), (fl), 0}
 
 /* The SETTINGS_F_RESTART flags say what the code actually does, which is not
  * what they used to say. settings_apply_live() re-applies the openHAB endpoint,
@@ -86,9 +86,15 @@ const struct config_field_s config_fields[] = {
      * read by another that has since gained a theme must not silently select
      * a different one because the numbering moved. */
     SEL("theme", "Theme", ui.theme, "ui", "theme", UI_THEME_NAME_MATERIAL,
-        ui_theme_names, UI_THEME_FAMILY_COUNT),
+        ui_theme_names, UI_THEME_FAMILY_COUNT, 0),
     SEL("night_mode", "Night mode", ui.night_mode, "ui", "night_mode", UI_NIGHT_NAME_OFF,
-        ui_night_mode_names, UI_NIGHT_MODE_COUNT),
+        ui_night_mode_names, UI_NIGHT_MODE_COUNT, 0),
+    /* Boot-only: the panel's MADCTL and the touch calibration are applied
+     * while the display is initialised, so a change takes effect after a
+     * restart. Stored by name, like the theme, for the same reason. */
+    SEL("orientation", "Orientation", ui.orientation, "ui", "orientation",
+        UI_ORIENTATION_NAME_LANDSCAPE, ui_orientation_names, UI_ORIENTATION_COUNT,
+        SETTINGS_F_RESTART),
     UINT("night_from", "Night from [h]", ui.night_from, "ui", "night_from", 22, 0, 23),
     UINT("night_to", "Night to [h]", ui.night_to, "ui", "night_to", 6, 0, 23),
 
@@ -170,6 +176,7 @@ const size_t config_field_count = sizeof(config_fields) / sizeof(config_fields[0
 static_assert(sizeof(int) == sizeof(int32_t), "SETTINGS_INT width");
 static_assert(sizeof(enum ui_theme_family_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 static_assert(sizeof(enum ui_night_mode_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
+static_assert(sizeof(enum ui_orientation_e) == sizeof(unsigned int), "SETTINGS_ENUM width");
 
 static_assert(sizeof(config_fields) / sizeof(config_fields[0]) <= SETTINGS_MAX_FIELDS,
               "more settings rows than the settings screen and the web form are sized for");

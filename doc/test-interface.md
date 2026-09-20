@@ -101,13 +101,14 @@ words"`). There is no escape syntax.
 
 ### Touch
 
-Coordinates are **panel pixels: 0..319 by 0..239, origin top left.** They are
-not window pixels -- the SDL window is shown at double size -- so something
-that looks like it is at (320, 240) on screen is at (160, 120) here. Every
-rectangle the `screen` dump reports is in the same space, so a tile from the
-dump can be tapped directly. An out-of-range coordinate is refused with
-`err range` rather than clamped, because a clamped tap lands on something real
-and quietly tests the wrong widget.
+Coordinates are **panel pixels: 0..319 by 0..239 in landscape, 0..239 by
+0..319 in portrait, origin top left.** They are not window pixels -- the SDL
+window is shown at double size -- so something that looks like it is at
+(320, 240) on screen is at (160, 120) here. Every rectangle the `screen`
+dump reports is in the same space, so a tile from the dump can be tapped
+directly. An out-of-range coordinate is refused with `err range` rather than
+clamped, because a clamped tap lands on something real and quietly tests the
+wrong widget.
 
 | command | what it does |
 | --- | --- |
@@ -316,7 +317,8 @@ These are the ones that will otherwise cost an hour.
 
 - **Tap before `page.state` is `ready` and nothing happens.** Start a script
   with `wait-page`, and use it again after any `nav`.
-- **Coordinates are the panel's 320x240, not the doubled window.**
+- **Coordinates are the panel's own grid -- 320x240 landscape, 240x320
+  portrait -- not the doubled window.**
 - **A hold under 20 ms is refused**, because a press that short can fall
   between two of LVGL's input reads and be missed entirely. The default 60 ms
   is well clear of that and well under the 400 ms that makes a long press.

@@ -23,8 +23,12 @@ extern "C" {
  * Register the pointer with LVGL, bound to `disp`.
  *
  * Same task rule as port_display_init(), and call it after that.
+ *
+ * @param portrait  which way up the display was created, so the touch
+ *   coordinates land on the same orientation as the picture. The simulator
+ *   ignores it: SDL's mouse already reports window coordinates.
  */
-void port_indev_init(lv_display_t *disp);
+void port_indev_init(lv_display_t *disp, bool portrait);
 
 /**
  * Implemented by the application; called from the pointer read on every

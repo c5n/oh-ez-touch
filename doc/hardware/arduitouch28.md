@@ -17,3 +17,9 @@ display controller, the same XPT2046 touch controller and the same beeper.
 
 The pin map, the UART flashing procedure and the power supply are the same as
 for the 2.4 inch board. See [ArduiTouch 2.4 inch](arduitouch.md).
+
+## Portrait mounting
+
+Same as the 2.4 inch board, with this board's caveat on top: it already mounts
+its panel the other way up (see above), so which edge portrait calls "up" is
+a bench question here, answered in the same two files.

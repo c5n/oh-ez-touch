@@ -81,9 +81,11 @@ lv_style_t ui_style_info_error;
             (uint16_t)(po), (uint8_t)(ph), (int8_t)(pg)                        \
     }
 
-/* frame ops, then cols, rows, gutter, margin */
-#define FRAME(f, c, r, g, m, snd)                                              \
-    &(f), {(uint8_t)(c), (uint8_t)(r), (uint8_t)(g), (uint8_t)(m)}, &(snd)
+/* frame ops, then cols, rows, gutter, margin; then the same four for
+ * portrait */
+#define FRAME(f, c, r, g, m, pc, pr, pg, pm, snd)                              \
+    &(f), {(uint8_t)(c), (uint8_t)(r), (uint8_t)(g), (uint8_t)(m)},            \
+        {(uint8_t)(pc), (uint8_t)(pr), (uint8_t)(pg), (uint8_t)(pm)}, &(snd)
 
 #define SURF(bg, grad, dir, bgopa, bd, bw, bo, sd, rad, txt)                       \
     {                                                                              \
@@ -150,7 +152,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, UI_SOUND_SET_MATERIAL),
+    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, 2, 3, 8, 8, UI_SOUND_SET_MATERIAL),
     },
     {
         UI_THEME_NAME_MATERIAL " Night", UI_THEME_MATERIAL, true,
@@ -176,7 +178,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, UI_SOUND_SET_MATERIAL),
+    /* frame        */ FRAME(ui_frame_material, 3, 2, 8, 8, 2, 3, 8, 8, UI_SOUND_SET_MATERIAL),
     },
 
     /* ------------------------------------------------------------------ LCARS
@@ -222,7 +224,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, UI_SOUND_SET_LCARS),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, 2, 3, 6, 0, UI_SOUND_SET_LCARS),
     },
     {
         UI_THEME_NAME_LCARS " Night", UI_THEME_LCARS, true,
@@ -248,7 +250,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
                               UI_EASE_LINEAR, 0, 96, 48, 0),
-    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, UI_SOUND_SET_LCARS),
+    /* frame        */ FRAME(ui_frame_lcars, 3, 2, 6, 0, 2, 3, 6, 0, UI_SOUND_SET_LCARS),
     },
 
     /* --------------------------------------------------- JARVIS -- "Reticle"
@@ -290,7 +292,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, UI_SOUND_SET_JARVIS),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, 2, 3, 6, 6, UI_SOUND_SET_JARVIS),
     },
     {
         UI_THEME_NAME_JARVIS " Night", UI_THEME_JARVIS, true,
@@ -316,7 +318,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
                               UI_EASE_OUT_EXPO, 160, 256, 24, 0),
-    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, UI_SOUND_SET_JARVIS),
+    /* frame        */ FRAME(ui_frame_jarvis, 3, 2, 6, 6, 2, 3, 6, 6, UI_SOUND_SET_JARVIS),
     },
 
     /* ---------------------------------------------------------------- Classic
@@ -364,7 +366,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, UI_SOUND_SET_CLASSIC),
+    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, 2, 3, 2, 2, UI_SOUND_SET_CLASSIC),
     },
     {
         UI_THEME_NAME_CLASSIC " Night", UI_THEME_CLASSIC, true,
@@ -390,7 +392,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
                               UI_EASE_OUT_CUBIC, 96, 160, 32, -3),
-    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, UI_SOUND_SET_CLASSIC),
+    /* frame        */ FRAME(ui_frame_classic, 3, 2, 2, 2, 2, 3, 2, 2, UI_SOUND_SET_CLASSIC),
     },
 };
 
@@ -412,6 +414,11 @@ static_assert(sizeof(ui_themes) / sizeof(ui_themes[0]) == UI_THEME_COUNT,
               "the theme table has to hold a day and a night entry per family");
 
 static const struct ui_theme_s *theme = &ui_themes[0];
+
+/* Boot-time, from main.cpp: which of each entry's two grids the page packs
+ * into. Not part of the theme entry itself -- a family is the same family
+ * upright, it just packs its tiles differently. */
+static bool portrait = false;
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -532,6 +539,21 @@ const char *ui_style_name(void)
 const struct ui_theme_s *ui_style_theme(void)
 {
     return theme;
+}
+
+void ui_style_set_orientation(bool is_portrait)
+{
+    portrait = is_portrait;
+}
+
+bool ui_style_portrait(void)
+{
+    return portrait;
+}
+
+const struct ui_grid_s *ui_style_grid(void)
+{
+    return portrait ? &theme->grid_portrait : &theme->grid;
 }
 
 void ui_style_init(void)

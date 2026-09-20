@@ -116,10 +116,11 @@ void item_screen_glyph(lv_obj_t *btn);
  * the same one; ui_widgets.hpp is where it and its height live. */
 #define ITEM_BAR_H UI_BAR_H
 
-/* What is left underneath it, which is all any builder gets: 240 - 56. Worth
- * stating as a number, because it is small enough that every layout below has
- * to be checked against it rather than assumed to fit. */
-#define ITEM_BODY_H (240 - ITEM_BAR_H)
+/* What is left underneath it, which is all any builder gets: the screen's
+ * height minus the bar. Worth stating as an expression, because in landscape
+ * it is small enough that every layout below has to be checked against it
+ * rather than assumed to fit. */
+#define ITEM_BODY_H (LV_VER_RES - ITEM_BAR_H)
 
 extern const struct item_screen_dsc_s item_screen_slider;
 extern const struct item_screen_dsc_s item_screen_setpoint;

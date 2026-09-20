@@ -70,3 +70,12 @@ A resistive panel varies per unit. The firmware uses the ranges the published
 CYD examples agree on: raw X runs roughly 240 to 3860, raw Y roughly 200 to
 3900. If a board is a few pixels off at the edges, adjust the constants in
 `main/port/esp32/board_pins.h`.
+
+## Portrait mounting
+
+The Orientation setting can run this board upright at 240x320. The panel
+rotation (`port_display.c`) and the XPT2046 mapping (`port_indev.c`) have the
+portrait paths, but they are bench-verified in landscape only. The
+calibration spans above stay with the axes they were measured on; a mirrored
+or upside-down result is fixed with the mirror and flip flags in those two
+files, not with the calibration numbers.

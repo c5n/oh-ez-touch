@@ -62,8 +62,9 @@ Press a row to open an on-screen keyboard for text and number settings.
 Switches and drop-down settings toggle in place. Nothing is stored until you
 press **Save** on that page. Leaving the screen discards your changes.
 
-If a changed setting is one of the two that are only read at boot (the
-hostname and the BME280 on/off), **Save** offers a restart.
+If a changed setting is one of the few that are only read at boot (the
+hostname, the BME280 and BLE on/off, the orientation), **Save** offers a
+restart.
 
 ## Web interface
 
@@ -131,6 +132,7 @@ See [doc/devmgr.md](devmgr.md) for the full description.
 | --- | --- | --- |
 | Theme | Material | Look of the user interface: `Material`, `LCARS`, `JARVIS` or `Classic`. |
 | Night mode | off | `off`, `on`, or `auto` to follow the clock. |
+| Orientation `*` | landscape | `landscape` is the 320x240 every panel has always had. `portrait` mounts the panel upright at 240x320: all four themes re-lay-out, the six tiles become two columns of three. |
 | Night from | 22 | Hour the night variant starts, when night mode is `auto`. |
 | Night to | 6 | Hour the night variant ends, when night mode is `auto`. |
 

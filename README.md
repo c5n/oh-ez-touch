@@ -11,6 +11,7 @@ on the server.
 
 - Dynamic user interface from an openHAB sitemap
 - Four themes: Material, LCARS, JARVIS, Classic
+- Landscape or portrait mounting, in every theme
 - Web interface and REST API for configuration
 - MQTT client: status, sensors, remote configuration, sounds
 - Bluetooth LE beacon scanner (iBeacon, Eddystone)
@@ -28,6 +29,13 @@ The main screen in each of the four themes:
 | ![Material theme](doc/img/main_material.png) | ![LCARS theme](doc/img/main_lcars.png) |
 | **JARVIS** | **Classic** |
 | ![JARVIS theme](doc/img/main_jarvis.png) | ![Classic theme](doc/img/main_classic.png) |
+
+Every theme also draws upright, for a panel mounted vertically
+(`Orientation: portrait`, see [doc/configuration.md](doc/configuration.md)):
+
+| Material | LCARS | JARVIS | Classic |
+| --- | --- | --- | --- |
+| ![Material, portrait](doc/img/main_portrait_material.png) | ![LCARS, portrait](doc/img/main_portrait_lcars.png) | ![JARVIS, portrait](doc/img/main_portrait_jarvis.png) | ![Classic, portrait](doc/img/main_portrait_classic.png) |
 
 ## Supported hardware
 

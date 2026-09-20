@@ -143,6 +143,7 @@ static const struct
     {"OHEZ_NIGHT", "night_mode"},
     {"OHEZ_NIGHT_FROM", "night_from"},
     {"OHEZ_NIGHT_TO", "night_to"},
+    {"OHEZ_ORIENTATION", "orientation"},
     {"OHEZ_OPENHAB_HOST", "oh_host"},
     {"OHEZ_OPENHAB_PORT", "oh_port"},
     {"OHEZ_SITEMAP", "oh_sitemap"},

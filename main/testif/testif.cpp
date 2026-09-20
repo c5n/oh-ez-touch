@@ -99,7 +99,11 @@ const char *testif_coords(const testif_cmd_t *cmd, unsigned first, int32_t *x, i
         testif_arg_int(cmd, first + 1, &vy) == false)
         return "want x y";
 
-    if (vx < 0 || vx >= PORT_DISPLAY_WIDTH || vy < 0 || vy >= PORT_DISPLAY_HEIGHT)
+    /* The live resolution, not PORT_DISPLAY_WIDTH/HEIGHT: those are the
+     * landscape axes, and a portrait panel's valid x range ends at 240 while
+     * its y range runs to 320. */
+    if (vx < 0 || vx >= lv_display_get_horizontal_resolution(NULL) ||
+        vy < 0 || vy >= lv_display_get_vertical_resolution(NULL))
         return "range";
 
     *x = (int32_t)vx;

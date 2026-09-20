@@ -52,11 +52,23 @@ static const struct family_case_s families[] = {
     {"Classic", {3, 2, 2, 2}, 320, 240 - 33},
 };
 
-#define FAMILY_COUNT (sizeof(families) / sizeof(families[0]))
+/* The same four upright at 240x320: the grid's axes swap, and so does the
+ * content rectangle's. Written out again rather than computed, for the same
+ * reason as above. */
+static const struct family_case_s families_portrait[] = {
+    {"Material", {2, 3, 8, 8}, 240, 320 - 30},
+    /* LCARS portrait: (52,42) to (235,315). */
+    {"LCARS", {2, 3, 6, 0}, 184, 274},
+    {"Reticle", {2, 3, 6, 6}, 240, 320 - 22 - 1 - 18},
+    {"Classic", {2, 3, 2, 2}, 240, 320 - 33},
+};
 
-static void test_every_family_clears_the_finger_floor(void)
+#define FAMILY_COUNT (sizeof(families) / sizeof(families[0]))
+#define FAMILY_P_COUNT (sizeof(families_portrait) / sizeof(families_portrait[0]))
+
+static void check_floor(const struct family_case_s *families, size_t count)
 {
-    for (size_t i = 0; i < FAMILY_COUNT; i++)
+    for (size_t i = 0; i < count; i++)
     {
         const struct family_case_s *f = &families[i];
         int16_t w = ui_grid_cell_w(&f->grid, f->area_w);
@@ -67,11 +79,17 @@ static void test_every_family_clears_the_finger_floor(void)
     }
 }
 
+static void test_every_family_clears_the_finger_floor(void)
+{
+    check_floor(families, FAMILY_COUNT);
+    check_floor(families_portrait, FAMILY_P_COUNT);
+}
+
 /* Six cells, and the last one has to end inside the rectangle. An off-by-one
  * here is a tile hanging off the bottom of the glass. */
-static void test_every_family_fits_its_rectangle(void)
+static void check_fit(const struct family_case_s *families, size_t count)
 {
-    for (size_t i = 0; i < FAMILY_COUNT; i++)
+    for (size_t i = 0; i < count; i++)
     {
         const struct family_case_s *f = &families[i];
 
@@ -86,6 +104,12 @@ static void test_every_family_fits_its_rectangle(void)
             UNITY_TEST_ASSERT(cell.y + cell.h <= f->area_h, __LINE__, f->name);
         }
     }
+}
+
+static void test_every_family_fits_its_rectangle(void)
+{
+    check_fit(families, FAMILY_COUNT);
+    check_fit(families_portrait, FAMILY_P_COUNT);
 }
 
 /* Reading order, which the entrance stagger depends on: index 1 is to the

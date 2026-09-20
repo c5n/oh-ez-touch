@@ -25,9 +25,14 @@
  *  240 +----------------------------------------------------------+
  *
  * The whole band is the way into the settings screen, which is what the
- * status bar always was. It is edge-anchored and 320 px wide, so being 30 px
- * tall rather than the 44 a tap target usually wants costs nothing: there is
- * no way to overshoot the top of the glass.
+ * status bar always was. It is edge-anchored and the full width of the glass,
+ * so being 30 px tall rather than the 44 a tap target usually wants costs
+ * nothing: there is no way to overshoot the top of the screen.
+ *
+ * Portrait needs nothing from this file beyond what LV_HOR_RES/LV_VER_RES
+ * already say: the band stays 30 px of bare ground across the top, and the
+ * content area below is 240 x 290, which the portrait grid of the theme table
+ * packs as two columns of three 108 x 86 cards.
  */
 #include "ui_frame.hpp"
 

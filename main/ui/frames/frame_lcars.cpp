@@ -32,6 +32,12 @@
  *
  * What is left for the tiles is (52, 42) to (315, 235): 264 x 194, which at a
  * 6 px gutter is six 84 x 94 tiles. The floor for a finger is 73 x 71.
+ *
+ * Portrait is the same drawing on a 240x320 screen, and a spine suits a tall
+ * screen better than a wide one: the bar's title block narrows to 84 px, and
+ * the spine's bottom cell simply runs on to the new bottom edge (DECO_H is
+ * measured, not fixed). What is left for the tiles is then (52, 42) to
+ * (235, 315): 184 x 274, six 89 x 87 tiles.
  */
 #include "ui_frame.hpp"
 
@@ -55,7 +61,9 @@
 #define STATUS_Y  96
 #define STATUS_H  68
 #define DECO_Y    170
-#define DECO_H    70
+/* Measured rather than fixed: the cell runs to the bottom edge, which is what
+ * makes the spine fit a 320 px tall portrait screen with no second layout. */
+#define DECO_H    (LV_VER_RES - DECO_Y)
 
 static struct
 {
@@ -124,19 +132,23 @@ static void lcars_build(lv_obj_t *parent)
      *
      * Both blocks were stadiums before, which read as three separate lozenges
      * laid on the bar instead of one run across it. */
+    /* The clock gets what five digits need and the title the rest: on a
+     * portrait screen the bar is 80 px narrower, and spending it on the
+     * clock's padding would dot the page name down to nothing. */
     int16_t title_x = ELBOW_W + GUTTER;
-    int16_t clock_w = 64;
+    int16_t clock_w = (LV_HOR_RES > 240) ? 64 : 56;
     int16_t clock_x = LV_HOR_RES - GUTTER - clock_w;
     int16_t title_w = (int16_t)(clock_x - GUTTER - title_x);
+    int16_t title_pad = (LV_HOR_RES > 240) ? 14 : 8;
 
     lv_obj_t *title_block = ui_frame_block(lcars.root, title_x, 0, title_w, BAR_H, primary, 0);
-    lv_obj_set_style_pad_hor(title_block, 14, 0);
+    lv_obj_set_style_pad_hor(title_block, title_pad, 0);
     lcars.title = block_label(title_block, "", t->font_normal, ink);
     /* Both, or LONG_DOT has nothing to clip against: with a content-sized
      * height the label grows a second line and spills out of a block that
      * neither scrolls nor clips. One line of the face it is set in is the
      * height that makes it dot instead. */
-    lv_obj_set_width(lcars.title, title_w - 28);
+    lv_obj_set_width(lcars.title, title_w - 2 * title_pad);
     lv_obj_set_height(lcars.title, lv_font_get_line_height(t->font_normal));
     lv_obj_center(lcars.title);
 

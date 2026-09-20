@@ -75,3 +75,11 @@ them. The relays are numbered from 1, as on the wall plate: `relay/1` to
 `relay/3` on an L8-HS. The LED topics are named: `led/red`, `led/green` and
 `led/blue`. See [MQTT](../mqtt.md#relays-and-leds) for the topics and
 payloads.
+
+## Portrait mounting
+
+The Orientation setting can run this panel upright at 240x320. The FT5X06's
+own grid already is portrait, so the touch mapping is nearly the identity --
+but the combination with the ST7789's mirror flags is bench-verified in
+landscape only. If picture and touch disagree, the fix is in
+`main/port/esp32/port_display.c` and `port_indev.c`.

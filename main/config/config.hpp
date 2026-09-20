@@ -1,6 +1,7 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
+#include "ui/ui_orientation.hpp"
 #include "ui/ui_theme.hpp"
 
 #include "freertos/FreeRTOS.h"
@@ -59,6 +60,10 @@ public:
             enum ui_night_mode_e night_mode;
             unsigned int night_from;
             unsigned int night_to;
+            /* Read once, while the display and the touch panel are brought
+             * up: the panel's MADCTL and the touch calibration are init-time
+             * decisions, so this carries SETTINGS_F_RESTART. */
+            enum ui_orientation_e orientation;
         } ui;
         struct
         {

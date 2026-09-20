@@ -128,6 +128,16 @@ hairlines. The page knows nothing about it. Classic uses the shared frame in
 `ui_frame_common.cpp`. The grid is solved by `ui_geometry.hpp`, which is free
 of `<lvgl.h>` so the host tests can check it.
 
+**Two orientations.** A panel mounted upright sets Orientation to `portrait`
+and the display is created at 240x320 rather than 320x240 -- hardware, not
+software rotation: the panel's MADCTL simply keeps its own axes, so a frame
+costs exactly what it costs in landscape. The setting is boot-only because
+the MADCTL and the touch calibration are init-time decisions. Every theme
+table entry carries a second grid for it (two columns of three tiles), every
+frame measures its chrome against the resolution LVGL reports, and the page
+asks `ui_style_grid()` which of the two to pack. The host geometry tests
+check both orientations against the same finger floor.
+
 A frame is not made of style properties, so `lv_obj_report_style_change()`
 cannot reach it. A live theme change tears the old family's chrome down
 *before* `ui_style_select()` and builds the new one after.

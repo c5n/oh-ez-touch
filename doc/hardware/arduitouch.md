@@ -112,3 +112,11 @@ button on the ESP32 until the upload starts.
 
 The `monitor` argument is optional. It shows the serial log. Press `Ctrl-]` to
 exit the monitor.
+
+## Portrait mounting
+
+The Orientation setting can run this board upright at 240x320. The panel
+rotation (`port_display.c`) and the XPT2046 mapping (`port_indev.c`) have the
+portrait paths, but they are bench-verified in landscape only: if the picture
+or the touch comes out mirrored or upside down, the fix is the mirror flags
+there -- both of them together, or the touch stops agreeing with the picture.

@@ -230,7 +230,12 @@ static void ohez_setup(void)
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
     tft_backlight.setup();
 
-    lv_display_t *disp = port_display_init();
+    /* Read once, here: the panel's MADCTL and the touch calibration are
+     * init-time decisions, which is why the setting carries
+     * SETTINGS_F_RESTART. */
+    bool portrait = (config.item.ui.orientation == UI_ORIENTATION_PORTRAIT);
+
+    lv_display_t *disp = port_display_init(portrait);
 
     /* Straight after the display and before any widget exists, so the very
      * first frame is counted. It only registers event callbacks; what they are
@@ -238,7 +243,7 @@ static void ohez_setup(void)
      * page, <prefix>/system/fps and the test interface's `status`. */
     ui_frame_probe_attach(disp);
 
-    port_indev_init(disp);
+    port_indev_init(disp, portrait);
 
     /* The hand-forked v7 theme is gone; the project styles its own widgets and
      * only needs sane defaults underneath. */
@@ -252,6 +257,7 @@ static void ohez_setup(void)
      * ui_style_init() no longer touches lv_screen_active() itself. */
     ui_screen_setup();
 
+    ui_style_set_orientation(portrait);
     ui_style_select(config.item.ui.theme, openhab_ui_night_active(&config));
     ui_style_init();
 
