@@ -193,7 +193,7 @@ which of them each sound is spending.
 
 `UI_SOUND_DOOR_CHIME` is the eighteenth, and the only one with no call site. No
 gesture on a touchscreen means "somebody is at the door", so it is reachable
-over MQTT and nowhere else -- see *Playing a sound* in the README. It is in the
+over MQTT and nowhere else -- see *Playing a sound* in [mqtt.md](mqtt.md). It is in the
 vocabulary rather than bolted on beside it so that what a door sounds like is a
 theme's decision, the same as everything else, and so that the table tests hold
 it to the same policy. Each family answers it differently: Material strikes two
@@ -275,7 +275,7 @@ Three things it does that are worth knowing:
 
 ## Hearing it
 
-See [Hearing the panel](../README.md#hearing-the-panel). The simulator
+See [Hearing the panel](simulator.md#hearing-the-panel). The simulator
 synthesises the pulse train the LEDC channel would produce, walking the same
 frame function the panel walks -- there is no second copy of the synthesis to
 drift out of step.

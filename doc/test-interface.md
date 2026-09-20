@@ -255,8 +255,9 @@ a frame into the time LVGL's software renderer spent drawing it and the time it
 spent waiting for the panel to accept the previous strip, which is what decides
 whether a change made the panel faster or only moved the cost. On the simulator
 `wait_us` is always about zero -- SDL's flush returns when it is done, so there
-is nothing to wait for -- and on a device it is the SPI transfer. The README's
-"Where the frame time goes" is what to read them against.
+is nothing to wait for -- and on a device it is the SPI transfer. The
+[architecture document](architecture.md#where-the-frame-time-goes) is what to
+read them against.
 
 The numbers describe one closed **window**, not the instant they are read.
 A window closes after 64 frames or 10 seconds, whichever comes first, so a busy
