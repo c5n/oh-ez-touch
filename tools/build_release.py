@@ -52,6 +52,17 @@ def idf(build_dir, *argv):
         cwd=REPO_ROOT).returncode
 
 
+# The recovery firmware is built like a target but is not one: it is the
+# same image for every board, and its defaults file replaces the board's
+# rather than adding to it.
+MINIMAL = "minimal"
+
+# What -t accepts and a full run builds: the hardware targets plus the
+# recovery image, which batchupdate.py --minimal then looks for as
+# oh-ez-touch-<version>-minimal.bin.
+ALL_TARGETS = sorted(TARGETS) + [MINIMAL]
+
+
 def build_target(target, dirty):
     """Configure (from scratch unless dirty) and build one target.
 
@@ -115,10 +126,10 @@ def main():
     parser = argparse.ArgumentParser(
         description="Clean release builds of all hardware targets, collected "
                     "in release/<version>/.")
-    parser.add_argument("-t", "--targets", nargs="+", choices=sorted(TARGETS),
+    parser.add_argument("-t", "--targets", nargs="+", choices=ALL_TARGETS,
                         metavar="TARGET",
-                        help="build only these (default: all hardware "
-                             "targets: %s)" % ", ".join(sorted(TARGETS)))
+                        help="build only these (default: all of them: %s)"
+                             % ", ".join(ALL_TARGETS))
     parser.add_argument("--dirty", action="store_true",
                         help="incremental builds: keep the build directories "
                              "and their sdkconfigs")
@@ -133,7 +144,7 @@ def main():
 
     version = expected_version_default()
     outdir = Path(args.outdir) if args.outdir else REPO_ROOT / "release" / version
-    targets = args.targets or sorted(TARGETS)
+    targets = args.targets or ALL_TARGETS
 
     print("release build %s: %s" % (version, ", ".join(targets)))
 

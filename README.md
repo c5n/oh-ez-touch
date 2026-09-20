@@ -126,6 +126,27 @@ output under **OhEzTouch**.
 Building all of them at once, clean and collected for a rollout, is what
 ```tools/build_release.py``` does; see *Update tool* below.
 
+### The minimal recovery firmware
+
+A fifth build, `minimal`, is the OTA rescue path rather than a panel: no
+display, no touch, no openHAB, no MQTT, no sensors, no sound -- just WLAN
+(the stored credentials, or the setup access point when there are none), a
+small status page and the `/update` upload. Because it drives nothing
+board-specific, **one image fits every board**, and at roughly 40% of the
+full image's size it is the fast way onto a device whose old firmware still
+writes an upload to flash a byte at a time; from there the full image goes
+up at the fixed firmware's speed.
+
+```bash
+idf.py -B build/minimal -DSDKCONFIG=build/minimal/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.minimal" \
+       set-target esp32
+idf.py -B build/minimal build
+```
+
+`tools/build_release.py` builds it alongside the hardware targets, and
+`tools/batchupdate.py --minimal` flashes it (see *Update tool* below).
+
 ### Simulator
 
 The user interface can also be built and run on the development machine, in an
@@ -653,6 +674,7 @@ Usage:
 
     -p, --parallel N    update N devices at once (default 1)
     -i, --interactive   ask before every device: yes, skip or abort
+    --minimal           flash the board-independent recovery image instead
     --release X.Y       take images from release/X.Y (default: the latest)
     --timeout S         per-device reboot and verify wait (default 120)
     --retries N         upload attempts per device (default 1)
@@ -680,6 +702,16 @@ a device is expected to come back with is the release's.
 Failed devices are written to the retry file in the same JSON format, so a
 re-run is just ```./tools/batchupdate.py retry.json```. The exit code is the
 number of failed devices, so the script chains in scripts of its own.
+
+With ```--minimal``` every selected device gets the recovery firmware
+instead of its own target's image: one board-independent build, about 40% of
+the size, which serves nothing but WLAN, a status page and ```/update```.
+That is the fast way onto a device whose old firmware still writes an upload
+a byte at a time -- flash the recovery image first, then run again without
+```--minimal``` for the full image, which the recovery firmware takes at the
+fixed upload speed. Verification expects the recovery build's own target
+name (```Minimal```), so a device that comes back on its old firmware still
+fails the run.
 
 Updating changes neither the settings nor the WLAN credentials: OTA writes
 only the inactive app partition, while ```config.json``` on the SPIFFS

@@ -29,6 +29,11 @@ instead, because escape sequences in a log are not a nicer layout.
 
 Failed devices are written to a retry file that is a valid input list again,
 so a re-run is: batchupdate.py retry.json
+
+A device whose firmware still uploads a byte at a time (pre-0.92) is fastest
+updated in two steps: batchupdate.py --minimal flashes the small, board-
+independent recovery image (~40% of the size) first, and a plain run then
+uploads the full image at the fixed firmware's speed.
 """
 
 import argparse
@@ -168,10 +173,22 @@ def update_device(device, args, image, report):
             report("retrying upload (attempt %d/%d)"
                    % (attempt, args.retries + 1))
         try:
+            started = time.time()
+
+            def upload_progress(sent, total):
+                percent = sent * 100 // total
+                elapsed = time.time() - started
+                if elapsed >= 1 and 0 < sent < total:
+                    rate = sent / elapsed  # bytes/s
+                    left = (total - sent) / rate
+                    report("uploading %d%% (%.0f KB/s, %d s left)"
+                           % (percent, rate / 1024, left))
+                else:
+                    report("uploading %d%%" % percent)
+
             status, body = post_multipart(
                 host_name, int(port), "/update", image, args.timeout,
-                progress=lambda sent, total:
-                    report("uploading %d%%" % (sent * 100 // total)))
+                progress=upload_progress)
         except Exception as error:
             if attempt <= args.retries:
                 continue
@@ -207,7 +224,14 @@ def update_device(device, args, image, report):
         target_match = TARGET_NAME_RE.search(page)
         version = version_match.group(1) if version_match else None
         target_name = target_match.group(1) if target_match else None
-        if version == args.expect_version and check_target(target, target_name):
+        # --minimal flashes the board-independent recovery image, so the
+        # status page must name it rather than the device's own target.
+        if args.minimal:
+            target_ok = target_name is not None \
+                and target_name.strip().lower() == MINIMAL_TARGET_NAME.lower()
+        else:
+            target_ok = check_target(target, target_name)
+        if version == args.expect_version and target_ok:
             result["status"] = "PASS"
             result["detail"] = "version %s, target %s" % (version, target_name)
         elif version is None or target_name is None:
@@ -318,6 +342,17 @@ def image_for(target, release):
     return None, None
 
 
+# The minimal recovery firmware reports this on its status page, for every
+# board: nothing board-specific is driven, so one image fits all of them.
+MINIMAL_TARGET_NAME = "Minimal"
+
+
+def minimal_image(release):
+    """The recovery firmware's image, for --minimal: the release's
+    oh-ez-touch-<version>-minimal.bin, or build/minimal from the build tree."""
+    return image_for("minimal", release)
+
+
 def ask_operator():
     """The one decision an interactive run asks per device: update it, leave
     it for later, or stop the run. An answer that never comes -- EOF, Ctrl-C
@@ -426,8 +461,8 @@ class PlainReporter(Reporter):
             keyword = text.split(" ")[0]
             if self._printed.get(host) != keyword:
                 self._printed[host] = keyword
-                if text.endswith("%"):  # collapse the percentages to one line
-                    text = text.rsplit(" ", 1)[0]
+                if keyword == "uploading":  # collapse the percentages to one line
+                    text = keyword
                 print("  %-*s %s" % (self.host_width, host, text))
 
     def finish(self, result):
@@ -496,6 +531,13 @@ def main():
     parser.add_argument("-t", "--target", choices=sorted(TARGETS),
                         help="update the hosts given as arguments, all to this "
                              "target (skips image build and list checks)")
+    parser.add_argument("--minimal", action="store_true",
+                        help="flash the minimal recovery firmware instead of the "
+                             "device's own image: one board-independent image "
+                             "(build/minimal, or oh-ez-touch-<version>-minimal.bin "
+                             "from the release), about 40%% of the size. Use it "
+                             "to get a device off a slow old firmware first, then "
+                             "run again without --minimal for the full image")
     parser.add_argument("-p", "--parallel", type=int, default=1, metavar="N",
                         help="update N devices at once (default 1)")
     parser.add_argument("--release", metavar="X.Y",
@@ -549,8 +591,15 @@ def main():
 
     needed = sorted({device["target"] for device in devices})
     images = {}
-    for target in needed:
-        images[target], source = image_for(target, release)
+    if args.minimal:
+        # One image for every device, whatever its target: the recovery
+        # firmware drives nothing board-specific.
+        image, source = minimal_image(release)
+        for target in needed:
+            images[target] = image
+    else:
+        for target in needed:
+            images[target], source = image_for(target, release)
     if release and all(images[target] and "/release/" in images[target]
                        for target in needed):
         print("images: release %s" % release)

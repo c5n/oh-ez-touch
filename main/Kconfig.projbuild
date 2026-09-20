@@ -36,6 +36,26 @@ config OHEZ_ARDUITOUCH_JTAG_PINS
         It is a pin remap and nothing else: the board is still an ArduiTouch,
         which is why it is an option here rather than a fourth board.
 
+config OHEZ_MINIMAL
+    bool "Minimal OTA recovery firmware"
+    depends on !IDF_TARGET_LINUX
+    default n
+    help
+        Build the minimal recovery firmware instead of the panel: no
+        display, no touch, no UI, no openHAB, no MQTT, no sensors, no
+        sound -- just WLAN (with the stored credentials, and the setup
+        access point when there are none), the /update upload and a small
+        status page.
+
+        One image fits every board, because none of the board's hardware
+        is driven. Its purpose is the OTA rescue path: it is a third of
+        the full image, so uploading it to a device whose old firmware
+        still writes the upload a byte at a time is correspondingly
+        faster, and from there the full image goes up at the fixed speed.
+
+        The board choice above is irrelevant to this build and left at
+        whatever it is; nothing reads it.
+
 config OHEZ_ICONS_BUILTIN
     bool "Answer widget icons from the set built into the firmware"
     default y

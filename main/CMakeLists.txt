@@ -142,6 +142,40 @@ set(OHEZ_APP_SRCS
     "testif/testif_shot.cpp"
     "testif/testif_touch.cpp")
 
+# The minimal recovery firmware (CONFIG_OHEZ_MINIMAL): just enough to reach
+# /update over WLAN -- the config (for the hostname), the radio, the
+# transport and the OTA handler. Everything the panel is made of stays out,
+# which is where the image size goes. In the early requirements-expansion
+# pass CONFIG_* is unset, so this guard selects the full list there; that
+# pass only computes the REQUIRES graph, which is deliberately the same for
+# both builds.
+if(CONFIG_OHEZ_MINIMAL)
+    set(OHEZ_APP_SRCS
+        "main_minimal.cpp"
+
+        "config/config.cpp"
+        "config/config_fields.cpp"
+
+        "net/wlan.cpp"
+        "net/wlan_radio.cpp"
+
+        "web/multipart.c"
+        "web/webui_minimal.cpp"
+        "web/webui_ota.cpp"
+        "web/webui_transport.cpp"
+        "web/webui_transport_esp32.cpp")
+
+    set(OHEZ_CONTROL_SRCS "")
+
+    # port_storage stays: the hostname lives in config.json on SPIFFS, and
+    # it is how the fleet addresses the device for the full-image upload
+    # (main_minimal.cpp says why).
+    set(OHEZ_PORT_SRCS
+        "port/esp32/port_sys.c"
+        "port/esp32/port_storage.c"
+        "port/esp32/port_flash.c")
+endif()
+
 set(OHEZ_SRCS ${OHEZ_APP_SRCS})
 
 # The built-in icon set is a generated file that may or may not be there, and
