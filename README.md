@@ -104,11 +104,18 @@ idf.py -B build/arduitouch -DSDKCONFIG=build/arduitouch/sdkconfig \
 idf.py -B build/arduitouch build
 ```
 
-The three boards are `sdkconfig.defaults.arduitouch` (2.4"),
-`sdkconfig.defaults.arduitouch28` (2.8") and `sdkconfig.defaults.lanbon`
-(Lanbon L8). Omitting the board file gives the ArduiTouch 2.4", which is the
-Kconfig default. `sdkconfig.defaults.arduitouch_jtag` is the 2.4" with the two
-pins an attached esp-prog needs moved out of its way.
+The four boards are `sdkconfig.defaults.arduitouch` (2.4"),
+`sdkconfig.defaults.arduitouch28` (2.8"), `sdkconfig.defaults.lanbon`
+(Lanbon L8) and `sdkconfig.defaults.cyd` (Cheap Yellow Display,
+ESP32-2432S028R). Omitting the board file gives the ArduiTouch 2.4", which is
+the Kconfig default. `sdkconfig.defaults.arduitouch_jtag` is the 2.4" with
+the two pins an attached esp-prog needs moved out of its way.
+
+On the CYD the touch controller is wired to a second SPI bus rather than
+sharing the panel's, and its calibration constants in
+`main/port/esp32/board_pins.h` are the ranges the published CYD examples
+converge on -- a resistive panel varies per unit, so a board that is a few
+pixels off at the edges takes its own numbers there.
 
 `-DSDKCONFIG` is not optional when more than one target is in play: `idf.py`
 otherwise writes the generated `sdkconfig` to the project root, where the
@@ -1203,7 +1210,10 @@ else. There is no setting for them, no widget on the screen and no openHAB
 item -- a relay answers a topic, and that is the whole of the interface.
 
 Nothing appears on a board that does not have the hardware. The ArduiTouch
-boards have neither, so they publish and subscribe to none of it.
+boards have neither, so they publish and subscribe to none of it. The CYD has
+its on-board RGB LED minus the red channel -- red is on GPIO 4, which is also
+the display's reset line -- so it answers ```led/green``` and ```led/blue```
+and subscribes to no relays.
 
 Topic                        | Direction | Value
 ---------------------------- | --------- | -----

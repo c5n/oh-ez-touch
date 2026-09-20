@@ -22,6 +22,9 @@ config OHEZ_BOARD_ARDUITOUCH28
 config OHEZ_BOARD_LANBON
     bool "Lanbon L8 (ST7789, FT6X36)"
 
+config OHEZ_BOARD_CYD
+    bool "Cheap Yellow Display ESP32-2432S028R (ILI9341, XPT2046)"
+
 endchoice
 
 config OHEZ_ARDUITOUCH_JTAG_PINS

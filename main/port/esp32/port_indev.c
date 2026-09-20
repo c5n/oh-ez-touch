@@ -61,22 +61,12 @@ static inline uint16_t clamp_to(int32_t value, int32_t limit)
 
 #if OHEZ_TOUCH_XPT2046
 
-/* The four numbers TFT_eSPI was given as calData[] = {275, 3620, 264, 3532, 1}.
- *
- * They are not what they look like. setTouch() stores parameters[1] straight
- * into touchCalibration_x1, and calibrateTouch() exports that value *after*
- * subtracting x0 -- so 3620 and 3532 are spans, not maxima, and convertRawXY()
- * divides by them directly. Reading them as maxima puts every touch about 8 %
- * out across the screen.
- *
- * parameters[4] bit 0 is touchCalibration_rotate, and it is set: the axes are
- * swapped, so the screen's x comes from the controller's y. Bits 1 and 2,
- * invert_x and invert_y, are both clear. */
-#define TOUCH_CAL_X_ORIGIN  275
-#define TOUCH_CAL_X_SPAN    3620
-#define TOUCH_CAL_Y_ORIGIN  264
-#define TOUCH_CAL_Y_SPAN    3532
-
+/* The calibration is an origin and a span per axis and lives in board_pins.h
+ * with the rest of the panel's wiring. TFT_eSPI's calData had a fifth number,
+ * whose bit 0 was touchCalibration_rotate: it is set on every panel here, so
+ * the axes are swapped and the screen's x comes from the controller's y. Bits
+ * 1 and 2, invert_x and invert_y, are clear -- inversion is OHEZ_TOUCH_FLIP
+ * below. */
 static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y,
                               uint16_t *strength, uint8_t *point_num,
                               uint8_t max_point_num)
@@ -94,8 +84,8 @@ static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *
         int32_t raw_x = x[i];
         int32_t raw_y = y[i];
 
-        int32_t screen_x = ((raw_y - TOUCH_CAL_X_ORIGIN) * PORT_DISPLAY_WIDTH) / TOUCH_CAL_X_SPAN;
-        int32_t screen_y = ((raw_x - TOUCH_CAL_Y_ORIGIN) * PORT_DISPLAY_HEIGHT) / TOUCH_CAL_Y_SPAN;
+        int32_t screen_x = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * PORT_DISPLAY_WIDTH) / OHEZ_TOUCH_CAL_X_SPAN;
+        int32_t screen_y = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * PORT_DISPLAY_HEIGHT) / OHEZ_TOUCH_CAL_Y_SPAN;
 
 #if OHEZ_TOUCH_FLIP
         screen_x = (PORT_DISPLAY_WIDTH - 1) - screen_x;
@@ -220,15 +210,33 @@ void port_indev_init(lv_display_t *disp)
 #if OHEZ_TOUCH_XPT2046
     config.process_coordinates = xpt2046_to_screen;
 
-    /* Same SPI host as the panel, a device of its own on it. The XPT2046 tops
-     * out around 2 MHz, which the component's own IO config already sets. */
+#if OHEZ_TOUCH_OWN_BUS
+    /* The CYD wires the touch controller to four pins of its own rather than
+     * sharing the panel's bus, so the host needs initialising here -- the
+     * display's spi_bus_initialize() in port_display.c covers only its own.
+     * No DMA for a three-byte poll at the 2 MHz an XPT2046 tops out at. */
+    spi_bus_config_t bus = {
+        .sclk_io_num = OHEZ_TOUCH_PIN_SCLK,
+        .mosi_io_num = OHEZ_TOUCH_PIN_MOSI,
+        .miso_io_num = OHEZ_TOUCH_PIN_MISO,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 32,
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(OHEZ_TOUCH_SPI_HOST, &bus, SPI_DMA_DISABLED));
+#endif
+
+    /* A device of its own on the touch bus -- which is the panel's bus unless
+     * the board's pin table says otherwise. The XPT2046 tops out around
+     * 2 MHz, which the component's own IO config already sets. */
     esp_lcd_panel_io_spi_config_t io_config = ESP_LCD_TOUCH_IO_SPI_XPT2046_CONFIG(OHEZ_TOUCH_PIN_CS);
     esp_lcd_panel_io_handle_t io = NULL;
 
-    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(OHEZ_LCD_SPI_HOST, &io_config, &io));
+    ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi(OHEZ_TOUCH_SPI_HOST, &io_config, &io));
     ESP_ERROR_CHECK(esp_lcd_touch_new_spi_xpt2046(io, &config, &touch));
 
-    ESP_LOGI(TAG, "XPT2046 on CS %d%s", OHEZ_TOUCH_PIN_CS,
+    ESP_LOGI(TAG, "XPT2046 on CS %d%s%s", OHEZ_TOUCH_PIN_CS,
+             OHEZ_TOUCH_OWN_BUS ? ", own SPI bus" : "",
              OHEZ_TOUCH_FLIP ? ", flipped" : "");
 #endif
 

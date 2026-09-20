@@ -22,13 +22,12 @@
 
 #include "sdkconfig.h"
 
-/* SCLK 18 / MOSI 23 / MISO 19 on the ArduiTouch boards is an exact IOMUX match
- * for VSPI, which is SPI3_HOST -- no GPIO matrix, no signal delay. The Lanbon
- * matches neither host and uses the same one for want of a reason not to. */
-#define OHEZ_LCD_SPI_HOST           SPI3_HOST
-
 /* ---------------------------------------------------------------- ArduiTouch */
 #if defined(CONFIG_OHEZ_BOARD_ARDUITOUCH) || defined(CONFIG_OHEZ_BOARD_ARDUITOUCH28)
+
+/* SCLK 18 / MOSI 23 / MISO 19 is an exact IOMUX match for VSPI, which is
+ * SPI3_HOST -- no GPIO matrix, no signal delay. */
+#define OHEZ_LCD_SPI_HOST           SPI3_HOST
 
 #define OHEZ_PANEL_ILI9341          1
 #define OHEZ_PANEL_ST7789           0
@@ -43,6 +42,11 @@
 
 #define OHEZ_TOUCH_XPT2046          1
 #define OHEZ_TOUCH_FT5X06           0
+
+/* The XPT2046 is a second device on the panel's bus, so there are no bus pins
+ * of its own here. */
+#define OHEZ_TOUCH_SPI_HOST         OHEZ_LCD_SPI_HOST
+#define OHEZ_TOUCH_OWN_BUS          0
 
 #ifdef CONFIG_OHEZ_ARDUITOUCH_JTAG_PINS
 #define OHEZ_TOUCH_PIN_CS           26
@@ -75,8 +79,24 @@
 #define OHEZ_TOUCH_FLIP             0
 #endif
 
+/* The four numbers TFT_eSPI was given as calData[] = {275, 3620, 264, 3532, 1}.
+ *
+ * They are not what they look like. setTouch() stores parameters[1] straight
+ * into touchCalibration_x1, and calibrateTouch() exports that value *after*
+ * subtracting x0 -- so 3620 and 3532 are spans, not maxima, and convertRawXY()
+ * divides by them directly. Reading them as maxima puts every touch about 8 %
+ * out across the screen. */
+#define OHEZ_TOUCH_CAL_X_ORIGIN     275
+#define OHEZ_TOUCH_CAL_X_SPAN       3620
+#define OHEZ_TOUCH_CAL_Y_ORIGIN     264
+#define OHEZ_TOUCH_CAL_Y_SPAN       3532
+
 /* -------------------------------------------------------------------- Lanbon */
 #elif defined(CONFIG_OHEZ_BOARD_LANBON)
+
+/* SCLK/MOSI/MISO below match neither host's IOMUX pins, so the signals route
+ * through the GPIO matrix; SPI3_HOST for want of a reason not to. */
+#define OHEZ_LCD_SPI_HOST           SPI3_HOST
 
 #define OHEZ_PANEL_ILI9341          0
 #define OHEZ_PANEL_ST7789           1
@@ -134,6 +154,69 @@
 #define OHEZ_LED_PINS               { 26, 32, 33 }
 #define OHEZ_LED_NAMES              { "red", "green", "blue" }
 #define OHEZ_LED_ACTIVE_LOW         0
+
+/* ---------------------------------------------- Cheap Yellow Display (CYD) */
+#elif defined(CONFIG_OHEZ_BOARD_CYD)
+
+/* The ESP32-2432S028R. Its display sits on 14/13/12, an exact IOMUX match for
+ * HSPI, which is SPI2_HOST. */
+#define OHEZ_LCD_SPI_HOST           SPI2_HOST
+
+#define OHEZ_PANEL_ILI9341          1
+#define OHEZ_PANEL_ST7789           0
+
+#define OHEZ_LCD_PIN_SCLK           14
+#define OHEZ_LCD_PIN_MOSI           13
+#define OHEZ_LCD_PIN_MISO           12
+#define OHEZ_LCD_PIN_CS             15
+#define OHEZ_LCD_PIN_DC              2
+#define OHEZ_LCD_PIN_RST             4
+#define OHEZ_LCD_PIXEL_CLOCK_HZ     (40 * 1000 * 1000)
+
+#define OHEZ_TOUCH_XPT2046          1
+#define OHEZ_TOUCH_FT5X06           0
+
+/* Unlike on the ArduiTouch, the XPT2046 does not share the panel's bus: it is
+ * wired to four pins of its own and gets a host of its own. 25/32/39 match
+ * neither host's IOMUX pins, so the signals route through the GPIO matrix --
+ * which costs nothing at the 2 MHz an XPT2046 tops out at. The interrupt pin
+ * (GPIO 36) is not used; the reader polls. */
+#define OHEZ_TOUCH_SPI_HOST         SPI3_HOST
+#define OHEZ_TOUCH_OWN_BUS          1
+#define OHEZ_TOUCH_PIN_SCLK         25
+#define OHEZ_TOUCH_PIN_MOSI         32
+#define OHEZ_TOUCH_PIN_MISO         39
+#define OHEZ_TOUCH_PIN_CS           33
+
+#define OHEZ_BACKLIGHT_PIN          21
+#define OHEZ_BACKLIGHT_ACTIVE_LOW   0
+
+/* The JST speaker connector. */
+#define OHEZ_HAS_BEEPER             1
+#define OHEZ_BEEPER_PIN             26
+
+/* The P3 header, for an optional BME280: GPIO 27 and 22, with 3V3 and GND.
+ * GPIO 21, the header's third pin on some revisions, is the backlight here. */
+#define OHEZ_I2C_PIN_SDA            27
+#define OHEZ_I2C_PIN_SCL            22
+
+/* The on-board RGB LED, minus its red channel: red is on GPIO 4, which is
+ * also the display's reset line, so driving it as an LED would hold the panel
+ * in reset. The two that remain are active low. */
+#define OHEZ_LED_PINS               { 16, 17 }
+#define OHEZ_LED_NAMES              { "green", "blue" }
+#define OHEZ_LED_ACTIVE_LOW         1
+
+#define OHEZ_TOUCH_FLIP             0
+
+/* The ranges the published CYD examples converge on: raw x runs roughly
+ * 200-3900 and raw y 240-3860. A resistive panel's calibration varies per
+ * unit, so a board that is a few pixels off at the edges takes its own
+ * numbers here. */
+#define OHEZ_TOUCH_CAL_X_ORIGIN     240
+#define OHEZ_TOUCH_CAL_X_SPAN       3620
+#define OHEZ_TOUCH_CAL_Y_ORIGIN     200
+#define OHEZ_TOUCH_CAL_Y_SPAN       3700
 
 #else
 #error "No board selected. Run idf.py menuconfig -> OhEzTouch -> Target board."

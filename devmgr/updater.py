@@ -34,6 +34,7 @@ TARGETS = {
     "arduitouch": "ArduiTouch",
     "arduitouch28": "ArduiTouch28",
     "lanbon": "Lanbon",
+    "cyd": "CYD",
     "arduitouch_jtag": "ArduiTouchJTAG",
 }
 

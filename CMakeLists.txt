@@ -7,10 +7,11 @@
 #          set-target esp32
 #   idf.py -B build/arduitouch build flash monitor
 #
-# sdkconfig.defaults.arduitouch28 and sdkconfig.defaults.lanbon are the other
-# two, and sdkconfig.defaults.arduitouch_jtag is the 2.4" with the pins an
-# attached esp-prog needs moved. Omitting the board file gives the ArduiTouch
-# 2.4", which is the Kconfig default. sdkconfig.defaults.minimal is something
+# sdkconfig.defaults.arduitouch28, sdkconfig.defaults.cyd and
+# sdkconfig.defaults.lanbon are the other three, and
+# sdkconfig.defaults.arduitouch_jtag is the 2.4" with the pins an attached
+# esp-prog needs moved. Omitting the board file gives the ArduiTouch 2.4",
+# which is the Kconfig default. sdkconfig.defaults.minimal is something
 # else: the board-independent OTA recovery firmware, one image for all boards
 # (see CONFIG_OHEZ_MINIMAL in main/Kconfig.projbuild).
 #
@@ -74,6 +75,8 @@ elseif(CONFIG_OHEZ_MINIMAL)
     set(OHEZ_TARGET_NAME "Minimal")
 elseif(CONFIG_OHEZ_BOARD_ARDUITOUCH28)
     set(OHEZ_TARGET_NAME "ArduiTouch28")
+elseif(CONFIG_OHEZ_BOARD_CYD)
+    set(OHEZ_TARGET_NAME "CYD")
 elseif(CONFIG_OHEZ_BOARD_LANBON)
     set(OHEZ_TARGET_NAME "Lanbon")
 elseif(CONFIG_OHEZ_ARDUITOUCH_JTAG_PINS)
