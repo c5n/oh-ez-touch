@@ -306,6 +306,7 @@ static void webui_send_status(struct webui_out_s *o)
     webui_put(o, "<fieldset><legend>Status</legend><table class='s'>");
 
     webui_putf(o, "<tr><td>Version</td><td>%u.%02u</td></tr>", VERSION_MAJOR, VERSION_MINOR);
+    webui_putf(o, "<tr><td>Target</td><td>%s</td></tr>", TARGET_NAME);
     webui_putf(o, "<tr><td>Build</td><td>%s %s</td></tr>", __DATE__, __TIME__);
 
     unsigned long long up = (unsigned long long)(port_millis() / 1000);

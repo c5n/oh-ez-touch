@@ -1690,6 +1690,8 @@ static void info_tab_build(lv_obj_t *rows)
              __TIME__);
     row = info_row(table, row, "Version", buffer);
 
+    row = info_row(table, row, "Target", TARGET_NAME);
+
     port_net_info_t net;
 
     port_net_info(&net);
