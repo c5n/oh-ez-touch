@@ -166,10 +166,118 @@ void multipart_feed(struct multipart_s *mp, char c)
     }
 }
 
+/* The byte at position p of tail+data, without copying them together. */
+static char at(const struct multipart_s *mp, const char *data, size_t p)
+{
+    return (p < mp->tail_len) ? mp->tail[p] : data[p - mp->tail_len];
+}
+
+/* Pass combined[start..end) of tail+data on to the sink. */
+static bool emit(struct multipart_s *mp, const char *data,
+                 size_t start, size_t end)
+{
+    if (start < mp->tail_len)
+    {
+        size_t n = mp->tail_len - start;
+
+        if (n > end - start)
+            n = end - start;
+
+        if (n > 0 && mp->write(mp->ctx, mp->tail + start, n) == false)
+            return false;
+
+        start += n;
+    }
+
+    if (start < end
+        && mp->write(mp->ctx, data + (start - mp->tail_len),
+                     end - start) == false)
+        return false;
+
+    return true;
+}
+
 void multipart_feed_block(struct multipart_s *mp, const char *data, size_t len)
 {
-    for (size_t i = 0; i < len && mp->failed == false; i++)
-        multipart_feed(mp, data[i]);
+    size_t i = 0;
+
+    while (i < len && mp->failed == false)
+    {
+        /* Boundary, headers and everything after the end stay byte-wise: they
+         * are a hundred bytes at most. The payload is the megabyte, and
+         * feeding it a byte at a time meant one sink call -- one flash write
+         * -- and one memmove of the tail per byte, which is what made uploads
+         * slow. */
+        if (mp->state != MULTIPART_DATA)
+        {
+            multipart_feed(mp, data[i++]);
+            continue;
+        }
+
+        size_t hold  = mp->boundary_len + 2;
+        size_t avail = mp->tail_len + (len - i);
+
+        /* The terminator, "\r\n--BOUNDARY", is exactly hold bytes; find its
+         * first occurrence across tail+data, if there is one. */
+        size_t end_at = avail;
+        bool   found  = false;
+
+        if (avail >= hold)
+        {
+            for (size_t k = 0; k + hold <= avail; k++)
+            {
+                if (at(mp, data + i, k) != '\r'
+                    || at(mp, data + i, k + 1) != '\n')
+                    continue;
+
+                size_t b;
+
+                for (b = 0; b < mp->boundary_len; b++)
+                {
+                    if (at(mp, data + i, k + 2 + b) != mp->boundary[b])
+                        break;
+                }
+
+                if (b == mp->boundary_len)
+                {
+                    end_at = k;
+                    found  = true;
+                    break;
+                }
+            }
+        }
+
+        if (found == true)
+        {
+            /* Everything before the terminator is payload; the rest of the
+             * body is ignored, as the byte-wise scan did in MULTIPART_DONE. */
+            if (emit(mp, data + i, 0, end_at) == false)
+                fail(mp);
+
+            mp->tail_len = 0;
+            mp->state = MULTIPART_DONE;
+            return;
+        }
+
+        /* No terminator in sight: everything but the last hold bytes -- which
+         * may still turn out to be its start -- is safe to pass on. */
+        size_t safe = (avail > hold) ? avail - hold : 0;
+
+        if (safe > 0 && emit(mp, data + i, 0, safe) == false)
+        {
+            fail(mp);
+            return;
+        }
+
+        /* What is kept becomes the new tail. */
+        size_t keep = avail - safe;
+
+        for (size_t k = 0; k < keep; k++)
+            mp->tail[k] = at(mp, data + i, safe + k);
+
+        mp->tail_len = keep;
+        i = len;
+    }
 }
 
 bool multipart_complete(const struct multipart_s *mp)
