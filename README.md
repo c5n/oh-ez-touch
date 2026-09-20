@@ -19,6 +19,16 @@ on the server.
 - Firmware updates over the air, single device or fleet
 - Desktop simulator for development without hardware
 
+## Themes
+
+The main screen in each of the four themes:
+
+| Material | LCARS |
+| --- | --- |
+| ![Material theme](doc/img/main_material.png) | ![LCARS theme](doc/img/main_lcars.png) |
+| **JARVIS** | **Classic** |
+| ![JARVIS theme](doc/img/main_jarvis.png) | ![Classic theme](doc/img/main_classic.png) |
+
 ## Supported hardware
 
 | Board | Document |
