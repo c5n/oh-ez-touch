@@ -419,6 +419,93 @@ static void test_a_quoted_number_is_honoured(void)
     TEST_ASSERT_EQUAL_INT(30, config.item.mqtt.interval);
 }
 
+/* The file an OTA update from the AutoConnect firmware (v0.20) finds on the
+ * SPIFFS partition. It has no ui, mqtt or ble section, it nests the BME280
+ * under "openhab", and its booleans may be integers -- and the update must
+ * not change what the panel shows or switches off the sensor it reads. */
+static void test_a_pre_0_90_file_is_migrated(void)
+{
+    Config &config = config_instance();
+
+    /* The shape v0.20's saveConfig() wrote, values none of which are the
+     * current defaults. */
+    static const char json[] =
+        "{"
+        "\"general\":{\"hostname\":\"wall-panel\"},"
+        "\"ntp\":{\"hostname\":\"fritz.box\",\"gmt_offset\":2,\"daylightsaving\":1},"
+        "\"backlight\":{\"activity_timeout\":120,\"normal_brightness\":90,"
+        "\"dim_brightness\":30},"
+        "\"beeper\":{\"enabled\":1},"
+        "\"openhab\":{\"hostname\":\"oh.lan\",\"port\":8080,\"sitemap\":\"eg\","
+        "\"sensors\":{\"bme280\":{\"use\":1,\"interval\":60,"
+        "\"items\":{\"temperature\":\"\",\"humidity\":\"\",\"pressure\":\"\"}}}}"
+        "}";
+
+    write_file(json);
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+
+    /* Everything the two formats share carries over untouched. */
+    TEST_ASSERT_EQUAL_STRING("wall-panel", config.item.general.hostname);
+    TEST_ASSERT_EQUAL_STRING("fritz.box", config.item.ntp.hostname);
+    TEST_ASSERT_EQUAL_INT(2, config.item.ntp.gmt_offset);
+    TEST_ASSERT_TRUE(config.item.ntp.daylightsaving);
+    TEST_ASSERT_EQUAL_UINT32(120, config.item.backlight.activity_timeout);
+    TEST_ASSERT_EQUAL_UINT(90, config.item.backlight.normal_brightness);
+    TEST_ASSERT_EQUAL_UINT(30, config.item.backlight.dim_brightness);
+    TEST_ASSERT_TRUE(config.item.beeper.enabled);
+    TEST_ASSERT_EQUAL_STRING("oh.lan", config.item.openhab.hostname);
+    TEST_ASSERT_EQUAL_STRING("eg", config.item.openhab.sitemap);
+
+    /* The BME280 moved from openhab/sensors to sensors; the old path is read
+     * when the new one says nothing, integer booleans included. */
+    TEST_ASSERT_TRUE(config.item.sensors.bme280.use);
+    TEST_ASSERT_EQUAL_INT(60, config.item.sensors.bme280.interval);
+
+    /* A file with no ui section predates themes, and the one look the panel
+     * had is what Classic reproduces -- Material would be a visible change
+     * the update has no business making. */
+    TEST_ASSERT_EQUAL_INT(UI_THEME_CLASSIC, config.item.ui.theme);
+    TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, config.item.ui.night_mode);
+
+    /* Sections that did not exist yet default, and off. */
+    TEST_ASSERT_FALSE(config.item.mqtt.enabled);
+    TEST_ASSERT_FALSE(config.item.ble.enabled);
+
+    /* The first save retires the legacy paths: what comes back out names the
+     * theme and nests the sensor at the new place, and a reload keeps both. */
+    TEST_ASSERT_TRUE(config.saveConfig());
+
+    char buf[CONFIG_FILE_MAX_SIZE];
+
+    read_file(buf, sizeof(buf));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"theme\":\"Classic\""));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"sensors\":{\"bme280\":{\"use\":true,\"interval\":60}}"));
+
+    memset(&config.item, 0, sizeof(config.item));
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+    TEST_ASSERT_EQUAL_INT(UI_THEME_CLASSIC, config.item.ui.theme);
+    TEST_ASSERT_TRUE(config.item.sensors.bme280.use);
+    TEST_ASSERT_EQUAL_INT(60, config.item.sensors.bme280.interval);
+}
+
+/* A file can carry both paths while an update is being rolled out -- one this
+ * firmware saved, with the legacy object left over underneath it. The new
+ * path wins, and an explicitly named theme is never second-guessed. */
+static void test_the_new_paths_win_over_the_legacy_ones(void)
+{
+    Config &config = config_instance();
+
+    write_file("{\"ui\":{\"theme\":\"JARVIS\"},"
+               "\"sensors\":{\"bme280\":{\"use\":false,\"interval\":180}},"
+               "\"openhab\":{\"sensors\":{\"bme280\":{\"use\":1,\"interval\":60}}}}");
+
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+
+    TEST_ASSERT_EQUAL_INT(UI_THEME_JARVIS, config.item.ui.theme);
+    TEST_ASSERT_FALSE(config.item.sensors.bme280.use);
+    TEST_ASSERT_EQUAL_INT(180, config.item.sensors.bme280.interval);
+}
+
 /* saveConfig() before any load has no file name to write to, and must say so
  * rather than inventing one. */
 static void test_save_without_a_load_fails(void)
@@ -444,6 +531,8 @@ void test_config_file_run(void)
     RUN_TEST(test_an_unknown_enum_name_falls_back);
     RUN_TEST(test_a_hand_written_integer_boolean_is_honoured);
     RUN_TEST(test_a_quoted_number_is_honoured);
+    RUN_TEST(test_a_pre_0_90_file_is_migrated);
+    RUN_TEST(test_the_new_paths_win_over_the_legacy_ones);
     RUN_TEST(test_save_without_a_load_fails);
 
     /* The directory itself is left behind: it is one empty directory under

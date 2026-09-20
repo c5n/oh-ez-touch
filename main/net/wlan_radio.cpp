@@ -250,7 +250,7 @@ void wlan_setup(Config *config)
     ap_netif = esp_netif_create_default_wifi_ap();
 
     /* On the netif, and before the interface comes up: the name is what
-     * tools/batchupdate.sh resolves devices by, and DHCP sends it with the
+     * tools/batchupdate.py resolves devices by, and DHCP sends it with the
      * lease request. */
     esp_netif_set_hostname(sta_netif, config->item.general.hostname);
 

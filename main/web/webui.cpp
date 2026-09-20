@@ -838,7 +838,7 @@ void webui_setup(Config *config)
      * not-found redirect. */
     webui_transport_route("/favicon.ico", WEBUI_GET, webui_handle_favicon);
 
-    /* The path and the method are what tools/batchupdate.sh knows, so they do
+    /* The path and the method are what tools/batchupdate.py knows, so they do
      * not change. The GET is the upload form. */
     webui_transport_route("/update", WEBUI_GET, webui_ota_handle_form);
     webui_transport_route_stream("/update", webui_ota_handle_upload);

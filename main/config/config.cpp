@@ -204,7 +204,7 @@ static void config_apply_env_overrides(config_item_t &item)
 
 /* ------------------------------------------------------------------- load */
 
-/* Apply one field from the parsed document, or leave the default in place.
+/* Apply one parsed value to one field.
  *
  * Every value goes through the same setters the web form and the settings
  * screen use, so a hand-edited file cannot put a value into Config that
@@ -212,14 +212,9 @@ static void config_apply_env_overrides(config_item_t &item)
  * and a hostname containing '/' or ':' is refused and the default stands. That
  * is new -- the old hand-written loader assigned whatever the file said.
  */
-static void config_load_field(config_item_t &item, JsonVariantConst root,
-                              const struct config_field_s *f)
+static void config_field_apply_value(const struct config_field_s *f, config_item_t &item,
+                                     JsonVariantConst value)
 {
-    JsonVariantConst value = config_json_read(root, f);
-
-    if (value.isNull())
-        return;
-
     switch (f->kind)
     {
     case SETTINGS_TEXT:
@@ -242,6 +237,78 @@ static void config_load_field(config_item_t &item, JsonVariantConst root,
     default:
         config_field_set_number(f, &item, value.as<long>());
         break;
+    }
+}
+
+/* Apply one field from the parsed document, or leave the default in place. */
+static void config_load_field(config_item_t &item, JsonVariantConst root,
+                              const struct config_field_s *f)
+{
+    JsonVariantConst value = config_json_read(root, f);
+
+    if (value.isNull())
+        return;
+
+    config_field_apply_value(f, item, value);
+}
+
+/* What an OTA update from the AutoConnect firmware (v0.20 and earlier) finds
+ * in the config.json that survives on the SPIFFS partition, and what is done
+ * about it here.
+ *
+ * The BME280 rows lived under "openhab/sensors/bme280" rather than
+ * "sensors/bme280", so without this a panel with the sensor in use would come
+ * up after the update with it switched off -- the new path's default. When the
+ * file says nothing at the new path, the old one is read instead, through the
+ * same setters; the next saveConfig() writes the new path and retires the old
+ * one. A file carrying both -- possible while such an update is being rolled
+ * out -- keeps the new path's value.
+ *
+ * And that file has no "ui" section at all, because there was nothing to put
+ * in one: the panel had exactly one look, which the Classic theme now
+ * reproduces. A file with no "ui" object therefore gets Classic rather than
+ * the Material default, so the update does not change what the panel on the
+ * wall looks like. A pristine device has no file at all and keeps Material, as
+ * does anything this firmware has saved -- both name a theme explicitly. */
+static void config_load_legacy(config_item_t &item, JsonVariantConst root)
+{
+    const struct config_field_s *theme = config_field_by_name("theme");
+
+    if (theme != NULL && root["ui"].isNull())
+    {
+        config_field_write(theme, &item,
+                           config_field_enum_from_name(theme, UI_THEME_NAME_CLASSIC));
+        ESP_LOGI(TAG, "config predates the ui section: theme is Classic");
+    }
+
+    JsonVariantConst legacy = root["openhab"]["sensors"]["bme280"];
+
+    if (legacy.isNull())
+        return;
+
+    static const struct
+    {
+        const char *field;
+        const char *key;
+    } moved[] = {
+        {"bme_use", "use"},
+        {"bme_interval", "interval"},
+    };
+
+    for (size_t i = 0; i < sizeof(moved) / sizeof(moved[0]); i++)
+    {
+        const struct config_field_s *f = config_field_by_name(moved[i].field);
+
+        if (f == NULL || !config_json_read(root, f).isNull())
+            continue;
+
+        JsonVariantConst value = legacy[moved[i].key];
+
+        if (value.isNull())
+            continue;
+
+        config_field_apply_value(f, item, value);
+        ESP_LOGI(TAG, "%s: read from the pre-0.90 path openhab/sensors/bme280", f->name);
     }
 }
 
@@ -341,6 +408,11 @@ bool Config::loadConfig(const char *name)
     for (size_t i = 0; i < config_field_count; i++)
         if (config_fields[i].kind != SETTINGS_SECTION)
             config_load_field(item, root, &config_fields[i]);
+
+    /* Only for a file that was actually read: a device with no file is
+     * pristine, and the legacy rules would change what its defaults mean. */
+    if (from_file)
+        config_load_legacy(item, root);
 
     config_apply_env_overrides(item);
 

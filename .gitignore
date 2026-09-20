@@ -6,6 +6,16 @@ managed_components/
 dependencies.lock
 compile_commands.json
 
+# Collected release builds, from tools/build_release.py
+release/
+
+# Local fleet data of tools/discover.py and tools/batchupdate.py: real
+# hostnames and addresses, not for the repo
+tools/devices.json
+tools/devices_*.json
+tools/retry.json
+retry.json
+
 # The simulator's emulated flash image (NVS), created on first run
 state/
 

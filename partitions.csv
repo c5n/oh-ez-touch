@@ -2,7 +2,7 @@
 #
 # Carried over verbatim from PlatformIO's min_spiffs.csv, which used to be
 # supplied from inside the framework-arduinoespressif32 package. Two ~1.9 MB app
-# slots are what make the OTA update in tools/batchupdate.sh possible; `spiffs`
+# slots are what make the OTA update in tools/batchupdate.py possible; `spiffs`
 # holds data/config.json.
 #
 # Name,   Type, SubType, Offset,  Size,     Flags

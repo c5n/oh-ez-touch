@@ -123,6 +123,9 @@ delete that build's `sdkconfig` -- or the whole build directory -- and re-run
 board choice, the beeper engine, the JTAG pin remap and the per-module debug
 output under **OhEzTouch**.
 
+Building all of them at once, clean and collected for a rollout, is what
+```tools/build_release.py``` does; see *Update tool* below.
+
 ### Simulator
 
 The user interface can also be built and run on the development machine, in an
@@ -596,48 +599,123 @@ on the ESP32 until the upload process starts.
 `monitor` is optional and shows the serial log; `Ctrl-]` leaves it.
 
 ### Update tool
-To update one or more devices over the air, a simple script is provided in the tools folder.
+To update one or more devices over the air, ```tools/batchupdate.py``` is
+provided. It needs nothing but Python 3.
+
+The devices are named in a JSON list file, each with the build target its
+hardware needs -- the target cannot be asked for remotely, and the fleet is
+usually mixed. The target is the name of a build directory under ```build/```,
+which is what identifies a board now that each one is a separate ESP-IDF
+build.
+
+Example ```myOhEzTouchDevices.json``` (see ```tools/devices.example.json```):
+```json
+{
+  "devices": [
+    { "host": "oheztouch-01", "target": "arduitouch" },
+    { "host": "oheztouch-02", "target": "arduitouch28", "comment": "hallway, 2.8 inch" },
+    { "host": "192.168.1.50", "target": "lanbon" }
+  ]
+}
+```
+
+The old PlatformIO target names (```ArduiTouch```, ```ArduiTouch28```,
+```Lanbon```) from pre-0.90 list files are accepted as aliases.
+
+Writing the list by hand is not the only way to get one:
+```tools/discover.py``` scans a subnet for devices -- one ```GET /``` per
+address, short timeouts, bounded parallelism, nothing more -- and prints what
+it finds as a table. With ```-o``` the same result is also written in the
+list file format:
+
+```
+./tools/discover.py 192.168.1.0/24                      # just look
+./tools/discover.py 192.168.1.0/24 -o myOhEzTouchDevices.json
+```
+
+Devices on 0.90 or later answer with their version and target, so their
+entries come out complete. Devices on the pre-0.90 firmware are recognised by
+their AutoConnect pages, but they can tell neither version nor target over
+HTTP, so they come out with ```"target": null``` -- deliberately:
+```batchupdate.py``` refuses such a file until a person has filled in which
+board each device is, because that choice decides which image it gets flashed
+with. The one thing a pre-0.90 device does tell is its configured hostname:
+the scanner reads it from the device's openhab_settings page (the single
+extra request this takes) into the entry's ```"comment"```. The
+```"version"``` a scan records is used too: a device already running the
+expected version is skipped, so re-scanning after a partial rollout yields a
+list that updates only what is left.
 
 ```
 Usage:
-    ./tools/batchupdate.sh [-p] -t <target> <hostname1> <hostname2> ...
-    ./tools/batchupdate.sh [-p] -l <listfile>
+    ./tools/batchupdate.py myOhEzTouchDevices.json [options]
+    ./tools/batchupdate.py -t <target> <hostname1> <hostname2> ...
 
-    -p              Parallel multi process update
-
-    -t <target>     Name of a build directory under build/, which is what
-                    identifies a board now that each one is a separate
-                    ESP-IDF build. e.g. arduitouch28
-
-    -l <listfile>   Text file with list of target and hostnames.
-                    Each line has target hostname, separated by tabs or spaces.
+    -p, --parallel N    update N devices at once (default 1)
+    -i, --interactive   ask before every device: yes, skip or abort
+    --release X.Y       take images from release/X.Y (default: the latest)
+    --timeout S         per-device reboot and verify wait (default 120)
+    --retries N         upload attempts per device (default 1)
+    --dry-run           validate the list, the images and reachability only
+    -o, --retry-file F  where failed devices are written (default retry.json)
 ```
 
-If you have more than one ArduiTouch device, it makes sense to create a ```listfile``` with all of your devices.
+Per device the script checks the firmware image exists, checks the device
+answers HTTP, POSTs the image to ```/update```, and then waits for the device
+to come back and reads its status page: the version and the target shown
+there have to match, because the pre-0.90 firmware answers HTTP 200 even when
+the flash write failed -- the POST succeeding proves nothing. Only a device
+back up with the expected firmware counts as a success. While it runs, a
+terminal shows one live line per device in flight -- checking, uploading with
+a percentage, waiting for the reboot, verifying -- above a progress bar;
+piped into a file, each state change is a plain line instead.
 
-Example ```myOhEzTouchDevices.txt```:
-```
-arduitouch      oheztouch-01
-arduitouch28    oheztouch-02
-arduitouch      oheztouch-03
-```
-!!! Please be aware of, a Carriage Return after last device in list is needed !!!
+Where an image comes from: the latest release build -- ```release/<version>/```
+as ```tools/build_release.py``` collects it, ```--release X.Y``` pins an
+older one. A target missing from the release falls back to its build
+directory under ```build/```, so the development loop needs no release. The
+source of every image is printed before anything is flashed, and the version
+a device is expected to come back with is the release's.
 
-It is possible to update all devices in parallel by using the ```-p``` option.
+Failed devices are written to the retry file in the same JSON format, so a
+re-run is just ```./tools/batchupdate.py retry.json```. The exit code is the
+number of failed devices, so the script chains in scripts of its own.
+
+Updating changes neither the settings nor the WLAN credentials: OTA writes
+only the inactive app partition, while ```config.json``` on the SPIFFS
+partition and the credentials in NVS are left alone. A device updated from
+pre-0.90 firmware keeps its look and its sensor settings as well: a
+```config.json``` with no ```ui``` section gets the Classic theme (the one
+look that firmware had), the BME280 settings are read from their old place
+under ```openhab.sensors```, and AutoConnect's stored WLAN credentials are
+migrated on first boot.
 
 #### Update project folder
 ```
 git pull --recurse-submodules
 ```
 #### Rebuild targets
+One command builds all hardware targets clean and collects the images,
+version-labelled, under `release/<version>/`:
 ```
-idf.py -B build/arduitouch build
-idf.py -B build/arduitouch28 build
+./tools/build_release.py
 ```
+The build stays incremental and in place with `--dirty`; `-t` builds a
+subset.
 #### Roll out update
-Example for update of all of your devices by using the listfile:
+Check everything is reachable and every image is built, flash nothing:
 ```
-./tools/batchupdate.sh -p -l myOhEzTouchDevices.txt
+./tools/batchupdate.py --dry-run myOhEzTouchDevices.json
+```
+Then one device per target type first, then the rest in parallel:
+```
+./tools/batchupdate.py -t <target> <hostname1> <hostname2> ...
+./tools/batchupdate.py -p 4 myOhEzTouchDevices.json
+```
+Or walked through one by one, each device asking before anything is sent
+(yes updates it, skip leaves it for the retry file, abort stops the run):
+```
+./tools/batchupdate.py -i myOhEzTouchDevices.json
 ```
 
 ## Usage
@@ -711,7 +789,7 @@ Route            | Purpose
 ```/save```      | Stores the settings and redirects back to ```/```
 ```/wifi```      | Stores WLAN credentials and reconnects
 ```/restart```   | Reboots the device
-```/update```    | Firmware upload, also used by ```tools/batchupdate.sh```
+```/update```    | Firmware upload, also used by ```tools/batchupdate.py```
 
 None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
 
@@ -1521,7 +1599,7 @@ Contact: c5n AT posteo DOT de
 - [ ] openhab_ui: Prefer widget label text instead of item label text
 - [ ] openhab_ui: Add secured sections with PIN protection
 - [x] openhab_ui: Improve selection, setpoint and slider elements
-- [x] ac: Improve OTA firmware update --> batchupdate.sh
+- [x] ac: Improve OTA firmware update --> batchupdate.py
 - [x] main: Show portal active icon
 - [x] openhab_ui: Add theme support
 - [x] openhab_ui: Give each theme family its own chrome, tiles, typeface and

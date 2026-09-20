@@ -3,10 +3,10 @@
  *
  * The firmware upload, replacing AutoConnect's HTTPUpdateServer.
  *
- * The route and the request shape are unchanged, because tools/batchupdate.sh
+ * The route and the request shape are unchanged, because tools/batchupdate.py
  * knows them: a multipart POST to /update, whose field name is ignored (the
- * script calls it "name", the browser form below calls it "image", and neither
- * matters).
+ * script calls it "update", the browser form below calls it "image", and
+ * neither matters).
  *
  * The multipart body is scanned rather than handed to the server's form
  * parser, for the same reason the transport has a streaming route at all: it
@@ -196,9 +196,9 @@ void webui_ota_handle_upload(webui_request_t *req)
 
             webui_send(req, 200, "text/plain", "OK\n");
 
-            /* The response has to reach the client first: batchupdate.sh reads
-             * curl's exit status, and a reset connection is a failure to it
-             * even though the update succeeded. */
+            /* The response has to reach the client first: batchupdate.py
+             * treats a reset connection as a failure even though the update
+             * succeeded. */
             vTaskDelay(pdMS_TO_TICKS(500));
             port_restart();
             return;
