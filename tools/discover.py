@@ -13,6 +13,12 @@ Recognition, per firmware generation:
 
   * 0.90 and later serve a status page with Version and Target rows, so the
     entry comes out complete -- target included.
+  * A device running the minimal recovery firmware serves the same rows but
+    reports target "Minimal", and the one thing it cannot know is the board
+    it runs on. The entry comes out like a legacy one -- "target": null,
+    "version": null (recording the version would make batchupdate.py skip
+    the device as current, and it is anything but) -- with a comment saying
+    what it is and what to do.
   * The pre-0.90 AutoConnect firmware answers with pages titled "OhEzTouch"
     but tells neither its version nor its board over HTTP, so the entry comes
     out with "target": null -- deliberately: batchupdate.py refuses it until
@@ -40,7 +46,8 @@ from pathlib import Path
 
 # tools/ is sys.path[0] when this runs as a script, so this import is also
 # what a run from any other directory resolves.
-from batchupdate import TARGETS, VERSION_RE, TARGET_NAME_RE, http_get
+from batchupdate import TARGETS, VERSION_RE, TARGET_NAME_RE, http_get, \
+    MINIMAL_TARGET_NAME
 
 # What a probe gives an address before calling it nothing: two seconds is a
 # long time for one GET on a LAN, and short enough that a dark /24 is done in
@@ -143,6 +150,18 @@ def device_entry(found):
         if found["hostname"]:
             comment += ", hostname %r" % found["hostname"]
         comment += ", target unknown -- fill in before updating"
+        return {"host": host, "target": None, "version": None,
+                "comment": comment}
+
+    # A device running the minimal recovery firmware reports the version it
+    # was built from, but it is not running it: the full image is still to
+    # come. Recording that version would make batchupdate.py skip the device
+    # as already current, so -- exactly like a legacy device -- the entry
+    # says nothing and asks for the board instead.
+    if found["target_name"] == MINIMAL_TARGET_NAME:
+        comment = ("%s; running the minimal recovery firmware %s, board "
+                   "target unknown -- fill in, then update to the full image"
+                   % (comment, found["version"]))
         return {"host": host, "target": None, "version": None,
                 "comment": comment}
 

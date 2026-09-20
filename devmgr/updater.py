@@ -40,6 +40,12 @@ TARGETS = {
 UPLOAD_TIMEOUT_S = 30
 REBOOT_WAIT_FACTOR = 12
 
+# What a device running the minimal recovery firmware reports as its target.
+# It is deliberately not in TARGETS: the recovery image is board-independent,
+# so there is no per-target image to pick for it -- and no way to learn the
+# board from a device running it, which is what an update would need.
+MINIMAL_TARGET_NAME = "Minimal"
+
 # The phases a device moves through, for the progress display.
 PHASES = ("queued", "checking", "uploading", "waiting for reboot",
           "verifying", "PASS", "FAIL")

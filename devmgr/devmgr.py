@@ -328,8 +328,14 @@ def start_updates(macs, image_kind, uploaded_path=None):
                     break
 
             if target is None:
-                skipped.append({"mac": mac, "reason":
-                                "target %r is not a known build" % target_name})
+                if target_name.strip().lower() \
+                        == updater.MINIMAL_TARGET_NAME.lower():
+                    reason = ("running the minimal recovery firmware; the "
+                              "board is unknowable from it -- upload the full "
+                              "image as a file")
+                else:
+                    reason = "target %r is not a known build" % target_name
+                skipped.append({"mac": mac, "reason": reason})
                 continue
 
             image, source = updater.image_for(target)
