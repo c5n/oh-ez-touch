@@ -28,6 +28,8 @@
 
 #include "webui.hpp"
 
+#include "webui_out.h"
+
 #include "config/config_fields.hpp"
 
 #include "openhab/openhab_discover.hpp"
@@ -36,6 +38,7 @@
 #include "ui/ui_frame_stats.h"
 #include "port/port_net.h"
 #include "port/port_sys.h"
+#include "webui_api.hpp"
 #include "webui_ota.hpp"
 #include "webui_transport.h"
 #include "net/wlan.hpp"
@@ -79,133 +82,8 @@ static Config *webui_config = NULL;
 /* sendContent() mallocs a chunk header and writes three times per call, so
  * emitting a field at a time would mean a hundred mallocs and three hundred
  * packets per page. Everything goes through one buffer that flushes when it
- * fills, which brings the whole form down to about a dozen calls.
- *
- * The buffer lives on the handler's stack rather than in .bss, so it costs
- * nothing while nobody is browsing. 512 bytes against the 8 KB Arduino loop
- * task is affordable; the handlers below add little else. */
-struct webui_out_s
-{
-    webui_request_t *req;
-    char             buf[512];
-    size_t           len;
-};
-
-#define WEBUI_OUT_FLUSH_AT (sizeof(((struct webui_out_s *)0)->buf) - 128)
-
-static void webui_flush(struct webui_out_s *o)
-{
-    /* Not merely an optimisation: a zero-length sendContent() is the
-     * terminating chunk, so flushing an empty buffer would end the response
-     * in the middle of the page. */
-    if (o->len == 0)
-        return;
-
-    webui_write(o->req, o->buf, o->len);
-    o->len = 0;
-}
-
-static void webui_put(struct webui_out_s *o, const char *s)
-{
-    size_t len = strlen(s);
-
-    while (len > 0)
-    {
-        size_t room = sizeof(o->buf) - o->len;
-
-        if (room == 0)
-        {
-            webui_flush(o);
-            room = sizeof(o->buf);
-        }
-
-        size_t take = (len < room) ? len : room;
-
-        memcpy(o->buf + o->len, s, take);
-        o->len += take;
-        s += take;
-        len -= take;
-    }
-
-    if (o->len >= WEBUI_OUT_FLUSH_AT)
-        webui_flush(o);
-}
-
-/* HTML-escape everything that came out of Config or off the network. Labels
- * and argument names are compile-time constants we wrote, and go through
- * webui_put() unescaped. */
-static void webui_put_escaped(struct webui_out_s *o, const char *s)
-{
-    for (; *s != '\0'; s++)
-    {
-        switch (*s)
-        {
-        case '&':
-            webui_put(o, "&amp;");
-            break;
-        case '<':
-            webui_put(o, "&lt;");
-            break;
-        case '>':
-            webui_put(o, "&gt;");
-            break;
-        case '"':
-            webui_put(o, "&quot;");
-            break;
-        case '\'':
-            webui_put(o, "&#39;");
-            break;
-        default:
-        {
-            char one[2] = {*s, '\0'};
-            webui_put(o, one);
-            break;
-        }
-        }
-    }
-}
-
-static void webui_putf(struct webui_out_s *o, const char *fmt, ...)
-{
-    char    tmp[192];
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsnprintf(tmp, sizeof(tmp), fmt, ap);
-    va_end(ap);
-
-    webui_put(o, tmp);
-}
-
-/* The same job for a JSON string body: only what a string may not contain
- * literally. Everything that goes through this came off the network -- the
- * sitemap names and labels a server chose -- or out of Config, and lands in a
- * document a browser runs. */
-static void webui_put_json_escaped(struct webui_out_s *o, const char *s)
-{
-    for (; *s != '\0'; s++)
-    {
-        unsigned char c = (unsigned char)*s;
-
-        if (c == '"' || c == '\\')
-        {
-            char pair[3] = {'\\', (char)c, '\0'};
-            webui_put(o, pair);
-        }
-        else if (c < 0x20)
-        {
-            /* Control characters, which a string may not carry raw. openHAB
-             * will not send one, and a body that did would otherwise leave
-             * the page's JSON unparseable. */
-            webui_putf(o, "\\u%04x", (unsigned)c);
-        }
-        else
-        {
-            char one[2] = {(char)c, '\0'};
-            webui_put(o, one);
-        }
-    }
-}
+ * fills, which brings the whole form down to about a dozen calls. The writer
+ * itself lives in webui_out.h now, shared with webui_api.cpp. */
 
 /* -------------------------------------------------------------------- page */
 
@@ -842,6 +720,9 @@ void webui_setup(Config *config)
      * not change. The GET is the upload form. */
     webui_transport_route("/update", WEBUI_GET, webui_ota_handle_form);
     webui_transport_route_stream("/update", webui_ota_handle_upload);
+
+    /* The REST API, for the fleet manager: status, settings, sounds. */
+    webui_api_setup(config);
 
     /* Everything else, which includes one release of grace for bookmarks of
      * the AutoConnect page at /openhab_settings. */

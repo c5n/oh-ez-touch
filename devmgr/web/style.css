@@ -1,0 +1,378 @@
+:root {
+  --bg: #14181d;
+  --panel: #1d232b;
+  --panel-2: #242c36;
+  --border: #333d49;
+  --text: #d8dee6;
+  --dim: #8a94a1;
+  --accent: #1fa3ec;
+  --ok: #4caf7d;
+  --warn: #e0a83c;
+  --err: #e05c5c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1 { font-size: 1.15em; margin: 0; font-weight: 600; }
+h2 { font-size: 1em; margin: 0 0 10px; }
+.dim { color: var(--dim); font-weight: 400; }
+.small { font-size: .85em; }
+.hidden { display: none !important; }
+.spacer { flex: 1; }
+
+/* ------------------------------------------------------------------ header */
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.header-controls { display: flex; gap: 8px; align-items: center; }
+
+input[type=text], input[type=number], select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: .95em;
+}
+
+#subnet { width: 150px; }
+
+button {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 6px 12px;
+  font-size: .95em;
+  cursor: pointer;
+}
+
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.subtle { border-color: transparent; color: var(--dim); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary:disabled {
+  background: var(--panel-2);
+  border-color: var(--border);
+  color: var(--dim);
+  opacity: .7;
+}
+
+.badge {
+  background: var(--err);
+  color: #fff;
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: .75em;
+  margin-left: 4px;
+}
+
+/* ------------------------------------------------------------- scan progress */
+
+#scan-progress {
+  position: relative;
+  height: 22px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+#scan-bar {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: rgba(31, 163, 236, .25);
+  transition: width .3s;
+}
+
+#scan-text {
+  position: relative;
+  font-size: .8em;
+  color: var(--dim);
+  padding-left: 16px;
+  line-height: 22px;
+}
+
+/* ----------------------------------------------------------------- settings */
+
+.panel {
+  position: absolute;
+  right: 16px;
+  top: 52px;
+  z-index: 20;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 14px;
+  width: 260px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+
+.panel label { display: block; margin: 8px 0; }
+.panel label.row { display: flex; gap: 8px; align-items: center; }
+.panel input[type=text], .panel select { width: 100%; margin-top: 3px; }
+.panel label.row input { width: auto; }
+.panel button { margin-top: 8px; width: 100%; }
+
+/* ----------------------------------------------------------------- bulk bar */
+
+#bulk-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--border);
+}
+
+#bulk-count { color: var(--dim); margin-right: 8px; }
+
+/* ------------------------------------------------------------------- table */
+
+#devices {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 4px;
+}
+
+#devices th, #devices td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#devices th {
+  color: var(--dim);
+  font-weight: 500;
+  font-size: .82em;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+#devices tbody tr:hover { background: var(--panel-2); }
+#devices tr.offline td { color: var(--dim); }
+
+.status-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.status-dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.status-dot.off { background: var(--err); }
+
+.hostcell .comment { display: block; font-size: .78em; color: var(--dim); }
+
+.actions button {
+  padding: 3px 7px;
+  margin-right: 3px;
+  font-size: .9em;
+}
+
+#empty-hint { padding: 30px 16px; text-align: center; }
+
+/* ------------------------------------------------------------------- modal */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 30;
+  padding-top: 6vh;
+}
+
+.modal-box {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 560px;
+  max-width: 92vw;
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 16px 18px;
+}
+
+/* The settings modal is a column instead: the form scrolls, and the action
+ * bar is pinned to the bottom of the box so Save and Cancel are visible
+ * regardless of where the form is scrolled to. */
+#config-modal .modal-box {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+
+#config-modal .config-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#config-modal .modal-actions {
+  flex: none;
+  margin-top: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+
+/* The tab bar the form is grouped into -- the firmware's own tabs, as
+ * /api/config names them. */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab-btn {
+  padding: 5px 12px;
+  font-size: .9em;
+}
+
+.tab-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.config-body fieldset {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin: 0 0 10px;
+  padding: 8px 10px;
+}
+
+.config-body legend { color: var(--dim); padding: 0 4px; font-size: .85em; }
+
+.config-body label { display: block; margin: 6px 0; font-size: .88em; }
+.config-body label > span { color: var(--dim); display: block; margin-bottom: 2px; }
+.config-body label.bool { display: flex; align-items: center; gap: 8px; }
+.config-body label.bulk { display: flex; align-items: center; gap: 8px; }
+.config-body label.bulk .bulk-input { flex: 1; }
+.config-body input[type=text], .config-body input[type=number], .config-body select {
+  width: 100%;
+}
+.config-body label.bool input, .config-body label.bulk input[type=checkbox] { width: auto; }
+.restart-flag { color: var(--warn); }
+
+.result { margin-top: 8px; font-size: .88em; white-space: pre-wrap; }
+.result.ok { color: var(--ok); }
+.result.err { color: var(--err); }
+
+/* ------------------------------------------------------------ firmware update */
+
+.update-source { margin: 10px 0; }
+.update-source label.row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
+
+#update-images { margin: 4px 0 8px 24px; }
+
+.update-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.update-device .name { width: 140px; overflow: hidden; text-overflow: ellipsis; }
+.update-device .phase { width: 130px; font-size: .85em; color: var(--dim); }
+.update-device .phase.PASS { color: var(--ok); }
+.update-device .phase.FAIL { color: var(--err); }
+
+.progress {
+  flex: 1;
+  height: 8px;
+  background: var(--panel-2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.progress.PASS > div { background: var(--ok); }
+.progress.FAIL > div { background: var(--err); }
+
+/* ------------------------------------------------------------------ console */
+
+#console {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 260px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 25;
+}
+
+#console-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+#console-toolbar button { padding: 3px 9px; font-size: .85em; }
+
+#console-lines {
+  flex: 1;
+  overflow-y: auto;
+  font-family: "Cascadia Code", "JetBrains Mono", monospace;
+  font-size: .82em;
+  padding: 6px 10px;
+  line-height: 1.5;
+}
+
+#console-lines .ts { color: var(--dim); margin-right: 8px; }
+#console-lines .src { color: var(--accent); margin-right: 8px; }
+#console-lines .debug { color: var(--dim); }
+#console-lines .info { color: var(--text); }
+#console-lines .warn { color: var(--warn); }
+#console-lines .error { color: var(--err); }
+
+/* -------------------------------------------------------------------- toast */
+
+#toast {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 5px;
+  padding: 10px 14px;
+  z-index: 40;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+  max-width: 360px;
+}
+
+#toast.err { border-left-color: var(--err); }
+#toast.ok { border-left-color: var(--ok); }

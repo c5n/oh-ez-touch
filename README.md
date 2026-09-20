@@ -791,7 +791,34 @@ Route            | Purpose
 ```/restart```   | Reboots the device
 ```/update```    | Firmware upload, also used by ```tools/batchupdate.py```
 
+Since 0.91 there is also a REST API, meant for tooling -- the device manager
+below is its first client:
+
+Route               | Purpose
+------------------- | -------
+```GET /api/status```   | Version, target, uptime, network and heap as JSON, without the side effects ```GET /``` has (no sitemap fetch, no mDNS scan), so it is safe to poll
+```GET /api/config```   | Every setting with label, kind, value and range or options as JSON; secrets are masked as ```***```
+```POST /api/config```  | A JSON object of changed settings. Absent fields are untouched -- unlike ```/save```, where an absent checkbox means "off" -- and one rejected value rolls the whole request back
+```GET /api/sounds```   | The sound vocabulary of the theme in force
+```POST /api/sound```   | ```{"name":"door_chime","force":true}``` plays a sound; ```force``` plays it past the beeper mute, for locating a panel
+
 None of these is authenticated, and the setup AccessPoint is open, so anyone who can reach the device can reconfigure it or flash it. That has always been true; treat the device as trusted-network-only.
+
+#### Device manager
+```devmgr/``` is a web-based fleet manager: a Python script that serves a page
+on localhost (nothing but Python 3 needed) and manages the devices over the
+REST API above. It scans a subnet for devices, refreshes what it knows about
+them on a configurable interval, remembers every device it has ever seen so
+one that drops off the network shows as offline rather than vanishing, edits
+settings on one device or on a selection at once, updates firmware with a
+progress display, and plays a panel's door chime to find it in the field.
+What it is doing -- scans, refreshes, saves, updates, every request to a
+device -- is visible in the page's debug console.
+
+    python3 devmgr/devmgr.py            # then open http://localhost:8088
+
+Settings and the device list persist in ```devmgr/data/devmgr.json```. The
+full description is in [doc/devmgr.md](doc/devmgr.md).
 
 #### Settings on the screen
 Touching the upper bar opens the settings screen. It is a menu of large cells

@@ -55,6 +55,21 @@ static QueueHandle_t xRequestQueue = NULL;
 static volatile bool    beeper_enabled;
 static volatile uint8_t beeper_master = 25;
 
+/* The one shot beeper_force_next() arms. The claim is taken by the next
+ * successful send -- a send that fails leaves it for the one after -- and
+ * then travels through the queue as a count, because the item itself has no
+ * room for a flag: eight bytes by value, and the FIFO order of the sends is
+ * the order of the dequeues, so count and item cannot be mismatched. Both are
+ * written from the LVGL task (the only place a forced chime is queued from);
+ * the task only ever decrements. */
+static volatile bool     beeper_force_claim;
+static volatile unsigned beeper_forced_pending;
+
+void beeper_force_next(void)
+{
+    beeper_force_claim = true;
+}
+
 /* Bumped by beeper_stop(), snapshotted by the task when it takes an item off
  * the queue. Anything sounding is abandoned the moment the two differ.
  *
@@ -70,6 +85,27 @@ static volatile uint8_t beeper_master = 25;
 static volatile uint32_t beeper_generation;
 
 static void beeper_task(void *parameter);
+
+/* The queue and the task, brought up on first use: the first time the beeper
+ * is switched on, or the first forced chime on a panel that never was.
+ * Creating them lazily is about not paying the task's two kilobytes on a
+ * muted panel, and a locate chime is the one request that pays them anyway. */
+static bool beeper_ensure_task(void)
+{
+    if (xRequestQueue != NULL)
+        return true;
+
+    xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH,
+                                 sizeof(beeper_item_t));
+
+    if (xRequestQueue == NULL)
+        return false;
+
+    xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL,
+                BEEPER_TASK_PRIORITY, NULL);
+
+    return true;
+}
 
 /* pdMS_TO_TICKS() rounds down, and the simulator's tick is four milliseconds,
  * so a two-millisecond slot rounds to zero there -- and xTaskDelayUntil() with
@@ -97,7 +133,8 @@ static void beeper_delay(TickType_t *last_wake, uint16_t ms)
  * than accumulated, so a frame that was preempted shortens the note it was in
  * instead of stretching the whole tune -- which for a vibrato would also slide
  * its phase. */
-static void beeper_walk(const struct beeper_seq_s *seq, uint32_t generation)
+static void beeper_walk(const struct beeper_seq_s *seq, uint32_t generation,
+                        bool forced)
 {
     TickType_t started   = xTaskGetTickCount();
     TickType_t last_wake = started;
@@ -109,8 +146,11 @@ static void beeper_walk(const struct beeper_seq_s *seq, uint32_t generation)
 
         /* Rechecked here, not only at the queue, so that unchecking "Enable
          * beeper" stops the note that is sounding rather than the one after
-         * it. beeper_stop() is the same idea without the setting attached. */
-        if (beeper_enabled == false || beeper_generation != generation)
+         * it. beeper_stop() is the same idea without the setting attached. A
+         * forced item answers to neither -- it was asked for precisely
+         * because the setting is unknown. */
+        if ((beeper_enabled == false && forced == false)
+            || beeper_generation != generation)
             break;
 
         uint32_t t_ms = (uint32_t)(xTaskGetTickCount() - started) * portTICK_PERIOD_MS;
@@ -142,7 +182,8 @@ static void beeper_walk(const struct beeper_seq_s *seq, uint32_t generation)
  * The chime clock is recomputed from the real tick count at every frame rather
  * than accumulated, so a frame that was preempted shortens the note it was in
  * instead of stretching the whole chime. */
-static void beeper_walk(const struct beeper_chime_s *chime, uint32_t generation)
+static void beeper_walk(const struct beeper_chime_s *chime, uint32_t generation,
+                        bool forced)
 {
     TickType_t started   = xTaskGetTickCount();
     TickType_t last_wake = started;
@@ -155,8 +196,11 @@ static void beeper_walk(const struct beeper_chime_s *chime, uint32_t generation)
 
         /* Rechecked here, not only at the queue, so that unchecking "Enable
          * beeper" stops the note that is sounding rather than the one after
-         * it. beeper_stop() is the same idea without the setting attached. */
-        if (beeper_enabled == false || beeper_generation != generation)
+         * it. beeper_stop() is the same idea without the setting attached. A
+         * forced item answers to neither -- it was asked for precisely
+         * because the setting is unknown. */
+        if ((beeper_enabled == false && forced == false)
+            || beeper_generation != generation)
             break;
 
         uint32_t t_ms = (uint32_t)(xTaskGetTickCount() - started) * portTICK_PERIOD_MS;
@@ -227,8 +271,15 @@ static uint32_t beeper_item_duration_ms(const beeper_item_t *item)
 
 void beeper_play_seq(const struct beeper_seq_s *seq)
 {
-    if (beeper_enabled == false || xRequestQueue == NULL || seq == NULL ||
-        seq->notes == NULL || seq->count == 0)
+    if (seq == NULL || seq->notes == NULL || seq->count == 0)
+        return;
+
+    /* Taken, not peeked at: the claim belongs to the item this call queues,
+     * and a send that never happens must not spend it. */
+    bool forced = beeper_force_claim;
+
+    if ((beeper_enabled == false && forced == false)
+        || beeper_ensure_task() == false)
         return;
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
@@ -237,15 +288,29 @@ void beeper_play_seq(const struct beeper_seq_s *seq)
            (unsigned)beeper_seq_duration_ms(seq));
 #endif
 
-    xQueueSend(xRequestQueue, seq, 0);
+    if (xQueueSend(xRequestQueue, seq, 0) != pdTRUE)
+        return;
+
+    if (forced == true)
+    {
+        beeper_force_claim = false;
+        beeper_forced_pending = beeper_forced_pending + 1;
+    }
 }
 
 #else
 
 void beeper_play(const struct beeper_chime_s *chime)
 {
-    if (beeper_enabled == false || xRequestQueue == NULL || chime == NULL ||
-        chime->voices == NULL || chime->count == 0)
+    if (chime == NULL || chime->voices == NULL || chime->count == 0)
+        return;
+
+    /* Taken, not peeked at: the claim belongs to the item this call queues,
+     * and a send that never happens must not spend it. */
+    bool forced = beeper_force_claim;
+
+    if ((beeper_enabled == false && forced == false)
+        || beeper_ensure_task() == false)
         return;
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
@@ -253,7 +318,14 @@ void beeper_play(const struct beeper_chime_s *chime)
            (unsigned)beeper_chime_duration_ms(chime));
 #endif
 
-    xQueueSend(xRequestQueue, chime, 0);
+    if (xQueueSend(xRequestQueue, chime, 0) != pdTRUE)
+        return;
+
+    if (forced == true)
+    {
+        beeper_force_claim = false;
+        beeper_forced_pending = beeper_forced_pending + 1;
+    }
 }
 
 #endif
@@ -270,28 +342,24 @@ void beeper_set_volume(uint8_t percent)
 
 void beeper_set_enabled(bool enabled)
 {
-    if (enabled == true && xRequestQueue == NULL)
+    if (enabled == true && xRequestQueue == NULL
+        && beeper_ensure_task() == false)
     {
-        xRequestQueue = xQueueCreate(BEEPER_CONTROL_QUEUE_LENGTH,
-                                     sizeof(beeper_item_t));
-
-        if (xRequestQueue == NULL)
-        {
-            ESP_LOGE("beeper", "beeper_set_enabled: Failed to create the queue");
-            return;
-        }
-
-        xTaskCreate(beeper_task, "beeper_task", BEEPER_TASK_STACK_SIZE, NULL,
-                    BEEPER_TASK_PRIORITY, NULL);
+        ESP_LOGE("beeper", "beeper_set_enabled: Failed to create the queue");
+        return;
     }
 
     beeper_enabled = enabled;
 
     /* Whatever was waiting was queued while the sound was still on. A chime
      * already dequeued keeps playing until the task's next frame boundary,
-     * which is at most one step. */
+     * which is at most one step. The forced count goes with the queue: an
+     * item that is gone has no force left to claim. */
     if (enabled == false && xRequestQueue != NULL)
+    {
         xQueueReset(xRequestQueue);
+        beeper_forced_pending = 0;
+    }
 }
 
 void beeper_stop(void)
@@ -305,7 +373,10 @@ void beeper_stop(void)
      * Resetting first cannot go wrong the other way: an item dequeued between
      * the two lines carries the old generation and is cancelled by the bump. */
     if (xRequestQueue != NULL)
+    {
         xQueueReset(xRequestQueue);
+        beeper_forced_pending = 0;
+    }
 
     /* Spelled out rather than ++, which C++20 deprecates on a volatile -- and
      * the deprecation has a point worth answering: a read-modify-write is not
@@ -418,13 +489,14 @@ bool beeper_demo_playing(void) { return false; }
  * sound is playing and nothing at all when one is not. */
 #define BEEPER_WAIT_SLICE_MS 20
 
-static void beeper_render_wait(uint32_t ms, uint32_t generation)
+static void beeper_render_wait(uint32_t ms, uint32_t generation, bool forced)
 {
     while (ms > 0)
     {
         uint32_t slice = (ms > BEEPER_WAIT_SLICE_MS) ? BEEPER_WAIT_SLICE_MS : ms;
 
-        if (beeper_enabled == false || beeper_generation != generation)
+        if ((beeper_enabled == false && forced == false)
+            || beeper_generation != generation)
             return;
 
         vTaskDelay(pdMS_TO_TICKS(slice));
@@ -451,15 +523,24 @@ static void beeper_task(void *parameter)
              * after it. */
             uint32_t generation = beeper_generation;
 
+            /* The force arrives the same way the item did: the send that
+             * armed it and this dequeue see the same FIFO order, so the count
+             * cannot stick to the wrong chime. */
+            bool forced = (beeper_forced_pending > 0);
+
+            if (forced == true)
+                beeper_forced_pending = beeper_forced_pending - 1;
+
             /* The simulator would rather render the whole thing at audio
              * resolution than be handed one slot every four milliseconds. It
              * returns immediately, so the wait is here: both targets have to
              * serialise chimes the same way, and on the device that falls out
              * of walking the frames. */
             if (beeper_render(&item, beeper_master) == true)
-                beeper_render_wait(beeper_item_duration_ms(&item), generation);
+                beeper_render_wait(beeper_item_duration_ms(&item), generation,
+                                   forced);
             else
-                beeper_walk(&item, generation);
+                beeper_walk(&item, generation, forced);
 
 #if CONFIG_OHEZ_DEBUG_BEEPER_CONTROL
             static UBaseType_t stack_free = 0;

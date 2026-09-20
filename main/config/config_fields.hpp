@@ -66,6 +66,16 @@ enum settings_tab_e
     SETTINGS_TAB_COUNT
 };
 
+/* The tabs' display names, in enum order. In this header rather than in
+ * ui_settings.cpp, where they used to live: the REST API's /api/config names
+ * a section's tab now (webui_api_json.cpp), and a second copy there would
+ * drift from the touch screen's -- the drift this header exists to stop. */
+static const char *const settings_tab_names[SETTINGS_TAB_COUNT] = {
+    "WLAN",   "openHAB", "MQTT",
+    "Sensors", "Device",  "Time",
+    "Theme",  "Audio",   "Info"
+};
+
 /* Reject '/' and ':' -- this was the ^[^/:]*$ pattern on the AutoConnect
  * inputs, which the browser enforced and the firmware did not, so a
  * hand-written POST could put anything into Config. */

@@ -56,6 +56,14 @@ void beeper_play_seq(const struct beeper_seq_s *seq);
 void beeper_play(const struct beeper_chime_s *chime);
 #endif
 
+/* Force the next queued chime past the mute: the locate chime from the web
+ * API, whose whole point is the panel whose position -- and whose settings --
+ * are not known. One shot, not a setting: the flag travels with the single
+ * item queued after this call and is gone with it, so the chime after that is
+ * muted again. The queue and the task are brought up if the beeper was never
+ * switched on, so a panel that has always been muted still answers. */
+void beeper_force_next(void);
+
 /* Abandon whatever is sounding and everything queued behind it.
  *
  * The mute gate could always do this -- beeper_set_enabled(false) empties the

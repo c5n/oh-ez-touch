@@ -80,9 +80,13 @@ static uint32_t ui_beep_queue(const ui_sound_set_s *set, enum ui_sound_e sound)
 
 #endif
 
-void ui_beep_play(enum ui_sound_e sound)
+static void ui_beep_play_gated(enum ui_sound_e sound, bool forced)
 {
-    if (enabled == false)
+    /* What a forced sound skips is the settings half of this flag -- the
+     * half settings_apply_live() mirrors out of Config. The startup half is
+     * not really skipped: before the theme is applied there is no sound set,
+     * and the NULL check below is the guard for that, forced or not. */
+    if (enabled == false && forced == false)
         return;
 
     /* The demonstration tune owns the piezo while it runs.
@@ -124,12 +128,48 @@ void ui_beep_play(enum ui_sound_e sound)
      * one after another, so what is outstanding is whatever was outstanding
      * plus this. Erring high only makes the tick guard keener, which is the
      * safe direction. */
+    if (forced == true)
+        beeper_force_next();
+
     busy_until = now + pending + ui_beep_queue(set, sound);
+}
+
+void ui_beep_play(enum ui_sound_e sound)
+{
+    ui_beep_play_gated(sound, false);
 }
 
 void ui_beep_set_enabled(bool en)
 {
     enabled = en;
+}
+
+/* ---------------------------------------------------------------- requests */
+
+/* The slot ui_beep_request() writes and ui_beep_loop() drains -- one, not a
+ * queue, for the reason the header gives. forced is written first and read
+ * second: the sound is the guard both sides test, so a torn pair is not
+ * possible. */
+static volatile int  requested_sound = (int)UI_SOUND_COUNT;
+static volatile bool requested_forced;
+
+void ui_beep_request(enum ui_sound_e sound, bool forced)
+{
+    requested_forced = forced;
+    requested_sound = (int)sound;
+}
+
+void ui_beep_loop(void)
+{
+    if (requested_sound == (int)UI_SOUND_COUNT)
+        return;
+
+    enum ui_sound_e sound  = (enum ui_sound_e)requested_sound;
+    bool            forced = requested_forced;
+
+    requested_sound = (int)UI_SOUND_COUNT;
+
+    ui_beep_play_gated(sound, forced);
 }
 
 static void press_event(lv_event_t *e)

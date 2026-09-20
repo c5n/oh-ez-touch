@@ -40,7 +40,7 @@ from pathlib import Path
 
 # tools/ is sys.path[0] when this runs as a script, so this import is also
 # what a run from any other directory resolves.
-from batchupdate import TARGETS, VERSION_RE, TARGET_RE, http_get, ReachableHttpError
+from batchupdate import TARGETS, VERSION_RE, TARGET_NAME_RE, http_get
 
 # What a probe gives an address before calling it nothing: two seconds is a
 # long time for one GET on a LAN, and short enough that a dark /24 is done in
@@ -69,7 +69,7 @@ def classify(body):
     "legacy", the two remaining fields None where the firmware does not tell.
     """
     version = VERSION_RE.search(body)
-    target = TARGET_RE.search(body)
+    target = TARGET_NAME_RE.search(body)
 
     if version and target:
         return "current", version.group(1), target.group(1).strip()
@@ -98,12 +98,9 @@ def probe(address, port, resolve_names):
     """One address. A result dict for an OhEzTouch device, None otherwise --
     connection failures, non-200 answers and pages that are not ours all look
     alike from here: not something to put in the list."""
-    host = "%s:%d" % (address, port) if port != 80 else address
-
     try:
-        body = http_get("http://%s/" % host, PROBE_TIMEOUT_S).decode(
-            errors="replace")
-    except (ReachableHttpError, urllib.error.URLError, OSError):
+        body = http_get(address, port, "/", PROBE_TIMEOUT_S)
+    except (urllib.error.URLError, OSError):
         return None
 
     generation, version, target_name = classify(body)
@@ -116,10 +113,10 @@ def probe(address, port, resolve_names):
     hostname = None
     if generation == "legacy":
         try:
-            settings = http_get("http://%s%s" % (host, LEGACY_SETTINGS_PAGE),
-                                PROBE_TIMEOUT_S).decode(errors="replace")
+            settings = http_get(address, port, LEGACY_SETTINGS_PAGE,
+                                PROBE_TIMEOUT_S)
             hostname = legacy_hostname(settings)
-        except (ReachableHttpError, urllib.error.URLError, OSError):
+        except (urllib.error.URLError, OSError):
             pass
 
     name = None

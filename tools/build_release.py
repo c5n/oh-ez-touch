@@ -32,6 +32,10 @@ from pathlib import Path
 # counts as a hardware target; expected_version_default names the release.
 from batchupdate import REPO_ROOT, TARGETS, expected_version_default
 
+# batchupdate.py keeps REPO_ROOT as a string; every use below joins paths on
+# it, so here it is a Path.
+REPO_ROOT = Path(REPO_ROOT)
+
 # What an initial esptool flash needs besides the application image, as
 # paths inside a build directory.
 FLASH_SET = {

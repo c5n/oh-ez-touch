@@ -121,6 +121,8 @@ set(OHEZ_APP_SRCS
 
     "web/multipart.c"
     "web/webui.cpp"
+    "web/webui_api.cpp"
+    "web/webui_api_json.cpp"
     "web/webui_ota.cpp"
     "web/webui_transport.cpp"
     "web/webui_transport_esp32.cpp"

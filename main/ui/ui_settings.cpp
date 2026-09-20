@@ -219,10 +219,9 @@ static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
     LV_SYMBOL_GPS,     LV_SYMBOL_EDIT,     LV_SYMBOL_REFRESH,
     LV_SYMBOL_EYE_OPEN, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_LIST};
 
-static const char *const tab_title[SETTINGS_TAB_COUNT] = {
-    "WLAN",   "openHAB", "MQTT",
-    "Sensors", "Device",  "Time",
-    "Theme",  "Audio",   "Info"};
+/* The titles come from config_fields.hpp -- settings_tab_names[] -- so the
+ * REST API's section tabs read the same as this screen's. */
+static const char *const *const tab_title = settings_tab_names;
 
 /* ------------------------------------------------------------- the menus */
 

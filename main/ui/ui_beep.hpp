@@ -250,6 +250,22 @@ void ui_beep_play(enum ui_sound_e sound);
  * the boot chime. */
 void ui_beep_set_enabled(bool en);
 
+/* Ask for a sound from a task that is not the LVGL one: the web API, whose
+ * handlers run on the server's task. Only records the request -- the next
+ * ui_beep_loop() carries it out from openhab_ui_loop(), so the lv_tick
+ * arithmetic in ui_beep_play() stays single-tasked. One slot, not a queue:
+ * two requests inside one UI iteration coalesce, which for a one-second
+ * chime is inaudible anyway.
+ *
+ * `forced` plays past the runtime mute -- the locate chime, for the panel
+ * whose position is unknown. It is not a settings change and not a volume
+ * change: one sound, once, and the chime after it is muted again. */
+void ui_beep_request(enum ui_sound_e sound, bool forced);
+
+/* Carry out what ui_beep_request() recorded. Called from openhab_ui_loop(),
+ * which is the task ui_beep_play() expects to run on. */
+void ui_beep_loop(void);
+
 /* Give `obj` the contact tick on LV_EVENT_PRESSED.
  *
  * Called by ui_motion_pressable(), which is what every tile, themed button,

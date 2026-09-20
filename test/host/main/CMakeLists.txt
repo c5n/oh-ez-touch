@@ -107,6 +107,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "test_testif_parse.cpp"
+                            "test_webui_api.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_common.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_seq.c"
@@ -123,6 +124,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/webui_api_json.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_frame_stats.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
@@ -171,3 +173,12 @@ set_source_files_properties(
     "${CMAKE_CURRENT_LIST_DIR}/test_ui_beep_tunes.cpp"
     TARGET_DIRECTORY ${COMPONENT_LIB}
     PROPERTIES COMPILE_DEFINITIONS "CONFIG_OHEZ_BEEPER_ENGINE_SEQ=1")
+
+# webui_api_json.cpp reaches the sound vocabulary through ui_beep.hpp, which
+# wants an engine selected; the vocabulary is the same under both, so either
+# define serves -- the same trick as the table files above.
+set_source_files_properties(
+    "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/webui_api_json.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/test_webui_api.cpp"
+    TARGET_DIRECTORY ${COMPONENT_LIB}
+    PROPERTIES COMPILE_DEFINITIONS "CONFIG_OHEZ_BEEPER_ENGINE_MIXER=1")

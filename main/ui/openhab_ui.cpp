@@ -1571,6 +1571,11 @@ void openhab_ui_loop(void)
     page_submit_if_due();
     page_timeout_check();
 
+    /* What the web API asked for since the last turn: a recorded sound
+     * request, carried out here because ui_beep_play() belongs to this
+     * task. */
+    ui_beep_loop();
+
     if (page_state == PAGE_READY)
     {
         for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)

@@ -16,6 +16,11 @@ tools/devices_*.json
 tools/retry.json
 retry.json
 
+# The device manager's runtime state and uploaded firmware images: real
+# addresses and scanned results, not for the repo
+devmgr/data/
+devmgr/__pycache__/
+
 # The simulator's emulated flash image (NVS), created on first run
 state/
 

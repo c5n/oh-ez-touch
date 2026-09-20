@@ -46,6 +46,7 @@ extern "C" void app_main(void)
     test_ui_beep_tunes_run();
     test_ui_geometry_run();
     test_ui_theme_run();
+    test_webui_api_run();
 
     int failures = UNITY_END();
 

@@ -140,7 +140,7 @@ bool webui_transport_start(uint16_t port)
 
     config.server_port = port;
     /* Room for the routes plus the wildcard below. */
-    config.max_uri_handlers = 12;
+    config.max_uri_handlers = 17;
     /* The firmware upload holds a connection for as long as it takes to send a
      * megabyte over WiFi, and a browser will happily open a second one for the
      * favicon while it does. */
@@ -167,6 +167,11 @@ bool webui_transport_start(uint16_t port)
     register_uri("/restart", HTTP_GET);
     register_uri("/update", HTTP_GET);
     register_uri("/update", HTTP_POST);
+    register_uri("/api/status", HTTP_GET);
+    register_uri("/api/config", HTTP_GET);
+    register_uri("/api/config", HTTP_POST);
+    register_uri("/api/sound", HTTP_POST);
+    register_uri("/api/sounds", HTTP_GET);
     register_uri("/favicon.ico", HTTP_GET);
     register_uri("/*", HTTP_GET);
 
