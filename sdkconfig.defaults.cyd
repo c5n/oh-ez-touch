@@ -1,0 +1,4 @@
+# Cheap Yellow Display (ESP32-2432S028R) -- ILI9341 over SPI, XPT2046 resistive
+# touch on a second SPI bus of its own. Speaker on GPIO 26, and of the on-board
+# RGB LED the green and blue channels (red shares the display's reset line).
+CONFIG_OHEZ_BOARD_CYD=y

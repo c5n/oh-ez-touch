@@ -1,0 +1,242 @@
+menu "OhEzTouch"
+
+choice OHEZ_BOARD
+    prompt "Target board"
+    default OHEZ_BOARD_ARDUITOUCH
+    depends on !IDF_TARGET_LINUX
+    help
+        Which panel this firmware is built for. This replaces the four
+        PlatformIO environments, which differed only in their -D flags.
+
+        The pin assignments themselves are not here: they are a property of
+        the board rather than something a user chooses, and keeping them in
+        main/port/esp32/board_pins.h keeps them reviewable in one table
+        instead of spread over three defaults files.
+
+config OHEZ_BOARD_ARDUITOUCH
+    bool "ArduiTouch 2.4\" (ILI9341, XPT2046)"
+
+config OHEZ_BOARD_ARDUITOUCH28
+    bool "ArduiTouch 2.8\" (ILI9341, XPT2046)"
+
+config OHEZ_BOARD_LANBON
+    bool "Lanbon L8 (ST7789, FT6X36)"
+
+config OHEZ_BOARD_CYD
+    bool "Cheap Yellow Display ESP32-2432S028R (ILI9341, XPT2046)"
+
+endchoice
+
+config OHEZ_ARDUITOUCH_JTAG_PINS
+    bool "ArduiTouch: move the pins an attached JTAG probe needs"
+    depends on OHEZ_BOARD_ARDUITOUCH
+    default n
+    help
+        The esp-prog JTAG probe takes GPIO 12-15, which collides with the
+        touch chip select (14) and the backlight (15). This moves them to 26
+        and 16, as the ArduiTouch_debug_JTAG PlatformIO environment did.
+
+        It is a pin remap and nothing else: the board is still an ArduiTouch,
+        which is why it is an option here rather than a fourth board.
+
+config OHEZ_MINIMAL
+    bool "Minimal OTA recovery firmware"
+    depends on !IDF_TARGET_LINUX
+    default n
+    help
+        Build the minimal recovery firmware instead of the panel: no
+        display, no touch, no UI, no openHAB, no MQTT, no sensors, no
+        sound -- just WLAN (with the stored credentials, and the setup
+        access point when there are none), the /update upload and a small
+        status page.
+
+        One image fits every board, because none of the board's hardware
+        is driven. Its purpose is the OTA rescue path: it is a third of
+        the full image, so uploading it to a device whose old firmware
+        still writes the upload a byte at a time is correspondingly
+        faster, and from there the full image goes up at the fixed speed.
+
+        The board choice above is irrelevant to this build and left at
+        whatever it is; nothing reads it.
+
+config OHEZ_ICONS_BUILTIN
+    bool "Answer widget icons from the set built into the firmware"
+    default y
+    help
+        Look a widget icon up in the icon set compiled into the firmware
+        before asking openHAB for it. A miss is still fetched over HTTP, so
+        this changes where the common icons come from and nothing else.
+
+        What it saves is a request per tile on every page load, and another
+        whenever an item's state changes the icon it resolves to -- the icons
+        are most of the traffic this panel makes and all of it is for a few
+        hundred images that never change.
+
+        The artwork is not in this repository (it is EPL-2.0, and this project
+        is GPL-3.0), so the set only exists once tools/build_icon_set.py has
+        been run; without it this option has nothing to find and costs nothing.
+        Turning it off is how to measure what the set costs in flash against
+        what it saves in requests.
+
+choice OHEZ_BEEPER_ENGINE
+    prompt "Beeper engine"
+    default OHEZ_BEEPER_ENGINE_SEQ
+    help
+        What the seventeen themed sounds are made of.
+
+        The panel has one piezo on one GPIO with one LEDC timer behind it,
+        and the frequency is a property of the timer -- so there is exactly
+        one tone available at any instant, and that one tone is the entire
+        budget. The two answers below spend it differently. Neither is free,
+        and the choice is a taste one rather than a correctness one.
+
+        Compile-time rather than a setting, because each engine has its own
+        note format and therefore its own tables: the three families'
+        fifty-one sounds are written out twice, once for each, and a panel
+        carries only the set it plays. Making it a runtime switch would put
+        both sets in flash for a choice nobody changes twice.
+
+        The Lanbon L8 has no buzzer, so on that board this decides nothing.
+
+config OHEZ_BEEPER_ENGINE_SEQ
+    bool "Expressive -- melodies, envelopes, sweeps, vibrato and tremolo"
+    help
+        One note at a time, with everything that would have gone on a second
+        voice spent on the note instead.
+
+        A sound is a sequence of any length. Each note has an attack, a
+        decay, a sustain and a release given as proportions of its own
+        duration with a millisecond cap, so one envelope row describes a
+        twelve-millisecond tick and a four-hundred-millisecond boot note and
+        both sound like the same instrument. A note can sweep -- linearly in
+        hertz, or as a glide that walks the period, which is both closer to
+        musical and closer to what a divider actually does. It can carry a
+        vibrato or a tremolo. And it can repeat itself, which is how an alert
+        cadence is written.
+
+        It steps every five milliseconds, so a sounding tune is two hundred
+        wakeups a second -- fewer than a chord costs on the other engine.
+
+        A chord is spelled as an arpeggio here, and that is a real loss: the
+        LCARS blips are stacked fourths and fifths and this cannot stack
+        them. Against it, an interleaved chord on this hardware has a grain
+        on it either way, and two notes nine milliseconds apart read as an
+        interval to most ears. If they do not read that way to yours, the
+        other engine is still here.
+
+config OHEZ_BEEPER_ENGINE_MIXER
+    bool "Polyphonic -- up to three voices interleaved on the one piezo"
+    help
+        Real chords, time-multiplexed: each voice holds the channel for two
+        milliseconds in turn, fast enough that the ear fuses them. This is
+        what the panel shipped with, and it is still the right answer if the
+        stacked intervals are the point of the sound design.
+
+        What it costs: a grain on every chord, because chopping a tone at
+        250 Hz puts sidebands either side of it; a floor of about a kilohertz
+        under anything stacked, since a two-millisecond slot below that is
+        under two cycles and the ear hears the slot rate instead of the note;
+        up to five hundred timer reconfigurations a second from a task that
+        runs above the renderer; and per-note expression limited to the three
+        fixed envelope shapes it was written with -- no vibrato, no tremolo,
+        and no beating between detuned voices, because phase is not carried
+        across a slot boundary.
+
+endchoice
+
+endmenu
+
+menu "Debug output"
+
+config OHEZ_DEBUG
+    bool "Boot banner and general debug output"
+    default n
+    help
+        The banner naming the target, version, git hash and build time, and
+        everything else that goes through debug_printf().
+
+        Off by default, which is what every PlatformIO environment had -- so
+        the banner has never actually been printed by a shipped build. There
+        is an unconditional one-line version log either way.
+
+config OHEZ_DEBUG_BACKLIGHT_CONTROL
+    bool "backlight: brightness changes and the dim timeout"
+    default n
+
+config OHEZ_DEBUG_BEEPER_CONTROL
+    bool "beeper: every note queued, and the task's stack headroom"
+    default n
+
+config OHEZ_DEBUG_BLE
+    bool "BLE: every advertisement heard, and each scan window"
+    default n
+    help
+        One line per advertisement, which in a populated room is a few
+        hundred a second. Useful for finding out what a particular tag
+        actually broadcasts; not something to leave on.
+
+config OHEZ_DEBUG_CONFIG_FILE
+    bool "config: the file name, and every setting as it is loaded"
+    default n
+
+config OHEZ_DEBUG_LED
+    bool "LEDs: every brightness command from the broker"
+    default n
+
+config OHEZ_DEBUG_MQTT
+    bool "MQTT: every topic published, with its value"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_CONNECTOR
+    bool "openHAB client: every URL requested, and the pages returned"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_CLIENT
+    bool "openHAB client task: every request submitted, dropped, and its stack"
+    default n
+
+config OHEZ_DEBUG_RELAY
+    bool "relays: every switch command from the broker"
+    default n
+
+config OHEZ_DEBUG_SENSOR_BME280
+    bool "BME280: each reading before it is published"
+    default n
+
+config OHEZ_DEBUG_SENSOR_MAIN
+    bool "sensors: the refresh timer firing"
+    default n
+
+config OHEZ_DEBUG_OPENHAB_UI
+    bool "openHAB UI: widget events, theme changes and the poll statistics"
+    default n
+
+config OHEZ_DEBUG_UI_MESSAGEBOX
+    bool "message box: creation and timeout"
+    default n
+
+config OHEZ_DEBUG_UI_SCREEN
+    bool "screens: pushes, pops and their transitions"
+    default n
+
+config OHEZ_DEBUG_UI_SETTINGS
+    bool "settings screen: which tab opened, and what a save changed"
+    default n
+
+config OHEZ_DEBUG_UI_STYLE
+    bool "styles: which theme variant was applied"
+    default n
+
+config OHEZ_DEBUG_WEBUI
+    bool "web interface: saves, and the settings-table sanity check"
+    default n
+
+config OHEZ_DEBUG_WLAN
+    bool "WLAN: the state machine, the access point and credential imports"
+    default n
+
+config OHEZ_DEBUG_WLAN_STATES
+    bool "WLAN: only the state transitions, which is the quiet subset"
+    default n
+
+endmenu

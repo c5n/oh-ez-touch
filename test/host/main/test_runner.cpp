@@ -1,0 +1,55 @@
+/**
+ * @file test_runner.cpp
+ *
+ * One binary, every suite, and an exit status that says how many failed.
+ *
+ * app_main() does not return here, which is the same rule the firmware's does
+ * -- FreeRTOS's linux port calls vTaskDelete(NULL) afterwards and trips an
+ * assertion -- but for the opposite reason: this one exits the process, on
+ * purpose, so that `idf.py build && ./build/oh-ez-touch-host-test.elf` in a
+ * script or a CI job means what it looks like it means.
+ */
+
+#include "test_suites.hpp"
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <unity.h>
+
+/* Unity requires both, and neither suite has any state to set up: every test
+ * builds its own fixture on the stack. */
+void setUp(void) {}
+void tearDown(void) {}
+
+extern "C" void app_main(void)
+{
+    UNITY_BEGIN();
+
+    test_beeper_mixer_run();
+    test_beeper_seq_run();
+    test_ble_beacon_run();
+    test_config_fields_run();
+    test_config_file_run();
+    test_frame_stats_run();
+    test_icon_set_run();
+    test_item_setters_run();
+    test_mdns_query_run();
+    test_multipart_run();
+    test_testif_parse_run();
+    test_item_state_run();
+    test_item_urls_run();
+    test_outputs_run();
+    test_sitemap_list_run();
+    test_sitemap_parse_run();
+    test_ui_beep_chimes_run();
+    test_ui_beep_tunes_run();
+    test_ui_geometry_run();
+    test_ui_theme_run();
+    test_webui_api_run();
+
+    int failures = UNITY_END();
+
+    fflush(stdout);
+    exit(failures);
+}

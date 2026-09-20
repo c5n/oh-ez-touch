@@ -1,0 +1,34 @@
+# Host simulator settings for `idf.py --preview set-target linux`.
+
+# No lwIP on this target, which is the decisive property: the application uses
+# the *host's* IP stack through host sockets -- real LAN, no TAP device, no root
+# -- and freertos/esp_additions/FreeRTOSSimulator_wrappers.c is compiled in,
+# whose select() wrapper is what stops a socket wait from parking the
+# cooperative scheduler.
+#
+# There is deliberately no CONFIG_LWIP_ENABLE=n here any more. IDF's own Kconfig
+# already has `default n if IDF_TARGET_LINUX`, and the `set(COMPONENTS main)` in
+# CMakeLists.txt means lwip is not in this build's component set at all -- so the
+# symbol is undefined and assigning it is rejected as unknown. Being outside the
+# component set is the stronger guarantee of the two.
+
+# Every tick is a SIGALRM delivered to the running thread, so a high rate means
+# a high EINTR rate in SDL, X11 and libc. 250 Hz is a compromise against
+# LV_DEF_REFR_PERIOD.
+CONFIG_FREERTOS_HZ=250
+
+# The IDF default of 3584 is far too small for a host pthread doing libc work;
+# overflowing it corrupts the FreeRTOS ready lists and surfaces as an assertion
+# in vTaskSwitchContext(), a long way from the cause.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
+
+CONFIG_COMPILER_OPTIMIZATION_DEBUG=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# esp-mqtt's client runs in a task of its own, and its 6144 byte default is a
+# device figure. Same reason as CONFIG_ESP_MAIN_TASK_STACK_SIZE above: a host
+# pthread doing libc and socket work needs far more, and overflowing a FreeRTOS
+# stack here corrupts the ready lists and surfaces as an assertion in
+# vTaskSwitchContext(), a long way from the cause.
+CONFIG_MQTT_USE_CUSTOM_CONFIG=y
+CONFIG_MQTT_TASK_STACK_SIZE=32768

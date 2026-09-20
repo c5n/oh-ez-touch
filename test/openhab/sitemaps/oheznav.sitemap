@@ -1,0 +1,93 @@
+sitemap oheznav label="OhEzTouch Navigation"
+{
+    // ---- home: six tiles, which is exactly ITEM_COUNT_MAX on the panel ----
+    Text label="Ground Floor" icon="groundfloor"
+    {
+        Text label="Living Room" icon="sofa"
+        {
+            Text label="Lighting" icon="light"
+            {
+                Switch      item=NAV_Light_Ceiling
+                Slider      item=NAV_Dimmer_Floor
+                Colorpicker item=NAV_Color_Strip
+                // ---- fourth level below the home page ----
+                Text label="Scenes" icon="settings"
+                {
+                    Selection item=NAV_Mode mappings=["MOVIE"="Movie", "READ"="Reading", "PARTY"="Party", "OFF"="All Off"]
+                    Switch    item=NAV_Light_Desk
+                    Text      item=NAV_Unset
+                }
+            }
+            Text label="Climate" icon="heating"
+            {
+                Setpoint item=NAV_Setpoint minValue=5 maxValue=30 step=0.5
+                Text     item=NAV_Temp_Living
+                Text     item=NAV_Humidity
+            }
+            Switch item=NAV_Blind_Living
+            Default item=NAV_Player
+        }
+        Text label="Kitchen" icon="kitchen"
+        {
+            Switch item=NAV_Light_Kitchen
+            Text   item=NAV_Power_Fridge
+            Text   item=NAV_Power_Oven
+        }
+        Group item=gNAV_Lights
+    }
+    Text label="First Floor" icon="firstfloor"
+    {
+        Text label="Bedroom" icon="bedroom"
+        {
+            Switch item=NAV_Blind_Bed
+            Text   item=NAV_Temp_Bed
+            Slider item=NAV_Volume
+        }
+        Group item=gNAV_Temps
+        Group item=gNAV_Power
+    }
+    Text label="Sensors" icon="motion"
+    {
+        Text item=NAV_Door_Front
+        Text item=NAV_Last_Motion
+        Text item=NAV_Car
+        Text item=NAV_Spaced
+        Text item=NAV_Channel
+    }
+    Text label="Edge Cases" icon="error"
+    {
+        Text      item=NAV_LongLabel
+        Text      item=NAV_Umlaut
+        Selection item=NAV_Channel mappings=["C01"="Channel 01", "C02"="Channel 02", "C03"="Channel 03", "C04"="Channel 04", "C05"="Channel 05", "C06"="Channel 06", "C07"="Channel 07", "C08"="Channel 08", "C09"="Channel 09", "C10"="Channel 10", "C11"="Channel 11", "C12"="Channel 12"]
+        Text label="Too Many Tiles" icon="settings"
+        {
+            Switch item=NAV_Light_Ceiling
+            Switch item=NAV_Light_Desk
+            Switch item=NAV_Light_Kitchen
+            Text   item=NAV_Temp_Living
+            Text   item=NAV_Temp_Bed
+            Text   item=NAV_Humidity
+            Text   item=NAV_Channel
+            Text   item=NAV_Mode
+            Switch item=NAV_Blind_Bed
+            Text   item=NAV_Power_Oven
+        }
+        // Frames are how nearly every published sitemap groups its widgets --
+        // the openHAB docs' own demo is built out of them.
+        Text label="Framed" icon="settings"
+        {
+            Frame label="Lights"
+            {
+                Switch item=NAV_Light_Ceiling
+                Switch item=NAV_Light_Desk
+            }
+            Frame label="Climate"
+            {
+                Text item=NAV_Temp_Living
+                Text item=NAV_Humidity
+            }
+        }
+    }
+    Group item=gNAV_Lights
+    Text  item=NAV_Mode
+}

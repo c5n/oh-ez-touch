@@ -1,0 +1,67 @@
+/**
+ * @file esp32/port_sys.c
+ *
+ * port_sys on the device.
+ */
+
+#include "port_sys.h"
+
+#include <stdlib.h>
+
+#include "esp_log.h"
+#include "esp_system.h"
+#include "esp_timer.h"
+
+static const char *TAG = "port_sys";
+
+/* esp_timer_get_time() is the microsecond monotonic clock the whole SDK uses,
+ * and it survives a light sleep. The host uses clock_gettime(CLOCK_MONOTONIC)
+ * instead because esp_timer registers headers-only on the linux target, so
+ * calling it there is a link error rather than a runtime surprise. */
+uint64_t port_micros(void)
+{
+    return (uint64_t)esp_timer_get_time();
+}
+
+uint64_t port_millis(void)
+{
+    return port_micros() / 1000ULL;
+}
+
+uint32_t port_tick_ms(void)
+{
+    return (uint32_t)port_millis();
+}
+
+void port_restart(void)
+{
+    esp_restart();
+}
+
+size_t port_free_heap(void)
+{
+    return (size_t)esp_get_free_heap_size();
+}
+
+bool port_localtime(struct tm *out)
+{
+    time_t now = 0;
+
+    time(&now);
+
+    if (localtime_r(&now, out) == NULL)
+        return false;
+
+    /* The failure this exists for. Before NTP has synchronised the clock reads
+     * some time in 1970, and openhab_ui.cpp relies on being told so: it keeps
+     * the theme variant currently in effect rather than deciding that 01:00 on
+     * 1 January 1970 falls inside the configured night window. Any year this
+     * firmware could plausibly have been built in is a good enough cut-off. */
+    if (out->tm_year + 1900 < 2020)
+    {
+        ESP_LOGD(TAG, "wall clock not synchronised yet");
+        return false;
+    }
+
+    return true;
+}

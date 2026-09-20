@@ -1,0 +1,133 @@
+# ESP32 device settings.
+
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# LV_DEF_REFR_PERIOD is 16 ms, so a 100 Hz tick (the IDF default) quantises the
+# refresh badly: every 16 ms deadline would round up to 20, and the screen would
+# run at 50 Hz with a third of its frames arriving late.
+CONFIG_FREERTOS_HZ=1000
+
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# -Os. The PlatformIO build was -O0 across LVGL, TFT_eSPI, the Arduino
+# libraries and the application -- about 400 KB of text compiled with no
+# optimisation at all, against prebuilt ESP-IDF archives that were already
+# -Os. See the README for what it actually saved.
+#
+# LVGL is the one exception, and it is made in components/lvgl/CMakeLists.txt
+# rather than here: -Os costs the blend and fill loops far more than it saves in
+# a 4 MB flash, and those loops are where the frame time goes.
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# The XPT2046 driver's own conversion is a full-scale map with no offset, which
+# cannot express this panel's calibration -- see main/port/esp32/port_indev.c.
+# port_indev supplies a process_coordinates callback instead.
+CONFIG_XPT2046_CONVERT_ADC_TO_COORDS=n
+
+# Bluetooth, for the beacon scanner in main/ble/. NimBLE rather than Bluedroid
+# because its roles can be compiled out one at a time, and a scanner needs
+# exactly one of the four: observer. Leaving central, peripheral and broadcaster
+# in would cost flash and RAM for GATT, advertising and connection handling that
+# nothing here calls.
+#
+# The controller is BLE-only (the ESP32's classic Bluetooth is another 200 KB
+# and this project has no use for it), and WiFi/BT software coexistence comes on
+# by its own default once both are enabled -- which is what makes the scan and
+# the openHAB polling share one radio without either stopping.
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BTDM_CTRL_MODE_BLE_ONLY=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
+
+# Central stays on, which looks wrong for a receiver and is not a choice. On the
+# ESP32, esp_nimble_cfg.h hard-codes BLE_HOST_BASED_PRIVACY to 1 -- the Kconfig
+# option for it is a no-op on this target -- so the host-side address resolver
+# is always compiled. It calls the security manager, and the security manager is
+# compiled only when a role that can connect is on. Observer alone does not
+# link, and the error is an undefined ble_sm_alg_encrypt a long way from the
+# cause. Central is the cheaper of the two connect roles: peripheral would add
+# the GATT server, the advertising path and the GAP service on top. Nothing in
+# this firmware ever connects to anything.
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+
+# What makes room for the controller. With the WiFi library's hot paths in IRAM
+# and Bluetooth enabled, IRAM comes out at 98.4% full -- 2 KB left, which is no
+# headroom at all for a target nobody here can flash and test. Moving them to
+# flash brings it to 79%. IDF makes the same choice by itself when BT and PSRAM
+# are both on; this board has no PSRAM, so it has to be said here. The cost is
+# WiFi throughput, which for a panel polling a sitemap every second is not a
+# cost worth having a scanner without.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+
+# 240 MHz, not the 160 IDF defaults to. The panel's whole job is software
+# rendering -- there is no 2D accelerator on an ESP32 and LVGL blends every
+# pixel on the CPU -- so this is 50 % more of the one resource the GUI is short
+# of, for nothing but power the board takes from the mains anyway. The WiFi and
+# Bluetooth stacks are unaffected; their timing comes from the 80 MHz APB clock
+# either way.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# Core 1, not the 0 IDF defaults to. LVGL runs on the main task -- there is no
+# separate render task, on purpose -- and core 0 is where IDF puts everything
+# else that matters: the WiFi task, the Bluetooth controller, the NimBLE host
+# and the esp_timer task are all pinned there by their own defaults. That left
+# the software renderer sharing one core with both radios while core 1 ran the
+# idle task.
+#
+# The cache is the second half of it. The ESP32 has one 32 KB instruction/data
+# cache *per core*, so on core 0 the renderer's blend loops and the ~1.3 MB of
+# font glyphs it streams out of flash were being evicted by radio code with
+# every packet. On core 1 that cache is the GUI's alone.
+#
+# The SPI flush-done interrupt follows the task and is meant to: the ISR is
+# installed by whichever core calls spi_bus_initialize(), and that call is
+# port_display_init() on the main task. So it moves to core 1 as well, out of
+# the way of the WiFi and BT interrupts it used to queue behind.
+#
+# Nothing else here is pinned. The webui, beeper and openHAB client tasks are
+# created with plain xTaskCreate(), so the scheduler places them on whichever
+# core is free, and LVGL is only ever touched from the task this symbol moves.
+CONFIG_ESP_MAIN_TASK_AFFINITY_CPU1=y
+
+# Three things IDF turns on by default that this firmware never asks for.
+# Checked against the source rather than assumed: there is no https, no
+# esp_crt_bundle_attach, no AF_INET6 and no ip6 anywhere in main/.
+#
+# IPv6 is 24.6 KB of the 27 KB these three save, and the safe one besides: the
+# panel only ever reads and reports an IPv4 address, so a v6-only network was
+# never going to work here whatever lwIP was compiled with.
+#
+# Turning https off is worth about two, and the reason to do it is not the two.
+# It is that most of what looks like it should go with it does not: the ~160 KB
+# of mbedTLS and tf-psa-crypto in this image belongs to the WiFi supplicant, and
+# with https gone tf-psa-crypto sheds 378 bytes and mbedx509 none at all.
+#
+# The certificate bundle costs nothing today -- x509_crt_bundle.S links zero
+# bytes because nothing calls esp_crt_bundle_attach() -- and is turned off so
+# that it stays that way by decision rather than by luck.
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=n
+CONFIG_LWIP_IPV6=n
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
+
+# WPA3, which is a trade rather than a cleanup and is recorded as one: it takes
+# libwpa_supplicant from 69.6 KB to 34.2 KB and another 3 KB of crypto with it,
+# 37 KB in all, and in exchange this panel can no longer join a WPA3-only access
+# point. WPA2 and mixed-mode WPA2/WPA3 networks are unaffected, which is nearly
+# all of them. OWE goes with it on both sides; the setup access point is open on
+# purpose, so encrypting it opportunistically was never the plan.
+#
+# What is NOT here, because it does not work: CONFIG_ESP_WIFI_MBEDTLS_CRYPTO=n.
+# That is where the remaining ~160 KB of mbedTLS and tf-psa-crypto lives -- held
+# in by the supplicant, not by anything this firmware calls -- but turning it off
+# fails to link on IDF v6.1, with sha1_vector undefined out of the supplicant's
+# own sha1.c. The crypto is effectively mandatory while WiFi is on.
+CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA=n
+CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_SOFTAP=n

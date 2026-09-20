@@ -1,0 +1,50 @@
+// Items for the oheznav sitemap: a deep, many-levelled navigation tree with
+// one item of every type oh-ez-touch can meet in the field. Safe to delete,
+// together with sitemaps/oheznav.sitemap.
+
+/* ---------------------------------------------------------------- lighting */
+Switch             NAV_Light_Ceiling "Ceiling Light"                  <light>       (gNAV_Lights)
+Switch             NAV_Light_Desk    "Desk Lamp"                      <light>       (gNAV_Lights)
+Switch             NAV_Light_Kitchen "Kitchen Light"                  <light>       (gNAV_Lights)
+Dimmer             NAV_Dimmer_Floor  "Floor Lamp [%d %%]"             <slider>
+Color              NAV_Color_Strip   "LED Strip [%s]"                 <colorlight>
+
+/* ----------------------------------------------------------------- climate */
+Number:Temperature NAV_Temp_Living   "Living Room [%.1f °C]"          <temperature> (gNAV_Temps)
+Number:Temperature NAV_Temp_Bed      "Bedroom [%.1f °C]"              <temperature> (gNAV_Temps)
+Number:Temperature NAV_Setpoint      "Target [%.1f °C]"               <heating>
+Number             NAV_Humidity      "Humidity [%d %%]"               <humidity>
+
+/* ------------------------------------------------------------------ energy */
+Number:Power       NAV_Power_Fridge  "Fridge [%.0f W]"                <energy>      (gNAV_Power)
+Number:Power       NAV_Power_Oven    "Oven [%.0f W]"                  <energy>      (gNAV_Power)
+
+/* ----------------------------------------------------------------- shading */
+Rollershutter      NAV_Blind_Living  "Living Blind [%d %%]"           <blinds>
+Rollershutter      NAV_Blind_Bed     "Bedroom Blind [%d %%]"          <blinds>
+
+/* -------------------------------------------------------------- multimedia */
+Player             NAV_Player        "Playback"                       <receiver>
+String             NAV_Channel       "Channel [%s]"                   <video>
+Dimmer             NAV_Volume        "Volume [%d %%]"                 <soundvolume>
+
+/* ------------------------------------------------------- status / sensors */
+Contact            NAV_Door_Front    "Front Door [%s]"                <door>
+DateTime           NAV_Last_Motion   "Last Motion [%1$tY-%1$tm-%1$td %1$tH:%1$tM]" <time>
+Location           NAV_Car           "Car [%2$s°N %3$s°E]"            <location>
+String             NAV_Mode          "House Mode [%s]"                <house>
+
+/* ------------------------------------------------- awkward but real labels */
+// Never commanded, so it stays NULL -- an uninitialised item on the glass.
+String             NAV_Unset         "Never Set [%s]"                 <text>
+// Non-ASCII, which the label trimmer has to carry through byte for byte.
+String             NAV_Umlaut        "Außentemperatur Süd [%s]"       <text>
+// Longer than the panel's 32-byte label field.
+String             NAV_LongLabel     "A Very Long Item Label That Does Not Fit [%s]" <text>
+// A state with a space in it -- the shape that breaks the icon URL.
+String             NAV_Spaced        "Spaced [%s]"                    <text>
+
+/* --------------------------------------------------- groups, with functions */
+Group:Switch:OR(ON,OFF) gNAV_Lights  "Lights On [%d]"                 <light>
+Group:Number:AVG        gNAV_Temps   "Average [%.1f °C]"              <temperature>
+Group:Number:SUM        gNAV_Power   "Total [%.0f W]"                 <energy>

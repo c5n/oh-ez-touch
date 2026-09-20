@@ -1,0 +1,9 @@
+sitemap oheztest label="OhEzTouch Gaps"
+{
+    Group    item=gOHEZTOUCH_Lights
+    Text     item=OHEZTOUCH_Temp
+    Setpoint item=OHEZTOUCH_Temp     minValue=10 maxValue=28 step=0.5
+    Slider   item=OHEZTOUCH_Dimmer
+    Text     item=OHEZTOUCH_Text
+    Text     item=OHEZTOUCH_Percent
+}

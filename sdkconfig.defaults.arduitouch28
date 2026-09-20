@@ -1,0 +1,3 @@
+# ArduiTouch 2.8" -- as the 2.4", but the panel is mounted the other way up, so
+# the pointer is not flipped.
+CONFIG_OHEZ_BOARD_ARDUITOUCH28=y

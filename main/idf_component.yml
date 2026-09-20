@@ -1,0 +1,42 @@
+## Registry dependencies.
+##
+## esp-mqtt is the one that is not device-only. It left the IDF tree in v6.0 --
+## components/mqtt no longer exists -- and is a registry component now, needed by
+## both targets: see the note on OHEZ_REQUIRES in CMakeLists.txt for why the
+## panel and the simulator run the same MQTT client.
+##
+## The three drivers below are device-only: none has a linux branch, and the
+## simulator's display and pointer come from LVGL's SDL driver instead. The
+## `rules` are the only conditioning the component manager offers -- it cannot
+## key on a Kconfig symbol -- so all three panel and touch drivers are fetched
+## for every board and the linker drops the two that are not used.
+dependencies:
+  ## Not "recent enough": v6 is where the mqtt and json components moved out of
+  ## the tree, so an IDF that still has them cannot build this. The upper bound
+  ## is real too -- v7.0 removes the legacy driver/i2c.h that is only EOL in v6.
+  ## The README pins the exact version; this is the machine-checked floor.
+  idf: "^6.1"
+
+  ## Was the in-tree `mqtt` component up to IDF v5.x. Same code, same API and
+  ## the same CONFIG_MQTT_* symbols; what changed is the name, which is
+  ## `espressif__mqtt` in REQUIRES.
+  espressif/mqtt: "^1.1.0"
+
+  ## ILI9341 has no in-tree driver; ST7789 is part of esp_lcd itself.
+  espressif/esp_lcd_ili9341:
+    version: "^2.1.0"
+    rules:
+      - if: "target != linux"
+
+  ## ArduiTouch: the resistive panel behind the display, on the same SPI bus.
+  atanisoft/esp_lcd_touch_xpt2046:
+    version: "^1.0.6"
+    rules:
+      - if: "target != linux"
+
+  ## Lanbon L8: FT6336 on I2C. The driver is written for the FT5x06 family;
+  ## the address and the touch-data register block are believed identical.
+  espressif/esp_lcd_touch_ft5x06:
+    version: "^1.1.1"
+    rules:
+      - if: "target != linux"

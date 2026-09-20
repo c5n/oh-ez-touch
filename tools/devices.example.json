@@ -1,0 +1,8 @@
+{
+  "devices": [
+    { "host": "oheztouch-01", "target": "arduitouch" },
+    { "host": "oheztouch-02", "target": "arduitouch28", "comment": "hallway, 2.8 inch" },
+    { "host": "oheztouch-03", "target": "lanbon", "version": "0.90", "comment": "found by tools/discover.py, already current -- skipped" },
+    { "host": "192.168.1.50", "target": "lanbon" }
+  ]
+}

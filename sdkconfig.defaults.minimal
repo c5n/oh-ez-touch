@@ -1,0 +1,30 @@
+# Minimal OTA recovery firmware. Combine with sdkconfig.defaults and
+# sdkconfig.defaults.esp32; see CONFIG_OHEZ_MINIMAL in main/Kconfig.projbuild
+# for what this build is and is for.
+#
+# One image for every board: no display, touch, relays, LEDs or sound are
+# driven, so the board choice in main/Kconfig.projbuild does not matter here.
+
+CONFIG_OHEZ_MINIMAL=y
+
+# Nothing scans for beacons in this build, and the controller is ~600 KB of
+# flash the recovery path never touches.
+CONFIG_BT_ENABLED=n
+
+# Back on, now that the Bluetooth controller is out: sdkconfig.defaults.esp32
+# moves the WiFi hot paths to flash to make IRAM room for BT, which costs
+# exactly the throughput an OTA upload lives from. Without BT there is room
+# again, and the upload is the one thing this firmware does.
+CONFIG_ESP_WIFI_IRAM_OPT=y
+CONFIG_ESP_WIFI_RX_IRAM_OPT=y
+
+# The recovery firmware prints a handful of status lines; INFO-level format
+# strings from every component are rodata nobody reads.
+CONFIG_LOG_DEFAULT_LEVEL_WARN=y
+
+# Assert messages with file and line are a debugging aid; a recovery image
+# keeps the abort and drops the strings.
+CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT=y
+
+# No mDNS queries from this firmware.
+CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES=n

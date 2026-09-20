@@ -1,0 +1,8 @@
+String          OHEZTOUCH_Select        "Selection"         <fan>
+String          OHEZTOUCH_String        "String"            <text>
+Switch          OHEZTOUCH_Switch        "Switch"            <switch>
+Number          OHEZTOUCH_Number        "Number [%.1f °C]"  <temperature>
+Color           OHEZTOUCH_Color         "Color [%s]"        <colorlight>
+Player          OHEZTOUCH_Player        "Player"            <receiver>
+Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
+

@@ -3,16 +3,18 @@
     {
         "hostname": "oheztouch-new"
     },
-    "wlan":
-    {
-        "ssid":     "myssid",
-        "password": "secretpassword"
-    },
     "ntp":
     {
         "hostname":         "pool.ntp.org",
         "gmt_offset":       1,
-        "daylightsaving":   0
+        "daylightsaving":   false
+    },
+    "ui":
+    {
+        "theme":        "Material",
+        "night_mode":   "off",
+        "night_from":   22,
+        "night_to":     6
     },
     "backlight":
     {
@@ -22,26 +24,41 @@
     },
     "beeper":
     {
-        "enabled":  1
+        "enabled":  true,
+        "volume":   25
+    },
+    "mqtt":
+    {
+        "enabled":  false,
+        "hostname": "mosquitto",
+        "port":     1883,
+        "user":     "",
+        "password": "",
+        "topic":    "oheztouch",
+        "interval": 60,
+        "retain":   true
+    },
+    "ble":
+    {
+        "enabled":      false,
+        "interval":     30,
+        "window":       5,
+        "rssi_min":     -90,
+        "expire":       120,
+        "publish_all":  false
     },
     "openhab":
     {
-        "hostname": "openhabian",
+        "hostname": "localhost",
         "port":     8080,
-        "sitemap":  "oheztouch",
-        "sensors":
+        "sitemap":  "demo"
+    },
+    "sensors":
+    {
+        "bme280":
         {
-            "bme280":
-            {
-                "use":      0,
-                "interval": 180,
-                "items":
-                {
-                    "temperature":  "",
-                    "humidity":     "",
-                    "pressure":     ""
-                }
-            }
+            "use":      false,
+            "interval": 180
         }
     }
 }
