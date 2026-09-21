@@ -154,7 +154,6 @@ struct widget_context_s widget_context[WIDGET_COUNT_MAX];
 struct statistics_s statistics;
 
 void update_state_widget(struct widget_context_s *ctx);
-static void state_label_fit(lv_obj_t *label);
 static void page_request(uint64_t delay_ms);
 static void widget_icon_request(size_t slot);
 
@@ -498,12 +497,6 @@ void update_state_widget(struct widget_context_s *ctx)
         ui_frame_jarvis_set_gauge((uint8_t)(ctx - widget_context),
                                   (uint8_t)((pct < 0) ? 0 : (pct > 100) ? 100 : pct));
     }
-
-    /* After the text, not before: the size that fits depends on what was just
-     * written. The colorpicker's swatch is an object rather than a label and
-     * returns above rather than falling through to here. */
-    if (lv_obj_check_type(ctx->state_widget, &lv_label_class))
-        state_label_fit(ctx->state_widget);
 }
 
 /**
@@ -807,59 +800,20 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
 }
 
 /* The state line along the bottom edge of a widget button. Every item type
- * that shows one uses the same label; only the button border differs. */
-/* The value is the point of the tile, so it gets the largest face it can be
- * read in and still fit on one line.
+ * that shows one uses the same label; only the button border differs.
  *
- * Measured rather than counted: "1013" and "3.5 °C" are both six characters
- * and are not the same width, and the three families are set in faces of
- * different widths. Falling back a size is much better than the alternatives,
- * which are wrapping into the caption -- what used to happen -- or dotting
- * away the end of a reading.
+ * One face for every reading on every page, and the caption a size below it.
+ * The value used to be measured against the tile and given the largest of the
+ * three faces it fitted in, which meant a page showed "OFF" at 36 px next to
+ * "3.5 °C" at 22 px -- the same kind of reading in two sizes, and the size
+ * moving under a value as it changed. A type hierarchy that is not kept is
+ * not a hierarchy, so the sizes are fixed: font_normal for the reading,
+ * font_small for the caption above it, everywhere.
  *
- * Cheap enough to do on every change: lv_text_get_size() over a handful of
- * glyphs, at most three times, against a five-second poll interval. */
-static void state_label_fit(lv_obj_t *label)
-{
-    const struct ui_theme_s *t = ui_style_theme();
-    const lv_font_t         *sizes[] = {t->font_large, t->font_normal, t->font_small};
-    const char              *text = lv_label_get_text(label);
-    lv_obj_t                *tile = lv_obj_get_parent(label);
-
-    /* v9 defers layout, so a tile that was sized a moment ago still reports a
-     * width of zero -- the same trap the colour swatch works around by using a
-     * percentage. Here a percentage will not do, because the answer has to be
-     * in pixels to measure text against, so the layout is forced instead. */
-    lv_obj_update_layout(tile);
-
-    /* The label's own width, not the tile's: the label is a percentage of the
-     * tile's *content* area, and the tile has padding of its own. Measuring
-     * against the outer width overestimates the room by twice that padding,
-     * which is exactly enough to let a value that does not fit be chosen. */
-    int32_t avail = lv_obj_get_width(label);
-
-    if (avail <= 0)
-        return;
-
-    for (size_t i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++)
-    {
-        lv_point_t size;
-
-        lv_text_get_size(&size, text, sizes[i], t->letter_space, 0, LV_COORD_MAX,
-                         LV_TEXT_FLAG_NONE);
-
-        if (size.x <= avail || i == sizeof(sizes) / sizeof(sizes[0]) - 1)
-        {
-            lv_obj_set_style_text_font(label, sizes[i], 0);
-            /* Pinned to one line of whatever was chosen. LV_LABEL_LONG_DOT
-             * only dots once it has run out of *height*; left to size itself
-             * it grows upward out of a bottom-aligned label and back through
-             * the caption. */
-            lv_obj_set_height(label, lv_font_get_line_height(sizes[i]));
-            return;
-        }
-    }
-}
+ * The cost is the wide reading that no longer gets a face of its own: it is
+ * dotted instead. font_normal is chosen over font_large for exactly that
+ * reason -- at 22 px the readings a panel actually shows fit, and the ones
+ * that do not were already being shrunk. */
 
 static lv_obj_t *state_label_create(struct widget_context_s *wctx)
 {
@@ -872,6 +826,10 @@ static lv_obj_t *state_label_create(struct widget_context_s *wctx)
     lv_obj_add_style(state_label, &ui_style_label_state, LV_PART_MAIN);
     lv_obj_move_foreground(state_label);
     lv_obj_set_width(state_label, lv_pct(100));
+    /* Pinned to one line. LV_LABEL_LONG_DOT only dots once it has run out of
+     * *height*; left to size itself it grows upward out of a bottom-aligned
+     * label and back through the caption. */
+    lv_obj_set_height(state_label, lv_font_get_line_height(ui_style_theme()->font_normal));
     lv_obj_align(state_label, LV_ALIGN_BOTTOM_MID, 0, -TILE_PAD);
 
     return state_label;
