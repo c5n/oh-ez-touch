@@ -32,6 +32,12 @@ tools/ohez_ctl.py ping
 sitemap and the icons from the compiled-in fixtures, so the screen is the same
 every run and does not depend on an openHAB server being reachable.
 
+Neither does it depend on a window server: add
+`SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software` and the run is headless,
+with every command below still answering. See
+[Running headless](simulator.md#running-headless) for why it takes two
+variables.
+
 It listens on **127.0.0.1:8781** -- the web interface's 8780 plus one. Loopback
 only, deliberately: the channel has no authentication and can press anything on
 the panel, so it is not offered to the network.

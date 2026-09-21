@@ -20,6 +20,34 @@ An "OhEzTouch" window opens. It shows a 320x240 screen at double size
 (`port_display_init()` in `main/port/linux/port_display.c`). Mouse clicks act
 as touch input. Closing the window ends the program.
 
+## Running headless
+
+There is no window server on a build machine, and a test that has nothing to
+do with the screen should not put a window on a desktop that does have one.
+SDL's dummy video driver covers both, and nothing has to be rebuilt:
+
+```bash
+env -u DISPLAY SDL_VIDEODRIVER=dummy SDL_RENDER_DRIVER=software \
+    ./build/linux/oh-ez-touch.elf
+```
+
+**Both variables are needed.** `lv_conf.h` sets `LV_SDL_ACCELERATED`, so
+LVGL asks `SDL_CreateRenderer()` for an accelerated renderer, and the dummy
+driver has none -- on its own it fails with *Couldn't find matching render
+driver* and `lv_sdl_window_create()` returns NULL. SDL honours the
+`SDL_RENDER_DRIVER` hint by name without re-checking the requested flags, so
+naming the software renderer satisfies the request. `offscreen` works the
+same way and offers nothing more here.
+
+Everything else is unaffected. LVGL renders as it always does, so the control
+interface below answers `screen` and `tap-label` normally and `shot` returns
+a real framebuffer -- screenshots travel as pixels over HTTP and never needed
+a window. Audio is a separate SDL subsystem, so `SDL_AUDIODRIVER=disk` still
+captures the chimes; `SDL_AUDIODRIVER=dummy` silences them.
+
+What is gone is the mouse and the keyboard: there is no window to click. A
+headless run is driven over the control interface, or not at all.
+
 ## Differences from the panel
 
 - **openHAB**: set the server with the config file, or with
