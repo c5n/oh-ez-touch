@@ -48,6 +48,7 @@
 #include "port/ohez_port.h"
 #include "testif/testif.hpp"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_activity.h"
 #include "ui/ui_beep.hpp"
 #include "ui/ui_frame_probe.h"
 #include "ui/ui_messagebox.hpp"
@@ -152,7 +153,23 @@ extern "C" bool ohez_touch_wake(void)
      * sees it, and this chime is the whole of the feedback. */
     BEEPER_EVENT_WAKE();
 
+    /* And said out loud, for the same reason: the press that woke the panel is
+     * the one touch LVGL never hears about, so without this an interaction
+     * that begins by waking a dimmed display would not begin until the second
+     * tap. ui_activity.h has the rest of it. */
+    lv_display_trigger_activity(NULL);
+
     return true;
+}
+
+/* The other half of the same thing, from ui_activity_loop() rather than from
+ * the port: every touch either target sees restarts the dim timeout. On the
+ * panel this is a second, idempotent call behind the one above; on the
+ * simulator it is the only one there is. Deliberately silent -- the wake chime
+ * belongs to the press the port swallowed to pay for it. */
+extern "C" void ohez_touch_activity(void)
+{
+    tft_backlight.resetDimTimeout();
 }
 
 #if LV_USE_LOG != 0
@@ -367,6 +384,11 @@ static void ohez_loop(void)
 
     if (testif_frame_hold() == false)
         sleep_ms = lv_timer_handler(); // let the GUI do its work
+
+    /* After the frame rather than before it: lv_timer_handler() is where the
+     * pointer is read, so this sees a touch in the iteration it arrived in and
+     * ohez_mqtt_loop() further down publishes the edge in the same one. */
+    ui_activity_loop();
 
     /* Outside the online guard further down, unlike openhab_ui_loop(): the
      * settings screen is how a device with no credentials gets any, so its

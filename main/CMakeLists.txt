@@ -91,6 +91,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_rollershutter.cpp"
     "ui/items/item_player.cpp"
     "ui/items/item_color.cpp"
+    "ui/ui_activity.c"
     "ui/ui_beep.cpp"
     "ui/ui_frame_probe.c"
     "ui/ui_frame_stats.c"

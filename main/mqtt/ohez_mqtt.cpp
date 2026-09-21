@@ -27,6 +27,9 @@
  *   <prefix>/system/rssi             dBm -- absent on a wired host
  *   <prefix>/system/quality          the same as a percentage
  *   <prefix>/ui/night                ON while the night variant is in effect
+ *   <prefix>/ui/backlight            ON awake, OFF while dimmed
+ *   <prefix>/ui/brightness           the level in effect now, 0 to 100
+ *   <prefix>/ui/activity             ON while somebody is using the panel
  *   <prefix>/sensor/temperature      the BME280, in C, %rH and hPa
  *   <prefix>/sensor/humidity
  *   <prefix>/sensor/pressure
@@ -101,10 +104,12 @@
 #include "ohez_mqtt.hpp"
 
 #include "config/config_fields.hpp"
+#include "control/backlight_control.hpp"
 #include "debug.h"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_activity.h"
 #include "ui/ui_frame_stats.h"
 #include "version.h"
 
@@ -429,6 +434,65 @@ static void publish_identity(const config_item_t &item)
     publish("system/git", VERSION_GIT_HASH);
 }
 
+/* What the panel is doing with itself: the backlight, and whether somebody is
+ * using it.
+ *
+ * Both are states rather than events, which is why they are published the same
+ * way as everything else here -- retained, so a dashboard that subscribes
+ * after the fact is told what is true now. The difference is *when*: the other
+ * rows are sampled on the publish interval, and a minute is no use for either
+ * of these. A backlight that comes up when somebody walks over to the panel
+ * says so a minute later, and an interaction that lasts fifteen seconds could
+ * be missed entirely.
+ *
+ * So this is called on every loop as well, and publishes only what moved.
+ * Three comparisons per iteration against three cached values, and a message
+ * only on an edge.
+ *
+ * `force` is what the interval publish passes: it repeats all three whatever
+ * they are, which is what refreshes the retained copies and what a new session
+ * needs. The cache is per session -- see mqtt_announce_pending -- because a
+ * reconnected broker holds none of the last one.
+ */
+static int ui_published_backlight  = -1; /* 1 awake, 0 dimmed, -1 not yet said */
+static int ui_published_brightness = -1;
+static int ui_published_activity   = -1;
+
+/* The panel's, from main.cpp. The settings screen and the test interface read
+ * it the same way; there is one backlight and one object in front of it. */
+extern BacklightControl tft_backlight;
+
+static void publish_ui_state(bool force)
+{
+    int  awake      = (tft_backlight.isDimmed() == true) ? 0 : 1;
+    int  brightness = (int)tft_backlight.currentBrightness();
+    int  active     = (ui_activity_active() == true) ? 1 : 0;
+    char value[MQTT_VALUE_MAX];
+
+    if (force == true || awake != ui_published_backlight)
+    {
+        ui_published_backlight = awake;
+        publish("ui/backlight", (awake == 1) ? "ON" : "OFF");
+    }
+
+    /* The level the backlight is being driven to, not a reading off the pin:
+     * a fade is walked by the hardware and this is where it is headed. It
+     * moves only when the panel dims, wakes, or the setting changes, so there
+     * is nothing here to rate-limit. */
+    if (force == true || brightness != ui_published_brightness)
+    {
+        ui_published_brightness = brightness;
+        snprintf(value, sizeof(value), "%d", brightness);
+        publish("ui/brightness", value);
+    }
+
+    if (force == true || active != ui_published_activity)
+    {
+        ui_published_activity = active;
+        publish("ui/activity", (active == 1) ? "ON" : "OFF");
+    }
+}
+
 static void publish_system(Config &config)
 {
     char            value[MQTT_VALUE_MAX];
@@ -500,6 +564,8 @@ static void publish_system(Config &config)
      * on "auto" this follows the clock, and a dashboard showing what the panel
      * looks like right now wants the answer rather than the rule. */
     publish("ui/night", openhab_ui_night_active(&config) ? "ON" : "OFF");
+
+    publish_ui_state(true);
 }
 
 void ohez_mqtt_publish_bme280(float temperature_c, float humidity_pct, float pressure_hpa)
@@ -1030,6 +1096,15 @@ void ohez_mqtt_loop(Config &config)
     {
         mqtt_announce_pending = false;
 
+        /* A new session holds none of the last one's retained messages, so
+         * what this client last said about the panel's own state is worth
+         * nothing now. publish_system() below repeats all three anyway; this
+         * is what stops a *changed* one being skipped because the cache says
+         * the broker already knows. */
+        ui_published_backlight  = -1;
+        ui_published_brightness = -1;
+        ui_published_activity   = -1;
+
         config.lock();
         publish_identity(config.item);
         publish_config(config.item);
@@ -1049,4 +1124,10 @@ void ohez_mqtt_loop(Config &config)
 
         publish_system(config);
     }
+
+    /* Every call, not every interval: the backlight and the interaction window
+     * are the two things here that a rule reacts to rather than charts, and a
+     * minute late is no answer. Publishes only what moved -- see
+     * publish_ui_state(). */
+    publish_ui_state(false);
 }

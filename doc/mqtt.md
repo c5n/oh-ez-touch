@@ -38,6 +38,9 @@ second new panel does not publish over the first.
 | `system/rssi` | every interval | dBm. Absent where there is no radio. |
 | `system/quality` | every interval | The same as a percentage, on the scale the status bar uses |
 | `ui/night` | every interval | `ON` while the night variant is in effect |
+| `ui/backlight` | on change, and every interval | `ON` while the display is awake, `OFF` while dimmed |
+| `ui/brightness` | on change, and every interval | `0` to `100`, the level in effect now |
+| `ui/activity` | on change, and every interval | `ON` while somebody is using the panel. See [Backlight and interaction](#backlight-and-interaction). |
 | `sensor/temperature` | on each reading | Degrees Celsius |
 | `sensor/humidity` | on each reading | Percent relative humidity |
 | `sensor/pressure` | on each reading | hPa |
@@ -53,6 +56,46 @@ missed one. That is what retain gives it.
 The sensor topics need **Use BME280 sensor** turned on. They are the only
 place a reading goes. The relay and LED topics need a board that has the
 hardware. See [Relays and LEDs](#relays-and-leds).
+
+## Backlight and interaction
+
+Three topics say what the panel itself is doing, as against what it is
+showing.
+
+`ui/backlight` and `ui/brightness` follow the dim timeout. The panel wakes to
+**Normal brightness** when it is touched and falls back to **Dim brightness**
+after **Activity timeout** seconds. `ui/brightness` is the level being driven,
+not a reading off the pin: a fade is walked by the hardware and this is where
+it is going.
+
+`ui/activity` is a window, not an event. It opens on the first touch and
+closes ten seconds after the last one:
+
+```
+touch  touch touch                    touch
+  |      |     |                        |
+  ON ---------------------------------------------- OFF
+                                             10 s ->
+```
+
+So a finger walking a settings list is one `ON`, not thirty. This is what a
+rule that wants to know somebody is standing at the panel subscribes to --
+turn the hall light on, stop a slideshow, unmute an intercom -- and the ten
+seconds are what stops a pause between two taps from closing it.
+
+A touch is a touch on the panel: the touch controller on a device, the mouse
+or the control interface in the simulator. The web interface and MQTT itself
+are not interaction, because nobody is standing there.
+
+Both are published the moment they change, rather than on the publish
+interval. A backlight that comes up when somebody walks over to the panel is
+no use reported a minute later. The interval still repeats them, as it repeats
+every other row in the table above, which is what keeps the retained copies
+fresh.
+
+Neither is settable. The brightness *levels* are settings and are written
+through `config/bl_normal/set` and `config/bl_dim/set`, as is the timeout
+through `config/bl_timeout/set`.
 
 ## Writing a setting
 
