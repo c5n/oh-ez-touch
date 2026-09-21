@@ -213,8 +213,9 @@ lv_display_t *port_display_init(bool portrait)
     ESP_LOGI(TAG, "%s on SPI%d at %d MHz, %s, 2 x %d byte DMA buffers",
              OHEZ_PANEL_ILI9341 ? "ILI9341" : "ST7789",
              (int)OHEZ_LCD_SPI_HOST + 1,
+             OHEZ_LCD_PIXEL_CLOCK_HZ / 1000000,
              portrait ? "portrait 240x320" : "landscape 320x240",
-             OHEZ_LCD_PIXEL_CLOCK_HZ / 1000000, DRAW_BUFFER_BYTES);
+             DRAW_BUFFER_BYTES);
 
     return disp;
 }
