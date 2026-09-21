@@ -35,6 +35,7 @@ second new panel does not publish over the first.
 | `system/wait_us` | every interval | Of a frame, microseconds waiting for the panel. See [Where the frame time goes](architecture.md#where-the-frame-time-goes). |
 | `system/ip` | every interval | The station address |
 | `system/ssid` | every interval | The network, or the interface name on the simulator |
+| `system/bssid` | every interval | The access point's MAC, or the own one where there is no radio |
 | `system/rssi` | every interval | dBm. Absent where there is no radio. |
 | `system/quality` | every interval | The same as a percentage, on the scale the status bar uses |
 | `ui/night` | every interval | `ON` while the night variant is in effect |

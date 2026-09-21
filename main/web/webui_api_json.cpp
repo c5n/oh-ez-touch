@@ -39,6 +39,7 @@ size_t webui_api_status_json(const struct webui_api_status_s *st, char *out,
     doc["uptime_s"] = st->uptime_s;
     doc["hostname"] = st->hostname;
     doc["ssid"] = st->ssid;
+    doc["bssid"] = st->bssid;
     doc["wired"] = st->wired;
 
     if (st->wired == false)

@@ -204,6 +204,12 @@ static void webui_send_status(struct webui_out_s *o)
     webui_put_escaped(o, net.ssid);
     webui_put(o, "</td></tr>");
 
+    /* The access point behind the SSID: on a site with several APs on one
+     * name, this is what says which one the panel landed on. */
+    webui_put(o, "<tr><td>BSSID</td><td>");
+    webui_put_escaped(o, net.bssid);
+    webui_put(o, "</td></tr>");
+
     if (net.rssi == PORT_NET_RSSI_WIRED)
         webui_put(o, "<tr><td>RSSI</td><td>wired</td></tr>");
     else

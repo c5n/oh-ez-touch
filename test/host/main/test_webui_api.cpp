@@ -50,6 +50,7 @@ static void test_status_has_the_fleet_fields(void)
     st.uptime_s = 90061;
     st.hostname = "oheztouch-01";
     st.ssid = "HomeNet";
+    st.bssid = "74:ac:b9:eb:8d:2b";
     st.wired = false;
     st.rssi = -55;
     st.ip = "192.168.1.50";
@@ -75,6 +76,7 @@ static void test_status_has_the_fleet_fields(void)
     TEST_ASSERT_EQUAL(90061, doc["uptime_s"].as<unsigned long long>());
     TEST_ASSERT_EQUAL_STRING("oheztouch-01", doc["hostname"]);
     TEST_ASSERT_EQUAL_STRING("HomeNet", doc["ssid"]);
+    TEST_ASSERT_EQUAL_STRING("74:ac:b9:eb:8d:2b", doc["bssid"]);
     TEST_ASSERT_FALSE(doc["wired"]);
     TEST_ASSERT_EQUAL(-55, doc["rssi"]);
     TEST_ASSERT_EQUAL_STRING("192.168.1.50", doc["ip"]);

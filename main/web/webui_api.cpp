@@ -76,6 +76,7 @@ static void webui_api_handle_status(webui_request_t *req)
     status.uptime_s = (unsigned long long)(port_millis() / 1000);
     status.hostname = net.hostname;
     status.ssid = net.ssid;
+    status.bssid = net.bssid;
     status.wired = (net.rssi == PORT_NET_RSSI_WIRED);
     status.rssi = (int)net.rssi;
     status.ip = net.ip;

@@ -36,6 +36,7 @@ struct webui_api_status_s
     unsigned long long uptime_s;
     const char        *hostname;
     const char        *ssid;
+    const char        *bssid;
     bool               wired;
     int                rssi;       /* dBm; meaningless when wired */
     const char        *ip;

@@ -24,6 +24,7 @@
  *   <prefix>/system/wait_us          of a frame, waiting for the panel
  *   <prefix>/system/ip               the station address
  *   <prefix>/system/ssid             the network, or the interface name
+ *   <prefix>/system/bssid            the access point's MAC, or the own one
  *   <prefix>/system/rssi             dBm -- absent on a wired host
  *   <prefix>/system/quality          the same as a percentage
  *   <prefix>/ui/night                ON while the night variant is in effect
@@ -546,6 +547,10 @@ static void publish_system(Config &config)
 
     publish("system/ip", net.ip);
     publish("system/ssid", net.ssid);
+
+    /* Always published, unlike the RSSI below: a string is honest on a wired
+     * host too, where the port reports the own MAC in this field. */
+    publish("system/bssid", net.bssid);
 
     /* Skipped rather than faked on a wired host. The topics are typed by
      * whatever subscribes to them -- an openHAB Number item, most likely -- and
