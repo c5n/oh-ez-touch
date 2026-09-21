@@ -75,6 +75,37 @@ static inline uint16_t clamp_to(int32_t value, int32_t limit)
     return (uint16_t)value;
 }
 
+/* The calibration map as the ILI9341 boards want it in portrait.
+ *
+ * touch_cal_apply()'s flip is the touch glass mounted rotated 180 degrees,
+ * and it flips both axes in both orientations. Against the portrait MADCTL
+ * -- MY alone, MV and MX dropped from the landscape value -- that is right
+ * for y and backwards for x: the quarter turn the panel makes carries the x
+ * reversal already, so a flipped glass wants its x straight and an unflipped
+ * one wants it mirrored, the opposite of what the both-axes flip produces.
+ * Applied as written, the pointer comes out mirrored left-for-right against
+ * the picture, which is what the bench showed.
+ *
+ * Mirroring x back here instead of teaching touch_cal.c keeps the panel
+ * family where it is defined: the shared file also serves the simulator,
+ * whose display has no mirror bits to correct for. And because the
+ * correction sits outside the map, a calibration solved in portrait is the
+ * landscape one -- the pairs track the raw axes, the swap lives in the
+ * mapping -- so the two orientations keep sharing one set of constants.
+ *
+ * The solve half of the same correction is in port_indev_cal_solve(). */
+static void cal_apply(const struct touch_cal_s *c, int32_t raw_x, int32_t raw_y,
+                      int32_t *screen_x, int32_t *screen_y)
+{
+    touch_cal_apply(c, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
+                    SCREEN_W, SCREEN_H, raw_x, raw_y, screen_x, screen_y);
+
+#if OHEZ_PANEL_ILI9341
+    if (touch_portrait && screen_x != NULL)
+        *screen_x = (SCREEN_W - 1) - *screen_x;
+#endif
+}
+
 #if OHEZ_TOUCH_XPT2046
 
 /* What the pointer converts with. Seeded from board_pins.h, which is where the
@@ -132,8 +163,7 @@ static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *
             pending_raw_y = raw_y;
         }
 
-        touch_cal_apply(&cal, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
-                        SCREEN_W, SCREEN_H, raw_x, raw_y, &screen_x, &screen_y);
+        cal_apply(&cal, raw_x, raw_y, &screen_x, &screen_y);
 
         /* Clamped, where TFT_eSPI's getTouch() rejected the whole reading if
          * either axis landed outside the screen. A press a couple of pixels
@@ -417,13 +447,33 @@ bool port_indev_raw_press(int32_t *raw_x, int32_t *raw_y)
 void port_indev_cal_map(const struct touch_cal_s *cal, int32_t raw_x, int32_t raw_y,
                         int32_t *screen_x, int32_t *screen_y)
 {
-    touch_cal_apply(cal, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
-                    SCREEN_W, SCREEN_H, raw_x, raw_y, screen_x, screen_y);
+    cal_apply(cal, raw_x, raw_y, screen_x, screen_y);
 }
 
 const char *port_indev_cal_solve(const struct touch_cal_sample_s *samples, size_t count,
                                  struct touch_cal_s *out)
 {
+#if OHEZ_PANEL_ILI9341
+    /* The target half of the correction cal_apply() makes: touch_cal_solve()
+     * inverts touch_cal_apply(), so constants solved against the mirrored
+     * corners are the ones whose read path -- cal_apply() -- lands the taps
+     * on. Four samples, so the copy is a stack array rather than a rewrite
+     * of the caller's. */
+    if (touch_portrait && samples != NULL && count <= TOUCH_CAL_SAMPLES)
+    {
+        struct touch_cal_sample_s mirrored[TOUCH_CAL_SAMPLES];
+
+        for (size_t i = 0; i < count; i++)
+        {
+            mirrored[i] = samples[i];
+            mirrored[i].target_x = (SCREEN_W - 1) - mirrored[i].target_x;
+        }
+
+        return touch_cal_solve(mirrored, count, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
+                               SCREEN_W, SCREEN_H, out);
+    }
+#endif
+
     return touch_cal_solve(samples, count, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
                            SCREEN_W, SCREEN_H, out);
 }

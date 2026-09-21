@@ -194,15 +194,23 @@ lv_display_t *port_display_init(bool portrait)
     ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
     ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
 
-    /* Portrait drops the swap and keeps the mirrors: the panel's own 240x320
-     * grid then faces up, and which edge that calls "up" is a property of the
-     * glass, not of anything here. A board that comes out upside down wants
-     * both mirror flags flipped -- and its touch mapping re-checked against the
-     * picture, in port_indev.c. Verified on the bench: landscape, all boards;
-     * portrait, simulator only so far. */
+    /* Portrait drops the swap, and on the ILI9341 the x mirror with it:
+     * MV|MX|MY is the verified landscape, and MY alone is the upright
+     * portrait next to it -- the landscape's top edge ends up on the right
+     * when the panel stands. Keeping MX as well, which is what this code did
+     * first, mirrors the picture left-for-right: the "display seen from the
+     * back side" that bench-testing portrait showed. The touch half of the
+     * correction is in port_indev.c: touch_cal_apply()'s both-axes flip is
+     * landscape-shaped, and against MY-only portrait it is wanted on y
+     * alone, so the pointer's x gets the mirror back there.
+     *
+     * A board that comes out upside down here wants the other one-mirror
+     * combination (MX alone), with the touch mirror moved from x to y, the
+     * way doc/hardware/arduitouch.md says. Verified on the bench: landscape,
+     * all boards; portrait, ArduiTouch. */
     ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, !portrait));
 #if OHEZ_PANEL_ILI9341
-    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
+    ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, !portrait, true));
 #else
     ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, false, true));
 #endif

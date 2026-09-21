@@ -122,8 +122,16 @@ exit the monitor.
 
 ## Portrait mounting
 
-The Orientation setting can run this board upright at 240x320. The panel
-rotation (`port_display.c`) and the XPT2046 mapping (`port_indev.c`) have the
-portrait paths, but they are bench-verified in landscape only: if the picture
-or the touch comes out mirrored or upside down, the fix is the mirror flags
-there -- both of them together, or the touch stops agreeing with the picture.
+The Orientation setting can run this board upright at 240x320, verified on
+the bench with the picture upright and the touch agreeing. The upright
+portrait is MY alone in `port_display.c` -- MV and MX dropped from the
+landscape MADCTL, so the landscape's top edge ends up on the right when the
+panel stands. The touch half of the same correction is the x mirror that
+`cal_apply()` in `port_indev.c` adds in portrait: touch_cal_apply()'s
+both-axes flip is landscape-shaped, and against MY-only portrait it is
+wanted on y alone.
+
+Mounted the other way up -- the landscape's top edge on the left -- the
+picture comes out 180 degrees rotated rather than mirrored, and the fix is
+the other one-mirror combination (MX alone) with the touch mirror moved
+from x to y.
