@@ -442,6 +442,19 @@ static void publish_system(Config &config)
     snprintf(value, sizeof(value), "%u", (unsigned)port_free_heap());
     publish("system/heap", value);
 
+    /* And how much of that is in one piece, which is the figure a fragmented
+     * heap shows a fleet by: the free total barely moves while this one falls.
+     * Skipped where the target cannot answer it, like the frame topics below
+     * and for the same reason -- a 0 meaning "not measured" arriving in a
+     * Number item is worse than the topic not being there. */
+    size_t largest = port_largest_free_block();
+
+    if (largest > 0)
+    {
+        snprintf(value, sizeof(value), "%u", (unsigned)largest);
+        publish("system/heapblock", value);
+    }
+
     /* Three topics rather than one, and the two microsecond figures are the
      * reason: a frame rate on its own says a panel is slow, and these say which
      * half of it to go and look at. Skipped entirely until a window has closed,

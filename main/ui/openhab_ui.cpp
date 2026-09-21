@@ -43,16 +43,31 @@
 #endif
 
 /* How long a submitted page fetch is waited for before it is written off and
- * asked for again. Three times the client's own per-request timeout, because a
- * page queued behind a few icons has to be given time to reach the front.
+ * asked for again.
  *
- * The client task answers every request it does not drop, so this should never
- * fire. It exists because the one way the asynchronous shape can fail that the
- * synchronous one could not is by waiting forever -- and a page that never
- * loads and never retries is a blank screen with nothing to show for itself:
- * no failure counted, and no box to raise the fault or offer a restart. */
+ * Six times the client's own five second timeout, and the arithmetic is the
+ * point. A single GET can take twice that timeout, because openhab_http_get()
+ * gives a request that failed on a reused connection one more go on a fresh
+ * one; and a page submitted while another request is already in flight waits
+ * for that one first, because the worker is one task and a socket read cannot
+ * be cancelled. So twenty seconds is reachable on a link that is merely slow,
+ * and the fifteen this used to be was less than that.
+ *
+ * Firing early is not a harmless retry, which is why the margin is generous.
+ * page_request() leads to a resubmit, the resubmit bumps the generation, and
+ * the answer to the *first* fetch -- which may be a perfectly good page, and
+ * on a weak link usually is -- is then dropped as stale. The panel spent
+ * twenty seconds getting the page it wanted and threw it away, put up SITEMAP
+ * ACCESS FAILED, and started again.
+ *
+ * The client task answers every request it does not drop, so this should still
+ * never fire. It exists because the one way the asynchronous shape can fail
+ * that the synchronous one could not is by waiting forever -- and a page that
+ * never loads and never retries is a blank screen with nothing to show for
+ * itself: no failure counted, and no box to raise the fault or offer a
+ * restart. */
 #ifndef GET_SITEMAP_ANSWER_TIMEOUT
-#define GET_SITEMAP_ANSWER_TIMEOUT 15000
+#define GET_SITEMAP_ANSWER_TIMEOUT 30000
 #endif
 
 #ifndef NTP_TIME_UPDATE_INTERVAL
@@ -155,7 +170,22 @@ static void widget_icon_request(size_t slot);
  */
 static void item_publish(struct widget_context_s *ctx)
 {
-    openhab_client_command(ctx->item->getLink(), ctx->item->getStateText());
+    if (openhab_client_command(ctx->item->getLink(), ctx->item->getStateText()) == true)
+        return;
+
+    /* The queue would not take it, which on a slow link is reachable: six
+     * tiles with an icon and a state outstanding is exactly the queue's depth.
+     * The tile has already been flipped locally, so the tap looks delivered
+     * and the next poll quietly puts it back -- a light that did not come on
+     * and nothing anywhere saying why.
+     *
+     * Counted and said. There is nothing better to do with it from here: a tap
+     * is not worth queueing behind a five second socket read, and re-flipping
+     * the tile under the user's finger would be its own surprise. */
+    printf("openhab_ui: command queue full; \"%s\" not sent to %s\r\n",
+           ctx->item->getStateText(), ctx->item->getLink());
+
+    statistics.update_fail_cnt++;
 }
 
 /* show() pairs widget_context[i] with sitemap.getItem(i), so there must not be
@@ -1300,7 +1330,8 @@ static void page_timeout_check(void)
     if (page_state != PAGE_WAITING || port_millis() < page_request_deadline)
         return;
 
-    printf("openhab_ui_loop: no answer for the page at: %s\r\n", current_page);
+    printf("openhab_ui: no answer within %u ms for the page at %s\r\n",
+           (unsigned)GET_SITEMAP_ANSWER_TIMEOUT, current_page);
 
     statistics.sitemap_fail_cnt++;
     page_request(GET_SITEMAP_RETRY_INTERVAL);
@@ -1432,9 +1463,18 @@ static void page_result_apply(struct openhab_result_s *res)
         return;
     }
 
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("openhab_ui_loop: no usable page at: %s\r\n", current_page);
-#endif
+    /* Unconditional, unlike the debug line it replaces, and with the heap on
+     * it. This is the failure people report, and it has four unrelated causes
+     * -- a transport error, a page that does not fit, a page that will not
+     * parse, and a heap with no room for either -- which the log lines above
+     * this one tell apart only if somebody is reading them. The pair of heap
+     * figures is what says whether to look at this panel's memory at all:
+     * plenty free and no large block left is a fragmented heap, and a page
+     * buffer is the first thing on the panel to be refused by one. */
+    printf("openhab_ui: no usable page at %s (heap %u free, %u largest)\r\n",
+           current_page, (unsigned)port_free_heap(),
+           (unsigned)port_largest_free_block());
+
     openhab_ui_messagebox.create(openhab_ui_messagebox.ERROR, "SITEMAP ACCESS FAILED", current_page, 0);
 
     /* The other fault with nothing behind it. The retry below keeps asking and

@@ -6,6 +6,7 @@
 
 #include "openhab_http.hpp"
 
+#include <atomic>
 #include <string.h>
 
 #include "esp_http_client.h"
@@ -38,6 +39,15 @@ static bool session_connected;
 
 /* The "scheme://host:port" the open connection goes to. */
 static char session_origin[STR_AUTHORITY_LEN];
+
+/* Set by openhab_http_reset() from another task, acted on by this one.
+ *
+ * std::atomic for the same reason openhab_client.cpp's generation is one: a
+ * bool written on the task that watches the link and read on the task that
+ * makes the requests is a race the compiler is otherwise free to optimise
+ * away. exchange() is what makes "close once per request" true even if two
+ * resets arrive between two requests. */
+static std::atomic<bool> reset_requested{false};
 
 /* Everything before the path: "http://openhabian:8080".
  *
@@ -125,6 +135,15 @@ static bool session_prepare(const char *url, esp_http_client_method_t method)
      * or succeeded, and it is the invariant the handle cannot provide itself. */
     if (session != NULL)
         esp_http_client_clear_response_buffer(session);
+
+    /* And whatever the link did while nothing was being asked of it. Here
+     * rather than in openhab_http_reset() because this is the task that owns
+     * the handle -- see the header. */
+    if (reset_requested.exchange(false, std::memory_order_relaxed) == true)
+    {
+        ESP_LOGD(TAG, "dropping the connection: the link changed under it");
+        session_disconnect();
+    }
 
     if (url_origin(url, origin, sizeof(origin)) == false)
     {
@@ -266,9 +285,45 @@ static ssize_t http_get_attempt(const char *url, void *buf, size_t buf_size, boo
 
         /* read_response() stops when the buffer is full, so a body that does
          * not fit looks like a complete short read; asking the client settles
-         * it. */
+         * whether the body ended.
+         *
+         * It does not settle *why*, and there are two reasons with one face.
+         * esp_http_client_read_response() reports neither of them, because it
+         * never returns a negative number: esp_http_client_read() answers a
+         * socket timeout with -ESP_ERR_HTTP_EAGAIN when nothing has arrived
+         * yet and with the partial count when something has, and
+         * read_response() turns both into how much it got ("if (data_read <=
+         * 0) return read_len;"). So the read < 0 above cannot fire for a read
+         * timeout, and every timed-out body lands here looking like a short
+         * one.
+         *
+         * The buffer tells them apart. A body that stopped because there was
+         * nowhere left to put it fills the buffer exactly; one that stopped
+         * because the server went quiet for OPENHAB_HTTP_TIMEOUT_MS is short
+         * of it. The second is a transport failure -- and on a weak link it is
+         * the common one -- so it is returned as one, which also puts it back
+         * inside the one retry openhab_http_get() has.
+         *
+         * Only the first is what `truncate` is about, and that is the fix
+         * here rather than the tidying it looks like. A state poll asks for a
+         * long body to be cut down; it must not thereby accept a body the
+         * network cut off, because the caller cannot tell the difference and
+         * applies the bytes as the item's state. A poll that timed out before
+         * its first byte returned 0 bytes, `ok`, and an empty payload, and
+         * Item::applyState() wrote that over a perfectly good "ON" -- or, for
+         * a Number, over 21.5 with strtof("") == 0 -- and counted it as a
+         * successful update. On a medium-signal panel that is tiles that
+         * silently go blank and temperatures that read zero. */
         if (esp_http_client_is_complete_data_received(session) == false)
         {
+            if ((size_t)read < buf_size)
+            {
+                ESP_LOGE(TAG, "GET %s: incomplete body, %d of %lld bytes",
+                         url, read,
+                         (long long)esp_http_client_get_content_length(session));
+                goto out;
+            }
+
             if (truncate == false)
             {
                 ESP_LOGE(TAG, "GET %s: body larger than the %u byte buffer",
@@ -316,6 +371,11 @@ ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool trunc
     ESP_LOGD(TAG, "GET %s: retrying on a new connection", url);
 
     return http_get_attempt(url, buf, buf_size, truncate);
+}
+
+void openhab_http_reset(void)
+{
+    reset_requested.store(true, std::memory_order_relaxed);
 }
 
 /* How a POST attempt ended, which is not the same question as whether it

@@ -112,6 +112,35 @@ There is one worker and one queue, not a pool. A pool could deliver two taps
 on the same item out of order. The connection to openHAB is held open between
 requests. A page's six icons share one TCP handshake.
 
+A page request goes to the front of the queue. The worker is one task and a
+request in flight cannot be cancelled, so a page submitted behind a queue of
+state polls waited for all of them. The polls it overtakes belong to the page
+being left and are dropped unmade anyway.
+
+The connection is dropped when the link changes. A TCP connection that spanned
+a reassociation is dead, and the WLAN state machine is the only thing on the
+panel that knows the link went away, so it says so (`openhab_http_reset()`).
+Without that, the first request of every episode writes into the dead socket,
+which succeeds, and then waits the full timeout for an answer that cannot come.
+
+Bodies are read into one buffer, allocated once and sized for the largest
+class: a 12 KB sitemap page. A buffer allocated per page load needed 12 KB of
+heap in one piece, and on a weak link the WiFi driver holds its transmit
+buffers for as long as a frame is being retried -- so a page fetch asked for
+the largest block the heap had at the moment it had least to give. The symptom
+was a panel whose tiles kept updating while every sub page it navigated to
+failed. An item state does not even need that: it rides inside the result, so a
+poll costs no allocation at all.
+
+A body cut short by the network is a failure, not a short answer. The
+distinction is made in `main/openhab/openhab_http.cpp`, and it has to be made
+by hand: `esp_http_client_read_response()` reports a read timeout as a
+non-negative byte count, exactly as it reports a complete body. A state poll
+that timed out therefore used to arrive as a *successful* poll with an empty
+body, which the item then stored -- a switch showing nothing and a temperature
+reading zero, on a panel whose server was perfectly healthy and whose signal
+was merely poor.
+
 ## Screens, frames and motion
 
 The UI is built from three ideas.

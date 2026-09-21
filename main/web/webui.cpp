@@ -213,6 +213,18 @@ static void webui_send_status(struct webui_out_s *o)
     webui_putf(o, "<tr><td>MAC</td><td>%s</td></tr>", net.mac);
     webui_putf(o, "<tr><td>Free heap</td><td>%u bytes</td></tr>", (unsigned)port_free_heap());
 
+    /* The second half of the heap question. Free heap says how much is left;
+     * this says how much of it is in one piece, and a panel that has been up
+     * for days fails on the second long before the first -- a sitemap page is
+     * read into a 12 KB buffer and wants it whole. The two together are what
+     * make "SITEMAP ACCESS FAILED on the weak-signal panels" a memory question
+     * or not. Absent on the simulator, which cannot answer it. */
+    size_t largest = port_largest_free_block();
+
+    if (largest > 0)
+        webui_putf(o, "<tr><td>Largest free block</td><td>%u bytes</td></tr>",
+                   (unsigned)largest);
+
     /* The frame, in the three numbers that decide what to do about it: how fast
      * the screen is going, how much of a frame the software renderer took, and
      * how much of it was spent waiting for the panel to accept the last strip.

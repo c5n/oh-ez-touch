@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "esp_timer.h"
@@ -41,6 +42,14 @@ void port_restart(void)
 size_t port_free_heap(void)
 {
     return (size_t)esp_get_free_heap_size();
+}
+
+size_t port_largest_free_block(void)
+{
+    /* Internal 8-bit DRAM, which is what every malloc() in this firmware is
+     * served from: there is no PSRAM on any of these boards, and the display's
+     * DMA buffers come out of the same pool through heap_caps_malloc(). */
+    return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
 }
 
 bool port_localtime(struct tm *out)

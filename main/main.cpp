@@ -40,6 +40,7 @@
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_discover.hpp"
+#include "openhab/openhab_http.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "peripherals/led.hpp"
 #include "peripherals/relay.hpp"
@@ -406,6 +407,20 @@ static void ohez_loop(void)
         bool was_online = (reported == WLAN_ONLINE);
 
         reported = wlan_state();
+
+        /* Whatever the openHAB connection was, it did not survive this.
+         *
+         * Both ways round, and for the same reason: a TCP connection that
+         * spanned a reassociation is dead, and the only thing on this panel
+         * that knows the link went away is right here. Without this the first
+         * request afterwards writes into the dead socket -- which succeeds,
+         * because the bytes only have to reach the local send buffer -- and
+         * then waits the full five seconds for an answer that cannot come,
+         * before its retry opens the connection it should have opened at
+         * once. On a weak link that is a five second penalty on every
+         * episode, and the request paying it is the page load the user is
+         * waiting for. */
+        openhab_http_reset();
 
         if (reported == WLAN_ONLINE)
         {

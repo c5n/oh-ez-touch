@@ -70,6 +70,26 @@ struct request_s
 static QueueHandle_t requests = NULL;
 static QueueHandle_t results = NULL;
 
+/* The one buffer every body but a state is read into.
+ *
+ * Sized for the largest class and allocated once, because the alternative was
+ * a 12 KB malloc and free on every page load -- see the buffer sizes in the
+ * header for what that cost on a weak link.
+ *
+ * On the heap rather than in BSS, which is the same DRAM taken at a different
+ * moment and is deliberately the later one. openhab_client_setup() runs after
+ * wlan_setup() and webui_setup(), so a board that cannot spare this says so
+ * here, in a log line and a setup that fails, instead of taking it at link
+ * time and leaving esp_wifi_init() to fail on a wall panel for want of it.
+ *
+ * Only perform() touches it, and perform() runs only on the worker below. */
+static char *rx_buf;
+
+static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
+              "the receive buffer is sized on the page, so no class may exceed it");
+static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE,
+              "the receive buffer is sized on the page, so no class may exceed it");
+
 /* Written only by openhab_client_request_page(), on the UI task; read by the
  * worker. An aligned 32-bit access is atomic on both targets anyway, but
  * saying so is what stops the compiler hoisting the worker's read out of its
@@ -119,10 +139,32 @@ static bool submit(enum openhab_request_e type, const char *url, const char *bod
     if (body != NULL)
         strlcpy(req.body, body, sizeof(req.body));
 
-    /* Never waits. The only caller is the task that draws, and a queue this
-     * deep is only full when something is already badly wrong -- in which case
-     * the caller counting a failure is more use than the screen stopping. */
-    if (xQueueSend(requests, &req, 0) != pdTRUE)
+    /* A page goes to the front of the queue, everything else to the back.
+     *
+     * Not a preference but the fix for a wait the user sees. The worker is one
+     * task and a request in flight cannot be cancelled, so a page submitted
+     * behind a queue of state polls waited for all of them -- up to
+     * OPENHAB_HTTP_TIMEOUT_MS each, twice over where openhab_http_get()
+     * retries -- and on a slow link it could still be waiting when the UI's
+     * own answer deadline expired. The polls it overtakes are the previous
+     * page's and went stale at the generation bump that came with this
+     * submit, so they cost a dequeue each and nothing more.
+     *
+     * It can also overtake a command, which is the one thing given up here: a
+     * queued tap is delayed by one page fetch. It is never dropped -- a
+     * command carries _GENERATION_ALWAYS and no page change can stale it --
+     * and a tap that is waiting on a page fetch is a panel whose user is
+     * watching the page anyway.
+     *
+     * Never waits, either way. The only caller is the task that draws, and a
+     * queue this deep is only full when something is already badly wrong -- in
+     * which case the caller counting a failure is more use than the screen
+     * stopping. */
+    BaseType_t sent = (type == OPENHAB_REQ_PAGE)
+                        ? xQueueSendToFront(requests, &req, 0)
+                        : xQueueSend(requests, &req, 0);
+
+    if (sent != pdTRUE)
     {
         ESP_LOGW(TAG, "request queue full; dropping %s", url);
         return false;
@@ -147,6 +189,16 @@ bool openhab_client_setup(void)
     if (requests == NULL || results == NULL)
     {
         ESP_LOGE(TAG, "cannot create the queues");
+        goto fail;
+    }
+
+    /* One over, so that a body read into it can be terminated. */
+    rx_buf = (char *)malloc(OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
+
+    if (rx_buf == NULL)
+    {
+        ESP_LOGE(TAG, "cannot allocate the %u byte receive buffer",
+                 (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
         goto fail;
     }
 
@@ -186,6 +238,9 @@ fail:
         results = NULL;
     }
 
+    free(rx_buf);
+    rx_buf = NULL;
+
     return false;
 }
 
@@ -195,7 +250,8 @@ uint32_t openhab_client_request_page(const char *url)
      * identity of the page being fetched, so a page fetch and a new generation
      * are the same event. Everything queued or in flight for the previous page
      * becomes stale at this line. */
-    uint32_t next = generation.load(std::memory_order_relaxed) + 1;
+    uint32_t current = generation.load(std::memory_order_relaxed);
+    uint32_t next = current + 1;
 
     /* Zero is reserved for the commands that never go stale, so skip it on the
      * wrap. Four billion page loads is not reachable, but a counter that has
@@ -206,7 +262,18 @@ uint32_t openhab_client_request_page(const char *url)
     generation.store(next, std::memory_order_relaxed);
 
     if (submit(OPENHAB_REQ_PAGE, url, NULL, OPENHAB_CLIENT_SLOT_NONE, next) == false)
+    {
+        /* Put it back. Nothing was queued, so nothing was superseded -- and a
+         * generation left ahead of the one the UI holds staled every request
+         * already in flight without the UI ever hearing about it. Those
+         * requests produce no result at all, so the icon_pending and
+         * state_pending flags that were set for them are never cleared, and
+         * the tiles they belong to stop asking for an icon or a state until
+         * the next page load. A tile can sit like that for as long as somebody
+         * leaves the panel on one page, which is all day. */
+        generation.store(current, std::memory_order_relaxed);
         return 0;
+    }
 
     return next;
 }
@@ -242,21 +309,37 @@ bool openhab_client_poll(struct openhab_result_s *out)
     if (results == NULL)
         return false;
 
-    return (xQueueReceive(results, out, 0) == pdTRUE);
+    if (xQueueReceive(results, out, 0) != pdTRUE)
+        return false;
+
+    /* The queue copies the struct, so a payload that rode inside it is at a
+     * new address: the worker's pointer names the worker's copy, which is a
+     * stack frame that has already returned. Re-aiming it here is what keeps
+     * `payload` the only thing any consumer has to know about. */
+    if (out->payload_inline == true)
+        out->payload = out->body;
+
+    return true;
 }
 
 void openhab_client_result_release(struct openhab_result_s *res)
 {
-    free(res->payload);
+    if (res->payload_inline == false)
+        free(res->payload);
 
     res->payload = NULL;
     res->payload_len = 0;
+    res->payload_inline = false;
 }
 
 /* How much of a body of each kind will be read. A page and an icon are
  * rejected when they do not fit, because half of either is worse than none --
  * it would fail to parse or decode somewhere far from the cause. A state is
- * truncated, because it lands in a fixed-width field either way. */
+ * truncated, because it lands in a fixed-width field either way.
+ *
+ * "Does not fit" means the body is longer than this, and nothing else. A body
+ * the network cut short is a failure for every kind, including the truncated
+ * one; openhab_http.cpp is where the two are told apart. */
 static size_t body_capacity(enum openhab_request_e type, bool *truncate)
 {
     switch (type)
@@ -431,35 +514,59 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
     bool truncate = false;
     size_t capacity = body_capacity(req->type, &truncate);
 
-    /* One over, so that the body can be terminated: a caller that treats it as
-     * a string -- which the state does -- should not have to. */
-    char *body = (char *)malloc(capacity + 1);
-
-    if (body == NULL)
+    /* A state is read straight into the result and never touches the heap.
+     * body_capacity() returns one less than the field is wide -- the
+     * static_assert at the top of this file is what keeps that true -- so the
+     * terminator below is inside it. */
+    if (req->type == OPENHAB_REQ_STATE)
     {
-        ESP_LOGE(TAG, "out of memory for a %u byte body", (unsigned)capacity);
+        ssize_t read = openhab_http_get(req->url, res->body, capacity, truncate);
+
+        if (read < 0)
+            return;
+
+        res->body[read] = '\0';
+        res->payload = res->body;
+        res->payload_len = (size_t)read;
+        res->payload_inline = true;
+        res->ok = true;
         return;
     }
 
-    ssize_t read = openhab_http_get(req->url, body, capacity, truncate);
+    /* Everything else into the one buffer. It is a ceiling, not a size: the
+     * body that arrives is usually a fraction of it. */
+    ssize_t read = openhab_http_get(req->url, rx_buf, capacity, truncate);
 
     if (read < 0)
     {
         /* openhab_http_get() has already logged the method, the URL and the
          * status; there is nothing to add here that it did not say. */
-        free(body);
         return;
     }
 
-    body[read] = '\0';
+    rx_buf[read] = '\0';
 
-    /* Down to what actually arrived. An icon buffer allocated at 5000 bytes
-     * for a 900 byte PNG would otherwise sit at full size for as long as the
-     * result is queued. A refusal is not a failure -- the original allocation
-     * is still perfectly good. */
-    char *shrunk = (char *)realloc(body, (size_t)read + 1);
+    /* Copied out at the size that arrived, and this is the only allocation a
+     * request still makes. It has to be an allocation because the result
+     * outlives the request: it waits in the queue until the UI has a frame to
+     * spare, and the worker is reading the next body by then.
+     *
+     * What it is not any more is a 12 KB ask followed by a realloc down to
+     * two. That pair looked frugal and was the opposite -- it took the largest
+     * block the heap had, split it, and handed the tail back, so the ceiling
+     * had to be found in one contiguous run on every page load and a hole was
+     * left behind each time. This asks for what it needs and keeps it. */
+    char *payload = (char *)malloc((size_t)read + 1);
 
-    res->payload = (shrunk != NULL) ? shrunk : body;
+    if (payload == NULL)
+    {
+        ESP_LOGE(TAG, "out of memory for a %u byte payload", (unsigned)read + 1);
+        return;
+    }
+
+    memcpy(payload, rx_buf, (size_t)read + 1);
+
+    res->payload = payload;
     res->payload_len = (size_t)read;
     res->ok = true;
 }

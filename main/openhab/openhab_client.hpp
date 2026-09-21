@@ -44,7 +44,17 @@
 /* The largest sitemap page and the largest icon that will be read. Both were
  * previously sized at their point of use -- SITEMAP_PAGE_BUFFER_SIZE in the
  * connector, ICON_PNG_BUFFER_SIZE in the UI -- and both are the worker's
- * business now, because it is the worker that reads into them. */
+ * business now, because it is the worker that reads into them.
+ *
+ * They are ceilings on one buffer the worker allocates once and keeps, not on
+ * an allocation per request. A 12 KB block asked for and given back on every
+ * page load is the one allocation on this panel large enough to need a
+ * contiguous run of heap it may not get: the WiFi driver's dynamic transmit
+ * buffers are held for as long as a frame is being retried, so on a weak link
+ * the largest free block is at its smallest exactly when the page fetch that
+ * needs it is retrying. The symptom was a panel whose tiles kept updating --
+ * a state poll needs 32 bytes -- while every sub page it navigated to failed
+ * with SITEMAP ACCESS FAILED and never came back. */
 #define OPENHAB_CLIENT_PAGE_BUFFER_SIZE 12288
 #define OPENHAB_CLIENT_ICON_BUFFER_SIZE 5000
 
@@ -106,6 +116,21 @@ struct openhab_result_s
     int      status;      /* HTTP status where there was one, else 0 */
     char    *payload;     /* NUL-terminated at [payload_len], or NULL */
     size_t   payload_len;
+    /* An item state rides in the result rather than on the heap, and
+     * `payload` points at it.
+     *
+     * Six tiles polled every five seconds is some four thousand malloc/free
+     * pairs an hour, each for at most 31 bytes, interleaved with the page and
+     * icon bodies that do need the heap -- which is the churn that leaves a
+     * long-running panel with plenty of free heap and no large block left in
+     * it. The struct already travels through the queue by value, so carrying
+     * the state inside it costs nothing but these 32 bytes.
+     *
+     * It is not a second ownership rule for callers: they still release every
+     * result exactly once, and openhab_client_result_release() is where the
+     * distinction lives. */
+    bool     payload_inline;
+    char     body[OPENHAB_CLIENT_BODY_LEN];
 };
 
 /**
@@ -176,6 +201,9 @@ bool openhab_client_poll(struct openhab_result_s *out);
 /**
  * Free a result's payload and blank it. Idempotent, so a path that is not sure
  * whether it has already released can call it again.
+ *
+ * A payload that rode inside the result is not freed, only forgotten -- see
+ * `payload_inline`. Every caller releases the same way either way.
  */
 void openhab_client_result_release(struct openhab_result_s *res);
 

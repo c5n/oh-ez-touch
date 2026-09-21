@@ -29,6 +29,7 @@ second new panel does not publish over the first.
 | `system/git` | on connect | The commit this firmware was built from |
 | `system/uptime` | every interval | Seconds since boot |
 | `system/heap` | every interval | Free heap in bytes |
+| `system/heapblock` | every interval | The largest single free block, in bytes. Absent where the target cannot answer it. Well below `system/heap` means a fragmented heap. |
 | `system/fps` | every interval | Frames per second, one decimal. Absent until the screen has drawn. |
 | `system/render_us` | every interval | Of a frame, microseconds in the software renderer |
 | `system/wait_us` | every interval | Of a frame, microseconds waiting for the panel. See [Where the frame time goes](architecture.md#where-the-frame-time-goes). |

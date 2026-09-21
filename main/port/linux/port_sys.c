@@ -69,6 +69,15 @@ size_t port_free_heap(void)
     return (size_t)mi.fordblks;
 }
 
+size_t port_largest_free_block(void)
+{
+    /* Not knowable here, and not worth approximating: mallinfo2() reports how
+     * much is free, never how much of it is in one piece, and the host would
+     * answer "enough" to any question the device answers "no" to. 0 is the
+     * documented "cannot say" -- see port_sys.h. */
+    return 0;
+}
+
 bool port_localtime(struct tm *out)
 {
     time_t now = time(NULL);

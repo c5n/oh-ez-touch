@@ -43,14 +43,17 @@
  * encoding, so callers get bytes and not framing. Item::getIcon() used to have
  * to strip that framing by hand.
  *
- * @param truncate what a body larger than `buf_size` means. A plain-text item
- *   state passes true: it is copied into a fixed-width field either way, and
- *   truncating it is what HTTPClient::getString() plus strlcpy() did. JSON and
- *   PNG pass false, because half of either is worse than none -- it would fail
- *   to parse or decode somewhere far from the cause.
- * @return bytes copied, or -1 on a transport error, a status other than 200, or
- *         an over-long body with `truncate` false. Failures are logged here
- *         with the method, URL and status; callers add their own context.
+ * @param truncate what a body larger than `buf_size` means, and nothing else. A
+ *   plain-text item state passes true: it is copied into a fixed-width field
+ *   either way, and truncating it is what HTTPClient::getString() plus
+ *   strlcpy() did. JSON and PNG pass false, because half of either is worse
+ *   than none -- it would fail to parse or decode somewhere far from the cause.
+ *   A body cut short by the *network* is a failure for every caller, whatever
+ *   this says: see the classification in http_get_attempt().
+ * @return bytes copied, or -1 on a transport error, a status other than 200, an
+ *         incomplete body, or an over-long body with `truncate` false. Failures
+ *         are logged here with the method, URL and status; callers add their
+ *         own context.
  */
 ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool truncate);
 
@@ -62,5 +65,23 @@ ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool trunc
  *         answers 200 for a command and 202 for an accepted state update.
  */
 int openhab_http_post_text(const char *url, const char *body);
+
+/**
+ * Drop the connection before the next request, wherever it is in its life.
+ *
+ * For the one failure the retry above cannot see coming: a reassociation. The
+ * panel knows the link went down and came back, and it knows the socket that
+ * spanned that gap is dead -- but the client does not, so the first request
+ * afterwards writes into the dead socket, succeeds, and then spends the whole
+ * of OPENHAB_HTTP_TIMEOUT_MS waiting for an answer that cannot come. Telling
+ * it here costs a handshake and saves that wait.
+ *
+ * The only call that may be made from another task. It sets a flag; the
+ * connection is closed by the client task itself, at the top of the next
+ * request, because every esp_http_client call in this file has to stay on the
+ * one task that owns the handle -- closing it from under a request in flight
+ * is exactly the race the single-task contract exists to prevent.
+ */
+void openhab_http_reset(void);
 
 #endif /* OPENHAB_HTTP_HPP */

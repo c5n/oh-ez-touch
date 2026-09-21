@@ -64,6 +64,22 @@ void port_restart(void) __attribute__((noreturn));
 size_t port_free_heap(void);
 
 /**
+ * The largest single block the heap could still hand out, or 0 where that is
+ * not knowable.
+ *
+ * Free heap on its own cannot tell a tired heap from a full one, and the
+ * difference is the whole of what goes wrong on a panel that has been up for
+ * days: a page fetch needs its buffer in one piece, and a heap with 60 KB free
+ * in scraps refuses it while a heap with 20 KB free in one run gives it.
+ * Fragmentation *is* the gap between these two numbers, so the pair is
+ * reported wherever the single figure used to be.
+ *
+ * 0 means "this target cannot say", which is the host: glibc has no such
+ * accessor. Display it as unknown rather than as none.
+ */
+size_t port_largest_free_block(void);
+
+/**
  * Local wall-clock time, or false if it is not known yet.
  *
  * Replaces Arduino's getLocalTime(). The failure case is load-bearing:

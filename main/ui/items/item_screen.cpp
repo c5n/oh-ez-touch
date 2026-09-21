@@ -54,8 +54,16 @@ void item_screen_publish_quiet(struct item_view_s *v)
         return;
 
     /* Fire and forget, as it has always effectively been: the tile's own state
-     * is already set locally and the five-second poll is what reconciles it. */
-    openhab_client_command(v->item->getLink(), v->item->getStateText());
+     * is already set locally and the five-second poll is what reconciles it.
+     *
+     * Forgotten, but not unsaid. A full request queue is reachable on a slow
+     * link -- six tiles with an icon and a state outstanding is exactly its
+     * depth -- and a command dropped there looks from the glass like one that
+     * was sent: the control has already moved, and the next poll quietly puts
+     * it back. The same line item_publish() prints for a tap on a tile. */
+    if (openhab_client_command(v->item->getLink(), v->item->getStateText()) == false)
+        printf("item_screen: command queue full; \"%s\" not sent to %s\r\n",
+               v->item->getStateText(), v->item->getLink());
 
     if (changed_cb != NULL)
         changed_cb(v->slot);
