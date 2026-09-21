@@ -211,6 +211,15 @@ static void wlan_connect_begin(void)
     strlcpy((char *)conf.sta.ssid, wlan_sta_ssid_buf, sizeof(conf.sta.ssid));
     strlcpy((char *)conf.sta.password, wlan_sta_psk_buf, sizeof(conf.sta.password));
 
+    /* All-channel scan, best signal wins -- not the fast scan the driver
+     * defaults to. A site with several access points on one SSID otherwise
+     * gets whichever one answered first, and a wall panel does not move: the
+     * strongest AP at connect time is the right one until the next attempt.
+     * The price is a scan of every channel rather than stopping at the first
+     * match, which on the retry timer is a second nobody is watching for. */
+    conf.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+    conf.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+
     esp_wifi_set_config(WIFI_IF_STA, &conf);
 
     /* Not an error worth reporting: it fails while a previous attempt is still
