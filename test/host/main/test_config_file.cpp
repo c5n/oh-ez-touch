@@ -42,6 +42,7 @@ static const char shipped_json[] =
     "\"general\":{\"hostname\":\"oheztouch-new\"},"
     "\"ntp\":{\"hostname\":\"pool.ntp.org\",\"gmt_offset\":1,\"daylightsaving\":false},"
     "\"ui\":{\"theme\":\"Material\",\"night_mode\":\"off\",\"night_from\":22,\"night_to\":6},"
+    "\"touch\":{\"x_origin\":0,\"x_span\":0,\"y_origin\":0,\"y_span\":0},"
     "\"backlight\":{\"activity_timeout\":60,\"normal_brightness\":100,"
     "\"dim_brightness\":40},"
     "\"beeper\":{\"enabled\":true,\"volume\":25},"
@@ -202,6 +203,8 @@ static void test_every_section_round_trips(void)
         "\"ntp\":{\"hostname\":\"ntp.lan\",\"gmt_offset\":-5,\"daylightsaving\":true},"
         "\"ui\":{\"theme\":\"LCARS\",\"night_mode\":\"auto\",\"night_from\":21,"
         "\"night_to\":7},"
+        "\"touch\":{\"x_origin\":291,\"x_span\":3588,\"y_origin\":259,"
+        "\"y_span\":3551},"
         "\"backlight\":{\"activity_timeout\":30,\"normal_brightness\":80,"
         "\"dim_brightness\":10},"
         "\"beeper\":{\"enabled\":false,\"volume\":80},"
@@ -227,6 +230,14 @@ static void test_every_section_round_trips(void)
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_AUTO, config.item.ui.night_mode);
     TEST_ASSERT_EQUAL_UINT(21, config.item.ui.night_from);
     TEST_ASSERT_EQUAL_UINT(7, config.item.ui.night_to);
+
+    /* Not the defaults, which are four zeroes: a calibration that read back as
+     * zero would be indistinguishable from one that was never stored, and zero
+     * is what tells the port to use the board's own constants. */
+    TEST_ASSERT_EQUAL_UINT(291, config.item.touch.x_origin);
+    TEST_ASSERT_EQUAL_UINT(3588, config.item.touch.x_span);
+    TEST_ASSERT_EQUAL_UINT(259, config.item.touch.y_origin);
+    TEST_ASSERT_EQUAL_UINT(3551, config.item.touch.y_span);
 
     TEST_ASSERT_EQUAL_UINT32(30, config.item.backlight.activity_timeout);
     TEST_ASSERT_EQUAL_UINT(80, config.item.backlight.normal_brightness);
@@ -289,6 +300,12 @@ static void test_saved_file_has_the_expected_paths(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"general\":{\"hostname\":\"oheztouch-new\"}"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"sensors\":{\"bme280\":{"));
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"activity_timeout\":60"));
+
+    /* Four zeroes, and written rather than left out: the file is the thing a
+     * user edits to undo a calibration, so the keys have to be visible in it
+     * before there is anything to undo. */
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"touch\":{\"x_origin\":0,\"x_span\":0,"
+                                     "\"y_origin\":0,\"y_span\":0}"));
 
     /* A theme is stored by name, never by index: the numbering may move
      * between firmware versions and the name may not. */

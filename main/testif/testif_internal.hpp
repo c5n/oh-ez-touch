@@ -52,6 +52,7 @@ const char *testif_cmd_set(const testif_cmd_t *cmd, char *out, size_t out_size);
 
 const char *testif_cmd_nav(const testif_cmd_t *cmd, char *out, size_t out_size);
 const char *testif_cmd_settings(const testif_cmd_t *cmd, char *out, size_t out_size);
+const char *testif_cmd_calibrate(const testif_cmd_t *cmd, char *out, size_t out_size);
 
 /* ------------------------------------------------------------------- shot */
 

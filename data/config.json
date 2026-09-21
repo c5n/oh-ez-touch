@@ -16,6 +16,13 @@
         "night_from":   22,
         "night_to":     6
     },
+    "touch":
+    {
+        "x_origin": 0,
+        "x_span":   0,
+        "y_origin": 0,
+        "y_span":   0
+    },
     "backlight":
     {
         "activity_timeout":     60,

@@ -109,6 +109,30 @@ Messagebox messagebox;
  * booted with sound on left every touch, link and error chime playing until
  * the next restart. beeper_set_enabled() is the fix, and beeper_play() is
  * where it is now checked. */
+/* The four stored numbers, resolved against the board's.
+ *
+ * Zero means "this board's own", per axis pair rather than per number: an
+ * origin of zero is a legitimate reading and a span of zero is not, so the span
+ * is what decides and it decides for its pair. A config.json written before
+ * this existed, or one carried to a different board by an OTA, therefore lands
+ * on the constants that board was built with rather than on nothing. */
+static void touch_cal_from_config(const Config *config, struct touch_cal_s *cal)
+{
+    port_indev_cal_defaults(cal);
+
+    if (config->item.touch.x_span != 0)
+    {
+        cal->x_origin = (int32_t)config->item.touch.x_origin;
+        cal->x_span = (int32_t)config->item.touch.x_span;
+    }
+
+    if (config->item.touch.y_span != 0)
+    {
+        cal->y_origin = (int32_t)config->item.touch.y_origin;
+        cal->y_span = (int32_t)config->item.touch.y_span;
+    }
+}
+
 void settings_apply_live(Config *config)
 {
     openhab_ui_request_theme(config->item.ui.theme, openhab_ui_night_active(config));
@@ -129,6 +153,15 @@ void settings_apply_live(Config *config)
      * "may anything sound", ui_beep's is also what keeps the panel quiet while
      * it is still starting up. A save has to move them together. */
     ui_beep_set_enabled(config->item.beeper.enabled);
+
+    /* No restart, unlike the orientation beside it in the same section: the
+     * calibration is arithmetic in the pointer read, so the next press already
+     * uses it. That is what lets the calibration screen show a result the user
+     * can immediately test. */
+    struct touch_cal_s cal;
+
+    touch_cal_from_config(config, &cal);
+    port_indev_cal_set(&cal);
 
     /* Unconditional, and not only when the broker settings changed: the client
      * decides that for itself, because it is the only thing that knows what it
@@ -248,9 +281,9 @@ static void ohez_setup(void)
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
     tft_backlight.setup();
 
-    /* Read once, here: the panel's MADCTL and the touch calibration are
-     * init-time decisions, which is why the setting carries
-     * SETTINGS_F_RESTART. */
+    /* Read once, here: the panel's MADCTL is an init-time decision, which is
+     * why the setting carries SETTINGS_F_RESTART. The touch calibration below
+     * is not one and is applied straight after the pointer is created. */
     bool portrait = (config.item.ui.orientation == UI_ORIENTATION_PORTRAIT);
 
     lv_display_t *disp = port_display_init(portrait);
@@ -262,6 +295,13 @@ static void ohez_setup(void)
     ui_frame_probe_attach(disp);
 
     port_indev_init(disp, portrait);
+
+    /* Before the first widget, so the very first tap is already converted with
+     * whatever the last calibration decided. */
+    struct touch_cal_s boot_cal;
+
+    touch_cal_from_config(&config, &boot_cal);
+    port_indev_cal_set(&boot_cal);
 
     /* The hand-forked v7 theme is gone; the project styles its own widgets and
      * only needs sane defaults underneath. */

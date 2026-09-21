@@ -30,6 +30,7 @@ void test_testif_parse_run(void);
 void test_ui_beep_chimes_run(void);
 void test_ui_beep_tunes_run(void);
 void test_ui_geometry_run(void);
+void test_touch_cal_run(void);
 void test_ui_theme_run(void);
 void test_webui_api_run(void);
 

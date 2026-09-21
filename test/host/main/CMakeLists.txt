@@ -85,6 +85,18 @@
 # from anywhere else: what the status page shows is one struct, and a wrong one
 # looks exactly like a slow panel.
 #
+# port/touch_cal.c joined them because it is the whole of the touchscreen
+# calibration: the map a resistive panel's readings go through, and the solve
+# that produces one from four taps. Both used to be four #defines and one
+# expression inside port_indev.c, where nothing could reach them.
+#
+# It includes nothing but <stdbool.h>, <stddef.h> and <stdint.h> -- no LVGL, no
+# IDF, and deliberately not board_pins.h, which is what lets a board's shipped
+# constants be a test fixture here rather than a compile-time fact. And it is
+# the one file in this project whose bugs cannot be found by running the thing:
+# a calibration wrong enough to notice is a calibration that has already taken
+# away the pointer needed to correct it.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_beeper_mixer.cpp"
@@ -107,6 +119,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ui_geometry.cpp"
                             "test_ui_theme.cpp"
                             "test_testif_parse.cpp"
+                            "test_touch_cal.cpp"
                             "test_webui_api.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_common.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
@@ -127,6 +140,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/webui_api_json.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_frame_stats.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/touch_cal.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."

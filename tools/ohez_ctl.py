@@ -227,6 +227,61 @@ def cmd_wait_page(panel, args):
     raise ControlError("the page was still %r after %gs" % (state, args.timeout))
 
 
+def cmd_calibrate_run(panel, args):
+    """Walk the touchscreen calibration from start to result.
+
+    The targets come from the firmware rather than from this script, so a
+    layout change that moved them cannot leave a test tapping empty screen and
+    passing for the wrong reason -- the same reason tap-tile reads the screen
+    dump instead of naming pixels.
+
+    Each cross is tapped until the firmware says it counted it, rather than
+    tapped once and slept over. A press can be lost -- the overlay is built and
+    the pointer read on the same task, and a tap that arrives in the wrong half
+    of that has nothing to land on. Repeating is safe because the firmware drops
+    a press that reads where the last accepted one read, so the repeat is either
+    the press that went missing or a duplicate that costs nothing.
+
+    Prints the ten numbers `calibrate result` reports: the four constants the
+    panel was using, the four it would use, the worst error the old ones had at
+    the four measured points, and the worst the new ones still have.
+    """
+    panel.send("settings", "touch")
+    panel.send("calibrate")
+
+    numbers = [int(n) for n in panel.send("calibrate", "targets").split()]
+    targets = list(zip(numbers[0::2], numbers[1::2]))
+
+    for index, (x, y) in enumerate(targets):
+        deadline = time.monotonic() + args.timeout
+
+        while True:
+            panel.send("tap", x, y)
+
+            # Poll for a while before pressing again, rather than pressing on
+            # every tick: the fourth cross is replaced by the result screen in
+            # the same frame it is counted, and a press that arrives after that
+            # lands on a button. The firmware ignores those for a moment
+            # (RESULT_GRACE_MS) so this cannot store a calibration nobody
+            # looked at -- but there is no reason to send them either.
+            settled = time.monotonic() + args.poll
+
+            while time.monotonic() < settled:
+                if int(panel.send("calibrate", "step").split()[0]) > index:
+                    break
+
+                time.sleep(0.02)
+
+            if int(panel.send("calibrate", "step").split()[0]) > index:
+                break
+
+            if time.monotonic() > deadline:
+                raise ControlError("target %d of %d never registered"
+                                   % (index + 1, len(targets)))
+
+    return panel.send("calibrate", "result")
+
+
 def cmd_shot(panel, args):
     url = panel.screenshot_url()
 
@@ -276,13 +331,22 @@ def main():
     index = sub.add_parser("tap-tile", help="tap the tile with this index")
     index.add_argument("index", type=int)
 
+    calrun = sub.add_parser("calibrate-run",
+                            help="tap all four calibration targets and print the result")
+    calrun.add_argument("--poll", type=float, default=0.5,
+                        help="seconds to wait for a tap to count before "
+                             "pressing again (default 0.5)")
+    calrun.add_argument("--timeout", type=float, default=5.0,
+                        help="how long to wait for one target (default 5)")
+
     # Everything else goes through untouched, so a command added to the
     # firmware is usable here without editing this file.
     passthrough = sub.add_parser("send", help="send a raw command line")
     passthrough.add_argument("words", nargs=argparse.REMAINDER)
 
     for name in ("ping", "screen", "status", "config", "set", "tap", "longpress",
-                 "swipe", "press", "move", "release", "nav", "settings", "quit"):
+                 "swipe", "press", "move", "release", "nav", "settings", "calibrate",
+                 "quit"):
         direct = sub.add_parser(name)
         direct.add_argument("words", nargs=argparse.REMAINDER)
 
@@ -296,6 +360,8 @@ def main():
             cmd_wait_page(panel, args)
         elif args.command == "tap-label":
             tap_tile(panel, find_tile(panel, args.label))
+        elif args.command == "calibrate-run":
+            print(cmd_calibrate_run(panel, args))
         elif args.command == "tap-tile":
             tiles = panel.json("screen")["page"]["tiles"]
 

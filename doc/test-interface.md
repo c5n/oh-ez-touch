@@ -71,6 +71,7 @@ tools/ohez_ctl.py longpress 160 120
 tools/ohez_ctl.py swipe right                # a drag; the panel ignores it
 tools/ohez_ctl.py shot /tmp/panel.png --scale 2
 tools/ohez_ctl.py set theme lcars
+tools/ohez_ctl.py calibrate-run              # the whole touchscreen calibration
 tools/ohez_ctl.py quit
 ```
 
@@ -152,6 +153,9 @@ press with no release in between would do nothing at all.
 | `screen` | `ok {json}` -- see below |
 | `status` | `ok {json}` -- version, uptime, heap, frame time, network, openHAB, MQTT |
 | `config [<name>]` | `ok {json}` -- one setting, or all of them |
+| `calibrate targets` | `ok <x> <y> <x> <y> ...` -- where the four crosses are |
+| `calibrate step` | `ok <pressed> <total>` -- how many crosses have been counted |
+| `calibrate result` | `ok <was x4> <now x4> <worst_px> <residual_px>` |
 | `shot` | `ok <url>` -- where the framebuffer is |
 
 ### Writing
@@ -161,6 +165,7 @@ press with no release in between would do nothing at all.
 | `set <name> <value>` | write a setting, save it, and apply what does not need a reboot |
 | `nav <path>` | walk a dot-separated path of tile indices, as `OHEZ_ITEM` does |
 | `settings [<page>]` | open the settings screen on a page, or close it |
+| `calibrate` | start the touchscreen calibration, from the open settings screen |
 | `quit` | answer, then exit(0) |
 
 `set` takes the same names the web form posts (`config` with no argument lists
@@ -178,9 +183,44 @@ step waits for the page the one before it asked for -- so follow it with
 `wait-page`.
 
 `settings` takes the names `OHEZ_SETTINGS` takes: a section (`wlan`, `openhab`,
-`mqtt`, `sensors`, `device`, `time`, `theme`, `audio`, `info`) or a menu
-(`settings`, also spelled `index`, and `system`). With no argument it closes the
-screen, so a script can bracket a visit.
+`mqtt`, `sensors`, `device`, `touch`, `time`, `theme`, `audio`, `info`) or a
+menu (`settings`, also spelled `index`, and `system`). With no argument it
+closes the screen, so a script can bracket a visit.
+
+`calibrate` needs the settings screen already open; it is refused otherwise,
+and refused again on a panel that has no calibration. `calibrate targets` is
+the one worth reaching for: it reports the crosses **the firmware drew**, so a
+test taps those rather than four coordinates of its own. A layout change that
+moved them would otherwise leave the script tapping empty screen and passing
+for the wrong reason -- the same trap `tap-tile` avoids by reading the `screen`
+dump.
+
+`calibrate step` is what a script waits on. A press can be lost: the overlay is
+built and the pointer is read on the same task, and a tap that arrives in the
+wrong half of that has nothing to land on. So tap, check the count, and tap
+again if it did not move. Repeating is safe -- the firmware drops a press that
+reads where the last accepted one read, because two crosses eight tenths of a
+screen apart cannot produce the same reading -- so the repeat is either the
+press that went missing or a duplicate that costs nothing. Sleeping instead and
+hoping is what does not work.
+
+`calibrate result` answers only once all four crosses have been pressed, and
+only when the solve was accepted. It reports the four constants the panel was
+converting with, the four it would convert with, the worst error the old ones
+had at the four measured points, and the worst the new ones still have. A
+result is not stored until **Keep** is pressed.
+
+```bash
+tools/ohez_ctl.py settings touch
+tools/ohez_ctl.py calibrate
+tools/ohez_ctl.py calibrate targets          # tap each pair, then:
+tools/ohez_ctl.py calibrate step             # until it reports the next one
+tools/ohez_ctl.py calibrate result
+```
+
+`tools/ohez_ctl.py calibrate-run` does all of that in one command. The panel it
+measures is a model; `OHEZ_TOUCH_SKEW` is what gives it an error to find. See
+[A panel that is not there](simulator.md#a-panel-that-is-not-there).
 
 ## What `screen` returns
 

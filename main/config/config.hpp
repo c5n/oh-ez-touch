@@ -60,11 +60,33 @@ public:
             enum ui_night_mode_e night_mode;
             unsigned int night_from;
             unsigned int night_to;
-            /* Read once, while the display and the touch panel are brought
-             * up: the panel's MADCTL and the touch calibration are init-time
-             * decisions, so this carries SETTINGS_F_RESTART. */
+            /* Read once, while the display is brought up: the panel's MADCTL
+             * is an init-time decision, so this carries SETTINGS_F_RESTART.
+             * The touch calibration below used to be one too and is not any
+             * more -- it is arithmetic in the pointer read, and the panel
+             * adopts a new one without a restart. */
             enum ui_orientation_e orientation;
         } ui;
+        /* The resistive panel's origin and span per axis, in raw ADC counts.
+         *
+         * Zero means "use the constants this board was built with". The
+         * defaults differ per board -- board_pins.h has a set for the
+         * ArduiTouch panels and another for the CYD -- and a config.json is
+         * board-agnostic, carried across an OTA and quoted in the
+         * documentation, so it cannot name either of them. A zero span is a
+         * division by zero and can therefore never be a real value, which is
+         * what makes it usable as the sentinel.
+         *
+         * Meaningless on the capacitive Lanbon, which reports the panel's own
+         * pixel grid; the settings screen says so rather than hiding the rows,
+         * because a config.json is read by whichever board it lands on. */
+        struct
+        {
+            unsigned int x_origin;
+            unsigned int x_span;
+            unsigned int y_origin;
+            unsigned int y_span;
+        } touch;
         struct
         {
             unsigned long activity_timeout;

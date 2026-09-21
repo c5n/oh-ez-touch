@@ -12,6 +12,7 @@ on the server.
 - Dynamic user interface from an openHAB sitemap
 - Four themes: Material, LCARS, JARVIS, Classic
 - Landscape or portrait mounting, in every theme
+- Touchscreen calibration on the panel, with the correction drawn before it is kept
 - Web interface and REST API for configuration
 - MQTT client: status, sensors, remote configuration, sounds
 - Bluetooth LE beacon scanner (iBeacon, Eddystone)

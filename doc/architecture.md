@@ -203,8 +203,10 @@ of `<lvgl.h>` so the host tests can check it.
 **Two orientations.** A panel mounted upright sets Orientation to `portrait`
 and the display is created at 240x320 rather than 320x240 -- hardware, not
 software rotation: the panel's MADCTL simply keeps its own axes, so a frame
-costs exactly what it costs in landscape. The setting is boot-only because
-the MADCTL and the touch calibration are init-time decisions. Every theme
+costs exactly what it costs in landscape. The setting is boot-only because the
+MADCTL is an init-time decision. The touch calibration was one too until it
+became four settings and a procedure; it is now arithmetic in the pointer read
+(`main/port/touch_cal.c`) and a change takes effect on the next press. Every theme
 table entry carries a second grid for it (two columns of three tiles), every
 frame measures its chrome against the resolution LVGL reports, and the page
 asks `ui_style_grid()` which of the two to pack. The host geometry tests

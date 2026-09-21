@@ -33,6 +33,7 @@
 #include "port/ohez_port.h"
 #include "ui/items/item_screen.hpp"
 #include "ui/openhab_ui.hpp"
+#include "ui/ui_calibration.hpp"
 #include "ui/ui_frame_stats.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
@@ -443,6 +444,84 @@ const char *testif_cmd_settings(const testif_cmd_t *cmd, char *out, size_t out_s
     /* The same lookup OHEZ_SETTINGS uses, so the two cannot drift apart on
      * what a page is called. */
     return ui_settings_open_by_name(cmd->argv[1]) ? NULL : "no such settings page";
+}
+
+/* The touchscreen calibration, in the three pieces a script needs: start it,
+ * find out where to tap, and read what came out.
+ *
+ * `targets` exists so that a test taps what the firmware drew rather than four
+ * coordinates copied into the script. The inset is a tenth of each axis today;
+ * a layout that moved it would quietly turn every such script into a test of
+ * the wrong thing, passing for the wrong reason -- the same trap the `screen`
+ * dump's rectangles exist to avoid.
+ *
+ * `result` reports the two figures the screen puts in words, so an assertion
+ * can be made about the correction itself rather than about a screenshot.
+ */
+const char *testif_cmd_calibrate(const testif_cmd_t *cmd, char *out, size_t out_size)
+{
+    if (cmd->argc < 2)
+    {
+        if (ui_settings_is_open() == false)
+            return "settings not open";
+
+        if (port_indev_calibratable() == false)
+            return "panel needs no calibration";
+
+        ui_calibration_open();
+
+        return ui_calibration_is_open() ? NULL : "calibration did not open";
+    }
+
+    if (strcmp(cmd->argv[1], "targets") == 0)
+    {
+        int32_t  pairs[TOUCH_CAL_SAMPLES * 2];
+        unsigned count = ui_calibration_targets(pairs, TOUCH_CAL_SAMPLES);
+        size_t   used = 0;
+
+        if (count == 0)
+            return "no target showing";
+
+        for (unsigned i = 0; i < count; i++)
+        {
+            used += (size_t)snprintf(out + used, out_size - used, "%s%d %d",
+                                     (i == 0) ? "" : " ",
+                                     (int)pairs[i * 2], (int)pairs[(i * 2) + 1]);
+        }
+
+        return NULL;
+    }
+
+    if (strcmp(cmd->argv[1], "step") == 0)
+    {
+        unsigned taken = 0;
+        unsigned total = 0;
+
+        ui_calibration_progress(&taken, &total);
+        snprintf(out, out_size, "%u %u", taken, total);
+
+        return NULL;
+    }
+
+    if (strcmp(cmd->argv[1], "result") == 0)
+    {
+        struct touch_cal_s was;
+        struct touch_cal_s now;
+        int32_t            worst = 0;
+        int32_t            residual = 0;
+
+        if (ui_calibration_result(&was, &now, &worst, &residual) == false)
+            return "no result";
+
+        snprintf(out, out_size, "%d %d %d %d %d %d %d %d %d %d",
+                 (int)was.x_origin, (int)was.x_span, (int)was.y_origin, (int)was.y_span,
+                 (int)now.x_origin, (int)now.x_span, (int)now.y_origin, (int)now.y_span,
+                 (int)worst, (int)residual);
+
+        return NULL;
+    }
+
+    return "want step, targets or result";
 }
 
 #endif /* CONFIG_IDF_TARGET_LINUX */

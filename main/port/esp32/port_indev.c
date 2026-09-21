@@ -14,6 +14,12 @@
  *     full-scale divisor. The registry driver ignores the flags entirely in any
  *     case.
  *
+ *     The conversion itself is in port/touch_cal.c, and the numbers behind it
+ *     are a runtime copy of the board's constants rather than the constants
+ *     themselves: the settings screen can solve new ones from four taps and the
+ *     panel adopts them without a restart. board_pins.h still holds what an
+ *     uncalibrated board of that type starts with.
+ *
  *   FT6X36: the flags would be applied in the wrong order and against the wrong
  *     dimension. esp_lcd_touch applies mirror_x and mirror_y *before* swap_xy,
  *     using x_max for one and y_max for the other -- but on a swapped panel the
@@ -27,12 +33,14 @@
 #include "port_display.h"
 
 #include <assert.h>
+#include <inttypes.h>
 
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_touch.h"
 #include "esp_log.h"
 
 #include "port_sys.h"
+#include "touch_cal.h"
 #include "ui/ui_input.h"
 
 #if OHEZ_TOUCH_XPT2046
@@ -69,12 +77,33 @@ static inline uint16_t clamp_to(int32_t value, int32_t limit)
 
 #if OHEZ_TOUCH_XPT2046
 
-/* The calibration is an origin and a span per axis and lives in board_pins.h
- * with the rest of the panel's wiring. TFT_eSPI's calData had a fifth number,
- * whose bit 0 was touchCalibration_rotate: it is set on every panel here, so
- * the axes are swapped and the screen's x comes from the controller's y. Bits
- * 1 and 2, invert_x and invert_y, are clear -- inversion is OHEZ_TOUCH_FLIP
- * below. */
+/* What the pointer converts with. Seeded from board_pins.h, which is where the
+ * calibration lived outright until the settings screen could solve one.
+ *
+ * TFT_eSPI's calData had a fifth number, whose bit 0 was
+ * touchCalibration_rotate: it is set on every panel here, so the axes are
+ * swapped and the screen's x comes from the controller's y. Bits 1 and 2,
+ * invert_x and invert_y, are clear -- inversion is OHEZ_TOUCH_FLIP, which stays
+ * compile-time because it describes how the glass is mounted rather than how
+ * this unit's panel reads. */
+static struct touch_cal_s cal = {
+    OHEZ_TOUCH_CAL_X_ORIGIN,
+    OHEZ_TOUCH_CAL_X_SPAN,
+    OHEZ_TOUCH_CAL_Y_ORIGIN,
+    OHEZ_TOUCH_CAL_Y_SPAN,
+};
+
+/* The raw pair behind the reading currently being converted, and the raw pair
+ * behind the last press that was confirmed. Two of them rather than one,
+ * because read_cb() throws readings away: a calibration solved from a reading
+ * the confirmation rejected would be solved from exactly the noise the
+ * confirmation exists to discard. */
+static int32_t pending_raw_x;
+static int32_t pending_raw_y;
+static int32_t confirmed_raw_x;
+static int32_t confirmed_raw_y;
+static bool    confirmed_raw_valid;
+
 static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y,
                               uint16_t *strength, uint8_t *point_num,
                               uint8_t max_point_num)
@@ -86,41 +115,34 @@ static void xpt2046_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *
 
     for (uint8_t i = 0; i < count; i++)
     {
-        /* Signed, and read before either is written: the subtraction goes
-         * negative for a press outside the calibrated area, and the screen x
-         * is computed from the raw y. */
+        /* Signed, and read before either is written: the subtraction inside the
+         * map goes negative for a press outside the calibrated area, and the
+         * screen x is computed from the raw y. */
         int32_t raw_x = x[i];
         int32_t raw_y = y[i];
 
-        int32_t screen_x;
-        int32_t screen_y;
+        int32_t screen_x = 0;
+        int32_t screen_y = 0;
 
-        if (touch_portrait)
+        /* Only the first point is ever read back -- read_cb() asks for one --
+         * so this is that one. */
+        if (i == 0)
         {
-            /* Portrait drops the axis swap, the same change the panel's MADCTL
-             * gets in port_display.c: the screen's x comes from the
-             * controller's x again. The calibration spans stay with the axes
-             * they were measured on. Bench-verified in landscape only -- a
-             * board that reads upside down or mirrored in portrait flips here,
-             * next to OHEZ_TOUCH_FLIP, not in the calibration numbers. */
-            screen_x = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * SCREEN_W) / OHEZ_TOUCH_CAL_Y_SPAN;
-            screen_y = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * SCREEN_H) / OHEZ_TOUCH_CAL_X_SPAN;
-        }
-        else
-        {
-            screen_x = ((raw_y - OHEZ_TOUCH_CAL_X_ORIGIN) * SCREEN_W) / OHEZ_TOUCH_CAL_X_SPAN;
-            screen_y = ((raw_x - OHEZ_TOUCH_CAL_Y_ORIGIN) * SCREEN_H) / OHEZ_TOUCH_CAL_Y_SPAN;
+            pending_raw_x = raw_x;
+            pending_raw_y = raw_y;
         }
 
-#if OHEZ_TOUCH_FLIP
-        screen_x = (SCREEN_W - 1) - screen_x;
-        screen_y = (SCREEN_H - 1) - screen_y;
-#endif
+        touch_cal_apply(&cal, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
+                        SCREEN_W, SCREEN_H, raw_x, raw_y, &screen_x, &screen_y);
 
         /* Clamped, where TFT_eSPI's getTouch() rejected the whole reading if
          * either axis landed outside the screen. A press a couple of pixels
          * past the edge is a press on the widget at the edge, not a press that
-         * did not happen -- and the bezel makes those common. */
+         * did not happen -- and the bezel makes those common.
+         *
+         * The clamp is here and not in touch_cal_apply(), because the
+         * calibration screen has to see how far outside the screen the previous
+         * calibration put a tap. That distance is the thing it draws. */
         x[i] = clamp_to(screen_x, SCREEN_W - 1);
         y[i] = clamp_to(screen_y, SCREEN_H - 1);
     }
@@ -162,6 +184,18 @@ static void ft5x06_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y
 }
 
 #endif /* OHEZ_TOUCH_FT5X06 */
+
+/* The raw pair of a confirmed press, kept where port_indev_raw_press() can
+ * reach it. The capacitive panel has no raw reading to keep: what it reports is
+ * already the pixel grid, and there is nothing to solve. */
+static void latch_confirmed_raw(void)
+{
+#if OHEZ_TOUCH_XPT2046
+    confirmed_raw_x = pending_raw_x;
+    confirmed_raw_y = pending_raw_y;
+    confirmed_raw_valid = true;
+#endif
+}
 
 /* How long a tap that woke the display keeps the pointer quiet. Long enough
  * that the finger has lifted, short enough not to eat a deliberate second tap.
@@ -287,6 +321,7 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
         last_x = x;
         last_y = y;
+        latch_confirmed_raw();
         data->state = LV_INDEV_STATE_PRESSED;
     }
     else
@@ -300,6 +335,97 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
      * was clicked from where the pointer was when it came up. */
     data->point.x = last_x;
     data->point.y = last_y;
+}
+
+bool port_indev_calibratable(void)
+{
+    return OHEZ_TOUCH_XPT2046 ? true : false;
+}
+
+void port_indev_cal_defaults(struct touch_cal_s *out)
+{
+    if (out == NULL)
+        return;
+
+#if OHEZ_TOUCH_XPT2046
+    out->x_origin = OHEZ_TOUCH_CAL_X_ORIGIN;
+    out->x_span = OHEZ_TOUCH_CAL_X_SPAN;
+    out->y_origin = OHEZ_TOUCH_CAL_Y_ORIGIN;
+    out->y_span = OHEZ_TOUCH_CAL_Y_SPAN;
+#else
+    /* No constants on this board because it needs none. All zero, which
+     * touch_cal_valid() reports as unusable -- and nothing asks, because
+     * port_indev_calibratable() is false. */
+    out->x_origin = 0;
+    out->x_span = 0;
+    out->y_origin = 0;
+    out->y_span = 0;
+#endif
+}
+
+void port_indev_cal_get(struct touch_cal_s *out)
+{
+    if (out == NULL)
+        return;
+
+#if OHEZ_TOUCH_XPT2046
+    *out = cal;
+#else
+    port_indev_cal_defaults(out);
+#endif
+}
+
+void port_indev_cal_set(const struct touch_cal_s *next)
+{
+#if OHEZ_TOUCH_XPT2046
+    if (touch_cal_valid(next) == false)
+    {
+        ESP_LOGW(TAG, "calibration ignored: span is zero");
+        return;
+    }
+
+    cal = *next;
+
+    ESP_LOGI(TAG, "calibration %" PRId32 "/%" PRId32 " %" PRId32 "/%" PRId32,
+             cal.x_origin, cal.x_span, cal.y_origin, cal.y_span);
+#else
+    (void)next;
+#endif
+}
+
+bool port_indev_raw_press(int32_t *raw_x, int32_t *raw_y)
+{
+#if OHEZ_TOUCH_XPT2046
+    if (confirmed_raw_valid == false)
+        return false;
+
+    if (raw_x != NULL)
+        *raw_x = confirmed_raw_x;
+
+    if (raw_y != NULL)
+        *raw_y = confirmed_raw_y;
+
+    return true;
+#else
+    (void)raw_x;
+    (void)raw_y;
+
+    return false;
+#endif
+}
+
+void port_indev_cal_map(const struct touch_cal_s *cal, int32_t raw_x, int32_t raw_y,
+                        int32_t *screen_x, int32_t *screen_y)
+{
+    touch_cal_apply(cal, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
+                    SCREEN_W, SCREEN_H, raw_x, raw_y, screen_x, screen_y);
+}
+
+const char *port_indev_cal_solve(const struct touch_cal_sample_s *samples, size_t count,
+                                 struct touch_cal_s *out)
+{
+    return touch_cal_solve(samples, count, touch_portrait, OHEZ_TOUCH_FLIP ? true : false,
+                           SCREEN_W, SCREEN_H, out);
 }
 
 void port_indev_init(lv_display_t *disp, bool portrait)

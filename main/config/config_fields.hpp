@@ -59,6 +59,7 @@ enum settings_tab_e
     SETTINGS_TAB_MQTT,
     SETTINGS_TAB_SENSORS,
     SETTINGS_TAB_DEVICE,
+    SETTINGS_TAB_TOUCH,
     SETTINGS_TAB_TIME,
     SETTINGS_TAB_THEME,
     SETTINGS_TAB_AUDIO,
@@ -71,9 +72,10 @@ enum settings_tab_e
  * a section's tab now (webui_api_json.cpp), and a second copy there would
  * drift from the touch screen's -- the drift this header exists to stop. */
 static const char *const settings_tab_names[SETTINGS_TAB_COUNT] = {
-    "WLAN",   "openHAB", "MQTT",
-    "Sensors", "Device",  "Time",
-    "Theme",  "Audio",   "Info"
+    "WLAN",    "openHAB", "MQTT",
+    "Sensors", "Device",  "Touch",
+    "Time",    "Theme",   "Audio",
+    "Info"
 };
 
 /* Reject '/' and ':' -- this was the ^[^/:]*$ pattern on the AutoConnect

@@ -69,6 +69,21 @@ const struct config_field_s config_fields[] = {
     TXT("hostname", "Hostname", general.hostname, "general", "hostname", "oheztouch-new",
         SETTINGS_F_HOSTCHARS | SETTINGS_F_RESTART),
 
+    /* Raw ADC counts, and editable by hand on purpose. The procedure on the
+     * panel is the way to set these, but it needs a pointer that lands close
+     * enough to start it -- and the state these numbers can get into is exactly
+     * the one where it does not. Being ordinary rows puts them in the web form,
+     * /api/config and the MQTT config topic as well, so a panel that cannot be
+     * tapped is still a panel that can be fixed.
+     *
+     * 0 is the default and means "the constants this board was built with", so
+     * clearing all four is how a bad calibration is undone. See config.hpp. */
+    SEC("Touch panel", SETTINGS_TAB_TOUCH),
+    UINT("touch_x_org", "X origin (raw)", touch.x_origin, "touch", "x_origin", 0, 0, 4095),
+    UINT("touch_x_span", "X span (raw)", touch.x_span, "touch", "x_span", 0, 0, 4095),
+    UINT("touch_y_org", "Y origin (raw)", touch.y_origin, "touch", "y_origin", 0, 0, 4095),
+    UINT("touch_y_span", "Y span (raw)", touch.y_span, "touch", "y_span", 0, 0, 4095),
+
     SEC("NTP Time", SETTINGS_TAB_TIME),
     TXT("ntp_host", "Host", ntp.hostname, "ntp", "hostname", "pool.ntp.org",
         SETTINGS_F_HOSTCHARS),
@@ -89,9 +104,11 @@ const struct config_field_s config_fields[] = {
         ui_theme_names, UI_THEME_FAMILY_COUNT, 0),
     SEL("night_mode", "Night mode", ui.night_mode, "ui", "night_mode", UI_NIGHT_NAME_OFF,
         ui_night_mode_names, UI_NIGHT_MODE_COUNT, 0),
-    /* Boot-only: the panel's MADCTL and the touch calibration are applied
-     * while the display is initialised, so a change takes effect after a
-     * restart. Stored by name, like the theme, for the same reason. */
+    /* Boot-only: the panel's MADCTL is set while the display is initialised,
+     * so a change takes effect after a restart. The touch calibration used to
+     * be named here too and is not any more -- see the Touch panel rows below,
+     * which the pointer picks up without one. Stored by name, like the theme,
+     * for the same reason. */
     SEL("orientation", "Orientation", ui.orientation, "ui", "orientation",
         UI_ORIENTATION_NAME_LANDSCAPE, ui_orientation_names, UI_ORIENTATION_COUNT,
         SETTINGS_F_RESTART),

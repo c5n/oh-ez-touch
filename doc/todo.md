@@ -20,7 +20,10 @@
       [Hearing the panel](simulator.md#hearing-the-panel).
 - [x] openhab_ui: Make the item controls screens of their own, laid out for
       a finger, and let them follow the server while they are open.
-- [ ] main: Add screen calibration.
+- [x] main, port, ui: Add screen calibration. Four corner taps, solved into the
+      origin and span the pointer converts with, and a result that draws the
+      correction it is about to make. See
+      [Calibrating the touchscreen](configuration.md#calibrating-the-touchscreen).
 - [x] main: Add setup wizard with WLAN credential input instead of portal
       procedure. See [Settings on the screen](configuration.md#settings-on-the-screen).
 - [ ] doc: Retake the screenshots. `doc/img/browser_*.png` still show the

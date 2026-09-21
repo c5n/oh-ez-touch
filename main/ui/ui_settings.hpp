@@ -3,8 +3,11 @@
 
 #include "sdkconfig.h"
 
+#include <lvgl.h>
+
 #include "config/config.hpp"
 #include "config/config_fields.hpp"
+#include "port/touch_cal.h"
 
 /* The on-device settings screen: what the web interface offers, on the panel.
  *
@@ -44,9 +47,33 @@ void ui_settings_rebuild(void);
  * provisioning happens while offline, which is the whole point. */
 void ui_settings_loop(void);
 
+/* The screen's single overlay slot: full-screen, opaque and click-eating, the
+ * one the keyboard and the restart confirmation are built in.
+ *
+ * Exposed for the calibration flow in ui_calibration.cpp, which needs the whole
+ * screen and cannot have a pushed one -- ui_screen allows exactly one screen
+ * over the root and the settings screen is already it. A second call replaces
+ * whatever was in the slot, so a caller never has to check.
+ *
+ * NULL when the settings screen is not open. */
+lv_obj_t *ui_settings_overlay(void);
+void      ui_settings_overlay_dismiss(void);
+
+/* Store a calibration the user has accepted: into the draft, into the live
+ * config, to the file, and into the pointer.
+ *
+ * Its own transaction rather than a change to the draft alone, unlike every
+ * other row on this screen. A calibration is accepted on a screen of its own
+ * that says what it will do, and the alternative is a user who taps Keep, then
+ * taps the back bar instead of Save, and silently loses it -- on the one page
+ * where the reason they came is that tapping is not working properly. Other
+ * pending edits in the draft are left alone. */
+void ui_settings_touch_cal_keep(const struct touch_cal_s *cal);
+
 #if CONFIG_IDF_TARGET_LINUX
 /* Open the screen at boot, on the page OHEZ_SETTINGS names -- any section
- * (wlan, openhab, mqtt, sensors, device, time, theme, audio, info) or either menu
+ * (wlan, openhab, mqtt, sensors, device, touch, time, theme, audio, info) or
+ * either menu
  * (settings, which "index" also names, and system); anything else, including
  * an unset variable, leaves it closed. On the device the screen is reached by
  * tapping the status bar, or comes up by itself when there are no

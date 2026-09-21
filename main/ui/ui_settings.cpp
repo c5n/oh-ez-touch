@@ -29,6 +29,7 @@
 #include "openhab/openhab_sitemaps.hpp"
 #include "control/beeper_control.hpp"
 #include "ui_beep.hpp"
+#include "ui_calibration.hpp"
 #include "ui_motion.hpp"
 #include "ui_geometry.hpp"
 #include "ui_screen.hpp"
@@ -38,6 +39,7 @@
 #include "version.h"
 #include "net/wlan.hpp"
 #include "debug.h"
+#include "port/port_indev.h"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 
@@ -211,13 +213,17 @@ static bool rebuild_pending = false;
  * almost all publishing; LV_SYMBOL_GPS for Sensors, which is both a
  * thermometer and a beacon scanner and so is really about what is around the
  * panel; LV_SYMBOL_REFRESH for Time, because what that page configures is not
- * a clock but where the clock is fetched from. Every one of these is a
- * codepoint tools/build_fonts.sh puts in the 16 and 22 px faces; a symbol
- * outside that list renders as a box. */
+ * a clock but where the clock is fetched from. LV_SYMBOL_KEYBOARD for Touch,
+ * because it is the only input device in the set and that page is about the
+ * panel's -- it is also the on-screen keyboard's own cancel key, which is a
+ * different surface and never on screen at the same time as this index. Every
+ * one of these is a codepoint tools/build_fonts.sh puts in the 16 and 22 px
+ * faces; a symbol outside that list renders as a box. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
-    LV_SYMBOL_WIFI,    LV_SYMBOL_HOME,     LV_SYMBOL_UPLOAD,
-    LV_SYMBOL_GPS,     LV_SYMBOL_EDIT,     LV_SYMBOL_REFRESH,
-    LV_SYMBOL_EYE_OPEN, LV_SYMBOL_VOLUME_MAX, LV_SYMBOL_LIST};
+    LV_SYMBOL_WIFI,      LV_SYMBOL_HOME,       LV_SYMBOL_UPLOAD,
+    LV_SYMBOL_GPS,       LV_SYMBOL_EDIT,       LV_SYMBOL_KEYBOARD,
+    LV_SYMBOL_REFRESH,   LV_SYMBOL_EYE_OPEN,   LV_SYMBOL_VOLUME_MAX,
+    LV_SYMBOL_LIST};
 
 /* The titles come from config_fields.hpp -- settings_tab_names[] -- so the
  * REST API's section tabs read the same as this screen's. */
@@ -247,7 +253,8 @@ static constexpr uint8_t menu_root_entries[] = {SETTINGS_TAB_THEME, SETTINGS_TAB
 
 static constexpr uint8_t menu_system_entries[] = {SETTINGS_TAB_WLAN,   SETTINGS_TAB_OPENHAB,
                                                   SETTINGS_TAB_MQTT,   SETTINGS_TAB_SENSORS,
-                                                  SETTINGS_TAB_DEVICE, SETTINGS_TAB_TIME};
+                                                  SETTINGS_TAB_DEVICE, SETTINGS_TAB_TOUCH,
+                                                  SETTINGS_TAB_TIME};
 
 struct menu_s
 {
@@ -321,6 +328,7 @@ static const char *target_symbol(uint8_t target)
 
 static void screen_show_menu(uint8_t menu);
 static void screen_show_section(uint8_t tab);
+static void status_set(uint8_t tab, const char *text);
 
 /* One entry point for both, so a caller does not have to know which it has. */
 static void screen_show_target(uint8_t target)
@@ -375,6 +383,26 @@ static void widget_refs_clear(void)
     wlan_ssid_row = NULL;
     wlan_psk_row = NULL;
     wlan_scan_list = NULL;
+
+    /* The overlay is a child of the screen like everything else here, so the
+     * lv_obj_clean() above has already deleted it. Forgetting it is the whole
+     * job on this path -- overlay_close(), which is what normally clears these,
+     * *deletes* as well, and a second delete of the same object is an LVGL
+     * assertion rather than a no-op.
+     *
+     * It went unnoticed while the only overlays were the keyboard and the
+     * restart confirmation: both cover the screen, so there was no way to reach
+     * a back bar or a footer button underneath one, and nothing else rebuilt
+     * the screen while one was up. The calibration is an overlay that a script
+     * can leave standing -- `settings <page>` rebuilds the screen from under
+     * it -- and the next overlay_create() then deleted an object that was
+     * already gone. */
+    overlay = NULL;
+    overlay_textarea = NULL;
+    edit_field = NULL;
+    edit_buffer = NULL;
+    edit_buffer_size = 0;
+    edit_row = NULL;
 }
 
 /* ---------------------------------------------------------------- builders */
@@ -490,7 +518,86 @@ static lv_obj_t *overlay_create(void)
     lv_obj_add_style(overlay, &ui_style_window, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(overlay, LV_OPA_COVER, 0);
 
+    /* Sized now rather than at the next refresh.
+     *
+     * lv_pct(100) is resolved against the parent during layout, and the pointer
+     * is read by a timer that can run before that: an overlay created in one
+     * frame is whatever lv_obj_create() made it until the next one. A press in
+     * that window is hit-tested against the wrong rectangle and lands on
+     * whatever is underneath -- which, at the top of this screen, is the back
+     * bar. It then rebuilds the screen and deletes the overlay that was being
+     * pressed.
+     *
+     * Rare and confusing rather than harmless: the calibration's first cross is
+     * inside the bar's band, and losing that press took the whole procedure
+     * with it. The keyboard and the restart confirmation are built the same way
+     * and have always had the same window; theirs is just harder to hit. */
+    lv_obj_update_layout(overlay);
+
     return overlay;
+}
+
+lv_obj_t *ui_settings_overlay(void)
+{
+    if (screen == NULL)
+        return NULL;
+
+    return overlay_create();
+}
+
+void ui_settings_overlay_dismiss(void)
+{
+    overlay_close();
+}
+
+void ui_settings_touch_cal_keep(const struct touch_cal_s *cal)
+{
+    if (cal == NULL || settings_config == NULL)
+        return;
+
+    /* All four places at once. The draft so the rows under the overlay show
+     * what was just measured and a later Save does not put the old numbers
+     * back; the baseline so that Save is then not told a restart-flagged field
+     * moved; the live config because that is what saveConfig() writes. */
+    draft.touch.x_origin = (unsigned int)cal->x_origin;
+    draft.touch.x_span = (unsigned int)cal->x_span;
+    draft.touch.y_origin = (unsigned int)cal->y_origin;
+    draft.touch.y_span = (unsigned int)cal->y_span;
+
+    baseline.touch = draft.touch;
+    settings_config->item.touch = draft.touch;
+
+    bool stored = settings_config->saveConfig();
+
+    /* Applies the calibration to the pointer, among everything else it
+     * re-applies. Unconditional, like save_event()'s: a calibration that could
+     * not be written is still a calibration that works until the next boot,
+     * and the user finds that out from the footer rather than from the panel. */
+    settings_apply_live(settings_config);
+
+    overlay_close();
+
+    /* Rebuilt rather than refreshed row by row: the four rows are showing the
+     * numbers that have just changed, and screen_show_section() is what every
+     * other return to a page already does. */
+    screen_show_section(SETTINGS_TAB_TOUCH);
+
+    if (stored == false)
+    {
+        status_set(SETTINGS_TAB_TOUCH, "Applied, not saved");
+        BEEPER_EVENT_ERROR();
+        return;
+    }
+
+    status_set(SETTINGS_TAB_TOUCH, "Calibration saved");
+    BEEPER_EVENT_ACCEPT();
+}
+
+static void calibrate_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    ui_calibration_open();
 }
 
 static void confirm_restart_event(lv_event_t *e)
@@ -2087,6 +2194,29 @@ static void screen_show_section(uint8_t tab)
             /* Built mid-tune if the user left the page and came back: the
              * label has to arrive saying Stop. */
             audio_demo_refresh();
+        }
+
+        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
+                            (void *)(uintptr_t)tab);
+    }
+    else if (tab == SETTINGS_TAB_TOUCH)
+    {
+        /* Only where there is something to calibrate. A capacitive panel
+         * reports the pixel grid it is bonded to; there is no origin and no
+         * span, and a procedure offered anyway could only write four numbers
+         * that the pointer then ignores. The rows stay, because a config.json
+         * is read by whichever board it lands on. */
+        if (port_indev_calibratable() == true)
+        {
+            lv_obj_add_event_cb(ui_themed_button(footer, "Calibrate"), calibrate_event,
+                                LV_EVENT_CLICKED, NULL);
+        }
+        else
+        {
+            /* Said rather than left to be inferred from a missing button. The
+             * rows above are still there and still editable, because a
+             * config.json is read by whichever board it lands on. */
+            status_set(tab, "This panel needs none");
         }
 
         lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,

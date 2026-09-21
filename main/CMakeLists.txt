@@ -26,6 +26,7 @@ if(OHEZ_LINUX)
         "port/linux/port_flash.c"
         "port/linux/port_display.c"
         "port/linux/port_indev.c"
+        "port/touch_cal.c"
         "port/linux/port_backlight.c"
         "port/linux/port_beeper.c"
         "port/linux/port_bme280.c"
@@ -41,6 +42,7 @@ else()
         "port/esp32/port_flash.c"
         "port/esp32/port_display.c"
         "port/esp32/port_indev.c"
+        "port/touch_cal.c"
         "port/esp32/port_backlight.c"
         "port/esp32/port_beeper.c"
         "port/esp32/port_bme280.c"
@@ -80,6 +82,7 @@ set(OHEZ_APP_SRCS
 
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
+    "ui/ui_calibration.cpp"
     "ui/frames/frame_material.cpp"
     "ui/frames/frame_jarvis.cpp"
     "ui/frames/frame_lcars.cpp"

@@ -66,6 +66,14 @@ headless run is driven over the control interface, or not at all.
 - **No radio, no backlight, no sensor and no OTA.** These features report
   "there is none". The WLAN tab's **Scan** answers from a canned list. The
   sensor publishes nothing. `POST /update` answers 501.
+- **The touchscreen calibration runs against a modelled panel.** SDL reports
+  the window coordinate exactly, so there is nothing to calibrate. The mouse
+  goes on reporting that exact coordinate, and every `tap` still lands where it
+  says it does. The calibration screen is the one thing that asks for a *raw*
+  reading, and the port answers it by running a resistive panel's map backwards
+  over the position of the press. `OHEZ_TOUCH_SKEW` bends that panel away from
+  the calibration in force, so the screen has a real correction to show. See
+  [A panel that is not there](#a-panel-that-is-not-there).
 - **The beeper works.** The simulator synthesizes the pulse train of the
   panel's PWM channel and plays it through SDL. See
   [Hearing the panel](#hearing-the-panel).
@@ -176,7 +184,7 @@ topics against a real broker on a desktop.
 
 `OHEZ_SETTINGS` opens the settings screen at boot, on the named page. The
 value is a section (`theme`, `audio`, `info`, `wlan`, `openhab`, `mqtt`,
-`sensors`, `device`, `time`) or a menu (`settings`, also `index`, and
+`sensors`, `device`, `touch`, `time`) or a menu (`settings`, also `index`, and
 `system`):
 
 ```bash
@@ -195,6 +203,42 @@ OHEZ_ITEM=0.4 OHEZ_THEME=lcars OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 Touching the status bar opens the settings screen in the simulator too. On
 the host there is no radio to configure, so the screen never opens on its own
 as it does on a new device.
+
+## A panel that is not there
+
+The touchscreen calibration takes four corner presses, reads what the panel
+reported for each of them, and solves the origin and span the pointer converts
+with. A desktop has no panel and no ADC. The simulator models one.
+
+`port_indev_raw_press()` takes the position of the press LVGL just delivered
+and runs a resistive panel's map backwards over it. The result is the 12-bit
+pair such a panel would have reported for that finger. Nothing else uses the
+model: the pointer keeps reporting the exact window coordinate, so no existing
+script changes meaning.
+
+The modelled panel is the ArduiTouch's constants. `OHEZ_TOUCH_SKEW` bends it:
+
+```bash
+OHEZ_TOUCH_SKEW=1.04,-30,0.98,25 ./build/linux/oh-ez-touch.elf
+```
+
+The four values are `xscale,xoffset,yscale,yoffset`. The scales multiply the
+spans and the offsets shift the origins. The line the simulator logs at start
+says what it made of them:
+
+```
+touch: modelled panel 245/3764 289/3461 (calibration 275/3620 264/3532)
+```
+
+Unset, the modelled panel is the calibration and the procedure reports no
+correction at all, which is its own case worth seeing: it is what a calibrated
+panel looks like.
+
+Driving the whole procedure takes one command:
+
+```bash
+tools/ohez_ctl.py calibrate-run
+```
 
 ## Hearing the panel
 

@@ -51,6 +51,18 @@ sink, so both can be tested on the host.
   It reads datagrams composed outside the process. The cases that matter are
   the ones a hand-typed `nc -u` line produces: a trailing newline, a doubled
   space, an unclosed quote, a lone `@`, and the two token limits.
+- **test_touch_cal**: the touchscreen calibration in `main/port/touch_cal.c`.
+  The map is swept over the whole 12-bit input space against a second copy of
+  the expression `port_indev.c` carried before it was extracted, in both
+  orientations with the flip both ways: the two have to agree everywhere, which
+  is what makes the extraction provably a move. The solve is checked by round
+  trip -- a panel is invented, its map is run backwards to produce the readings
+  four corner presses would give, and what comes out has to put every pixel
+  back within one of itself. Then every refusal: four identical readings, a
+  mirrored panel, two presses at one end that disagree, a short set, and the
+  widest term the arithmetic can produce. This is the one file here whose bugs
+  cannot be found by running the thing, because a calibration wrong enough to
+  notice has already taken away the pointer needed to correct it.
 - **test_beeper_mixer**: the arithmetic in `main/control/beeper_mixer.c`.
   Envelope curves and edges, sweeps in both directions, and how a frame
   divides itself between voices. Two assertions are load-bearing: a frame is

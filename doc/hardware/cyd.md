@@ -68,8 +68,14 @@ See [MQTT](../mqtt.md#relays-and-leds).
 
 A resistive panel varies per unit. The firmware uses the ranges the published
 CYD examples agree on: raw X runs roughly 240 to 3860, raw Y roughly 200 to
-3900. If a board is a few pixels off at the edges, adjust the constants in
-`main/port/esp32/board_pins.h`.
+3900.
+
+If a board is a few pixels off at the edges, calibrate it on the panel:
+**System**, **Touch**, **Calibrate**. Four corner presses, and the result says
+what it changed before it changes it. See
+[Calibrating the touchscreen](../configuration.md#calibrating-the-touchscreen).
+The constants in `main/port/esp32/board_pins.h` stay the fallback, and are what
+all four settings at `0` mean.
 
 ## Portrait mounting
 

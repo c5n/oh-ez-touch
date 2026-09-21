@@ -49,12 +49,13 @@ menu, the **X** closes the screen. A section's own buttons (**Save**, and
 | --- | --- |
 | Theme (eye symbol) | Theme family, the night variant and its schedule, the backlight levels and the dim timeout |
 | Audio (speaker symbol) | The beeper: on or off, volume, and a **Test** button that plays the theme's boot chime at the level being edited |
-| System (gear symbol) | A menu of the six sections below |
+| System (gear symbol) | A menu of the seven sections below |
 | &nbsp;&nbsp;WLAN | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Press one to fill in its name. **Save** stores the credentials and reconnects. |
 | &nbsp;&nbsp;openHAB (house symbol) | Two lists: the openHAB servers on the network, and the sitemaps of the selected server. Press one to select it. **Scan** asks again. **Manual** opens a page with host, port and sitemap as fields. |
 | &nbsp;&nbsp;MQTT (upload symbol) | Broker, port, credentials, and what to publish. See [MQTT](mqtt.md). |
 | &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner. |
 | &nbsp;&nbsp;Device (pencil symbol) | The hostname. It is also the name of the setup access point. |
+| &nbsp;&nbsp;Touch (keyboard symbol) | The four touchscreen calibration numbers, and a **Calibrate** button. See [Calibrating the touchscreen](#calibrating-the-touchscreen). |
 | &nbsp;&nbsp;Time (sync symbol) | The NTP host, the GMT offset and daylight saving. |
 | Info (list symbol) | The system information table: uptime, version, IP address. And a **Restart** button. |
 
@@ -65,6 +66,59 @@ press **Save** on that page. Leaving the screen discards your changes.
 If a changed setting is one of the few that are only read at boot (the
 hostname, the BME280 and BLE on/off, the orientation), **Save** offers a
 restart.
+
+## Calibrating the touchscreen
+
+The resistive panels vary from unit to unit. The firmware ships with the
+constants the board's published examples agree on. If your panel is a few
+pixels out at the edges, calibrate it.
+
+Open **System** and then **Touch**, and press **Calibrate**. The screen shows
+a cross in one corner. Press the centre of it. It does this four times.
+
+Press the centre of each cross as you see it, not where you think the panel
+will read it. The calibration in force is still the wrong one during the
+procedure. The screen does not use the position it reports; it uses the raw
+reading and the place the cross was drawn. This is why the procedure works on
+a panel that is too far out to operate normally.
+
+After the fourth cross the screen reports the result.
+
+- A sentence gives the worst error the old calibration had at the four places
+  you pressed, and the worst the new one still has.
+- A diagram draws the panel. A cross marks each place you were asked to press.
+  A dot marks where the old calibration put your finger. The line between them
+  is the error. The dots are offset at true size on a panel drawn smaller, so
+  that errors of a few pixels are visible.
+- A table gives the four constants: the old value, the new value and the
+  difference.
+
+**Keep** stores the new calibration, applies it at once and writes it to the
+file. **Retry** starts again. **Discard** changes nothing.
+
+A press that slides more than ten pixels is not counted. Press again if a cross
+does not advance: a second press where the last one was is dropped rather than
+counted twice, so pressing again never spoils a measurement.
+
+The procedure refuses a result it cannot trust and says why. Nothing is stored
+in that case:
+
+| Message | Meaning |
+| --- | --- |
+| Taps too close together | The four presses did not cover the screen. |
+| Two taps disagree. Try again | Two presses at the same end of an axis read very differently. One of them landed somewhere else. |
+| Panel is mirrored. See board_pins.h | An axis runs backwards. That is how the panel is wired, not a calibration. Use `OHEZ_TOUCH_FLIP` in `main/port/esp32/board_pins.h`. |
+| Readings out of range | The panel did not report usable values. |
+
+The capacitive panel of the Lanbon L8 reports the pixel grid it is bonded to.
+It has no calibration and the **Calibrate** button is not shown.
+
+### If the panel is too far out to reach the button
+
+The four numbers are ordinary settings. They are in the web form, in
+`GET/POST /api/config` as `touch_x_org`, `touch_x_span`, `touch_y_org` and
+`touch_y_span`, and on the MQTT configuration topic. Set all four to `0` to
+return to the constants the firmware was built with.
 
 ## Web interface
 
@@ -117,6 +171,20 @@ See [doc/devmgr.md](devmgr.md) for the full description.
 | Setting | Default | Description |
 | --- | --- | --- |
 | Hostname `*` | oheztouch-new | The hostname of this device. Also the name of the setup access point. |
+
+### Touch panel
+
+Raw ADC counts. `0` means the constants this board was built with, which is
+what every panel starts on. The second number of each pair is a **span**: the
+raw distance across the whole screen, not the reading at its far edge. See
+[Calibrating the touchscreen](#calibrating-the-touchscreen).
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| X origin (raw) | 0 | The reading at one edge of the screen's x axis. |
+| X span (raw) | 0 | The raw distance across the screen's x axis. |
+| Y origin (raw) | 0 | The reading at one edge of the screen's y axis. |
+| Y span (raw) | 0 | The raw distance across the screen's y axis. |
 
 ### NTP Time
 

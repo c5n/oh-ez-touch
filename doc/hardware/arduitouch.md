@@ -66,6 +66,13 @@ The touch calibration constants are origin 275, span 3620 for X and origin
 264, span 3532 for Y. The span values are spans, not maxima. See
 `main/port/esp32/board_pins.h` for the details.
 
+These are what an uncalibrated board of this type starts on. A resistive panel
+varies per unit. If yours is out at the edges, calibrate it on the panel:
+**System**, **Touch**, **Calibrate**. See
+[Calibrating the touchscreen](../configuration.md#calibrating-the-touchscreen).
+The constants in the header stay the fallback, and are what all four settings
+at `0` mean.
+
 ## Beeper
 
 This board has a piezo beeper on GPIO 21. See [The beeper](../beeper.md).
