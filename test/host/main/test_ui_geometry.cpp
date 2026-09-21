@@ -164,6 +164,123 @@ static void test_a_degenerate_grid_is_refused(void)
     TEST_ASSERT_EQUAL_INT(0, ui_grid_cell_h(&none, 240));
 }
 
+
+/* ------------------------------------------------- the selection's columns */
+
+/* What the selection screen asks for. The body is the panel's height less the
+ * back bar, less the padding the list keeps around itself; 46 px is the
+ * finger floor a choice may not go below and 92 the height past which it has
+ * stopped being a row. */
+#define SEL_ROW_MIN 46
+#define SEL_ROW_MAX 92
+#define SEL_GAP     4
+#define SEL_PAD     6
+#define SEL_BODY(res_v) ((int16_t)((res_v) - 56 - 2 * SEL_PAD))
+
+/* Everything that fits in one column stays in one column. Landscape leaves
+ * 172 px, which is three choices at the floor and not four. */
+static void test_a_short_list_stays_in_one_column(void)
+{
+    for (uint8_t n = 1; n <= 3; n++)
+    {
+        struct ui_columns_s p =
+            ui_columns_pack(n, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+        TEST_ASSERT_EQUAL_UINT8(1, p.cols);
+        TEST_ASSERT_EQUAL_UINT8(n, p.rows);
+    }
+}
+
+/* And what does not fit gains a column rather than a scrollbar. Ten choices --
+ * the most a sitemap may carry -- are four columns of three in landscape and
+ * two of five upright. */
+static void test_a_long_list_gains_columns(void)
+{
+    struct ui_columns_s land =
+        ui_columns_pack(10, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_UINT8(4, land.cols);
+    TEST_ASSERT_EQUAL_UINT8(3, land.rows);
+
+    struct ui_columns_s port =
+        ui_columns_pack(10, SEL_BODY(320), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_UINT8(2, port.cols);
+    TEST_ASSERT_EQUAL_UINT8(5, port.rows);
+}
+
+/* The columns are balanced, not filled: seven in columns of three go 3+2+2.
+ * Filling would put 3+3+1 on the screen, and the last column would read as a
+ * mistake. */
+static void test_the_columns_are_balanced(void)
+{
+    struct ui_columns_s p =
+        ui_columns_pack(7, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_UINT8(3, p.cols);
+    TEST_ASSERT_EQUAL_UINT8(3, p.rows);
+
+    TEST_ASSERT_EQUAL_UINT8(3, ui_columns_count(7, p.cols, 0));
+    TEST_ASSERT_EQUAL_UINT8(2, ui_columns_count(7, p.cols, 1));
+    TEST_ASSERT_EQUAL_UINT8(2, ui_columns_count(7, p.cols, 2));
+}
+
+/* Every choice lands in exactly one column, and they stay in order: the first
+ * index of a column is the running total of the ones before it. */
+static void test_every_choice_lands_once(void)
+{
+    for (uint8_t n = 1; n <= 10; n++)
+    {
+        struct ui_columns_s p =
+            ui_columns_pack(n, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+        uint8_t seen = 0;
+
+        for (uint8_t c = 0; c < p.cols; c++)
+        {
+            TEST_ASSERT_EQUAL_UINT8(seen, ui_columns_first(n, p.cols, c));
+            TEST_ASSERT_TRUE(ui_columns_count(n, p.cols, c) <= p.rows);
+            seen = (uint8_t)(seen + ui_columns_count(n, p.cols, c));
+        }
+
+        TEST_ASSERT_EQUAL_UINT8(n, seen);
+    }
+}
+
+/* A choice fills the height it has been given, between the two bounds: three
+ * in 172 px are 54 px each rather than 46 with 34 px of nothing under them,
+ * and one on its own is held to 92 rather than becoming the whole body. */
+static void test_a_choice_fills_its_share_within_the_bounds(void)
+{
+    struct ui_columns_s three =
+        ui_columns_pack(3, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_INT(3 * three.item_h + 2 * SEL_GAP, SEL_BODY(240) - 2);
+    TEST_ASSERT_TRUE(three.item_h >= SEL_ROW_MIN && three.item_h <= SEL_ROW_MAX);
+
+    struct ui_columns_s one =
+        ui_columns_pack(1, SEL_BODY(240), SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_INT(SEL_ROW_MAX, one.item_h);
+}
+
+/* No choices, no columns -- and a rectangle too short for even one choice
+ * still answers with a column rather than none, because an unreachable row is
+ * better than an empty screen. */
+static void test_the_degenerate_lists(void)
+{
+    struct ui_columns_s none = ui_columns_pack(0, 172, SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_UINT8(0, none.cols);
+    TEST_ASSERT_EQUAL_UINT8(0, none.rows);
+    TEST_ASSERT_EQUAL_UINT8(0, ui_columns_count(0, none.cols, 0));
+
+    struct ui_columns_s tight = ui_columns_pack(2, 20, SEL_ROW_MIN, SEL_ROW_MAX, SEL_GAP);
+
+    TEST_ASSERT_EQUAL_UINT8(2, tight.cols);
+    TEST_ASSERT_EQUAL_UINT8(1, tight.rows);
+    TEST_ASSERT_EQUAL_INT(SEL_ROW_MIN, tight.item_h);
+}
+
 void test_ui_geometry_run(void)
 {
     RUN_TEST(test_every_family_clears_the_finger_floor);
@@ -172,4 +289,10 @@ void test_ui_geometry_run(void)
     RUN_TEST(test_an_index_past_the_end_is_refused);
     RUN_TEST(test_an_impossible_rectangle_is_refused);
     RUN_TEST(test_a_degenerate_grid_is_refused);
+    RUN_TEST(test_a_short_list_stays_in_one_column);
+    RUN_TEST(test_a_long_list_gains_columns);
+    RUN_TEST(test_the_columns_are_balanced);
+    RUN_TEST(test_every_choice_lands_once);
+    RUN_TEST(test_a_choice_fills_its_share_within_the_bounds);
+    RUN_TEST(test_the_degenerate_lists);
 }

@@ -70,4 +70,87 @@ static inline bool ui_grid_cell(const struct ui_grid_s *g, int16_t area_w, int16
     return true;
 }
 
+
+/* ------------------------------------------------- a list that gains columns
+ *
+ * A column of equal-sized choices in a rectangle that may not be tall enough
+ * for all of them -- the selection screen's mappings, of which a sitemap may
+ * carry ten. The list used to scroll: choices past the fold were off screen
+ * with nothing but a scrollbar to say so, on a panel where a drag is not a
+ * gesture at all (see ui_input.c). A choice you cannot see is a choice you do
+ * not have, so the list gains a column instead.
+ *
+ * Balanced rather than filled: seven choices in columns of three go 3+2+2 and
+ * not 3+3+1. Filling each column before starting the next is what a text
+ * layout does, and it leaves the last column nearly empty beside two full
+ * ones, which reads as a mistake.
+ *
+ * Here rather than in the builder for the same reason the tile grid is: it is
+ * arithmetic with an answer that can be wrong in ways nobody sees on a panel,
+ * and this header drags in no LVGL, so the host tests can have it. */
+
+struct ui_columns_s
+{
+    uint8_t cols;   /* how many columns the choices are spread over */
+    uint8_t rows;   /* the tallest column's count -- what has to fit */
+    int16_t item_h; /* what one choice gets, gaps already taken out */
+};
+
+/* `gap` is the space between two choices in a column, `item_min_h` the height
+ * below which a choice stops being reachable with a finger, and `item_max_h`
+ * the height past which it stops reading as a row of a list. Between the two
+ * the choices stretch to fill the column, which is what makes three of them
+ * look placed rather than dropped at the top. */
+static inline struct ui_columns_s ui_columns_pack(uint8_t count, int16_t area_h,
+                                                  int16_t item_min_h, int16_t item_max_h,
+                                                  int16_t gap)
+{
+    struct ui_columns_s out = {0, 0, 0};
+
+    if (count == 0 || area_h <= 0 || item_min_h <= 0)
+        return out;
+
+    /* How many fit in one column at the smallest a choice may be. At least
+     * one, even in a rectangle too short for it: an unreachable row is still
+     * better than a column with nothing in it. */
+    int16_t per_col = (int16_t)((area_h + gap) / (item_min_h + gap));
+
+    if (per_col < 1)
+        per_col = 1;
+
+    out.cols = (uint8_t)((count + per_col - 1) / per_col);
+    out.rows = (uint8_t)((count + out.cols - 1) / out.cols);
+
+    out.item_h = (int16_t)((area_h - (out.rows - 1) * gap) / out.rows);
+
+    if (out.item_h > item_max_h)
+        out.item_h = item_max_h;
+
+    if (out.item_h < item_min_h)
+        out.item_h = item_min_h;
+
+    return out;
+}
+
+/* How many choices land in column `col`, and which one it starts at. The
+ * remainder goes to the leftmost columns, so a column is never more than one
+ * choice shorter than the one before it. */
+static inline uint8_t ui_columns_count(uint8_t count, uint8_t cols, uint8_t col)
+{
+    if (cols == 0 || col >= cols)
+        return 0;
+
+    return (uint8_t)(count / cols + ((col < count % cols) ? 1 : 0));
+}
+
+static inline uint8_t ui_columns_first(uint8_t count, uint8_t cols, uint8_t col)
+{
+    if (cols == 0 || col >= cols)
+        return count;
+
+    uint8_t rem = (uint8_t)(count % cols);
+
+    return (uint8_t)(col * (count / cols) + ((col < rem) ? col : rem));
+}
+
 #endif /* UI_GEOMETRY_HPP */
