@@ -91,6 +91,15 @@ means, and every LVGL call, stays on the task that owns the screen.
 `main/openhab/openhab_connector.cpp` is a model and a parser with no idea
 that a network exists. That is what lets the host tests cover the parser.
 
+The parser names the keys it wants and the rest is dropped at the parser
+rather than stored and stepped over. A page carries a good deal the panel has
+no use for -- widget ids, visibility flags, item categories, tags, group
+members, timestamps -- and storing it cost more than storing what is read: on
+the six-widget demo page, 5892 bytes of document against 3136 with the filter,
+188 allocations against 103. It also means a future openHAB adding fields
+costs the panel nothing. The price is that a key the parser reads has to be
+named in the filter too; one that is not reads as null.
+
 Two more requests share the worker:
 
 - **The sitemap list.** `main/openhab/openhab_sitemaps.cpp` fetches the list

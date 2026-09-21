@@ -290,6 +290,33 @@ static void test_a_player_keeps_its_type_despite_its_mappings(void)
  *
  * The panel shows those four characters on the tile, which is what a panel
  * pointed at a fresh openHAB really does show. */
+/* The item's own rendering of its state, which the tile prefers to the raw one
+ * when openHAB sends it (see update_state_widget() in openhab_ui.cpp).
+ *
+ * Here because it is the one field the parse reads that nothing else in this
+ * file asserted, and because Sitemap::parse() now names every key it wants in
+ * a filter: a key spelled wrong there does not fail, it silently reads null,
+ * and the only place that would have shown up is a tile quietly losing its
+ * transformed state. openHAB sends this for an item with a MAP or JSONPATH
+ * transformation on its state description. */
+static void test_the_transformed_state_is_kept(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Text\",\"label\":\"Mode\","
+        "\"item\":{\"type\":\"String\",\"state\":\"eco\","
+        "\"transformedState\":\"Economy\","
+        "\"link\":\"http://h/rest/items/Mode\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+
+    Item *mode = sitemap.getItem(0);
+
+    TEST_ASSERT_EQUAL(ItemType::type_string, mode->getType());
+    TEST_ASSERT_EQUAL_STRING("eco", mode->getStateText());
+    TEST_ASSERT_EQUAL_STRING("Economy", mode->getTransformedStateText());
+}
+
 static void test_a_null_state_arrives_as_text(void)
 {
     Sitemap sitemap;
@@ -664,6 +691,7 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_an_empty_mappings_array_is_not_a_selection);
     RUN_TEST(test_command_options_are_used_when_mappings_are_absent);
     RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
+    RUN_TEST(test_the_transformed_state_is_kept);
     RUN_TEST(test_a_null_state_arrives_as_text);
     RUN_TEST(test_a_null_state_on_a_number_reads_as_zero);
     RUN_TEST(test_a_plain_number_state_keeps_its_printed_form);

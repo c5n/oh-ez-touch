@@ -210,11 +210,16 @@ int Item::applyState(const char *text, size_t len)
 
 /* Turn a sitemap page into the title and the item array.
  *
- * `payload` need not be terminated and is not written to, but it has to stay
- * alive for the duration of the call: ArduinoJson parses in place and the
- * document below holds pointers into it. It does not have to survive the
- * return -- every field extracted here goes through one of the strlcpy()
- * setters in the header, so no Item ends up pointing into the page.
+ * `payload` need not be terminated and is not written to. It has to stay alive
+ * for the duration of the call and no longer: every field extracted here goes
+ * through one of the strlcpy() setters in the header, so no Item ends up
+ * pointing into the page.
+ *
+ * It is not held for the reason this comment used to give. ArduinoJson 7
+ * removed zero-copy parsing -- it copies every string into the document
+ * whether the input is `char *` or `const char *`, which is measurable: the
+ * same page parsed both ways costs the same 5892 bytes. What the document
+ * holds is its own copies.
  *
  * Errors are reported here without the URL, which this does not know; the
  * caller adds it, the way openhab_http.cpp and its callers already divide it
@@ -222,9 +227,6 @@ int Item::applyState(const char *text, size_t len)
 int Sitemap::parse(const char *payload, size_t payload_len)
 {
     int retval = 0;
-    /* ArduinoJson 7 documents size themselves, so the former fixed 12000 byte
-     * capacity is gone; the parser now grows the pool to fit the page. */
-    JsonDocument doc;
     bool payload_ok = true;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
@@ -232,10 +234,89 @@ int Sitemap::parse(const char *payload, size_t payload_len)
            (unsigned)payload_len, (int)payload_len, payload);
 #endif
 
+    /* What is read out of a page, and therefore all that is stored of it.
+     *
+     * ArduinoJson 7 documents size themselves -- the old fixed 12000 byte
+     * capacity is gone -- and a document that sizes itself to the page grows
+     * with whatever openHAB decides to send. A page carries a good deal this
+     * panel has no use for: widgetId, visibility, labelSource, staticIcon and
+     * unit on every widget; name, label, category, tags, groupNames, members,
+     * function and two timestamps on every item; a nested empty "widgets"
+     * array; and four more fields inside every linkedPage than the one link
+     * that is wanted. All of it was parsed and stored so that the loop below
+     * could walk past it.
+     *
+     * Measured on the six-widget demo page, 4879 bytes of real openHAB 5 JSON,
+     * in a 32-bit build with a counting allocator: 5892 bytes and 188
+     * allocations without this, 3136 bytes and 103 allocations with it, filter
+     * document included. The living-room sub page, 4365 bytes, goes from 5956
+     * to 3256. The saving is a page load's whole high-water mark lowered, on
+     * the task that also drives the screen.
+     *
+     * It is the same device SitemapList::parse() below uses on /rest/sitemaps,
+     * and it earns its keep twice: what is not named here cannot grow the
+     * document however large it gets on the wire, so a future openHAB adding
+     * fields costs this panel nothing. Every key named below is one the loop
+     * further down actually reads -- add a key there, add it here, or it will
+     * read a null.
+     *
+     * A filter that is an array applies its first element to every element of
+     * the input, which is what the widgets and the mappings rely on. */
+    JsonDocument filter;
+
+    filter["title"] = true;
+    /* Whole, not by its "message": the test below is is<JsonObject>(), and an
+     * error object filtered down to a key the server did not send would still
+     * have to be an object. It is a handful of bytes and only present when the
+     * request failed anyway. */
+    filter["error"] = true;
+    filter["parent"]["link"] = true;
+
+    JsonObject widget_filter = filter["widgets"].add<JsonObject>();
+
+    widget_filter["type"] = true;
+    widget_filter["label"] = true;
+    widget_filter["icon"] = true;
+    widget_filter["minValue"] = true;
+    widget_filter["maxValue"] = true;
+    widget_filter["step"] = true;
+    widget_filter["linkedPage"]["link"] = true;
+
+    JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
+
+    mapping_filter["command"] = true;
+    mapping_filter["label"] = true;
+
+    JsonObject item_filter = widget_filter["item"].to<JsonObject>();
+
+    item_filter["link"] = true;
+    item_filter["state"] = true;
+    item_filter["type"] = true;
+    item_filter["groupType"] = true;
+    item_filter["transformedState"] = true;
+
+    JsonObject state_filter = item_filter["stateDescription"].to<JsonObject>();
+
+    state_filter["minimum"] = true;
+    state_filter["maximum"] = true;
+    state_filter["step"] = true;
+    state_filter["pattern"] = true;
+
+    /* The other place a Selection's options come from, when the sitemap itself
+     * carries no mappings. */
+    JsonObject option_filter =
+        item_filter["commandDescription"]["commandOptions"].add<JsonObject>();
+
+    option_filter["command"] = true;
+    option_filter["label"] = true;
+
+    JsonDocument doc;
+
     // Parse JSON object
-    /* The length is passed explicitly: the network payload is not terminated,
-     * and the char * overload parses in place without copying. */
+    /* The length is passed explicitly: the network payload is not
+     * terminated. */
     DeserializationError error = deserializeJson(doc, payload, payload_len,
+                                                 DeserializationOption::Filter(filter),
                                                  DeserializationOption::NestingLimit(15));
 
     /* Both of these used to "return false", which is 0 and therefore the
@@ -529,8 +610,8 @@ int SitemapList::parse(const char *payload, size_t payload_len)
     element["label"] = true;
 
     JsonDocument doc;
-    /* The length is passed explicitly: the network payload is not terminated,
-     * and the char * overload parses in place without copying. */
+    /* The length is passed explicitly: the network payload is not
+     * terminated. */
     DeserializationError error = deserializeJson(doc, payload, payload_len,
                                                  DeserializationOption::Filter(filter),
                                                  DeserializationOption::NestingLimit(10));
