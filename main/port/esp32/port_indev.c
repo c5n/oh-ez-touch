@@ -168,6 +168,53 @@ static void ft5x06_to_screen(esp_lcd_touch_handle_t tp, uint16_t *x, uint16_t *y
  * Unchanged from the Arduino code. */
 #define TOUCH_WAKE_SUPPRESS_MS 200
 
+/* How far apart two readings of the same press may be before they are taken
+ * for two different things: a twentieth of the screen on each axis, which is
+ * sixteen pixels across and twelve down. TFT_eSPI's figure, and it wants to be
+ * generous -- a finger that is still landing moves, and rejecting that only
+ * costs one more frame of confirmation. */
+#define TOUCH_AGREE_DIVISOR 20
+
+static inline bool touch_agrees(int32_t a, int32_t b, int32_t span)
+{
+    int32_t delta = a - b;
+
+    if (delta < 0)
+        delta = -delta;
+
+    return delta <= span / TOUCH_AGREE_DIVISOR;
+}
+
+/* A press is two readings that agree, not one that arrives.
+ *
+ * The controller reports a press from a single burst: one Z sample over the
+ * threshold, then five X/Y samples taken back to back over the same SPI
+ * transaction, inside about two hundred microseconds. The averaging looks like
+ * filtering and is not -- every one of those samples is the same instant, so
+ * any disturbance that outlasts a fifth of a millisecond arrives as five
+ * samples in perfect agreement. A resistive panel next to a switching
+ * backlight and a radio produces those, and this is polled sixty-two times a
+ * second for as long as the panel is powered.
+ *
+ * What the reading is worth is therefore decided here rather than in the
+ * driver. The first press-shaped reading is only a candidate: it is held, not
+ * reported, and it becomes a press when the next poll agrees with it sixteen
+ * milliseconds later. Noise does not, because it is not still there.
+ *
+ * This is what TFT_eSPI's getTouch() did for the Arduino firmware and what the
+ * esp_lcd_touch drivers do not do. Losing it cost a phantom press every so
+ * often, and the symptom was not a stray tap: nearly always the panel was
+ * dimmed, so ohez_touch_wake() took the press, swallowed it and left nothing
+ * behind but the wake chime -- a short beep out of nowhere.
+ *
+ * The cost is one frame of latency on every press, and a tap shorter than two
+ * polls is not a tap. Neither is reachable with a finger.
+ *
+ * Only the start of a press is confirmed. Once one is established every
+ * reading is believed, because a finger that is dragging really does move
+ * further than the tolerance -- and a release is still reported the moment a
+ * poll comes back empty, which is the behaviour the widgets are written
+ * against. */
 static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 {
     (void)indev;
@@ -175,6 +222,12 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     static uint64_t suppress_until;
     static int32_t last_x;
     static int32_t last_y;
+
+    /* The unconfirmed reading, and whether a confirmed press is in progress. */
+    static bool    candidate;
+    static int32_t candidate_x;
+    static int32_t candidate_y;
+    static bool    holding;
 
     /* Every path below sets data->state. The Arduino version returned early
      * from the two suppression cases without setting it, so LVGL went on
@@ -185,6 +238,8 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
     if (port_millis() < suppress_until)
     {
+        candidate = false;
+        holding = false;
         data->state = LV_INDEV_STATE_RELEASED;
         return;
     }
@@ -197,21 +252,47 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
     bool pressed = esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &point_num, 1);
 
-    if (pressed == true && point_num > 0 && ohez_touch_wake() == true)
-    {
-        suppress_until = port_millis() + TOUCH_WAKE_SUPPRESS_MS;
-        data->state = LV_INDEV_STATE_RELEASED;
-        return;
-    }
-
     if (pressed == true && point_num > 0)
     {
+        if (holding == false)
+        {
+            /* Nothing to compare against, or the two readings are too far
+             * apart to be the same finger: this one becomes the candidate and
+             * the pointer stays up for another frame. */
+            if (   candidate == false
+                || touch_agrees(x, candidate_x, SCREEN_W) == false
+                || touch_agrees(y, candidate_y, SCREEN_H) == false)
+            {
+                candidate = true;
+                candidate_x = x;
+                candidate_y = y;
+                data->state = LV_INDEV_STATE_RELEASED;
+                return;
+            }
+
+            holding = true;
+            candidate = false;
+
+            /* Asked once the press is real, which is the whole point of
+             * waiting: waking on a candidate would chime for exactly the
+             * readings this is here to throw away. */
+            if (ohez_touch_wake() == true)
+            {
+                suppress_until = port_millis() + TOUCH_WAKE_SUPPRESS_MS;
+                holding = false;
+                data->state = LV_INDEV_STATE_RELEASED;
+                return;
+            }
+        }
+
         last_x = x;
         last_y = y;
         data->state = LV_INDEV_STATE_PRESSED;
     }
     else
     {
+        candidate = false;
+        holding = false;
         data->state = LV_INDEV_STATE_RELEASED;
     }
 

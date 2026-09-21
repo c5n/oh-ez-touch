@@ -150,6 +150,40 @@ body, which the item then stored -- a switch showing nothing and a temperature
 reading zero, on a panel whose server was perfectly healthy and whose signal
 was merely poor.
 
+## What counts as a touch
+
+A press has to be read twice before it is one. `read_cb()` in
+`main/port/esp32/port_indev.c` holds the first press-shaped reading as a
+candidate and reports nothing; the press begins only when the next poll, one
+LVGL frame later, lands within a twentieth of the screen of it.
+
+The reason is that the driver cannot tell a finger from a disturbance. An
+XPT2046 reading is one pressure sample over a threshold followed by five
+coordinate samples taken back to back in the same SPI transaction -- about two
+hundred microseconds in total. The averaging looks like filtering and is not:
+all five samples are the same instant, so anything that outlasts a fifth of a
+millisecond arrives as five samples in perfect agreement. A resistive panel
+beside a switching backlight and a radio produces those, and the reader is
+polled sixty-two times a second for as long as the panel is powered.
+
+TFT_eSPI's `getTouch()` did this confirmation for the Arduino firmware, and
+the port to `esp_lcd_touch` dropped it. What that cost was not usually a stray
+tap: the panel dims after a minute, and a press that arrives dimmed is taken
+by `ohez_touch_wake()`, which sounds the wake chime and swallows the press --
+a short beep and nothing else. A phantom tap on a widget was the rarer case,
+because the panel is dimmed for most of its life.
+
+The rule covers the capacitive board too, because there is one reader for
+both controllers. The Lanbon does not need it -- an FT6336 reports a touch it
+has already decided on -- and one frame of latency is not worth a second code
+path to save.
+
+Only the beginning of a press is confirmed. Once one is established every
+reading is believed, because a dragging finger really does move further than
+the tolerance, and a release is still reported the moment a poll comes back
+empty. The cost is one frame of latency on a press, and that a tap shorter
+than two polls is not a tap -- neither is reachable with a finger.
+
 ## Screens, frames and motion
 
 The UI is built from three ideas.
