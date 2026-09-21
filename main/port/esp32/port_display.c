@@ -27,6 +27,8 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #if OHEZ_PANEL_ILI9341
 #include "esp_lcd_ili9341.h"
@@ -118,6 +120,20 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
      * on_color_trans_done() above reports it. Calling it here as well would let
      * LVGL start rendering into a buffer the DMA is still reading. */
     esp_lcd_panel_draw_bitmap(panel, area->x1, area->y1, area->x2 + 1, area->y2 + 1, px_map);
+
+    /* One tick per strip, and it has to be here rather than in the wait for
+     * the transfer above: that wait only runs when the DMA is still busy by
+     * the time the next strip is rendered, and a frame that is slow because
+     * it is CPU-bound -- a page of recolored icons, the layer renders the
+     * entrance fades cost -- is exactly the one where it never is. Between
+     * one strip's flush and the next there is no other blocking call anywhere
+     * in LVGL's renderer (its own wait_for_flushing() is a busy spin), so
+     * without this the render task holds its core for the whole frame, and a
+     * frame that runs longer than the task watchdog's timeout starves the
+     * idle task beside it and gets reported as a hung task. The delay bounds
+     * the longest stretch without a block to one strip's render time, and
+     * costs under a millisecond per strip at 1000 Hz. */
+    vTaskDelay(1);
 }
 
 lv_display_t *port_display_init(bool portrait)
