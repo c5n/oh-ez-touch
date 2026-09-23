@@ -14,7 +14,7 @@
  * It is a real LVGL screen rather than another full-size overlay on the openHAB
  * page, so that page survives untouched underneath and comes back exactly as it
  * was. Reached by tapping the status bar -- which used to open the Systeminfo
- * window, now the Info tab of this -- and opened by itself at boot on a device
+ * window, now the Systeminfo page of this -- and opened by itself at boot on a device
  * that has no WLAN credentials yet, which is the case that could previously
  * only be resolved with a second device and a browser. */
 
@@ -80,8 +80,8 @@ bool ui_settings_open_by_name(const char *name);
 
 #if CONFIG_IDF_TARGET_LINUX
 /* Open the screen at boot, on the page OHEZ_SETTINGS names -- any section
- * (wlan, openhab, mqtt, sensors, device, touch, time, theme, audio, info) or
- * either menu
+ * (wlan, openhab, mqtt, sensors, device, touch, time, theme, audio,
+ * systeminfo, fonts, icons) or either menu
  * (settings, which "index" also names, and system); anything else, including
  * an unset variable, leaves it closed. On the device the screen is reached by
  * tapping the status bar, or comes up by itself when there are no

@@ -64,6 +64,8 @@ enum settings_tab_e
     SETTINGS_TAB_THEME,
     SETTINGS_TAB_AUDIO,
     SETTINGS_TAB_INFO,
+    SETTINGS_TAB_FONTS,
+    SETTINGS_TAB_ICONS,
     SETTINGS_TAB_COUNT
 };
 
@@ -75,7 +77,7 @@ static const char *const settings_tab_names[SETTINGS_TAB_COUNT] = {
     "WLAN",    "openHAB", "MQTT",
     "Sensors", "Device",  "Touch",
     "Time",    "Theme",   "Audio",
-    "Info"
+    "Systeminfo", "Fonts", "Icons"
 };
 
 /* Reject '/' and ':' -- this was the ^[^/:]*$ pattern on the AutoConnect

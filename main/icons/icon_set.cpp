@@ -317,6 +317,21 @@ size_t icon_set_bytes(void)
     return ICON_SET_BLOB_SIZE;
 }
 
+const char *icon_set_name(size_t index)
+{
+    return (index < ICON_SET_COUNT) ? icon_set_table[index].name : NULL;
+}
+
+const unsigned char *icon_set_entry(size_t index, size_t *size)
+{
+    *size = 0;
+
+    if (index >= ICON_SET_COUNT)
+        return NULL;
+
+    return entry_data(index, size);
+}
+
 #else /* !ICON_SET_GENERATED */
 
 const unsigned char *icon_set_get(const char *name, const char *state, size_t *size)
@@ -337,6 +352,22 @@ size_t icon_set_count(void)
 size_t icon_set_bytes(void)
 {
     return 0;
+}
+
+const char *icon_set_name(size_t index)
+{
+    (void)index;
+
+    return NULL;
+}
+
+const unsigned char *icon_set_entry(size_t index, size_t *size)
+{
+    (void)index;
+
+    *size = 0;
+
+    return NULL;
 }
 
 #endif /* ICON_SET_GENERATED */

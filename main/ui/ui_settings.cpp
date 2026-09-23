@@ -23,6 +23,7 @@
 
 #include "ui_settings.hpp"
 
+#include "icons/icon_set.hpp"
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
 #include "openhab/openhab_discover.hpp"
@@ -120,6 +121,14 @@ static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
  * would be into a deleted object. */
 static lv_obj_t *audio_demo_button = NULL;
 
+/* The Icons page's image descriptors, one per icon. lv_image keeps the pointer
+ * it is given rather than the contents, so each icon needs a descriptor of its
+ * own even though every field but ->data is the same. Allocated when the page
+ * is built, freed by widget_refs_clear() -- which every path that deletes the
+ * page's widgets (both screen_show_*() and ui_settings_close()) runs after the
+ * delete, never before it. */
+static lv_image_dsc_t *icon_dscs = NULL;
+
 /* The keyboard or the confirmation prompt -- only ever one at a time, and a
  * child of the screen rather than of lv_layer_top(), because open() hides that
  * layer to keep the Messagebox banner off this screen. */
@@ -216,14 +225,18 @@ static bool rebuild_pending = false;
  * a clock but where the clock is fetched from. LV_SYMBOL_KEYBOARD for Touch,
  * because it is the only input device in the set and that page is about the
  * panel's -- it is also the on-screen keyboard's own cancel key, which is a
- * different surface and never on screen at the same time as this index. Every
- * one of these is a codepoint tools/build_fonts.sh puts in the 16 and 22 px
- * faces; a symbol outside that list renders as a box. */
+ * different surface and never on screen at the same time as this index.
+* LV_SYMBOL_LIST for the Info menu, which is a pair of index-like pages rather
+ * than something with a shape of its own, LV_SYMBOL_FILE for Fonts, the
+ * one glyph in the set that names what a typeface lives in, and
+ * LV_SYMBOL_IMAGE for Icons. Every one of these is a codepoint
+ * tools/build_fonts.sh puts in the 16 and 22 px faces; a symbol outside that
+ * list renders as a box. */
 static const char *const tab_symbol[SETTINGS_TAB_COUNT] = {
     LV_SYMBOL_WIFI,      LV_SYMBOL_HOME,       LV_SYMBOL_UPLOAD,
     LV_SYMBOL_GPS,       LV_SYMBOL_EDIT,       LV_SYMBOL_KEYBOARD,
     LV_SYMBOL_REFRESH,   LV_SYMBOL_EYE_OPEN,   LV_SYMBOL_VOLUME_MAX,
-    LV_SYMBOL_LIST};
+    LV_SYMBOL_LIST,      LV_SYMBOL_FILE,       LV_SYMBOL_IMAGE};
 
 /* The titles come from config_fields.hpp -- settings_tab_names[] -- so the
  * REST API's section tabs read the same as this screen's. */
@@ -244,17 +257,25 @@ static const char *const *const tab_title = settings_tab_names;
  * someone might actually walk over to the panel to change. */
 #define MENU_ROOT       ((uint8_t)(SETTINGS_TAB_COUNT + 0))
 #define MENU_SYSTEM     ((uint8_t)(SETTINGS_TAB_COUNT + 1))
-#define MENU_COUNT      2
+#define MENU_INFO       ((uint8_t)(SETTINGS_TAB_COUNT + 2))
+#define MENU_COUNT      3
 #define MENU_IS(target) ((target) >= SETTINGS_TAB_COUNT)
 #define MENU_AT(target) (&menus[(target) - SETTINGS_TAB_COUNT])
 
 static constexpr uint8_t menu_root_entries[] = {SETTINGS_TAB_THEME, SETTINGS_TAB_AUDIO,
-                                                MENU_SYSTEM, SETTINGS_TAB_INFO};
+                                                MENU_SYSTEM, MENU_INFO};
 
 static constexpr uint8_t menu_system_entries[] = {SETTINGS_TAB_WLAN,   SETTINGS_TAB_OPENHAB,
-                                                  SETTINGS_TAB_MQTT,   SETTINGS_TAB_SENSORS,
-                                                  SETTINGS_TAB_DEVICE, SETTINGS_TAB_TOUCH,
-                                                  SETTINGS_TAB_TIME};
+                                                   SETTINGS_TAB_MQTT,   SETTINGS_TAB_SENSORS,
+                                                   SETTINGS_TAB_DEVICE, SETTINGS_TAB_TOUCH,
+                                                   SETTINGS_TAB_TIME};
+
+/* Info, split like System: the read-only table of what the panel is, and the
+ * typefaces it draws with and the icons it carries. All three are things to
+ * look at rather than change, which is what keeps them together on one
+ * menu. */
+static constexpr uint8_t menu_info_entries[] = {SETTINGS_TAB_INFO, SETTINGS_TAB_FONTS,
+                                                 SETTINGS_TAB_ICONS};
 
 struct menu_s
 {
@@ -270,6 +291,7 @@ struct menu_s
 static constexpr struct menu_s menus[MENU_COUNT] = {
     {"Settings", NULL, ENTRIES(menu_root_entries), MENU_ROOT},
     {"System", LV_SYMBOL_SETTINGS, ENTRIES(menu_system_entries), MENU_ROOT},
+    {"Info", LV_SYMBOL_LIST, ENTRIES(menu_info_entries), MENU_ROOT},
 };
 
 /* Every section on exactly one menu. Without this a tab added to
@@ -343,6 +365,8 @@ static void field_rows_build(uint8_t tab);
 static void openhab_tab_build(lv_obj_t *rows);
 static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
+static void fonts_tab_build(lv_obj_t *rows);
+static void icons_tab_build(lv_obj_t *rows);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
 static void keyboard_key_event(lv_event_t *e);
@@ -382,7 +406,14 @@ static void widget_refs_clear(void)
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
     wlan_psk_row = NULL;
-    wlan_scan_list = NULL;
+wlan_scan_list = NULL;
+
+    /* The Icons page's descriptors, outlived by this point by every image
+     * that pointed into them -- the lv_obj_clean() that always runs before
+     * here is what deleted those, and ui_screen_pop() did the same for the
+     * one in ui_settings_close(). */
+    free(icon_dscs);
+    icon_dscs = NULL;
 
     /* The overlay is a child of the screen like everything else here, so the
      * lv_obj_clean() above has already deleted it. Forgetting it is the whole
@@ -1825,6 +1856,172 @@ static void info_tab_build(lv_obj_t *rows)
     lv_table_set_row_count(table, row);
 }
 
+/* ------------------------------------------------------------- Fonts tab */
+
+/* The nine faces the firmware carries, one line each: three typefaces at the
+ * three sizes ui_style.cpp hands out -- captions and table cells, state lines
+ * and headers, and the big value labels. Read-only, like Systeminfo, because
+ * there is nothing to configure here: the page is what the Theme page's
+ * choice looks like before it is made, and the 36 px lines are plain ASCII
+ * because that face is the one tools/build_fonts.sh gives no accented
+ * letters -- a page about type that drew placeholder boxes would defeat
+ * itself. */
+static void fonts_tab_build(lv_obj_t *rows)
+{
+    static const struct
+    {
+        const char      *family;
+        const lv_font_t *small;
+        const lv_font_t *normal;
+        const lv_font_t *large;
+    } faces[] = {
+        {"Barlow (Material, Classic)", &custom_font_ui_16,   &custom_font_ui_22,
+         &custom_font_ui_36},
+        {"Rajdhani (JARVIS)",          &custom_font_hud_16,  &custom_font_hud_22,
+         &custom_font_hud_36},
+        {"Antonio (LCARS)",            &custom_font_lcars_16, &custom_font_lcars_22,
+         &custom_font_lcars_36},
+    };
+
+    for (size_t f = 0; f < sizeof(faces) / sizeof(faces[0]); f++)
+    {
+        /* A rule before every family but the first, so the three blocks read
+         * as three fonts rather than as one list of nine lines. The scrollbar
+         * grey rather than a border, because a hairline that asks for a
+         * colour of its own is a hairline that is wrong in one of the themes. */
+        if (f > 0)
+        {
+            lv_obj_t *rule = lv_obj_create(rows);
+
+            lv_obj_remove_flag(rule, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_size(rule, lv_pct(100), 2);
+            lv_obj_set_style_bg_color(rule, lv_color_hex(ui_style_theme()->slider_indic.bg), 0);
+            lv_obj_set_style_border_width(rule, 0, 0);
+            lv_obj_set_style_radius(rule, 0, 0);
+            lv_obj_set_style_pad_all(rule, 0, 0);
+        }
+
+        lv_obj_t *heading = lv_label_create(rows);
+
+        lv_label_set_text(heading, faces[f].family);
+        lv_obj_add_style(heading, &ui_style_label, LV_PART_MAIN);
+        lv_obj_set_style_pad_top(heading, 2, 0);
+
+        const lv_font_t *fonts[] = {faces[f].small, faces[f].normal, faces[f].large};
+        static const uint8_t sizes[] = {16, 22, 36};
+
+        for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
+        {
+            char text[40];
+
+            snprintf(text, sizeof(text), "%u px: The quick brown fox", (unsigned)sizes[i]);
+
+            lv_obj_t *sample = lv_label_create(rows);
+
+            lv_label_set_text(sample, text);
+            lv_label_set_long_mode(sample, LV_LABEL_LONG_DOT);
+            lv_obj_set_width(sample, lv_pct(100));
+            lv_obj_set_style_text_font(sample, fonts[i], 0);
+        }
+    }
+}
+
+/* ------------------------------------------------------------- Icons tab */
+
+/* Every base icon the firmware carries, one cell each: the picture and the
+ * name it is looked up by. The state variants -- "light-on", "light-40", the
+ * "-off" and "-open" runs -- are left out: they are the same art at other
+ * states, they are found through the base name rather than on their own (see
+ * icon_set_get() and its three rules), and a catalogue that listed them would
+ * list the same handful of pictures a dozen times each. The generator writes
+ * no base name with a hyphen in it, so one strchr() is the whole test.
+ *
+ * Read-only like the rest of this menu, and like the Fonts page it says so
+ * when there is nothing to show: the icon set is a generated file that is
+ * deliberately not in the repository (see icon_set.hpp), and a build without
+ * it fetches every icon from the server -- which is worth a sentence on the
+ * page rather than an empty page. */
+static void icons_tab_build(lv_obj_t *rows)
+{
+    size_t count = icon_set_count();
+
+    if (count == 0)
+    {
+        lv_obj_t *note = lv_label_create(rows);
+
+        lv_label_set_text(note,
+                          "No built-in icon set in this build. Icons are fetched from "
+                          "the server; run tools/build_icon_set.py to compile them in.");
+        lv_label_set_long_mode(note, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(note, lv_pct(100));
+        return;
+    }
+
+    icon_dscs = (lv_image_dsc_t *)calloc(count, sizeof(lv_image_dsc_t));
+
+    if (icon_dscs == NULL)
+    {
+        status_set(SETTINGS_TAB_ICONS, "Not enough memory");
+        return;
+    }
+
+    lv_obj_t *grid = ui_plain_container(rows);
+
+    lv_obj_set_size(grid, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START,
+                          LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(grid, 6, 0);
+    lv_obj_set_style_pad_column(grid, 4, 0);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        size_t                size = 0;
+        const unsigned char  *data = icon_set_entry(i, &size);
+        const char           *name = icon_set_name(i);
+
+        if (data == NULL || name == NULL)
+            break;
+
+        /* A variant of one of these, not an icon of its own. */
+        if (strchr(name, '-') != NULL)
+            continue;
+
+        /* The same descriptor every tile's built-in icon uses, by the same
+         * route widget_icon_decode_and_show() builds its -- see there. */
+        icon_dscs[i].header.magic = LV_IMAGE_HEADER_MAGIC;
+        icon_dscs[i].header.cf = LV_COLOR_FORMAT_I4;
+        icon_dscs[i].header.flags = 0;
+        icon_dscs[i].header.w = ICON_SET_PIXEL_SIZE;
+        icon_dscs[i].header.h = ICON_SET_PIXEL_SIZE;
+        icon_dscs[i].header.stride = ICON_SET_STRIDE;
+        icon_dscs[i].data_size = (uint32_t)size;
+        icon_dscs[i].data = data;
+
+        lv_obj_t *cell = ui_plain_container(grid);
+
+        /* A fifth of the width: five per row at 320 px, and flex wrap puts
+         * as many on a wider one as fit. */
+        lv_obj_set_size(cell, lv_pct(19), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
+                              LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_all(cell, 0, 0);
+        lv_obj_set_style_pad_row(cell, 0, 0);
+
+        lv_obj_t *icon = lv_image_create(cell);
+
+        lv_image_set_src(icon, &icon_dscs[i]);
+
+        lv_obj_t *caption = lv_label_create(cell);
+
+        lv_label_set_text(caption, name);
+        lv_label_set_long_mode(caption, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(caption, lv_pct(100));
+        lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, 0);
+    }
+}
+
 /* ------------------------------------------------------------ the screen */
 
 /* A footer that stays put rather than one inside the scroll area: Save is the
@@ -2176,6 +2373,11 @@ static void screen_show_section(uint8_t tab)
         lv_obj_add_event_cb(ui_themed_button(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
                             NULL);
     }
+    else if (tab == SETTINGS_TAB_FONTS || tab == SETTINGS_TAB_ICONS)
+    {
+        /* Read-only, like Systeminfo, and there is nothing to save: the rows
+         * on them are samples and a catalogue, not fields. */
+    }
     else if (tab == SETTINGS_TAB_AUDIO)
     {
         lv_obj_add_event_cb(ui_themed_button(footer, "Test"), audio_test_event,
@@ -2259,6 +2461,14 @@ static void screen_show_section(uint8_t tab)
 
     case SETTINGS_TAB_INFO:
         info_tab_build(rows);
+        break;
+
+    case SETTINGS_TAB_FONTS:
+        fonts_tab_build(rows);
+        break;
+
+    case SETTINGS_TAB_ICONS:
+        icons_tab_build(rows);
         break;
 
     default:

@@ -105,6 +105,30 @@ size_t icon_set_count(void);
 size_t icon_set_bytes(void);
 
 /**
+ * The whole set by index, for the one place that shows it rather than looks
+ * something up in it: the settings screen's Icons page.
+ *
+ * Both take the icon's state variants as separate entries -- "light" and
+ * "light-40" are two -- because that is what the set holds; what a widget
+ * resolves to for a given state is icon_set_get()'s question, not this one's.
+ *
+ * @param index 0 .. icon_set_count() - 1, in the table's sorted order
+ * @return the icon's name, or NULL when index is out of range or the set was
+ *         never generated
+ */
+const char *icon_set_name(size_t index);
+
+/** icon_set_name()'s companion: the indexed-image record -- palette plus
+ *  packed pixels, laid out as an lv_image_dsc_t wants them -- for that index.
+ *  See openhab_ui.cpp's widget_icon_decode_and_show() for the descriptor.
+ *
+ * @param size  out: the record's size in bytes, 0 if index is out of range
+ * @return pointer to the record in flash, or NULL when index is out of range
+ *         or the set was never generated
+ */
+const unsigned char *icon_set_entry(size_t index, size_t *size);
+
+/**
  * Split "<website>/icon/<name>?state=<state>&format=png" into its two parts.
  *
  * Here rather than beside either caller because both the built-in set and the

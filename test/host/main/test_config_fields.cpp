@@ -136,9 +136,11 @@ static void test_every_tab_has_a_section(void)
             if (config_fields[i].kind == SETTINGS_SECTION && config_fields[i].tab == tab)
                 found = true;
 
-        /* The two tabs the table does not describe: WLAN is credentials, which
-         * are not in Config, and Info is a read-only table. */
-        if (tab == SETTINGS_TAB_WLAN || tab == SETTINGS_TAB_INFO)
+        /* The five tabs the table does not describe: WLAN is credentials, which are
+         * not in Config, Info is a read-only table, and Fonts and Icons show
+         * the typefaces and the icon set rather than any setting. */
+        if (tab == SETTINGS_TAB_WLAN || tab == SETTINGS_TAB_INFO ||
+            tab == SETTINGS_TAB_FONTS || tab == SETTINGS_TAB_ICONS)
             continue;
 
         TEST_ASSERT_TRUE_MESSAGE(found, "a settings tab with no rows");
