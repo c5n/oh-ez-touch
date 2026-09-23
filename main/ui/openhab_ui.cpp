@@ -324,19 +324,6 @@ uint8_t openhab_ui_signal_quality(int8_t rssi)
         return 2 * (rssi + 100);
 }
 
-/* The item's pattern comes straight from openHAB and is applied to the item's
- * numeric state. "%d" (the default when openHAB sends no pattern) needs an
- * integer argument, every other pattern is fed the float. */
-static void set_label_from_pattern(lv_obj_t *label, Item *item, float value)
-{
-    const char *pattern = item->getNumberPattern();
-
-    if (strncmp(pattern, "%d", 2) == 0)
-        lv_label_set_text_fmt(label, pattern, (uint16_t)value);
-    else
-        lv_label_set_text_fmt(label, pattern, value);
-}
-
 static void event_handler(lv_event_t *e)
 {
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
@@ -417,12 +404,12 @@ static void set_label_from_mapping(lv_obj_t *label, Item *item)
     {
         if (strcmp(item->getSelectionCommand(index), item->getStateText()) == 0)
         {
-            lv_label_set_text(label, item->getSelectionLabel(index));
+            ui_reading_set_text(label, item->getSelectionLabel(index));
             return;
         }
     }
 
-    lv_label_set_text(label, item->getStateText());
+    ui_reading_set_text(label, item->getStateText());
 }
 
 void update_state_widget(struct widget_context_s *ctx)
@@ -437,24 +424,26 @@ void update_state_widget(struct widget_context_s *ctx)
          * always non-zero, so the transformed text was used even when openHAB
          * had not sent one. */
         if (strlen(ctx->item->getTransformedStateText()) > 0)
-            lv_label_set_text(ctx->state_widget, ctx->item->getTransformedStateText());
+            ui_reading_set_text(ctx->state_widget, ctx->item->getTransformedStateText());
         else
-            lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+            ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
         break;
 
     case ItemType::type_group:
         // A group aggregates its members, which may be a number or a text.
         if (ctx->item->stateIsNumber() == true)
-            set_label_from_pattern(ctx->state_widget, ctx->item, ctx->item->getStateNumber());
+            ui_reading_set_pattern(ctx->state_widget, ctx->item->getNumberPattern(),
+                                   ctx->item->getStateNumber());
         else
-            lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+            ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
         break;
 
     case ItemType::type_number:
     case ItemType::type_setpoint:
     case ItemType::type_slider:
     case ItemType::type_rollershutter:
-        set_label_from_pattern(ctx->state_widget, ctx->item, ctx->item->getStateNumber());
+        ui_reading_set_pattern(ctx->state_widget, ctx->item->getNumberPattern(),
+                               ctx->item->getStateNumber());
         break;
 
     case ItemType::type_switch:
@@ -463,7 +452,7 @@ void update_state_widget(struct widget_context_s *ctx)
         break;
 
     case ItemType::type_player:
-        lv_label_set_text(ctx->state_widget, ctx->item->getStateText());
+        ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
         break;
 
     case ItemType::type_colorpicker:
@@ -945,7 +934,7 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
 }
 
 /* The state line along the bottom edge of a widget button. Every item type
- * that shows one uses the same label; only the button border differs.
+ * that shows one uses the same reading; only the button border differs.
  *
  * One face for every reading on every page, and the caption a size below it.
  * The value used to be measured against the tile and given the largest of the
@@ -955,6 +944,9 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
  * not a hierarchy, so the sizes are fixed: font_normal for the reading,
  * font_small for the caption above it, everywhere.
  *
+ * The unit is the one exception, and deliberately so: it is context, not
+ * content, so it drops to font_small beside a value that keeps its face.
+ *
  * The cost is the wide reading that no longer gets a face of its own: it is
  * dotted instead. font_normal is chosen over font_large for exactly that
  * reason -- at 22 px the readings a panel actually shows fit, and the ones
@@ -962,19 +954,16 @@ void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
 
 static lv_obj_t *state_label_create(struct widget_context_s *wctx)
 {
-    lv_obj_t *state_label = lv_label_create(wctx->container);
-
-    lv_obj_set_style_text_align(state_label, LV_TEXT_ALIGN_CENTER, 0);
     /* One line, and dotted if even the smallest face cannot hold it. Wrapping
-     * is what used to put a two-line caption through the middle of a reading. */
-    lv_label_set_long_mode(state_label, LV_LABEL_LONG_DOT);
-    lv_obj_add_style(state_label, &ui_style_label_state, LV_PART_MAIN);
+     * is what used to put a two-line caption through the middle of a reading.
+     * The height is pinned for the same reason: left to size itself the line
+     * grows upward out of a bottom-aligned widget and back through the
+     * caption. */
+    lv_obj_t *state_label = ui_reading_create(wctx->container, &ui_style_label_state,
+                                              &ui_style_label,
+                                              lv_font_get_line_height(ui_style_theme()->font_normal));
+
     lv_obj_move_foreground(state_label);
-    lv_obj_set_width(state_label, lv_pct(100));
-    /* Pinned to one line. LV_LABEL_LONG_DOT only dots once it has run out of
-     * *height*; left to size itself it grows upward out of a bottom-aligned
-     * label and back through the caption. */
-    lv_obj_set_height(state_label, lv_font_get_line_height(ui_style_theme()->font_normal));
     lv_obj_align(state_label, LV_ALIGN_BOTTOM_MID, 0, -TILE_PAD);
 
     return state_label;

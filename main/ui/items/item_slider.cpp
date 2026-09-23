@@ -138,12 +138,10 @@ static void build(struct item_view_s *v)
     lv_obj_set_style_pad_all(v->body, 4, 0);
     lv_obj_set_style_pad_row(v->body, 6, 0);
 
-    /* The number, and it is the point of the screen. */
-    v->value = lv_label_create(v->body);
-    lv_obj_add_style(v->value, &ui_style_label_large, LV_PART_MAIN);
-    lv_obj_set_width(v->value, lv_pct(100));
-    lv_obj_set_height(v->value, VALUE_H);
-    lv_obj_set_style_text_align(v->value, LV_TEXT_ALIGN_CENTER, 0);
+    /* The number, and it is the point of the screen. The unit keeps out of
+     * its way a face below. */
+    v->value = ui_reading_create(v->body, &ui_style_label_large, &ui_style_label_state,
+                                 VALUE_H);
     item_screen_set_pattern(v->value, v->item, v->item->getStateNumber());
 
     /* The field. An lv_slider whose knob is the full height of the track, so

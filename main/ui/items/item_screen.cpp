@@ -105,14 +105,7 @@ void item_screen_glyph(lv_obj_t *btn)
 
 void item_screen_set_pattern(lv_obj_t *label, Item *item, float value)
 {
-    const char *pattern = item->getNumberPattern();
-
-    /* "%d" -- what openHAB sends when it has no pattern of its own -- needs an
-     * integer argument; everything else is fed the float. */
-    if (strncmp(pattern, "%d", 2) == 0)
-        lv_label_set_text_fmt(label, pattern, (uint16_t)value);
-    else
-        lv_label_set_text_fmt(label, pattern, value);
+    ui_reading_set_pattern(label, item->getNumberPattern(), value);
 }
 
 /* ------------------------------------------------------------------ the frame */

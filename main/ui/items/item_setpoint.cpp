@@ -141,11 +141,9 @@ static void build(struct item_view_s *v)
     lv_obj_set_style_pad_all(v->body, 4, 0);
     lv_obj_set_style_pad_row(v->body, 6, 0);
 
-    v->value = lv_label_create(v->body);
-    lv_obj_add_style(v->value, &ui_style_label_large, LV_PART_MAIN);
-    lv_obj_set_width(v->value, lv_pct(100));
-    lv_obj_set_height(v->value, VALUE_H);
-    lv_obj_set_style_text_align(v->value, LV_TEXT_ALIGN_CENTER, 0);
+    /* The value in the large face, its unit one below it. */
+    v->value = ui_reading_create(v->body, &ui_style_label_large, &ui_style_label_state,
+                                 VALUE_H);
     item_screen_set_pattern(v->value, v->item, v->item->getStateNumber());
 
     /* A row of its own, so the two pads can be a percentage of something with

@@ -3,7 +3,7 @@
 
 #include <lvgl.h>
 
-/* The three widgets every screen in this UI is built out of.
+/* The widgets every screen in this UI is built out of.
  *
  * Each of them existed once per screen family before this header: the plain
  * container in four copies (the openHAB page, the settings screen, the item
@@ -55,5 +55,30 @@ lv_obj_t *ui_themed_button(lv_obj_t *parent, const char *text);
  * it landed on. */
 lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
                       lv_event_cb_t cb);
+
+/* A reading: a value and its unit, the unit a face smaller.
+ *
+ * "3.5 °C" used to be one label in one face, which made the unit as loud as
+ * the number it annotates. The number is what somebody standing in front of
+ * the panel is after; the unit only has to be there. So the two are separate
+ * labels now -- `value_style` on the value, `unit_style` on whatever follows
+ * the pattern's conversion -- centred as a pair, level at the bottom of the
+ * value's line.
+ *
+ * The pair is re-centred whenever the text or the box's width changes. A
+ * value too wide for the box is dotted, as it has always been; the unit keeps
+ * its place.
+ *
+ * Callers talk to the widget through the two setters below; the return value
+ * is the opaque object they size, align and move. */
+lv_obj_t *ui_reading_create(lv_obj_t *parent, lv_style_t *value_style,
+                            lv_style_t *unit_style, int32_t height);
+
+/* A reading without a unit: mappings, strings and player states. */
+void ui_reading_set_text(lv_obj_t *reading, const char *text);
+
+/* Format `value` with the item's openHAB pattern. Everything up to and
+ * including the conversion is the value; the rest is the unit. */
+void ui_reading_set_pattern(lv_obj_t *reading, const char *pattern, float value);
 
 #endif /* UI_WIDGETS_HPP */
