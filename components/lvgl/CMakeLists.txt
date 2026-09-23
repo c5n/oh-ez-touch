@@ -30,7 +30,20 @@ list(FILTER LVGL_SOURCES EXCLUDE REGEX "/src/libs/thorvg/")
 # (lv_style.c, lv_draw_label.c, lv_theme_simple.c) references the symbol. With
 # the fonts in a component that merely *depends on* lvgl, the linker searches
 # that archive first and the symbol goes unresolved.
-file(GLOB OHEZ_FONT_SOURCES "${CMAKE_CURRENT_LIST_DIR}/fonts/*.c")
+# CONFIGURE_DEPENDS because the sources are generated: tools/build_fonts.sh
+# rewrites them and can add a new one, and a plain GLOB would only notice at the
+# next reconfigure -- a font that exists on disk but not in the build is an
+# undefined reference at link time.
+#
+# Not in script mode, though: IDF's component_get_requirements.cmake includes
+# this file with cmake -P to collect properties, and file(GLOB
+# CONFIGURE_DEPENDS) is not allowed there. The sources are ignored in that pass
+# anyway, so the plain form costs nothing.
+if(CMAKE_SCRIPT_MODE_FILE)
+    file(GLOB OHEZ_FONT_SOURCES "${CMAKE_CURRENT_LIST_DIR}/fonts/*.c")
+else()
+    file(GLOB OHEZ_FONT_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/fonts/*.c")
+endif()
 
 # REQUIRES is empty on purpose. In particular do NOT require esp_timer: it
 # registers headers-only on the linux target, so requiring it fails there.

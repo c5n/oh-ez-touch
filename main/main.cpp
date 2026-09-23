@@ -50,6 +50,7 @@
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_activity.h"
 #include "ui/ui_beep.hpp"
+#include "ui/ui_clock.hpp"
 #include "ui/ui_frame_probe.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_screen.hpp"
@@ -334,6 +335,7 @@ static void ohez_setup(void)
 
     openhab_ui_setup(&config);
     ui_settings_setup(&config);
+    ui_clock_setup(&config);
 
     /* Before openhab_ui_connect() below, which is the first thing to submit a
      * request. Starting it while the link is still down is harmless -- it
@@ -447,6 +449,13 @@ static void ohez_loop(void)
      * name. */
     openhab_discover_loop();
     ui_screen_loop();
+
+    /* After ui_screen_loop() and outside the online guard below: the
+     * screensaver is a screen question, not an openHAB one, and the one thing
+     * it needs from the network -- the time -- is what it shows dashes for
+     * until the network provides it. */
+    ui_clock_loop();
+
     wlan_loop();
     webui_loop();
     testif_loop();

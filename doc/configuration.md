@@ -221,6 +221,7 @@ only by fallback.
 | Activity timeout | 60 | Seconds since the last touch before the display dims. |
 | Normal Brightness | 100 | Normal brightness level in percent. |
 | Dim Brightness | 40 | Dim brightness level in percent. |
+| Show time and date when dimmed | Off | Push a screensaver with the time and date when the display dims. The next touch wakes the panel and returns to the page. |
 
 ### Beeper
 

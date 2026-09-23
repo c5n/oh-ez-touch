@@ -30,7 +30,10 @@ enum ui_screen_id_e
 {
     UI_SCREEN_NONE = 0, /* only the root is up */
     UI_SCREEN_ITEM,
-    UI_SCREEN_SETTINGS
+    UI_SCREEN_SETTINGS,
+    /* The screensaver: pushed over everything when the backlight dims with
+     * the clock setting on, popped by the waking tap. */
+    UI_SCREEN_CLOCK
 };
 
 /* Create the root screen and make it active. Call once, before any widget --

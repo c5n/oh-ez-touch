@@ -96,6 +96,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_color.cpp"
     "ui/ui_activity.c"
     "ui/ui_beep.cpp"
+    "ui/ui_clock.cpp"
     "ui/ui_frame_probe.c"
     "ui/ui_frame_stats.c"
     "ui/ui_input.c"

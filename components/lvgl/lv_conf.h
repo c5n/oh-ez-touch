@@ -751,6 +751,9 @@
  * different static weight of its face, so a caption, a label and a reading
  * differ in weight as well as in size. Regenerate with tools/build_fonts.sh.
  *
+ * The 100 px face is not one of the roles: only the screensaver's time line
+ * uses it, and nothing in the theme table points at it.
+ *
  * This list is the whole of what the build is allowed to reference: a role in
  * the theme table pointing anywhere else will not link. */
 #define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(custom_font_ui_16) \
@@ -761,7 +764,8 @@
                                LV_FONT_DECLARE(custom_font_hud_36) \
                                LV_FONT_DECLARE(custom_font_lcars_16) \
                                LV_FONT_DECLARE(custom_font_lcars_22) \
-                               LV_FONT_DECLARE(custom_font_lcars_36)
+                               LV_FONT_DECLARE(custom_font_lcars_36) \
+                               LV_FONT_DECLARE(custom_font_clock_130)
 
 /** Always set a default font */
 #define LV_FONT_DEFAULT &custom_font_ui_16

@@ -92,6 +92,11 @@ public:
             unsigned long activity_timeout;
             unsigned int normal_brightness;
             unsigned int dim_brightness;
+            /* The dim state is the panel's screensaver slot: when this is on,
+             * a screen with nothing but the time and the date covers whatever
+             * was up the moment the backlight dims, and the waking tap returns
+             * to the page. See ui/ui_clock.cpp. */
+            bool clock_dimmed;
         } backlight;
         struct
         {

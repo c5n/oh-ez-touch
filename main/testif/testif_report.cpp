@@ -76,6 +76,7 @@ static const char *screen_name(void)
     case UI_SCREEN_NONE:     return "page";
     case UI_SCREEN_ITEM:     return "item";
     case UI_SCREEN_SETTINGS: return "settings";
+    case UI_SCREEN_CLOCK:    return "clock";
     }
 
     return "unknown";

@@ -85,6 +85,14 @@ FA_FULL="61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478
 #         eye   nline plus  minus prev  play  pause stop  next  left  up    down
 FA_LARGE="61550,63650,61543,61544,61512,61515,61516,61517,61521,61523,61559,61560"
 
+# The one Latin-1 letter beyond 0x7F the 36 px faces carry: 0xE4, lowercase a
+# with diaeresis, which "März" in the screensaver's German month names needs
+# (ui_clock.cpp). The 16 px and 22 px faces already have all of 0xA0-0xFF;
+# the large ones never did, because a numeric reading cannot contain an
+# umlaut -- and the app partition is tight enough that the four glyphs of a
+# full äöüß still cost more than the one that is actually spelled.
+FA_UMLAUT="0xE4"
+
 [ -f "$FA" ] || { echo "FontAwesome subset not found: $FA (run 'git submodule update --init' once)" >&2; exit 1; }
 if [ ! -s "$ANTONIO" ]; then
     echo "Fetching Antonio from Google Fonts..."
@@ -117,19 +125,30 @@ echo "Generating fonts into $OUT ..."
 if [ "$FAMILY" = ui ] || [ "$FAMILY" = all ]; then
     gen "$(fetch "$BARLOW_URL_SMALL"  Barlow-Regular.ttf)"  custom_font_ui_16 16 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
     gen "$(fetch "$BARLOW_URL_NORMAL" Barlow-Medium.ttf)"   custom_font_ui_22 22 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
-    gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_ui_36 36 -r 0x20-0x7F -r 0xB0      -- "$FA_LARGE"
+    gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_ui_36 36 -r 0x20-0x7F -r 0xB0 -r "$FA_UMLAUT" -- "$FA_LARGE"
+
+    # The screensaver's time face: 130 px, well over three times the largest role.
+    # Not a theme role -- the screensaver already abandons the theme's colours,
+    # and a clock from across the room owes its legibility to one face everyone
+    # gets. The range is the whole of what the time line can spell: the digits,
+    # the colon, and the dashes of "--:--" before NTP has answered
+    # (0x2D-0x3A is '-' through ':', with the punctuation in between). No
+    # FontAwesome symbols -- an empty list breaks the converter, so it gets
+    # the one code point that renders as nothing. At this size "HH:MM" still
+    # leaves a margin at the panel's edges.
+    gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_clock_130 130 -r 0x2D-0x3A -- "0x20"
 fi
 
 if [ "$FAMILY" = hud ] || [ "$FAMILY" = all ]; then
     gen "$(fetch "$RAJDHANI_URL_SMALL"  Rajdhani-Regular.ttf)"  custom_font_hud_16 16 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
     gen "$(fetch "$RAJDHANI_URL_NORMAL" Rajdhani-Medium.ttf)"   custom_font_hud_22 22 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
-    gen "$(fetch "$RAJDHANI_URL_LARGE"  Rajdhani-SemiBold.ttf)" custom_font_hud_36 36 -r 0x20-0x7F -r 0xB0      -- "$FA_LARGE"
+    gen "$(fetch "$RAJDHANI_URL_LARGE"  Rajdhani-SemiBold.ttf)" custom_font_hud_36 36 -r 0x20-0x7F -r 0xB0 -r "$FA_UMLAUT" -- "$FA_LARGE"
 fi
 
 if [ "$FAMILY" = lcars ] || [ "$FAMILY" = all ]; then
     gen "$ANTONIO" custom_font_lcars_16 16 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
     gen "$ANTONIO" custom_font_lcars_22 22 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
-    gen "$ANTONIO" custom_font_lcars_36 36 -r 0x20-0x7F -r 0xB0      -- "$FA_LARGE"
+    gen "$ANTONIO" custom_font_lcars_36 36 -r 0x20-0x7F -r 0xB0 -r "$FA_UMLAUT" -- "$FA_LARGE"
 fi
 
 echo "Done. Remember to declare new fonts in LV_FONT_CUSTOM_DECLARE (components/lvgl/lv_conf.h)."

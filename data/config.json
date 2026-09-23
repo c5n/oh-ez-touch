@@ -27,7 +27,8 @@
     {
         "activity_timeout":     60,
         "normal_brightness":    100,
-        "dim_brightness":       40
+        "dim_brightness":       40,
+        "clock_dimmed":        false
     },
     "beeper":
     {

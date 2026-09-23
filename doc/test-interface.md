@@ -246,9 +246,9 @@ measures is a model; `OHEZ_TOUCH_SKEW` is what gives it an error to find. See
 }
 ```
 
-`screen` is what is on top -- `page`, `item` or `settings`. The `page` object
-describes the openHAB tile page underneath either of the other two, so it is
-always there.
+`screen` is what is on top -- `page`, `item`, `settings` or `clock`. The `page`
+object describes the openHAB tile page underneath any of the other three, so
+it is always there.
 
 `banner` appears only when one is up, and carries whichever of the two the
 firmware has raised -- the WLAN and setup messages `main.cpp` owns, or

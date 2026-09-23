@@ -122,6 +122,12 @@ const struct config_field_s config_fields[] = {
          "backlight", "normal_brightness", 100, 0, 100),
     UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness,
          "backlight", "dim_brightness", 40, 0, 100),
+    /* No SETTINGS_F_RESTART: the dim state is a runtime question, and the
+     * screen this asks for appears (or disappears) at the next dim or wake.
+     * Off by default, because a panel that dims to 40 % has always shown its
+     * page underneath and that is what an upgrading user expects to see. */
+    CHK("bl_clock", "Show time and date when dimmed", backlight.clock_dimmed,
+        "backlight", "clock_dimmed", 0, 0),
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, "beeper", "enabled", 1, 0),
