@@ -1,6 +1,6 @@
 /**
  * @file lv_conf.h
- * Configuration file for LVGL v9.5.0
+ * Configuration file for LVGL v9.6.0
  *
  * Derived from the upstream `lv_conf_template.h`. It sits next to the LVGL
  * component's CMakeLists.txt, which puts this directory on the component's
@@ -38,8 +38,9 @@
    COLOR SETTINGS
  *====================*/
 
-/** Color depth: 1 (I1), 8 (L8), 16 (RGB565), 24 (RGB888), 32 (XRGB8888) */
-#define LV_COLOR_DEPTH 16
+/** The format the displays are set up with; was `LV_COLOR_DEPTH 16`, which
+ *  v9.6 renamed because a bit count cannot say RGB565A8 or byte order. */
+#define LV_COLOR_FORMAT_DEFAULT LV_COLOR_FORMAT_RGB565
 
 /*=========================
    STDLIB WRAPPER SETTINGS
@@ -564,9 +565,10 @@
     #define LV_USE_ASSERT_OBJ 0
 #endif
 
-/** Add a custom handler when assert happens e.g. to restart MCU. */
-#define LV_ASSERT_HANDLER_INCLUDE <stdint.h>
-#define LV_ASSERT_HANDLER while(1);     /**< Halt by default */
+/** v9.6 deprecated LV_ASSERT_HANDLER_INCLUDE/LV_ASSERT_HANDLER here in
+ *  favor of a header behind LV_ASSERT_USE_CUSTOM_INCLUDE. We only wanted the
+ *  default -- halt -- which lv_assert.h still falls back to, so nothing is
+ *  defined here anymore. */
 
 /*-------------
  * Debug

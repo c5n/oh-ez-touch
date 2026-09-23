@@ -40,7 +40,7 @@
 
 #include "ui/ui_style.hpp"
 
-#include "draw/lv_draw_arc.h"
+#include "lvgl.h"
 
 #include <stdio.h>
 

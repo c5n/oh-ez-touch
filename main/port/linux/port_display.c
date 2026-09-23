@@ -13,7 +13,7 @@
 
 #include <stdlib.h>
 
-#include "drivers/sdl/lv_sdl_window.h"
+#include "lvgl.h"
 
 #include "esp_log.h"
 

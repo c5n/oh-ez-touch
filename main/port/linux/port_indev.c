@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "drivers/sdl/lv_sdl_mouse.h"
+#include "lvgl.h"
 #include "port_display.h"
 #include "touch_cal.h"
 #include "ui/ui_input.h"

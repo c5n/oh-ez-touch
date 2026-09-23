@@ -35,7 +35,7 @@
 /* The registry's ILI9341 driver ignores esp_lcd_panel_dev_config_t::data_endian
  * entirely, so the swap has to happen in the flush callback. Not reachable
  * through lvgl.h. */
-#include "draw/sw/lv_draw_sw_utils.h"
+#include "lvgl.h"
 #define OHEZ_SWAP_RGB565_IN_SOFTWARE 1
 #else
 /* IDF's own ST7789 driver does honour data_endian, through the panel's RAMCTRL
