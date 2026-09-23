@@ -10,15 +10,19 @@ firmware.
 
 This script produces that set: it fetches the openHAB classic icon set (through
 tools/fetch_openhab_icons.py, which owns the listing, the download and the
-rasterizing), reduces each icon to a 16-colour palette, re-encodes it as a
-4-bit indexed PNG and writes the lot out as one blob plus a sorted name table in
+rasterizing), reduces each icon to a 16-colour palette and writes the lot out
+as LVGL indexed image records -- a 16-entry palette of {blue, green, red,
+alpha} bytes, then the pixels packed two per byte, high nibble first -- as one
+blob plus a sorted name table in
 
     main/icons/icon_set_data.h
 
-PNG, still, rather than a decoded bitmap: the firmware already links lodepng for
-the icons it fetches, LVGL wants ARGB8888 in RAM either way, and 32x32 of that
-is 4096 bytes against the ~300 a compressed indexed PNG takes. Storing pixels
-would cost more flash than the whole set does.
+A record, not a PNG: the panel is the opposite of flash-poor, and what a PNG
+costs is RAM -- lodepng's working set for the decode plus a 4096-byte ARGB8888
+held per tile, on a heap that also feeds BLE and MQTT. An LVGL indexed image
+is what the renderer reads palette and pixels from directly: no decode, no
+transient, and 576 bytes held per icon instead of 4096. The hundred-odd bytes
+more flash per icon are the cheap side of that trade.
 
 Sixteen colours is not a compromise for this artwork. The classic icons are
 line art: a handful of flat colours and an antialiased edge. What the palette
@@ -29,7 +33,6 @@ their own -- averaging them in with the edge is what produces a halo.
     tools/build_icon_set.py                     # the whole set, 32x32
     tools/build_icon_set.py --size 24
     tools/build_icon_set.py light heating       # just these, with state variants
-    tools/build_icon_set.py --bit-depth auto    # 1 or 2 bpp where that fits
 
 The generated header is NOT committed, for the reason the other two icon tools
 give: the classic icon set is copyright the openHAB project and licensed under
@@ -425,6 +428,56 @@ def quantize(rgba, max_colors):
 
 # ----------------------------------------------------------------- PNG output
 
+def i4_record(width, height, palette, indices):
+    """Write one icon as an LVGL I4 record: the palette as sixteen {blue,
+    green, red, alpha} entries -- the order lv_color32_t has in memory, zero
+    padded when the icon needs fewer -- then the pixels packed two per byte,
+    high nibble first, which is LVGL's I4 order. Fixed size for a given
+    --size, so the firmware recognises a record by its length alone: a PNG of
+    the same image would carry its 0x89 signature instead."""
+    if width % 2 != 0:
+        raise ValueError("an odd width cannot pack two pixels per byte")
+
+    if len(palette) > 16:
+        raise ValueError("%d colours do not fit in 4 bits" % len(palette))
+
+    record = bytearray()
+
+    for color in palette:
+        red, green, blue, alpha = color
+        record += bytes((blue, green, red, alpha))
+
+    record += bytes(4 * (16 - len(palette)))
+
+    for y in range(height):
+        row = indices[y * width:(y + 1) * width]
+
+        for x in range(0, width, 2):
+            record.append((row[x] << 4) | row[x + 1])
+
+    return bytes(record)
+
+
+def i4_decode(width, height, record):
+    """Read a record back to RGBA, sharing no code with the writer beyond the
+    format comment above. Exists for verify_roundtrip."""
+    if len(record) != 64 + width * height // 2:
+        raise ValueError("record is %d bytes, not %d"
+                         % (len(record), 64 + width * height // 2))
+
+    rgba = bytearray(width * height * 4)
+
+    for y in range(height):
+        for x in range(width):
+            packed = record[64 + y * (width // 2) + x // 2]
+            index = packed >> 4 if x % 2 == 0 else packed & 0x0F
+            blue, green, red, alpha = record[index * 4:index * 4 + 4]
+            offset = (y * width + x) * 4
+            rgba[offset:offset + 4] = bytes((red, green, blue, alpha))
+
+    return rgba
+
+
 def chunk(chunk_type, body):
     return (struct.pack(">I", len(body)) + chunk_type + body
             + struct.pack(">I", zlib.crc32(chunk_type + body) & 0xFFFFFFFF))
@@ -477,18 +530,6 @@ def png_encode_indexed(width, height, palette, indices, bit_depth):
     return PNG_SIGNATURE + b"".join(body)
 
 
-def bit_depth_for(colors, requested):
-    if requested != "auto":
-        return int(requested)
-
-    if colors <= 2:
-        return 1
-    if colors <= 4:
-        return 2
-
-    return 4
-
-
 # ----------------------------------------------------------------- verifying
 
 def expected_rgba(width, height, palette, indices):
@@ -500,26 +541,28 @@ def expected_rgba(width, height, palette, indices):
     return out
 
 
-def verify_roundtrip(name, png, width, height, palette, indices):
-    """Decode what we just encoded and check it is what we meant to write."""
-    got_width, got_height, got_rgba = png_decode(png)
-
-    if (got_width, got_height) != (width, height):
-        raise ValueError("%s: re-read as %dx%d, not %dx%d"
-                         % (name, got_width, got_height, width, height))
+def verify_roundtrip(name, record, width, height, palette, indices):
+    """Decode the record just written and check it is the quantized image."""
+    got_rgba = i4_decode(width, height, record)
 
     if bytes(got_rgba) != bytes(expected_rgba(width, height, palette, indices)):
         raise ValueError("%s: re-read pixels differ from the quantized image" % name)
 
 
-def verify_external(name, png, width, height, palette, indices, magick):
+def verify_external(name, width, height, palette, indices, magick):
     """The same check through ImageMagick, which shares no code with this file.
 
     Worth the extra process for at least one icon: a round trip through one
-    decoder cannot catch a convention this file has wrong at both ends -- the
-    nibble order within a byte being the obvious one, since reading it back the
-    same wrong way agrees perfectly with itself.
+    decoder cannot catch a convention this file has wrong at both ends. The
+    record itself has no independent reader, so what ImageMagick gets is the
+    same palette and indices re-encoded as a PNG -- which pins the colours and
+    the pixel stream, the things a wrong quantizer would corrupt. What that
+    leaves uncovered is the record's own conventions -- BGRA order, nibble
+    order -- and those have exactly one reader that matters: the firmware's
+    renderer, where a wrong one is not subtle.
     """
+    png = png_encode_indexed(width, height, palette, indices, 4)
+
     result = subprocess.run([magick, "png:-", "-depth", "8", "RGBA:-"],
                             input=png, stdout=subprocess.PIPE,
                             stderr=subprocess.DEVNULL, check=True)
@@ -565,13 +608,13 @@ def emit(path, icons, size, source_ref):
     blob = bytearray()
     table = []
 
-    for name, png in icons:
-        if len(png) > 0xFFFF:
+    for name, record in icons:
+        if len(record) > 0xFFFF:
             sys.exit("%s is %d bytes, which the table's 16-bit size cannot hold"
-                     % (name, len(png)))
+                     % (name, len(record)))
 
-        table.append((name, len(blob), len(png)))
-        blob += png
+        table.append((name, len(blob), len(record)))
+        blob += record
 
     directory = os.path.dirname(path)
 
@@ -584,9 +627,10 @@ def emit(path, icons, size, source_ref):
         out.write(" *\n")
         out.write(" * %dx%d renderings of the openHAB classic icon set (openhab-webui@%s),\n"
                   % (size, size, source_ref))
-        out.write(" * quantized to 16 colours and stored as indexed PNG. The set is copyright\n")
-        out.write(" * the openHAB project and licensed under the EPL-2.0:\n")
-        out.write(" * https://github.com/openhab/openhab-webui\n")
+        out.write(" * quantized to 16 colours and stored as LVGL indexed images: a 16-entry\n")
+        out.write(" * palette of {blue, green, red, alpha} bytes, then the pixels packed two\n")
+        out.write(" * per byte, high nibble first. The set is copyright the openHAB project\n")
+        out.write(" * and licensed under the EPL-2.0: https://github.com/openhab/openhab-webui\n")
         out.write(" *\n")
         out.write(" * That license is incompatible with this project's GPL-3.0, which is why\n")
         out.write(" * this file is generated locally and excluded from the repository.\n")
@@ -631,9 +675,6 @@ def main():
                              "the firmware draws tile icons at)")
     parser.add_argument("--colors", type=int, default=16,
                         help="palette entries per icon (default: 16)")
-    parser.add_argument("--bit-depth", default="4", choices=["1", "2", "4", "auto"],
-                        help="bits per pixel; auto picks the smallest that fits "
-                             "each icon's palette (default: 4)")
     parser.add_argument("--output", default=DEFAULT_OUTPUT,
                         help="generated header (default: %s)" % DEFAULT_OUTPUT)
     parser.add_argument("--ref", default="main",
@@ -649,11 +690,10 @@ def main():
 
     if args.size < 1:
         sys.exit("--size must be at least 1.")
+    if args.size % 2 != 0:
+        sys.exit("--size must be even: a record packs two pixels per byte.")
     if not 2 <= args.colors <= 16:
         sys.exit("--colors must be between 2 and 16.")
-
-    if args.bit_depth != "auto" and args.colors > (1 << int(args.bit_depth)):
-        sys.exit("--colors %d does not fit in %s bit(s)." % (args.colors, args.bit_depth))
 
     fetcher = load_fetcher()
 
@@ -695,35 +735,32 @@ def main():
             try:
                 width, height, rgba = png_decode(source)
                 palette, indices, _ = quantize(rgba, args.colors)
-                depth = bit_depth_for(len(palette), args.bit_depth)
-                png = png_encode_indexed(width, height, palette, indices, depth)
+                record = i4_record(width, height, palette, indices)
 
-                verify_roundtrip(name, png, width, height, palette, indices)
+                verify_roundtrip(name, record, width, height, palette, indices)
 
                 if magick is not None and (args.verify_all or verified == 0):
-                    verify_external(name, png, width, height, palette, indices, magick)
+                    verify_external(name, width, height, palette, indices, magick)
                     verified += 1
             except Exception as exc:                    # noqa: BLE001 - per icon
                 failures.append((name, "%s" % exc))
                 continue
 
-            if len(png) > args.max_bytes:
+            if len(record) > args.max_bytes:
                 failures.append((name, "%d bytes exceeds --max-bytes=%d"
-                                 % (len(png), args.max_bytes)))
+                                 % (len(record), args.max_bytes)))
                 continue
 
-            icons.append((name, png))
+            icons.append((name, record))
 
     if not icons:
         sys.exit("No icons were generated.")
 
     total = emit(args.output, icons, args.size, args.ref)
 
-    largest = sorted(icons, key=lambda item: len(item[1]), reverse=True)[:3]
-
-    print("wrote %s: %d icons, %d bytes (%.1f kB), %d bytes each on average"
-          % (args.output, len(icons), total, total / 1024.0, total // len(icons)))
-    print("largest: " + ", ".join("%s %d" % (name, len(png)) for name, png in largest))
+    print("wrote %s: %d icons, %d bytes (%.1f kB), %d bytes each"
+          % (args.output, len(icons), total, total / 1024.0,
+             total // len(icons)))
     print("verified %d icon(s) against ImageMagick" % verified)
     print("\nRun `idf.py reconfigure` (or a plain build) so CMake notices the header.")
 

@@ -49,7 +49,6 @@ Useful arguments:
 |---|---|
 | `tools/build_icon_set.py light heating` | just these icons, state variants included |
 | `--size 24` | a different edge length (default 32, what the tiles draw at) |
-| `--bit-depth auto` | 1 or 2 bits per pixel where the palette allows it |
 | `--colors 8` | a smaller palette |
 | `--verify-all` | cross-check every icon against ImageMagick, not just the first |
 
