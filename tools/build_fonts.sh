@@ -107,10 +107,20 @@ gen()
     while [ "$1" != "--" ]; do ranges+=("$1"); shift; done
     shift; fa="$1"
 
+    # Compression above 20 px: the bigger the glyphs, the better the RLE
+    # ratio and the more the panel's flash cares. The 16 px captions stay
+    # raw, because they are what every line of every list draws and the
+    # decompression is per glyph, per frame. A compressed font needs
+    # LV_USE_FONT_COMPRESSED at draw time -- see lv_conf.h.
+    local store_flags="--no-compress --no-prefilter"
+    if [ "$size" -gt 20 ]; then
+        store_flags=""
+    fi
+
     echo "  $name"
     # shellcheck disable=SC2086
     $LV_FONT_CONV --format lvgl --lv-include lvgl.h --bpp 4 \
-        --no-compress --no-prefilter --force-fast-kern-format \
+        $store_flags --force-fast-kern-format \
         --size "$size" \
         --font "$face" "${ranges[@]}" \
         --font "$FA" -r "$fa" \

@@ -775,8 +775,12 @@
  *  A compiler error will be triggered if a font needs it. */
 #define LV_FONT_FMT_TXT_LARGE 0
 
-/** Enables/disables support for compressed fonts. */
-#define LV_USE_FONT_COMPRESSED 0
+/** Enables/disables support for compressed fonts. The 22 px faces and
+ *  everything larger -- a third of every tile and the whole screensaver -- are
+ *  generated compressed now (tools/build_fonts.sh), and this is what draws
+ *  them: the decompression is per glyph, per frame, which is exactly why the
+ *  16 px captions stay raw. */
+#define LV_USE_FONT_COMPRESSED 1
 
 /** Enable drawing placeholders when glyph dsc is not found. */
 #define LV_USE_FONT_PLACEHOLDER 1
