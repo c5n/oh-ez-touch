@@ -81,6 +81,26 @@
 #define INDEX_GAP    6
 #define INDEX_ROWS(n) (uint8_t)(((n) + INDEX_COLS - 1) / INDEX_COLS)
 
+/* The Icons page is paged rather than scrolled: building a cell for every icon
+ * the firmware carries at once -- three lv_objects each for the ~200 base
+ * icons, on a heap that still holds the openHAB page living underneath this
+ * screen -- is what used to run the panel out of memory and reset it. Five
+ * cells across, as the flex grid this replaced was sized, and as many rows as
+ * the panel is tall between the bar and the footer; the footer turns the
+ * pages. */
+#define ICON_PAGE_COLS 5
+#define ICON_PAGE_GAP  6
+
+/* The four ways a footer button turns one of those pages, in the order the
+ * buttons sit in it. */
+enum icons_page_e
+{
+    ICONS_PAGE_FIRST, /* << */
+    ICONS_PAGE_PREV,  /* <  */
+    ICONS_PAGE_NEXT,  /* >  */
+    ICONS_PAGE_LAST   /* >> */
+};
+
 /* Enough for the widest text field in Config, which is the 63 character MQTT
  * password, plus room for the numbers. This buffer is not only what a row
  * *shows* -- field_edit_open() prefills the keyboard from it, so a value too
@@ -121,13 +141,20 @@ static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
  * would be into a deleted object. */
 static lv_obj_t *audio_demo_button = NULL;
 
-/* The Icons page's image descriptors, one per icon. lv_image keeps the pointer
- * it is given rather than the contents, so each icon needs a descriptor of its
- * own even though every field but ->data is the same. Allocated when the page
- * is built, freed by widget_refs_clear() -- which every path that deletes the
- * page's widgets (both screen_show_*() and ui_settings_close()) runs after the
- * delete, never before it. */
+/* The Icons page's image descriptors, one per cell on the page. lv_image keeps
+ * the pointer it is given rather than the contents, so each icon needs a
+ * descriptor of its own even though every field but ->data is the same. One
+ * per *cell* and not one per icon: the page is paged rather than scrolled (see
+ * ICON_PAGE_COLS), so only a page's worth ever exists at once. Allocated when
+ * the page is built, freed by widget_refs_clear() -- which every path that
+ * deletes the page's widgets (both screen_show_*() and ui_settings_close())
+ * runs after the delete, never before it. */
 static lv_image_dsc_t *icon_dscs = NULL;
+
+/* Which page of the Icons catalogue is showing. Reset by every way of
+ * arriving at the section, kept by ui_settings_rebuild() -- a theme change is
+ * not a navigation, and must not throw away where the user was. */
+static uint16_t icons_page = 0;
 
 /* The keyboard or the confirmation prompt -- only ever one at a time, and a
  * child of the screen rather than of lv_layer_top(), because open() hides that
@@ -367,6 +394,7 @@ static void wlan_tab_build(lv_obj_t *rows);
 static void info_tab_build(lv_obj_t *rows);
 static void fonts_tab_build(lv_obj_t *rows);
 static void icons_tab_build(lv_obj_t *rows);
+static void icons_page_event(lv_event_t *e);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
 static void keyboard_key_event(lv_event_t *e);
@@ -1928,13 +1956,97 @@ static void fonts_tab_build(lv_obj_t *rows)
 
 /* ------------------------------------------------------------- Icons tab */
 
-/* Every base icon the firmware carries, one cell each: the picture and the
- * name it is looked up by. The state variants -- "light-on", "light-40", the
- * "-off" and "-open" runs -- are left out: they are the same art at other
- * states, they are found through the base name rather than on their own (see
- * icon_set_get() and its three rules), and a catalogue that listed them would
- * list the same handful of pictures a dozen times each. The generator writes
- * no base name with a hyphen in it, so one strchr() is the whole test.
+/* How many rows of cells one page of the catalogue holds. Measured against
+ * the panel rather than fixed, the way the rest of the chrome is: the caption
+ * under each icon is what makes a cell taller than the icon alone. */
+static uint8_t icons_page_rows(void)
+{
+    const lv_font_t *caption = ui_style_theme()->font_small;
+    int32_t          vres = lv_display_get_vertical_resolution(NULL);
+
+    /* The rows container's pad_all(4) -- screen_show_section() sets it -- at
+     * top and bottom, so that a page fills the area without scrolling. */
+    int16_t area_h = (int16_t)(vres - BAR_HEIGHT - FOOTER_HEIGHT - 2 * 4);
+    int16_t cell_h = (int16_t)(ICON_SET_PIXEL_SIZE + lv_font_get_line_height(caption));
+    int16_t rows = (int16_t)((area_h + ICON_PAGE_GAP) / (cell_h + ICON_PAGE_GAP));
+
+    /* A panel too short for a row still gets the page: the one row the
+     * container then scrolls is the old behaviour for a page's worth of
+     * icons, and better than a page with nothing on it. */
+    if (rows < 1)
+        rows = 1;
+
+    return (uint8_t)rows;
+}
+
+/* How many pages the catalogue takes. Counted the way the page below builds:
+ * base icons only -- the state variants are the same art at other states and
+ * are found through the base name (see icon_set_get()), and the generator
+ * writes no base name with a hyphen in it, so one strchr() is the whole test.
+ *
+ * Walked every time rather than cached: a few hundred strchr()s over names
+ * in flash, against a static that one page builds and a theme rebuild --
+ * which is not a navigation -- would have to remember to leave alone. */
+static uint16_t icons_pages(void)
+{
+    size_t per_page = (size_t)ICON_PAGE_COLS * icons_page_rows();
+    size_t base = 0;
+
+    for (size_t i = 0; i < icon_set_count(); i++)
+    {
+        const char *name = icon_set_name(i);
+
+        if (name == NULL)
+            break;
+
+        if (strchr(name, '-') == NULL)
+            base++;
+    }
+
+    return (uint16_t)((base + per_page - 1) / per_page);
+}
+
+/* The footer's four page-turning buttons. One callback with the direction
+ * the button carries: the four differ only in which way and how far, and
+ * four copies of the same handler would be four ways of saying so. */
+static void icons_page_event(lv_event_t *e)
+{
+    enum icons_page_e dir = (enum icons_page_e)(uintptr_t)lv_event_get_user_data(e);
+    uint16_t          pages = icons_pages();
+    uint16_t          page = icons_page;
+
+    if (dir == ICONS_PAGE_FIRST)
+        page = 0;
+    else if (dir == ICONS_PAGE_PREV)
+        page = (page > 0) ? (uint16_t)(page - 1) : 0;
+    else if (dir == ICONS_PAGE_NEXT)
+        page = (uint16_t)(page + 1);
+    else
+        page = (uint16_t)(pages - 1);
+
+    /* The ends are the ends. A button that cannot move the page any further
+     * stays quiet rather than rebuilding what is already showing. */
+    if (page >= pages)
+        page = (uint16_t)(pages - 1);
+
+    if (page == icons_page)
+        return;
+
+    icons_page = page;
+
+    BEEPER_EVENT_TICK();
+
+    /* The whole section rather than the grid alone, the same route the
+     * openHAB page's Manual button takes: the footer carries the page number
+     * and the buttons themselves, and the shared path is what keeps every
+     * pointer -- the descriptors included -- correct after the delete. */
+    screen_show_section(SETTINGS_TAB_ICONS);
+}
+
+/* One page of the base icons the firmware carries, one cell each: the
+ * picture and the name it is looked up by. Which page of them is
+ * icons_page, turned by the footer's buttons; the variant test the count
+ * above makes is made again here, on the same grounds.
  *
  * Read-only like the rest of this menu, and like the Fonts page it says so
  * when there is nothing to show: the icon set is a generated file that is
@@ -1957,7 +2069,25 @@ static void icons_tab_build(lv_obj_t *rows)
         return;
     }
 
-    icon_dscs = (lv_image_dsc_t *)calloc(count, sizeof(lv_image_dsc_t));
+    uint16_t pages = icons_pages();
+
+    /* The clamp matters a theme change from now: the row count follows the
+     * caption's face, and a page that no longer exists is not the one to be
+     * showing when the rebuild settles. The nearest page, not the first --
+     * a theme change is not a navigation either. */
+    if (icons_page >= pages)
+        icons_page = (uint16_t)(pages - 1);
+
+    int32_t hres = lv_display_get_horizontal_resolution(NULL);
+    int32_t vres = lv_display_get_vertical_resolution(NULL);
+
+    uint8_t page_rows = icons_page_rows();
+    size_t  per_page = (size_t)ICON_PAGE_COLS * page_rows;
+    size_t  first = (size_t)icons_page * per_page;
+    size_t  shown = 0; /* base icons walked past, this page's included */
+    size_t  built = 0; /* cells put on this page */
+
+    icon_dscs = (lv_image_dsc_t *)calloc(per_page, sizeof(lv_image_dsc_t));
 
     if (icon_dscs == NULL)
     {
@@ -1965,16 +2095,21 @@ static void icons_tab_build(lv_obj_t *rows)
         return;
     }
 
+    /* A grid of cells at computed positions rather than a flex wrap of
+     * content-sized ones: the page has to know how many cells it holds before
+     * it builds any of them, and the solver the menus use answers that --
+     * reading the container back would give zero, because v9 has not laid it
+     * out yet. */
     lv_obj_t *grid = ui_plain_container(rows);
 
-    lv_obj_set_size(grid, lv_pct(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
-    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START,
-                          LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_row(grid, 6, 0);
-    lv_obj_set_style_pad_column(grid, 4, 0);
+    int16_t area_w = (int16_t)(hres - 2 * 4);
+    int16_t area_h = (int16_t)(vres - BAR_HEIGHT - FOOTER_HEIGHT - 2 * 4);
 
-    for (size_t i = 0; i < count; i++)
+    lv_obj_set_size(grid, area_w, area_h);
+
+    struct ui_grid_s layout = {ICON_PAGE_COLS, page_rows, ICON_PAGE_GAP, 0};
+
+    for (size_t i = 0; i < count && built < per_page; i++)
     {
         size_t                size = 0;
         const unsigned char  *data = icon_set_entry(i, &size);
@@ -1987,31 +2122,40 @@ static void icons_tab_build(lv_obj_t *rows)
         if (strchr(name, '-') != NULL)
             continue;
 
+        /* An earlier page's icon: walked past, not built. */
+        if (shown < first)
+        {
+            shown++;
+            continue;
+        }
+
+        struct ui_geom_rect_s r;
+
+        if (ui_grid_cell(&layout, area_w, area_h, (uint8_t)built, &r) == false)
+            break;
+
         /* The same descriptor every tile's built-in icon uses, by the same
          * route widget_icon_decode_and_show() builds its -- see there. */
-        icon_dscs[i].header.magic = LV_IMAGE_HEADER_MAGIC;
-        icon_dscs[i].header.cf = LV_COLOR_FORMAT_I4;
-        icon_dscs[i].header.flags = 0;
-        icon_dscs[i].header.w = ICON_SET_PIXEL_SIZE;
-        icon_dscs[i].header.h = ICON_SET_PIXEL_SIZE;
-        icon_dscs[i].header.stride = ICON_SET_STRIDE;
-        icon_dscs[i].data_size = (uint32_t)size;
-        icon_dscs[i].data = data;
+        icon_dscs[built].header.magic = LV_IMAGE_HEADER_MAGIC;
+        icon_dscs[built].header.cf = LV_COLOR_FORMAT_I4;
+        icon_dscs[built].header.flags = 0;
+        icon_dscs[built].header.w = ICON_SET_PIXEL_SIZE;
+        icon_dscs[built].header.h = ICON_SET_PIXEL_SIZE;
+        icon_dscs[built].header.stride = ICON_SET_STRIDE;
+        icon_dscs[built].data_size = (uint32_t)size;
+        icon_dscs[built].data = data;
 
         lv_obj_t *cell = ui_plain_container(grid);
 
-        /* A fifth of the width: five per row at 320 px, and flex wrap puts
-         * as many on a wider one as fit. */
-        lv_obj_set_size(cell, lv_pct(19), LV_SIZE_CONTENT);
+        lv_obj_set_pos(cell, r.x, r.y);
+        lv_obj_set_size(cell, r.w, r.h);
         lv_obj_set_flex_flow(cell, LV_FLEX_FLOW_COLUMN);
         lv_obj_set_flex_align(cell, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER,
                               LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_all(cell, 0, 0);
-        lv_obj_set_style_pad_row(cell, 0, 0);
 
         lv_obj_t *icon = lv_image_create(cell);
 
-        lv_image_set_src(icon, &icon_dscs[i]);
+        lv_image_set_src(icon, &icon_dscs[built]);
 
         lv_obj_t *caption = lv_label_create(cell);
 
@@ -2019,6 +2163,20 @@ static void icons_tab_build(lv_obj_t *rows)
         lv_label_set_long_mode(caption, LV_LABEL_LONG_DOT);
         lv_obj_set_width(caption, lv_pct(100));
         lv_obj_set_style_text_align(caption, LV_TEXT_ALIGN_CENTER, 0);
+
+        shown++;
+        built++;
+    }
+
+    /* The page number beside the buttons that move it. Not on a one-page
+     * catalogue: with nothing to turn there is nothing to number. */
+    if (pages > 1)
+    {
+        char text[24];
+
+        snprintf(text, sizeof(text), "Page %u of %u", (unsigned)icons_page + 1u,
+                 (unsigned)pages);
+        status_set(SETTINGS_TAB_ICONS, text);
     }
 }
 
@@ -2205,11 +2363,13 @@ static void back_bar_create(const char *title)
 
 static void index_event(lv_event_t *e)
 {
-    /* Arriving at a section is arriving at its first page. Not in
+    /* Arriving at a section is arriving at its first page -- the openHAB
+     * manual page and the Icons catalogue's page alike. Not in
      * screen_show_target(), which is also what ui_settings_rebuild() goes
      * through: a theme change -- including the automatic night one, at any
      * moment -- must leave the page it happens on where it was. */
     openhab_manual = false;
+    icons_page = 0;
 
     /* Here and not in screen_show_target(): that function is also the
      * programmatic entry from ui_settings_open(), which is how a pristine
@@ -2373,10 +2533,29 @@ static void screen_show_section(uint8_t tab)
         lv_obj_add_event_cb(ui_themed_button(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
                             NULL);
     }
-    else if (tab == SETTINGS_TAB_FONTS || tab == SETTINGS_TAB_ICONS)
+    else if (tab == SETTINGS_TAB_FONTS)
     {
         /* Read-only, like Systeminfo, and there is nothing to save: the rows
-         * on them are samples and a catalogue, not fields. */
+         * on it are samples, not fields. */
+    }
+    else if (tab == SETTINGS_TAB_ICONS)
+    {
+        /* The catalogue's pages, turned from the footer because the footer is
+         * where this screen keeps every action its page can take. Only when
+         * there is more than one of them: a single-page catalogue -- and a
+         * build without the icon set at all, which gets the note instead --
+         * is a page with nothing to turn. */
+        if (icons_pages() > 1)
+        {
+            lv_obj_add_event_cb(ui_themed_button(footer, "<<"), icons_page_event,
+                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_FIRST);
+            lv_obj_add_event_cb(ui_themed_button(footer, "<"), icons_page_event,
+                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_PREV);
+            lv_obj_add_event_cb(ui_themed_button(footer, ">"), icons_page_event,
+                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_NEXT);
+            lv_obj_add_event_cb(ui_themed_button(footer, ">>"), icons_page_event,
+                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_LAST);
+        }
     }
     else if (tab == SETTINGS_TAB_AUDIO)
     {
@@ -2496,7 +2675,9 @@ void ui_settings_open(enum settings_tab_e tab)
     {
         /* Already up: treat this as a request for that section, the way the
          * single open_window slot in openhab_ui.cpp stopped a second window
-         * stacking. */
+         * stacking -- and arriving at the Icons catalogue is arriving at its
+         * first page, the same as every way of arriving below. */
+        icons_page = 0;
         screen_show_target(tab);
         return;
     }
@@ -2514,6 +2695,7 @@ void ui_settings_open(enum settings_tab_e tab)
     scan_result_count = 0;
     scan_running = false;
     openhab_manual = false;
+    icons_page = 0;
 
     screen = ui_screen_create();
 
