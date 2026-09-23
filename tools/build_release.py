@@ -12,7 +12,8 @@ files, and the firmware is built. The images land in release/<version>/:
     <target>/ota_data_initial.bin        |  needs
     SHA256SUMS                           checksums of all of the above
 
-    tools/build_release.py                     # all hardware targets
+    tools/build_release.py                     # the default hardware targets
+    tools/build_release.py --full              # plus the optional ones
     tools/build_release.py -t arduitouch lanbon  # a subset
     tools/build_release.py --dirty             # incremental, no cleaning
 
@@ -61,6 +62,10 @@ MINIMAL = "minimal"
 # recovery image, which batchupdate.py --minimal then looks for as
 # oh-ez-touch-<version>-minimal.bin.
 ALL_TARGETS = sorted(TARGETS) + [MINIMAL]
+
+# What a full run (--full) adds; without it these need -t to be built.
+OPTIONAL_TARGETS = {"arduitouch_jtag", "cyd", MINIMAL}
+DEFAULT_TARGETS = [t for t in sorted(TARGETS) if t not in OPTIONAL_TARGETS]
 
 
 def build_target(target, dirty):
@@ -128,8 +133,13 @@ def main():
                     "in release/<version>/.")
     parser.add_argument("-t", "--targets", nargs="+", choices=ALL_TARGETS,
                         metavar="TARGET",
-                        help="build only these (default: all of them: %s)"
-                             % ", ".join(ALL_TARGETS))
+                        help="build only these (default: %s, or all of them "
+                             "with --full: %s)"
+                             % (", ".join(DEFAULT_TARGETS),
+                                ", ".join(ALL_TARGETS)))
+    parser.add_argument("--full", action="store_true",
+                        help="build the optional targets too: %s"
+                             % ", ".join(sorted(OPTIONAL_TARGETS)))
     parser.add_argument("--dirty", action="store_true",
                         help="incremental builds: keep the build directories "
                              "and their sdkconfigs")
@@ -144,7 +154,8 @@ def main():
 
     version = expected_version_default()
     outdir = Path(args.outdir) if args.outdir else REPO_ROOT / "release" / version
-    targets = args.targets or ALL_TARGETS
+    targets = args.targets or (ALL_TARGETS if args.full
+                               else DEFAULT_TARGETS)
 
     print("release build %s: %s" % (version, ", ".join(targets)))
 
