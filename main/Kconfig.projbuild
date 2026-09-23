@@ -59,6 +59,21 @@ config OHEZ_MINIMAL
         The board choice above is irrelevant to this build and left at
         whatever it is; nothing reads it.
 
+config OHEZ_TESTIF
+    bool "Control interface on the network (bench use only)"
+    depends on !IDF_TARGET_LINUX
+    default n
+    help
+        Compile the control interface doc/test-interface.md describes into
+        the panel's firmware: the UDP command channel, the synthetic
+        pointer and the screen and status dumps, bound to the network
+        interface rather than to the loopback it uses on the simulator.
+
+        It is off by default and should stay off for a device on the wall:
+        the channel has no authentication and can press anything on the
+        screen, so it belongs on a bench device with a JTAG probe, which
+        is what sdkconfig.defaults.arduitouch_jtag enables it for.
+
 config OHEZ_ICONS_BUILTIN
     bool "Answer widget icons from the set built into the firmware"
     default y

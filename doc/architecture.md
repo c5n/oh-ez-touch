@@ -141,6 +141,44 @@ was a panel whose tiles kept updating while every sub page it navigated to
 failed. An item state does not even need that: it rides inside the result, so a
 poll costs no allocation at all.
 
+### What a page load allocates
+
+Nothing, is the answer the design aims at, and on the panel it is the answer
+it gives. The buffer above is the whole of it, used twice over: the page's
+body sits at its front, and the tail behind the body is the pool the JSON
+document bumps its allocations out of (`JsonArenaAlloc` in
+`main/openhab/openhab_connector.cpp`, handed to `Sitemap::parse()` as
+scratch). No per-page body copy, no multi-kilobyte document pool on the heap
+-- the two allocations a fragmented heap always stopped honouring first,
+which is what "the back button cannot load the main page" was made of. The
+handshake is one flag: a result whose payload *is* the buffer
+(`payload_static`) keeps the worker out of the buffer until the UI releases
+it, and the UI releases every result it takes. A page that outgrows its tail
+falls back to a heap-backed document with a log line -- the arena is the fast
+path, not a second way to lose a page. Fleet pages measured through the
+filter peak at 4.9 to 5.8 KB of pool, so a 12 KB body buffer holds body and
+document for anything up to about six.
+
+The icons a page wants are the other half of the same story. The built-in set
+is indexed records LVGL reads without a decode (see
+[icon-set](icon-set.md)); a fetched PNG is decoded on the UI task and, if the
+server's icon set is larger than the panel's 32 px, halved to it before the
+tile keeps it. The decoder itself is a patched lodepng -- in-place
+unfiltering, no concatenation copy for a single-IDAT file, a reserve that
+fails fast instead of growing into a realloc spiral -- which brings a 64x64
+RGBA icon's peak from ~37 KB of simultaneous heap down to ~31, and every
+patch is marked `OH-EZ-TOUCH` in the source for the day lodepng is updated.
+
+Two neighbours join in, because a page load is exactly when they compete for
+the same heap. A BLE scan window defers while the panel is being touched and
+stops early if it is open ([ble.md](ble.md) has the duty cycle). And a fade
+that asks LVGL for a layer buffer the heap no longer has is simply skipped
+(`UI_FADE_MIN_LARGEST_BLOCK` in `main/ui/ui_motion.cpp`) -- the object is
+shown instead, which is the least useful thing to lose in that moment and
+far better than the alternative: `LV_USE_ASSERT_MALLOC` is 0 now, because
+its handler spins `while(1)` and turned a failed allocation into a frozen
+panel.
+
 A body cut short by the network is a failure, not a short answer. The
 distinction is made in `main/openhab/openhab_http.cpp`, and it has to be made
 by hand: `esp_http_client_read_response()` reports a read timeout as a

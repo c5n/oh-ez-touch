@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 
 #include "openhab_ui.hpp"
+#include "icons/icon_set.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
 #include "openhab/openhab_sitemaps.hpp"
@@ -630,36 +631,180 @@ static void widget_icon_request(size_t slot)
         wctx->icon_pending = true;
 }
 
-/* Decode a PNG that has arrived and show it. load_icon()'s other half.
+/* Halve an ARGB8888 image in both directions. The tiles show every icon at
+ * the built-in set's 32 px, but a custom $OPENHAB_CONF icon can be 64 or 128,
+ * and next to the built-ins it has to be 32 too. Averaged in premultiplied
+ * space: a straight RGBA average of line art on transparency smears the
+ * transparent pixels' colour into the strokes, weighing each pixel's colour
+ * by its own alpha does not. Returns the halved image, or NULL -- the caller
+ * keeps the full-size one then. */
+static unsigned char *icon_downscale_2x(const unsigned char *src, unsigned width,
+                                        unsigned height)
+{
+    /* width * height is exactly (width/2) * (height/2) * 4. */
+    unsigned char *dst = (unsigned char *)malloc(width * height);
+
+    if (dst == NULL)
+        return NULL;
+
+    for (unsigned y = 0; y < height / 2; y++)
+    {
+        for (unsigned x = 0; x < width / 2; x++)
+        {
+            const unsigned char *p = src + (2 * y * width + 2 * x) * 4;
+            uint32_t c0 = 0, c1 = 0, c2 = 0, a = 0;
+
+            for (unsigned k = 0; k < 4; k++)
+            {
+                const unsigned char *q = p + (k & 1) * 4 + (k >> 1) * width * 4;
+                uint32_t alpha = q[3];
+
+                a  += alpha;
+                c0 += q[0] * alpha;
+                c1 += q[1] * alpha;
+                c2 += q[2] * alpha;
+            }
+
+            unsigned char *d = dst + (y * (width / 2) + x) * 4;
+
+            if (a == 0)
+            {
+                d[0] = d[1] = d[2] = d[3] = 0;
+            }
+            else
+            {
+                d[0] = (unsigned char)(c0 / a);
+                d[1] = (unsigned char)(c1 / a);
+                d[2] = (unsigned char)(c2 / a);
+                d[3] = (unsigned char)(a / 4);
+            }
+        }
+    }
+
+    return dst;
+}
+
+/* Put an arrived icon on its tile. load_icon()'s other half.
  *
- * The decode stays on this task deliberately. It is single-digit milliseconds
- * against the hundreds the fetch can take, it keeps what is in flight down to
- * the size of the PNG rather than the size of the pixels, and it keeps the
- * malloc and the free of a block LVGL will hold a pointer to on one task.
+ * Two kinds arrive here, and they could not be treated more differently.
+ *
+ * An icon from the firmware's own set is an LVGL indexed image straight from
+ * the generator: sixteen palette entries and the packed pixels, laid out
+ * exactly as an lv_image_dsc wants them. It is copied, not decoded -- that is
+ * the whole point of the set's format: no lodepng, no 4096-byte ARGB8888, no
+ * output buffer or inflate state to ask of a heap that has been up for days.
+ *
+ * Anything else is a PNG that came from the server, and that one does get the
+ * decode -- and, if the server serves an icon set larger than the firmware's
+ * own, a downscale back to the set's size afterwards, so a tile never draws
+ * a big custom icon next to small built-in ones. The decode stays on this
+ * task deliberately. It is single-digit milliseconds against the hundreds the
+ * fetch can take, it keeps what is in flight down to the size of the PNG
+ * rather than the size of the pixels, and it keeps the malloc and the free of
+ * a block LVGL will hold a pointer to on one task.
  */
 static void widget_icon_decode_and_show(struct widget_context_s *wctx,
-                                        const void *png, size_t png_len)
+                                        struct openhab_result_s *res)
 {
-    unsigned char *png_decoded;
-    /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and the two
-     * are the same type on the host and different ones on the device. */
-    unsigned png_width, png_height;
+    const void *png = res->payload;
+    size_t png_len = res->payload_len;
+    unsigned char *pixels;
+    uint32_t width, height, stride, data_size;
+    lv_color_format_t cf;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("widget_icon: %s ", wctx->item != NULL ? wctx->item->getIconName() : "?");
 #endif
 
-    // Decode the loaded image in ARGB8888
-    unsigned int error = lodepng_decode32(&png_decoded, &png_width, &png_height,
-                                          (const unsigned char *)png, png_len);
-
-    if (error)
+    if (png_len == ICON_SET_RECORD_SIZE && ((const unsigned char *)png)[0] != 0x89)
     {
-        printf("PNG decode error %u: %s\n", error, lodepng_error_text(error));
-        return;
-    }
+        /* The built-in set's record. It is not a PNG -- every PNG begins with
+         * 0x89 -- and it has exactly the record's shape, which no valid
+         * server icon has. Copied out of the result, which the caller then
+         * releases as usual -- adoption would be the one copy fewer, at the
+         * price of a second ownership rule on the result. */
+        pixels = (unsigned char *)malloc(ICON_SET_RECORD_SIZE);
 
-    convert_color_depth(png_decoded, png_width * png_height);
+        if (pixels == NULL)
+        {
+            printf("no %u bytes for a built-in icon\n", (unsigned)ICON_SET_RECORD_SIZE);
+            return;
+        }
+
+        memcpy(pixels, png, ICON_SET_RECORD_SIZE);
+
+        cf = LV_COLOR_FORMAT_I4;
+        width = height = ICON_SET_PIXEL_SIZE;
+        stride = ICON_SET_STRIDE;
+        data_size = ICON_SET_RECORD_SIZE;
+    }
+    else
+    {
+        /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and
+         * the two are the same type on the host and different ones on the
+         * device. */
+        unsigned png_width, png_height;
+
+        // Decode the loaded image in ARGB8888
+        unsigned int error = lodepng_decode32(&pixels, &png_width, &png_height,
+                                              (const unsigned char *)png, png_len);
+
+        /* A memory failure with an icon already on the tile deserves a second
+         * attempt without it: the old pixels are part of the very heap the
+         * decode is asking for, and holding them to the bitter end is what
+         * made a refresh never fit next to them. The fallback takes the tile
+         * if the retry fails too -- an honest placeholder over a stale icon.
+         * Only error 83 earns the retry; a corrupt PNG decodes no better
+         * with more heap. */
+        if (error == 83 && wctx->img_dsc.data != NULL)
+        {
+            lv_image_cache_drop(&wctx->img_dsc);
+            free((void *)wctx->img_dsc.data);
+            wctx->img_dsc.data = NULL;
+
+            error = lodepng_decode32(&pixels, &png_width, &png_height,
+                                     (const unsigned char *)png, png_len);
+        }
+
+        if (error)
+        {
+            printf("widget_icon: %s PNG decode error %u: %s (len %u, heap %u free, %u largest)\n",
+                   wctx->item != NULL ? wctx->item->getIconName() : "?",
+                   error, lodepng_error_text(error), (unsigned)png_len,
+                   (unsigned)port_free_heap(), (unsigned)port_largest_free_block());
+            return;
+        }
+
+        convert_color_depth(pixels, png_width * png_height);
+
+        /* Server icons larger than the built-in set go down to its size: a
+         * 64 px custom icon next to the 32 px built-ins is exactly the pixel
+         * soup scaling the built-ins up used to be, only mirrored. Halved in
+         * both directions until it fits -- never below the set's size. The
+         * halved copy is a fresh small block and the decode buffer goes back
+         * whole, so the next decode's working set still finds the block this
+         * one just used. */
+        while (png_width % 2 == 0 && png_height % 2 == 0
+               && png_width / 2 >= ICON_SET_PIXEL_SIZE
+               && png_height / 2 >= ICON_SET_PIXEL_SIZE)
+        {
+            unsigned char *halved = icon_downscale_2x(pixels, png_width, png_height);
+
+            if (halved == NULL)
+                break;
+
+            free(pixels);
+            pixels = halved;
+            png_width /= 2;
+            png_height /= 2;
+        }
+
+        cf = LV_COLOR_FORMAT_ARGB8888;
+        width = png_width;
+        height = png_height;
+        stride = png_width * 4;
+        data_size = png_width * png_height * 4;
+    }
 
     /* The old pixels go only now that there are new ones to put in their
      * place. load_icon() freed them up front and so left the tile blank when
@@ -671,19 +816,19 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
         free((void *)wctx->img_dsc.data);
     }
 
-    // Initialize an image descriptor for LVGL with the decoded image
+    // Initialize an image descriptor for LVGL with the image
     wctx->img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
-    wctx->img_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    wctx->img_dsc.header.cf = cf;
     wctx->img_dsc.header.flags = 0;
-    wctx->img_dsc.header.w = png_width;
-    wctx->img_dsc.header.h = png_height;
-    wctx->img_dsc.header.stride = png_width * 4;
-    wctx->img_dsc.data_size = png_width * png_height * 4;
-    wctx->img_dsc.data = png_decoded;
+    wctx->img_dsc.header.w = (uint16_t)width;
+    wctx->img_dsc.header.h = (uint16_t)height;
+    wctx->img_dsc.header.stride = stride;
+    wctx->img_dsc.data_size = data_size;
+    wctx->img_dsc.data = pixels;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("size: %u x %u, data_size %u\n", png_width, png_height,
-           (unsigned)wctx->img_dsc.data_size);
+    printf("size: %u x %u, data_size %u\n", (unsigned)wctx->img_dsc.header.w,
+           (unsigned)wctx->img_dsc.header.h, (unsigned)wctx->img_dsc.data_size);
 #endif
 
     if (wctx->img_obj != NULL)
@@ -1295,13 +1440,15 @@ static void page_timeout_check(void)
     page_request(GET_SITEMAP_RETRY_INTERVAL);
 }
 
-#if CONFIG_IDF_TARGET_LINUX
-/* OHEZ_ITEM walks the simulator to one control and opens it.
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
+/* The item path walks the panel to one control and opens it.
  *
- * A sibling of OHEZ_SETTINGS, and there for the same reason: the item screens
- * are three taps deep on a sub page, which makes "show me the setpoint screen
- * in LCARS night" a tedious thing to ask for by hand and an impossible thing to
- * ask for from a script.
+ * On the simulator it is armed by OHEZ_ITEM: a sibling of OHEZ_SETTINGS, and
+ * there for the same reason -- the item screens are three taps deep on a sub
+ * page, which makes "show me the setpoint screen in LCARS night" a tedious
+ * thing to ask for by hand and an impossible thing to ask for from a script.
+ * On a bench panel the same walk is how the control interface's `nav`
+ * command gets anywhere at all.
  *
  * The value is a dot-separated path of tile indices: every step but the last
  * follows that tile's linked page, and the last opens that tile's control. So
@@ -1354,10 +1501,12 @@ static void item_path_step(void)
         printf("openhab_ui: OHEZ_ITEM: tile %ld has no control screen\r\n", slot);
 }
 
+#if CONFIG_IDF_TARGET_LINUX
 void openhab_ui_open_item_from_env(void)
 {
     item_path = getenv("OHEZ_ITEM");
 }
+#endif
 
 /* The same walk, asked for at any moment rather than only at boot.
  *
@@ -1385,13 +1534,34 @@ bool openhab_ui_open_item_path(const char *path)
 
     return true;
 }
-#endif /* CONFIG_IDF_TARGET_LINUX */
+#endif /* CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF */
 
 static void page_result_apply(struct openhab_result_s *res)
 {
+    /* The scratch for the parse's document pool. A payload that rode the
+     * client's receive buffer (payload_static) holds the body at its front
+     * and has the rest of the buffer free behind it, and the worker is kept
+     * out of the buffer until the release below -- so the tail is the pool,
+     * and the whole page load makes no heap allocation at all. A payload that
+     * was allocated (the simulator's fixtures) has no tail to speak of, and
+     * the parse falls back to the heap. */
+    char  *scratch      = NULL;
+    size_t scratch_size = 0;
+
+    if (res->payload_static == true)
+    {
+        size_t body = (res->payload_len + 1 + 3) & ~(size_t)3;
+
+        if (body < OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1)
+        {
+            scratch      = res->payload + body;
+            scratch_size = OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1 - body;
+        }
+    }
+
     if (   res->ok == true
         && res->payload != NULL
-        && sitemap.parse(res->payload, res->payload_len) == 0)
+        && sitemap.parse(res->payload, res->payload_len, scratch, scratch_size) == 0)
     {
         /* Let go of the page before building the tiles rather than after. It
          * is up to 12 KB, show() is about to create six widgets and decode six
@@ -1411,7 +1581,7 @@ static void page_result_apply(struct openhab_result_s *res)
 
         openhab_ui_messagebox.destroy();
         show(content);
-#if CONFIG_IDF_TARGET_LINUX
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
         item_path_step();
 #endif
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
@@ -1498,7 +1668,7 @@ static void results_apply_one(void)
          * returning 0 was silent. Counting it would let a panel whose openHAB
          * has no icon set drive itself into a restart every three minutes. */
         if (res.ok == true && res.payload != NULL)
-            widget_icon_decode_and_show(&widget_context[res.slot], res.payload, res.payload_len);
+            widget_icon_decode_and_show(&widget_context[res.slot], &res);
         break;
 
     case OPENHAB_REQ_STATE:

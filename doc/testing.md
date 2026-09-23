@@ -94,9 +94,13 @@ items for a real server:
 See [doc/openhab-fixtures.md](openhab-fixtures.md) for installation, the wire
 format notes, and the places where the panel and the server still disagree.
 
-## The simulator's control interface
+## The control interface
 
-The simulator listens on 127.0.0.1:8781 for commands. `tools/ohez_ctl.py` is
-the client. It can tap tiles by label, read the screen as JSON and pull
-screenshots. See [Simulator](simulator.md#driving-it-from-a-script) and the
-full reference in [doc/test-interface.md](test-interface.md).
+The simulator listens on 127.0.0.1:8781 for commands, and a bench device
+offers the same channel on the network when it is built with
+`CONFIG_OHEZ_TESTIF` (the `arduitouch_jtag` defaults do; every other target
+leaves it off). `tools/ohez_ctl.py` is the client for both. It can tap tiles
+by label, read the screen as JSON, ask for the heap's shape and pull
+screenshots -- the last of those on the simulator only. See
+[Simulator](simulator.md#driving-it-from-a-script) and the full reference in
+[doc/test-interface.md](test-interface.md).

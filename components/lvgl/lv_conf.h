@@ -538,7 +538,13 @@
 /* Enable assertion failures if an operation fails or invalid data is found.
  * If LV_USE_LOG is enabled, an error message will be printed on failure. */
 #define LV_USE_ASSERT_NULL 1   /**< Check if the parameter is NULL. (Very fast, recommended) */
-#define LV_USE_ASSERT_MALLOC 1   /**< Checks is the memory is successfully allocated or no. (Very fast, recommended) */
+/* 0, deliberately: LV_ASSERT_MALLOC's handler is `while(1);`, and every
+ * LVGL call site that can trip it follows the assert with a NULL check that
+ * degrades gracefully -- a skipped animation, a glyph that does not draw. On
+ * a panel whose heap runs low after days of uptime, the assert converts "an
+ * allocation failed" into a frozen UI task and a watchdog reboot loop, which
+ * is the worst possible answer to a transient shortage. */
+#define LV_USE_ASSERT_MALLOC 0   /**< Checks is the memory is successfully allocated or no. (Very fast, recommended) */
 #define LV_USE_ASSERT_STYLE         0   /**< Check if the styles are properly initialized. (Very fast, recommended) */
 #define LV_USE_ASSERT_MEM_INTEGRITY 0   /**< Check the integrity of `lv_mem` after critical operations. (Slow) */
 /* On the simulator only. "(Slow)" is not a figure of speech here: the existence

@@ -7,6 +7,7 @@
 
 #include "ui_beep.hpp"
 
+#include "port/port_sys.h"
 #include "ui_style.hpp"
 
 lv_style_t ui_style_press;
@@ -83,13 +84,27 @@ static void fade_in_done(lv_anim_t *a)
     lv_obj_remove_local_style_prop((lv_obj_t *)a->var, LV_STYLE_OPA, 0);
 }
 
+/* What a fade costs the heap, roughly: LVGL renders a semi-transparent object
+ * through a layer, and the layer is a strip-sized draw buffer it allocates
+ * per active fade -- observed asking for 1.7 to 5.8 kilobytes at a time, with
+ * the tiles of a page staggering in together, so a page's worth of fades is
+ * tens of kilobytes of concurrent layers, not one. On a heap that has been up
+ * for days there is not a block that size to be had, and the failure mode is
+ * ugly in two directions: LVGL's warning for it prints through esp_log, and a
+ * storm of those blocks the UI task in UART writes; and the allocation is
+ * retried every frame, so the storm does not end. The animation is the least
+ * useful thing on the screen in that moment, so below this the object is
+ * simply shown. */
+#define UI_FADE_MIN_LARGEST_BLOCK 24576
+
 void ui_motion_fade(lv_obj_t *obj, lv_opa_t from, lv_opa_t to,
                     uint32_t ms, uint32_t delay, enum ui_ease_e ease)
 {
     if (obj == NULL)
         return;
 
-    if (motion_enabled == false || ms == 0)
+    if (   motion_enabled == false || ms == 0
+        || port_largest_free_block() < UI_FADE_MIN_LARGEST_BLOCK)
     {
         if (to >= LV_OPA_COVER)
             lv_obj_remove_local_style_prop(obj, LV_STYLE_OPA, 0);

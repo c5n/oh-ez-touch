@@ -675,8 +675,68 @@ static void test_an_over_long_label_is_truncated(void)
     TEST_ASSERT_EQUAL_INT(STR_LABEL_LEN - 1, strlen(sitemap.getItem(0)->getLabel()));
 }
 
+/* The device path: the document's pool comes from a caller-provided scratch
+ * area -- on the panel the tail of the page's body buffer -- rather than the
+ * heap. The parse must come out the same, or nothing above the pool knows
+ * which memory it ran on. */
+static void test_parse_from_a_scratch_arena(void)
+{
+    const char *page = sim_sitemap_fixture_get(FIXTURE_URL("living"));
+
+    TEST_ASSERT_NOT_NULL(page);
+
+    size_t page_len = strlen(page);
+    size_t body = (page_len + 1 + 3) & ~(size_t)3;
+
+    /* Body plus the pool the document asks for. On the 64-bit host
+     * ArduinoJson's pool blocks are 4 KB each and its string nodes twice as
+     * wide as on the panel, so the figure is the host's, not the device's. */
+    static char buf[4368 + 8192];
+
+    TEST_ASSERT_TRUE(body + 4096 <= sizeof(buf));
+
+    memcpy(buf, page, page_len + 1);
+
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(buf, page_len, buf + body, sizeof(buf) - body));
+
+    /* The same page the heap path produces: the parent link in slot 0, then
+     * the widgets. */
+    TEST_ASSERT_EQUAL_STRING("Living Room", sitemap.getPageName());
+    TEST_ASSERT_EQUAL_UINT(6, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_INT(ItemType::type_parent_link, sitemap.getItem(0)->getType());
+    TEST_ASSERT_EQUAL_STRING("http://localhost:8080/rest/sitemaps/demo/demo",
+                             sitemap.getItem(0)->getPageLink());
+    TEST_ASSERT_EQUAL_INT(ItemType::type_selection, sitemap.getItem(5)->getType());
+    TEST_ASSERT_EQUAL_UINT(4, sitemap.getItem(5)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("PARTY", sitemap.getItem(5)->getSelectionCommand(2));
+}
+
+/* And its failure mode: a scratch too small for the document falls back to
+ * the heap and the page parses anyway -- the arena is the fast path, not a
+ * second way to lose a page. */
+static void test_a_scratch_too_small_falls_back_to_the_heap(void)
+{
+    const char *page = sim_sitemap_fixture_get(FIXTURE_URL("living"));
+
+    TEST_ASSERT_NOT_NULL(page);
+
+    /* A quarter of what the page's document costs, measured with a counting
+     * allocator -- small enough that deserializeJson() must run out. */
+    static char scratch[1024];
+
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, strlen(page), scratch, sizeof(scratch)));
+    TEST_ASSERT_EQUAL_STRING("Living Room", sitemap.getPageName());
+    TEST_ASSERT_EQUAL_UINT(6, sitemap.getItemCount());
+}
+
 void test_sitemap_parse_run(void)
 {
+    RUN_TEST(test_parse_from_a_scratch_arena);
+    RUN_TEST(test_a_scratch_too_small_falls_back_to_the_heap);
     RUN_TEST(test_home_page_titles_and_counts);
     RUN_TEST(test_widget_types);
     RUN_TEST(test_dimensioned_number_is_a_number);

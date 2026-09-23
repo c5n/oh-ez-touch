@@ -81,8 +81,12 @@ static const char *TAG = "port_display";
  * report. If the wait dominates, this lever buys nothing at all.
  *
  * The buffer is sized on the landscape width, which is the larger of the two
- * axes: a portrait panel draws 24-line strips of 240 px into exactly the same
- * buffers. */
+ * axes: a portrait panel draws strips of 240 px into exactly the same
+ * buffers. Twenty-four lines was traded down to eight when the heap could not
+ * hold a 64x64 icon decode next to the BLE scanner and the MQTT client --
+ * with every icon held at 32x32 again the pair is affordable once more, and
+ * the tall strip is what keeps animations quick: fewer, fatter flushes mean
+ * the render stops waiting on the SPI queue. */
 #define DRAW_BUFFER_LINES   24
 #define DRAW_BUFFER_BYTES   (PORT_DISPLAY_WIDTH * DRAW_BUFFER_LINES * 2)
 

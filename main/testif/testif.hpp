@@ -20,9 +20,12 @@
  * is wrapped, so a blocking socket call parks the whole cooperative scheduler.
  * A non-blocking recvfrom() cannot.
  *
- * Simulator only. On the device every entry point below is an empty stub, so
- * no caller needs a target guard. What it would take to put it on a panel is
- * the last section of doc/test-interface.md.
+ * On the device all of this is behind CONFIG_OHEZ_TESTIF, which is off by
+ * default: the channel has no authentication and can press anything on the
+ * screen, so it belongs on a bench panel, not on one on the wall. With the
+ * option off, every entry point below is an empty stub, so no caller needs a
+ * guard of its own. Screenshots stay simulator-only either way -- a panel
+ * renders into small draw buffers and keeps no whole frame to serve.
  */
 #ifndef TESTIF_HPP
 #define TESTIF_HPP
@@ -35,10 +38,12 @@
  * After port_indev_init(), because the pointer it adds is a second input device
  * beside the SDL mouse that call creates, and both want a display to exist.
  *
- * Bound to 127.0.0.1 only. The channel has no authentication and can press
- * anything on the screen, so it is not offered to the network; the web
- * interface next to it has no authentication either, but that one cannot
- * operate the panel. OHEZ_TESTIF=0 turns it off and OHEZ_TESTIF_PORT moves it.
+ * On the simulator, bound to 127.0.0.1 only: the channel has no
+ * authentication and can press anything on the screen, so it is not offered
+ * to the network there. OHEZ_TESTIF=0 turns it off and OHEZ_TESTIF_PORT moves
+ * it. On the device it is compiled in only with CONFIG_OHEZ_TESTIF and is
+ * then bound to the network interface -- being reachable from the development
+ * machine is the whole point of that option.
  */
 void testif_setup(void);
 
@@ -54,7 +59,8 @@ void testif_loop(void);
  * while this is true. The hold expires by itself after a moment, so a client
  * that dies mid-transfer cannot freeze the UI.
  *
- * False always on the device, where the compiler folds the call site away.
+ * False always on the device, where there is no whole frame to hold and the
+ * compiler folds the call site away.
  */
 bool testif_frame_hold(void);
 

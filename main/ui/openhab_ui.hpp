@@ -24,18 +24,20 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap);
 void openhab_ui_request_connect(const char *host, uint16_t port, const char *sitemap);
 void openhab_ui_loop(void);
 
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
+/* The walk on demand, for the control interface's `nav`. False when the
+ * path is empty or longer than one will ever legitimately be. The walk itself
+ * is asynchronous -- each step waits for the page the one before it asked for
+ * -- so a true return means "started", not "arrived". */
+bool openhab_ui_open_item_path(const char *path);
+#endif
+
 #if CONFIG_IDF_TARGET_LINUX
 /* Arm OHEZ_ITEM: a dot-separated path of tile indices that the simulator walks
  * once the first page arrives, opening the control it ends on. The sibling of
  * ui_settings_open_from_env(), and there so that a screen three taps deep can
  * be reached from a script. */
 void openhab_ui_open_item_from_env(void);
-
-/* The same walk on demand, for the control interface's `nav`. False when the
- * path is empty or longer than one will ever legitimately be. The walk itself
- * is asynchronous -- each step waits for the page the one before it asked for
- * -- so a true return means "started", not "arrived". */
-bool openhab_ui_open_item_path(const char *path);
 #endif
 
 /* What the tile page is showing.

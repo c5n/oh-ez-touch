@@ -69,16 +69,33 @@ speaks, not how loud it is a metre away.
 ## What it costs
 
 Bluetooth is NimBLE in observer role, with the roles trimmed. It costs about
-185 KB of flash. The app partition keeps 22 % free. The WiFi library's hot
-paths are moved out of IRAM to make room for the controller. Without that,
-IRAM would be 98.4 % full. The controller's RAM is claimed at startup, and
-only when the setting is on.
+185 KB of flash. The WiFi library's hot paths are moved out of IRAM to make
+room for the controller. Without that, IRAM would be 98.4 % full. The
+controller's RAM is claimed at startup, and only when the setting is on.
+
+The connection plumbing is trimmed to what an observer uses: the build sizes
+NimBLE for a device that connects — MSYS pools, transport ACL buffers,
+controller RAM for three connections — and this panel never does, so those
+are cut to their minimums (two blocks, one connection slot) in
+`sdkconfig.defaults.esp32`, worth about 17 KB of statically reserved RAM.
+The central role stays compiled: removing it pulls a symbol the link still
+references, and the role costs nothing at runtime.
 
 The radio is shared with WiFi. Software coexistence interleaves them. Neither
 stops working, but a scan takes airtime from the openHAB polling and the web
 interface while it runs. That is why the scan is a window every thirty
 seconds, not a continuous scan. A beacon advertises several times a second.
 Five seconds is many reports from everything in range.
+
+Two exceptions shape the duty cycle further, and both are about the heap an
+open window holds. The first window of a boot is delayed fifteen seconds,
+because the boot's page load decodes every icon on the first page at once and
+a scan window opening underneath it takes the heap the decodes need. And
+while somebody is using the panel, no window starts and an open one stops
+early — interaction is when the panel decodes icons, an open window is when
+the radio holds the most heap, and somebody touching the panel has already
+answered the question the scanner exists for. What a shortened window heard
+is averaged and published like any other.
 
 ## Testing without hardware
 

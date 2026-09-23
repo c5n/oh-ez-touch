@@ -1,5 +1,8 @@
 # ArduiTouch 2.4" with an esp-prog JTAG probe attached. Not a fourth board: the
 # probe takes GPIO 12-15, which collides with the touch chip select (14) and the
-# backlight (15), so those two move to 26 and 16.
+# backlight (15), so those two move to 26 and 16. The control interface comes
+# with it: a bench panel is exactly where a scriptable pointer belongs, and the
+# probe is what says this build never goes on a wall.
 CONFIG_OHEZ_BOARD_ARDUITOUCH=y
 CONFIG_OHEZ_ARDUITOUCH_JTAG_PINS=y
+CONFIG_OHEZ_TESTIF=y

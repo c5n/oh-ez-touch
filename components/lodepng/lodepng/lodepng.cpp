@@ -2238,7 +2238,13 @@ static unsigned zlib_decompress(unsigned char** out, size_t* outsize, size_t exp
     ucvector v = ucvector_init(*out, *outsize);
     if(expected_size) {
       /*reserve the memory to avoid intermediate reallocations*/
-      ucvector_resize(&v, *outsize + expected_size);
+      /* OH-EZ-TOUCH: fail fast when the reserve itself fails. The stock code
+         ignores it and lets inflate grow the buffer a block at a time
+         instead, which burns a string of reallocs and dies the moment the
+         heap cannot grow it -- the same error 83, reached later, through a
+         peak that is higher because old and new blocks coexist while
+         growing. */
+      if(!ucvector_resize(&v, *outsize + expected_size)) return 83;
       v.size = *outsize;
     }
     error = lodepng_zlib_decompressv(&v, in, insize, settings);
@@ -4764,6 +4770,11 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
   unsigned char* scanlines = 0;
   size_t scanlines_size = 0, expected_size = 0;
   size_t outsize = 0;
+  /* OH-EZ-TOUCH: for the single-IDAT case the copy is skipped and idat points
+     into the input instead; see the note after the chunk loop. */
+  const unsigned char* first_idat = 0;
+  unsigned idat_chunks = 0;
+  unsigned idat_owned = 1;
 
   /*for unknown chunk order*/
   unsigned unknown = 0;
@@ -4822,6 +4833,8 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
       size_t newsize;
       if(lodepng_addofl(idatsize, chunkLength, &newsize)) CERROR_BREAK(state->error, 95);
       if(newsize > insize) CERROR_BREAK(state->error, 95);
+      if(idat_chunks == 0) first_idat = data;
+      idat_chunks++;
       lodepng_memcpy(idat + idatsize, data, chunkLength);
       idatsize += chunkLength;
 #ifdef LODEPNG_COMPILE_ANCILLARY_CHUNKS
@@ -4908,6 +4921,21 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     if(!IEND) chunk = lodepng_chunk_next_const(chunk, in + insize);
   }
 
+  /* OH-EZ-TOUCH: a PNG with a single IDAT chunk needs no concatenation at all
+     -- point at it in the input and drop the copy. The copy is not a
+     convenience, it is a few-KB malloc in the middle of the decode, and on
+     the panel it lands exactly where it hurts most: freeing the old icon
+     before a re-decode leaves a block precisely the size of the inflate
+     reserve, and the copy's malloc takes a slice out of that block first,
+     so the reserve then fails with the memory "right there". With the copy
+     gone, the reserve is the decode's first allocation and takes the freed
+     block exactly. */
+  if(idat_chunks == 1) {
+    lodepng_free(idat);
+    idat = (unsigned char*)first_idat;
+    idat_owned = 0;
+  }
+
   if(!state->error && state->info_png.color.colortype == LCT_PALETTE && !state->info_png.color.palette) {
     state->error = 106; /* error: PNG file must have PLTE chunk if color type is palette */
   }
@@ -4934,14 +4962,45 @@ static void decodeGeneric(unsigned char** out, unsigned* w, unsigned* h,
     state->error = zlib_decompress(&scanlines, &scanlines_size, expected_size, idat, idatsize, &state->decoder.zlibsettings);
   }
   if(!state->error && scanlines_size != expected_size) state->error = 91; /*decompressed size doesn't match prediction*/
-  lodepng_free(idat);
+  if(idat_owned) lodepng_free(idat); /* OH-EZ-TOUCH: a borrowed single IDAT is not ours to free */
 
   if(!state->error) {
     outsize = lodepng_get_raw_size(*w, *h, &state->info_png.color);
-    *out = (unsigned char*)lodepng_malloc(outsize);
-    if(!*out) state->error = 83; /*alloc fail*/
+
+    /* OH-EZ-TOUCH: for the common case -- no Adam7, whole-byte pixels --
+       unfilter the scanlines in their own buffer and hand that buffer over as
+       the output image, instead of allocating a second full-image buffer.
+       unfilter() explicitly allows in == out ("aren't the same size since in
+       has the extra filter bytes"): the output row is one filter byte shorter
+       than the raw row, so within the shared buffer every write trails the
+       read it derives from, and the previous output row a filter may
+       reference is already written.
+
+       The stock two-buffer path peaks at scanlines + image + the incoming
+       PNG all live at once -- 37 KB for a 64x64 RGBA icon -- which a panel
+       with the BLE stack resident does not have idle. The in-place path
+       peaks at the one scanline buffer plus the PNG. bpp < 8 and Adam7 keep
+       the stock path: their bit shuffling moves data across rows and is not
+       safe in place, and their buffers are small anyway. */
+    if(state->info_png.interlace_method == 0 && lodepng_get_bpp(&state->info_png.color) >= 8) {
+      *out = scanlines;
+      scanlines = 0;
+      state->error = unfilter(*out, *out, *w, *h, lodepng_get_bpp(&state->info_png.color));
+
+      /* The buffer stays one filter byte per row larger than the image, and
+         that is deliberate, not a missed shrink: the panel decodes icons into
+         this size class over and over, and a held buffer freed before the
+         next decode is exactly the hole the next reserve needs. Shrunk to the
+         image, the hole would be those h bytes too small every time. */
+    }
+    else {
+      *out = (unsigned char*)lodepng_malloc(outsize);
+      if(!*out) state->error = 83; /*alloc fail*/
+    }
   }
-  if(!state->error) {
+  /* The in-place path above already unfiltered into *out; anything else
+     still has scanlines waiting to be post-processed into the fresh buffer. */
+  if(!state->error && scanlines != 0) {
     lodepng_memset(*out, 0, outsize);
     state->error = postProcessScanlines(*out, scanlines, *w, *h, &state->info_png);
   }

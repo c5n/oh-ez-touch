@@ -52,6 +52,20 @@ size_t port_largest_free_block(void)
     return heap_caps_get_largest_free_block(MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
 }
 
+void port_heap_info(struct port_heap_info_s *out)
+{
+    /* The same pool the two accessors above answer for. */
+    multi_heap_info_t info;
+
+    heap_caps_get_info(&info, MALLOC_CAP_8BIT | MALLOC_CAP_INTERNAL);
+
+    out->free          = info.total_free_bytes;
+    out->largest       = info.largest_free_block;
+    out->min_free_ever = info.minimum_free_bytes;
+    out->alloc_blocks  = info.allocated_blocks;
+    out->free_blocks   = info.free_blocks;
+}
+
 bool port_localtime(struct tm *out)
 {
     time_t now = 0;

@@ -277,15 +277,22 @@ public:
     /* Turn a page already in memory into the title and the item array.
      *
      * `payload` need not be terminated -- a body off the network is not -- and
-     * has to stay alive for the duration of the call, because ArduinoJson
-     * parses in place. It does not have to survive the return: every field
-     * extracted goes through one of Item's strlcpy() setters, so no Item ends
-     * up holding a pointer into the page.
+     * has to stay alive for the duration of the call. It does not have to
+     * survive the return: every field extracted goes through one of Item's
+     * strlcpy() setters, so no Item ends up holding a pointer into the page.
      *
-     * @return 0, or -1 for a page that did not parse or that carries an
-     *         openHAB error object instead of widgets.
+     * `scratch`/`scratch_size` is where the document's pool goes. On the
+     * panel the caller passes the unused tail of the buffer the page body
+     * occupies, and the parse then makes no heap allocation at all -- the
+     * reason is at the arena in openhab_connector.cpp. With NULL the pool
+     * comes off the heap, which is what the host tests do.
+     *
+     * @return 0, or -1 for a page that did not parse, that ran the scratch
+     *         out of room, or that carries an openHAB error object instead of
+     *         widgets.
      */
-    int parse(const char *payload, size_t payload_len);
+    int parse(const char *payload, size_t payload_len, char *scratch = NULL,
+              size_t scratch_size = 0);
 
     const char* getPageName() { return title; }
     size_t getItemCount() { return item_count; }

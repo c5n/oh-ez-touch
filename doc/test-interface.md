@@ -13,9 +13,9 @@ button, and no way to find out what happened. Those variables still work and
 are still the quickest way to start somewhere particular; this is the other
 half.
 
-**Simulator only.** A panel has no control socket, and the code is compiled out
-of its firmware entirely -- see [On the device](#on-the-device) at the end for
-what putting it there would take.
+**Simulator and bench device.** A wall panel has no control socket -- the
+code is compiled out of its firmware unless `CONFIG_OHEZ_TESTIF` says
+otherwise; see [On the device](#on-the-device) at the end.
 
 ## Starting it
 
@@ -152,6 +152,7 @@ press with no release in between would do nothing at all.
 | `ping` | `ok <uptime_ms>` |
 | `screen` | `ok {json}` -- see below |
 | `status` | `ok {json}` -- version, uptime, heap, frame time, network, openHAB, MQTT |
+| `heap` | `ok {json}` -- free, largest block, min free ever, block counts |
 | `config [<name>]` | `ok {json}` -- one setting, or all of them |
 | `calibrate targets` | `ok <x> <y> <x> <y> ...` -- where the four crosses are |
 | `calibrate step` | `ok <pressed> <total>` -- how many crosses have been counted |
@@ -166,7 +167,7 @@ press with no release in between would do nothing at all.
 | `nav <path>` | walk a dot-separated path of tile indices, as `OHEZ_ITEM` does |
 | `settings [<page>]` | open the settings screen on a page, or close it |
 | `calibrate` | start the touchscreen calibration, from the open settings screen |
-| `quit` | answer, then exit(0) |
+| `quit` | answer, then exit(0) -- on a device there is no process to exit, so it restarts instead, and the answer is the part that never arrives |
 
 `set` takes the same names the web form posts (`config` with no argument lists
 them all) and goes through the same save path, so **it writes a real
@@ -330,7 +331,8 @@ The panel sends **raw pixels and never a PNG**. Encoding one needs an output
 buffer and a compressor's working set, and the hardware this firmware really
 runs on has no RAM to spare for either -- so the conversion happens on the
 development machine, in about thirty lines of `zlib` inside `ohez_ctl.py`. That
-is also what keeps the device half cheap; see below.
+is also what would keep a framebuffer readback cheap on a device, if one is
+ever written; see below.
 
 The bytes come off the web server rather than the control socket, because 150
 KB does not belong in a datagram:
@@ -414,24 +416,38 @@ sooner or later report the same position twice.
 
 ## On the device
 
-Nothing here is compiled into a panel's firmware. Every file is behind
-`#if CONFIG_IDF_TARGET_LINUX` with a no-op `#else`, the same arrangement
-`main/sim/sim_offline.cpp` uses, so no caller needs a target guard and the
-linker drops the lot.
+The interface also builds into a panel's firmware, behind
+`CONFIG_OHEZ_TESTIF` -- the same code, the same protocol, the same commands.
+The option is **off by default and belongs off on a wall panel**: the channel
+has no authentication and can press anything on the screen. It is on in
+`sdkconfig.defaults.arduitouch_jtag`, because a bench device with a JTAG probe
+attached is exactly where a scriptable pointer is wanted, and the probe is
+what says that build never goes on a wall.
 
-Putting it on a panel would be:
+What changes against the simulator is reachability and budget, not shape:
 
-- bind through lwIP instead of POSIX -- the same calls, and the same
-  non-blocking rule;
-- replace the framebuffer read, because a panel renders into small draw
-  buffers and keeps no whole frame. Tee the display's `flush_cb`, invalidate
-  the screen and write each flushed area out as it arrives with its own
-  `{x1,y1,x2,y2}` header, letting the host reassemble it. Constant RAM, no
-  allocation, and the reason the header above carries geometry rather than
-  assuming it;
-- put the whole thing behind a Kconfig that is off by default. An
-  unauthenticated command channel that can press buttons is not something to
-  ship enabled on a device that sits on someone's home network.
+- it binds the network interface rather than loopback -- being reachable from
+  the development machine is the whole point of the option, and the option
+  being off by default is the price of it;
+- the reply budget shrinks from 4096 to 2560 bytes, because the buffer comes
+  out of a heap that also feeds BLE and MQTT, and the payload is written
+  straight into the reply instead of a second static buffer of its own;
+- `quit` restarts the panel (there is no process to exit), which is the more
+  useful half of the command there: a script that wants a fresh panel after a
+  test gets one. The restart happens before the reply is sent, so "no answer"
+  is the expected answer;
+- `heap` joins the reading commands -- free, largest block, min free ever and
+  the block counts, which is the report the field panels cannot give;
+- `shot` refuses with "no frame buffer on the device": a panel renders into
+  small draw buffers and keeps no whole frame to serve. Reading one back
+  would mean teeing the display's `flush_cb` and streaming each flushed area
+  with its own `{x1,y1,x2,y2}` header for the host to reassemble -- the wire
+  format's raw pixels and per-area geometry are already the shape that would
+  take, it is simply not written. `screen` is what a script asserts against
+  on a device instead.
 
-No PNG encoder and no large buffer is needed at any point, which is the whole
-reason the wire format is raw pixels.
+The synthetic pointer is a second input device beside the real touch panel
+there, and they take turns the way the SDL mouse and the pointer do on the
+simulator. Everything else -- `nav`, `settings`, `set`, `screen`, `status` --
+works exactly as it does here, which is the point: a scenario that fails on a
+wall panel can be replayed on the bench one by the same script.

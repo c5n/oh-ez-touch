@@ -34,7 +34,7 @@ configure time:
 and the panel says the same thing on the console at boot:
 
 ```
-I (1234) openhab_client: built-in icons: 396, 119769 bytes
+I (1234) openhab_client: built-in icons: 396, 228096 bytes
 ```
 
 `main/CMakeLists.txt` watches `main/icons/` with `CMAKE_CONFIGURE_DEPENDS`, so
@@ -54,27 +54,42 @@ Useful arguments:
 | `--verify-all` | cross-check every icon against ImageMagick, not just the first |
 
 Trimming the set is the lever that matters for flash, and on this firmware it
-matters a lot: the whole set is 396 icons and 117 kB of blob, which costs
-**126 kB of application image** and takes the free space in a 4 MB board's app
-partition from 14% down to 7%. A panel only ever shows the icons its own
-sitemaps name, and naming them explicitly turns that into a few kB.
+matters a lot: the whole set is 396 icons and 228 kB of blob, which leaves the
+1.9 MB app partition of a 4 MB board with single-digit percent free. A panel
+only ever shows the icons its own sitemaps name, and naming them explicitly
+turns that into a few kB.
 
-## Why 16-colour PNG
+## Why a 16-colour LVGL image
 
 The classic icons are line art: a few flat colours and an antialiased edge.
 Sixteen colours holds that comfortably — what the palette mostly spends itself
 on is alpha steps, not hues, which is why the quantizer works in RGBA rather
 than RGB.
 
-It stays a **PNG** rather than becoming a bitmap because the firmware links
-lodepng either way, for the icons that still come from the server, and because
-LVGL wants ARGB8888 only at draw time: 32x32 of that is 4096 bytes, against the
-~300 a compressed indexed PNG takes. Storing decoded pixels would cost more
-flash than the entire set does.
+The record is an **LVGL indexed image**, not a PNG: sixteen palette entries in
+`lv_color32_t` order, then the pixels packed two per byte, 576 bytes per icon.
+That is a hundred-odd bytes *more* flash per icon than the indexed PNG it
+replaced, and the trade is made in RAM, not flash: a PNG has to be decoded
+before it can draw, and the decode is lodepng's working set plus a 4096-byte
+ARGB8888 held per tile, on a heap that also feeds BLE and MQTT. On panels that
+had been up for days that was "the tiles draw but the icons are placeholders".
+An indexed record is what LVGL's renderer reads palette and pixels from
+directly — no decode, no transient, and the whole RAM cost of an icon is its
+576 bytes.
 
 Fully transparent pixels get a palette entry of their own and are never mixed
 into a box during quantization. Without that, transparent black averages into
 the edge and every icon acquires a faint halo.
+
+## And what a bigger server icon gets
+
+Thirty-two is the size everything draws at, but a custom
+`$OPENHAB_CONF/icons/classic/` icon can be 64 or 128. Rather than scale the
+built-ins up to meet it, a fetched PNG that decodes larger than the set's size
+is **halved in both directions until it fits** — a premultiplied-alpha box
+average, so a transparent background does not smear into the strokes. The
+halved copy is what the tile keeps: 4096 bytes for a 64-pixel icon instead of
+the sixteen kilobytes its decode produced.
 
 ## What it resolves, and what it does not
 
@@ -106,9 +121,11 @@ and no firmware can have been built with it.
 
 In `perform()` in `main/openhab/openhab_client.cpp`, and deliberately not in
 the UI. A built-in icon and a fetched one then differ in nothing the caller can
-see — same submit, same generation, same queue, the same PNG in the same result
-— so the tile just gets its answer on the next turn of the loop instead of
-after a round trip. The UI has no idea which happened.
+see — same submit, same generation, same queue, the same image bytes in the
+same result — so the tile just gets its answer on the next turn of the loop
+instead of after a round trip. The UI has no idea which happened: a record is
+recognised by its size and by *not* starting with a PNG's 0x89, and takes the
+copy-and-draw path while a PNG takes the decode.
 
 The set also takes priority over offline mode's fixture, whose sixteen icons
 (`tools/fetch_sim_icons.py`, `main/sim/icon_fixture.cpp`) are a subset of the

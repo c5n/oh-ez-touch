@@ -2403,7 +2403,7 @@ void ui_settings_rebuild(void)
     screen_show_target(current_tab);
 }
 
-#if CONFIG_IDF_TARGET_LINUX
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
 bool ui_settings_open_by_name(const char *name)
 {
     if (name == NULL)
@@ -2441,7 +2441,9 @@ bool ui_settings_open_by_name(const char *name)
 
     return false;
 }
+#endif /* CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF */
 
+#if CONFIG_IDF_TARGET_LINUX
 void ui_settings_open_from_env(void)
 {
     const char *name = getenv("OHEZ_SETTINGS");

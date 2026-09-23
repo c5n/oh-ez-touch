@@ -15,6 +15,170 @@ static inline const char *json_str(JsonVariant value)
     return (str != NULL) ? str : "";
 }
 
+/* The pool a page's JsonDocument allocates from, laid over whatever scratch
+ * the caller passes -- on the panel, the unused tail of the page's own body
+ * buffer (see openhab_client.cpp: the body sits at the front of rx_buf and
+ * the parse runs while the worker is kept out of it, so the kilobytes behind
+ * the body are free to be the document's pool for exactly as long as the
+ * parse takes). The pool is one of the two big transient allocations a page
+ * load used to make on the heap; the body buffer was the other, and both are
+ * the kind of multi-kilobyte ask a days-old fragmented heap stops honouring,
+ * which is how page turns died on the wall panels. Neither asks any more.
+ *
+ * The arena is a bump allocator with a size word per block, which is the
+ * whole of what ArduinoJson asks of an Allocator: pool blocks are appended
+ * as the document grows, trimmed at the end, and freed newest-first when the
+ * document dies. Anything deallocate() cannot honour (an older block) simply
+ * stays until the next begin() -- Sitemap::parse() is the only user and it
+ * is only ever mid-parse on one task, so nothing outlives a begin().
+ *
+ * The bounds are the fleet's real pages, measured through the same filter
+ * with a counting allocator: every page this installation serves peaks at
+ * 4.9 to 5.8 kilobytes of pool. A body of at most six kilobytes therefore
+ * leaves room for its document in the twelve the buffer holds; a bigger one
+ * fails the parse with a log line and a retry -- deserializeJson() reports
+ * NoMemory -- which is the failure mode the heap version already had, except
+ * that this one says why. */
+class JsonArenaAlloc : public ArduinoJson::Allocator
+{
+  public:
+    void begin(void *mem, size_t size)
+    {
+        buf  = (uint8_t *)mem;
+        cap  = size;
+        used = 0;
+        last = (size_t)-1;
+        free_count = 0;
+    }
+
+    void *allocate(size_t size) override
+    {
+        size = (size + 3) & ~(size_t)3;
+
+        if (size == 0)
+            return NULL;
+
+        /* Reuse first: ArduinoJson's strings come and go as alloc/free pairs,
+         * and a pure bump allocator would charge the whole of every string
+         * ever held to the arena even though almost all of them are returned
+         * long before the parse ends. First-fit with a split, which keeps the
+         * remainder reusable rather than stranding it. */
+        for (size_t i = 0; i < free_count; i++)
+        {
+            size_t avail = free_list[i].size;
+
+            if (avail < size + 4)
+                continue;
+
+            uint32_t *hdr = (uint32_t *)(buf + free_list[i].offset);
+
+            if (avail >= size + 4 + 4 + 16)
+            {
+                /* Big enough to be worth a remainder block. */
+                free_list[i].offset += 4 + size;
+                free_list[i].size   -= 4 + size;
+            }
+            else
+            {
+                free_list[i] = free_list[--free_count];
+            }
+
+            *hdr = (uint32_t)size;
+            return hdr + 1;
+        }
+
+        if (size + 4 > cap - used)
+        {
+            /* Said loudly rather than returned quietly: an arena that is too
+             * small is a page body that grew past what its tail can document,
+             * and that is worth knowing about rather than retrying blind. */
+            printf("JsonArena: out of room for a %u byte block (%u of %u used)\r\n",
+                   (unsigned)size, (unsigned)used, (unsigned)cap);
+            return NULL;
+        }
+
+        uint32_t *hdr = (uint32_t *)(buf + used);
+
+        *hdr = (uint32_t)size;
+        last = used;
+        used += 4 + size;
+
+        return hdr + 1;
+    }
+
+    void deallocate(void *ptr) override
+    {
+        size_t offset = (size_t)((char *)ptr - 4 - (char *)buf);
+
+        /* The newest block just lowers the high-water mark. */
+        if (last != (size_t)-1 && offset == last)
+        {
+            used = last;
+            return;
+        }
+
+        /* Anything else goes on the free list, or is lost until begin() when
+         * that is full -- the document holds a handful of blocks at a time,
+         * so full means the parse is an unusual shape, not an unbounded one. */
+        if (free_count < FREE_MAX)
+        {
+            free_list[free_count].offset = offset;
+            free_list[free_count].size   = *(uint32_t *)(buf + offset) + 4;
+            free_count++;
+        }
+    }
+
+    void *reallocate(void *ptr, size_t new_size) override
+    {
+        if (ptr == NULL)
+            return allocate(new_size);
+
+        uint32_t *hdr = (uint32_t *)ptr - 1;
+        size_t    old_size = *hdr;
+
+        new_size = (new_size + 3) & ~(size_t)3;
+
+        /* In place when it is the newest block -- which is also the common
+         * one: the pool trims its tail and grows its block list. */
+        if ((char *)hdr == (char *)buf + last && new_size + 4 <= cap - last)
+        {
+            *hdr = (uint32_t)new_size;
+            used = last + 4 + new_size;
+            return ptr;
+        }
+
+        void *next = allocate(new_size);
+
+        if (next == NULL)
+            return NULL;
+
+        memcpy(next, ptr, (old_size < new_size) ? old_size : new_size);
+        deallocate(ptr);
+
+        return next;
+    }
+
+  private:
+    /* Live blocks in flight at once count in the dozens, not the hundreds:
+     * the pool's blocks, its block list, and the string nodes between them. */
+    static constexpr size_t FREE_MAX = 48;
+
+    struct free_s
+    {
+        size_t offset;
+        size_t size;
+    };
+
+    uint8_t *buf;
+    size_t   cap = 0;
+    size_t   used = 0;
+    size_t   last = (size_t)-1;
+    free_s   free_list[FREE_MAX];
+    size_t   free_count = 0;
+};
+
+static JsonArenaAlloc json_arena;
+
 /* A widget's label without the "[state]" openHAB appends to it, and without
  * the run of spaces in front of that.
  *
@@ -224,7 +388,8 @@ int Item::applyState(const char *text, size_t len)
  * Errors are reported here without the URL, which this does not know; the
  * caller adds it, the way openhab_http.cpp and its callers already divide it
  * up. */
-int Sitemap::parse(const char *payload, size_t payload_len)
+int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
+                   size_t scratch_size)
 {
     int retval = 0;
     bool payload_ok = true;
@@ -261,56 +426,79 @@ int Sitemap::parse(const char *payload, size_t payload_len)
      * read a null.
      *
      * A filter that is an array applies its first element to every element of
-     * the input, which is what the widgets and the mappings rely on. */
-    JsonDocument filter;
+     * the input, which is what the widgets and the mappings rely on.
+     *
+     * Built once: the shape is fixed, and a kilobyte of heap per page load to
+     * say so again is exactly the kind of transient this function is trying to
+     * stop making. */
+    static JsonDocument filter;
+    static bool         filter_ready = false;
 
-    filter["title"] = true;
-    /* Whole, not by its "message": the test below is is<JsonObject>(), and an
-     * error object filtered down to a key the server did not send would still
-     * have to be an object. It is a handful of bytes and only present when the
-     * request failed anyway. */
-    filter["error"] = true;
-    filter["parent"]["link"] = true;
+    if (filter_ready == false)
+    {
+        filter_ready = true;
 
-    JsonObject widget_filter = filter["widgets"].add<JsonObject>();
+        filter["title"] = true;
+        /* Whole, not by its "message": the test below is is<JsonObject>(), and an
+         * error object filtered down to a key the server did not send would still
+         * have to be an object. It is a handful of bytes and only present when the
+         * request failed anyway. */
+        filter["error"] = true;
+        filter["parent"]["link"] = true;
 
-    widget_filter["type"] = true;
-    widget_filter["label"] = true;
-    widget_filter["icon"] = true;
-    widget_filter["minValue"] = true;
-    widget_filter["maxValue"] = true;
-    widget_filter["step"] = true;
-    widget_filter["linkedPage"]["link"] = true;
+        JsonObject widget_filter = filter["widgets"].add<JsonObject>();
 
-    JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
+        widget_filter["type"] = true;
+        widget_filter["label"] = true;
+        widget_filter["icon"] = true;
+        widget_filter["minValue"] = true;
+        widget_filter["maxValue"] = true;
+        widget_filter["step"] = true;
+        widget_filter["linkedPage"]["link"] = true;
 
-    mapping_filter["command"] = true;
-    mapping_filter["label"] = true;
+        JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
 
-    JsonObject item_filter = widget_filter["item"].to<JsonObject>();
+        mapping_filter["command"] = true;
+        mapping_filter["label"] = true;
 
-    item_filter["link"] = true;
-    item_filter["state"] = true;
-    item_filter["type"] = true;
-    item_filter["groupType"] = true;
-    item_filter["transformedState"] = true;
+        JsonObject item_filter = widget_filter["item"].to<JsonObject>();
 
-    JsonObject state_filter = item_filter["stateDescription"].to<JsonObject>();
+        item_filter["link"] = true;
+        item_filter["state"] = true;
+        item_filter["type"] = true;
+        item_filter["groupType"] = true;
+        item_filter["transformedState"] = true;
 
-    state_filter["minimum"] = true;
-    state_filter["maximum"] = true;
-    state_filter["step"] = true;
-    state_filter["pattern"] = true;
+        JsonObject state_filter = item_filter["stateDescription"].to<JsonObject>();
 
-    /* The other place a Selection's options come from, when the sitemap itself
-     * carries no mappings. */
-    JsonObject option_filter =
-        item_filter["commandDescription"]["commandOptions"].add<JsonObject>();
+        state_filter["minimum"] = true;
+        state_filter["maximum"] = true;
+        state_filter["step"] = true;
+        state_filter["pattern"] = true;
 
-    option_filter["command"] = true;
-    option_filter["label"] = true;
+        /* The other place a Selection's options come from, when the sitemap itself
+         * carries no mappings. */
+        JsonObject option_filter =
+            item_filter["commandDescription"]["commandOptions"].add<JsonObject>();
 
-    JsonDocument doc;
+        option_filter["command"] = true;
+        option_filter["label"] = true;
+    }
+
+    /* The document's pool: from the caller's scratch when there is some --
+     * on the panel the tail of the page's own body buffer, which makes the
+     * whole parse allocation-free -- and off the heap when there is none,
+     * which is what the host tests and the offline fixtures do. What the
+     * arena is and why is at its definition above. */
+    ArduinoJson::Allocator *pool = ArduinoJson::detail::DefaultAllocator::instance();
+
+    if (scratch != NULL)
+    {
+        json_arena.begin(scratch, scratch_size);
+        pool = &json_arena;
+    }
+
+    JsonDocument doc(pool);
 
     // Parse JSON object
     /* The length is passed explicitly: the network payload is not
@@ -318,6 +506,23 @@ int Sitemap::parse(const char *payload, size_t payload_len)
     DeserializationError error = deserializeJson(doc, payload, payload_len,
                                                  DeserializationOption::Filter(filter),
                                                  DeserializationOption::NestingLimit(15));
+
+    if (error == DeserializationError::NoMemory && pool == &json_arena)
+    {
+        /* The page outgrew the tail of its own body buffer. That is a shape
+         * the arena comment owns up to, and the right answer to it is the
+         * heap after all, not a failed page: a body this big is the rare one,
+         * and the transient it costs is the one the arena exists to avoid
+         * paying on every page, not on one. */
+        printf("Sitemap::parse: page outgrew its arena; parsing from the heap\r\n");
+
+        ArduinoJson::Allocator *heap = ArduinoJson::detail::DefaultAllocator::instance();
+
+        doc = JsonDocument(heap);
+        error = deserializeJson(doc, payload, payload_len,
+                                DeserializationOption::Filter(filter),
+                                DeserializationOption::NestingLimit(15));
+    }
 
     /* Both of these used to "return false", which is 0 and therefore the
      * success code of this function, so the caller kept the stale page and the

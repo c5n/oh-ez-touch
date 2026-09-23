@@ -70,6 +70,14 @@ void      ui_settings_overlay_dismiss(void);
  * pending edits in the draft are left alone. */
 void ui_settings_touch_cal_keep(const struct touch_cal_s *cal);
 
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
+/* The lookup behind OHEZ_SETTINGS and the control interface's `settings`
+ * command, by the same names -- so that a script and OHEZ_SETTINGS reach the
+ * same pages by the same spellings rather than drifting apart. False when
+ * nothing is called that. */
+bool ui_settings_open_by_name(const char *name);
+#endif
+
 #if CONFIG_IDF_TARGET_LINUX
 /* Open the screen at boot, on the page OHEZ_SETTINGS names -- any section
  * (wlan, openhab, mqtt, sensors, device, touch, time, theme, audio, info) or
@@ -84,12 +92,6 @@ void ui_settings_touch_cal_keep(const struct touch_cal_s *cal);
  *
  * Same idea as OHEZ_THEME and OHEZ_NIGHT, for which see config.cpp. */
 void ui_settings_open_from_env(void);
-
-/* The lookup behind it, by the same names, for the control interface's
- * `settings` command -- so that a script and OHEZ_SETTINGS reach the same
- * pages by the same spellings rather than drifting apart. False when nothing
- * is called that. */
-bool ui_settings_open_by_name(const char *name);
 #endif
 
 #endif // UI_SETTINGS_HPP

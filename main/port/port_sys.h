@@ -80,6 +80,29 @@ size_t port_free_heap(void);
 size_t port_largest_free_block(void);
 
 /**
+ * The heap's shape, for the test interface's `heap` command.
+ *
+ * The pair free/largest is the same as the two accessors above; the block
+ * counts are what tells a leak apart from fragmentation when the two move
+ * together -- a leak loses free bytes with no new free blocks, fragmentation
+ * keeps the bytes and multiplies the pieces. min_free_ever is the high-water
+ * mark of harm done since boot, which a spot reading of `free` cannot see.
+ *
+ * Fields a target cannot answer are 0, which on the host is everything but
+ * the first two.
+ */
+struct port_heap_info_s
+{
+    size_t   free;          /* bytes free now                                   */
+    size_t   largest;       /* biggest single block still available, 0: unknown */
+    size_t   min_free_ever; /* lowest `free` has ever been, 0: unknown          */
+    unsigned alloc_blocks;  /* live allocated blocks, 0: unknown                */
+    unsigned free_blocks;   /* separate free pieces, 0: unknown                 */
+};
+
+void port_heap_info(struct port_heap_info_s *out);
+
+/**
  * Local wall-clock time, or false if it is not known yet.
  *
  * Replaces Arduino's getLocalTime(). The failure case is load-bearing:

@@ -273,4 +273,28 @@ const char *testif_cmd_shot(const testif_cmd_t *cmd, char *out, size_t out_size)
     return NULL;
 }
 
-#endif /* CONFIG_IDF_TARGET_LINUX */
+#elif CONFIG_OHEZ_TESTIF
+
+#include "testif_internal.hpp"
+
+/* The device half this file's header sketches is still not written: a panel
+ * renders into small draw buffers and keeps no whole frame to serve, so the
+ * command answers with a refusal rather than with a picture of nothing. */
+void testif_shot_init(void) {}
+
+/* Nothing to hold: there is no whole frame a reader could be copying. */
+bool testif_frame_hold(void)
+{
+    return false;
+}
+
+const char *testif_cmd_shot(const testif_cmd_t *cmd, char *out, size_t out_size)
+{
+    (void)cmd;
+    (void)out;
+    (void)out_size;
+
+    return "no frame buffer on the device";
+}
+
+#endif

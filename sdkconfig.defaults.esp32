@@ -56,6 +56,20 @@ CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
 # this firmware ever connects to anything.
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
 
+# The connection buffers nobody here uses. The defaults size NimBLE for a
+# device that connects: 24 MSYS_2 blocks and 24 transport ACL buffers for
+# connection data, and controller RAM for three connections. This panel only
+# ever observes -- nothing connects to anything, and nothing may connect to
+# it -- so that is ~17 KB of statically reserved RAM sitting idle while the
+# heap cannot offer the contiguous 16 KB a 64x64 icon decode needs. Two
+# blocks of each remain, because the host stack wants the pools to exist;
+# one connection remains, because the central role is compiled (see above)
+# and the controller allocates its connection RAM per configured slot.
+CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=2
+CONFIG_BT_NIMBLE_TRANSPORT_ACL_FROM_LL_COUNT=2
+CONFIG_BTDM_CTRL_BLE_MAX_CONN=1
+CONFIG_BTDM_CTRL_BLE_MAX_CONN_EFF=1
+
 # What makes room for the controller. With the WiFi library's hot paths in IRAM
 # and Bluetooth enabled, IRAM comes out at 98.4% full -- 2 KB left, which is no
 # headroom at all for a target nobody here can flash and test. Moving them to

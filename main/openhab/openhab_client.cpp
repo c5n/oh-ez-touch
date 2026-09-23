@@ -82,8 +82,17 @@ static QueueHandle_t results = NULL;
  * here, in a log line and a setup that fails, instead of taking it at link
  * time and leaving esp_wifi_init() to fail on a wall panel for want of it.
  *
- * Only perform() touches it, and perform() runs only on the worker below. */
+ * Only perform() touches it, and perform() runs only on the worker below --
+ * with one exception: a page result hands it to the UI for as long as that
+ * result is unconsumed, which is what payload_static in the result means.
+ * page_result_live is the handshake for that exception: set by the worker
+ * when it posts a page result, cleared by openhab_client_result_release() on
+ * whichever task releases it. The worker waits for it before the buffer is
+ * reused -- the generation rules out a second *page* landing in it while the
+ * UI parses, but not an icon read. */
 static char *rx_buf;
+
+static std::atomic<bool> page_result_live{false};
 
 static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
               "the receive buffer is sized on the page, so no class may exceed it");
@@ -324,12 +333,22 @@ bool openhab_client_poll(struct openhab_result_s *out)
 
 void openhab_client_result_release(struct openhab_result_s *res)
 {
-    if (res->payload_inline == false)
+    if (res->payload_static == true)
+    {
+        /* The payload is rx_buf, which belongs to the worker -- "released" here
+         * means handed back to it. The worker is waiting on this before it
+         * reuses the buffer. */
+        page_result_live.store(false, std::memory_order_release);
+    }
+    else if (res->payload_inline == false)
+    {
         free(res->payload);
+    }
 
     res->payload = NULL;
     res->payload_len = 0;
     res->payload_inline = false;
+    res->payload_static = false;
 }
 
 /* How much of a body of each kind will be read. A page and an icon are
@@ -546,6 +565,27 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
 
     rx_buf[read] = '\0';
 
+    /* A page rides the buffer itself rather than a copy. What that removes is
+     * the per-page malloc of up to twelve kilobytes -- the one allocation on
+     * this panel big enough to be refused by a fragmented heap, and the one
+     * whose refusal is the page that will not load. The buffer is held
+     * permanently anyway, exactly one page result is ever live (the generation
+     * sees to that), and page_result_live keeps the next request's read out of
+     * the buffer until the UI has released this one. */
+    if (req->type == OPENHAB_REQ_PAGE)
+    {
+        res->payload = rx_buf;
+        res->payload_len = (size_t)read;
+        res->payload_static = true;
+        res->ok = true;
+
+        /* Before the result is queued: release orders it against the UI's
+         * read of the buffer, the way the queue's own ordering would if the
+         * flag travelled inside the struct. */
+        page_result_live.store(true, std::memory_order_release);
+        return;
+    }
+
     /* Copied out at the size that arrived, and this is the only allocation a
      * request still makes. It has to be an allocation because the result
      * outlives the request: it waits in the queue until the UI has a frame to
@@ -592,6 +632,16 @@ static void openhab_client_task(void *parameter)
 #endif
             continue;
         }
+
+        /* A page result the UI has not released yet still holds rx_buf, and
+         * every request below but a command and a state reads into it. One
+         * spin per loop iteration of the UI is the whole of the wait: the UI
+         * releases every result it takes, on every path, so this cannot wedge
+         * -- it can only pace an icon behind a page parse, which is the order
+         * they are wanted in anyway. */
+        if (req.type != OPENHAB_REQ_COMMAND && req.type != OPENHAB_REQ_STATE)
+            while (page_result_live.load(std::memory_order_acquire) == true)
+                vTaskDelay(1);
 
         struct openhab_result_s res = {};
 

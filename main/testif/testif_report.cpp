@@ -10,13 +10,12 @@
  * there is one size limit and it is checked in one place.
  *
  * Everything here reads. The two exceptions say so in their names: `set`
- * writes a setting, and `nav`/`settings` open a screen. None of them is
- * reachable from the device.
+ * writes a setting, and `nav`/`settings` open a screen.
  */
 
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_LINUX
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
 
 #include <stdio.h>
 #include <string.h>
@@ -307,6 +306,33 @@ const char *testif_cmd_status(const testif_cmd_t *cmd, char *out, size_t out_siz
     return emit(doc, out, out_size);
 }
 
+/* ------------------------------------------------------------------- heap */
+
+/* The heap's shape, as five numbers rather than the one `status` carries.
+ *
+ * The pair free/largest is the diagnosis a page-fetch failure already prints;
+ * the block counts are what tells a leak apart from fragmentation when the
+ * two move together, and min_free_ever is the high-water mark of harm since
+ * boot that no spot reading of `free` can see. See port_sys.h. */
+const char *testif_cmd_heap(const testif_cmd_t *cmd, char *out, size_t out_size)
+{
+    (void)cmd;
+
+    struct port_heap_info_s info;
+
+    port_heap_info(&info);
+
+    JsonDocument doc;
+
+    doc["free"]          = info.free;
+    doc["largest"]       = info.largest;
+    doc["min_free_ever"] = info.min_free_ever;
+    doc["alloc_blocks"]  = info.alloc_blocks;
+    doc["free_blocks"]   = info.free_blocks;
+
+    return emit(doc, out, out_size);
+}
+
 /* ------------------------------------------------------------------ config */
 
 static void add_field(JsonObject into, const struct config_field_s *f)
@@ -524,4 +550,4 @@ const char *testif_cmd_calibrate(const testif_cmd_t *cmd, char *out, size_t out_
     return "want step, targets or result";
 }
 
-#endif /* CONFIG_IDF_TARGET_LINUX */
+#endif /* CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF */

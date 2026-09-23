@@ -130,6 +130,26 @@ struct openhab_result_s
      * result exactly once, and openhab_client_result_release() is where the
      * distinction lives. */
     bool     payload_inline;
+    /* A page result points at the worker's own receive buffer rather than at
+     * an allocation of its own, and this flag says so -- the other half of the
+     * rx_buf design the header comment above describes.
+     *
+     * The point is what it removes: the per-page malloc of up to twelve
+     * kilobytes, which is the one allocation on this panel big enough to be
+     * refused by a fragmented heap. Panels that ran all day with BLE and MQTT
+     * on ended up with kilobytes free and no four-kilobyte block left, and
+     * from then on every page turn failed at that malloc -- SITEMAP ACCESS
+     * FAILED, worst on the *main* page, because it is the biggest. The buffer
+     * is already held permanently for exactly this body, so the copy out of it
+     * bought nothing.
+     *
+     * What makes one buffer enough is the generation: at most one page result
+     * is ever live, because submitting the next page fetch stales the last
+     * one, and the UI discards a stale result before it looks at the payload.
+     * The worker still waits for the release before it reuses the buffer --
+     * the generation rules out a *second* page, not an icon read landing in
+     * the same memory while the UI is still parsing. */
+    bool     payload_static;
     char     body[OPENHAB_CLIENT_BODY_LEN];
 };
 

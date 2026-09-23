@@ -56,6 +56,13 @@
  * moves by five or ten dB between advertisements from a beacon that has not
  * moved at all, and a distance derived from one of those swings by a factor of
  * three. The mean over a window is still noisy; it is not misleading.
+ *
+ * One exception to the duty cycle: while somebody is using the panel, no
+ * window starts and an open one stops early. An open window is when the radio
+ * holds the most heap, and interaction is when the panel needs it -- page
+ * navigation decodes icons, and a 64x64 PNG needs a contiguous 16 KB that an
+ * open window takes away. Presence is also the one telemetry a touch makes
+ * redundant. See ui_activity.h for what counts as an interaction.
  */
 
 #include "ble_scan.hpp"
@@ -66,6 +73,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "port/port_ble.h"
 #include "port/port_sys.h"
+#include "ui/ui_activity.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -502,9 +510,12 @@ void ble_scan_setup(Config &config)
         return;
     }
 
-    /* The first window right away rather than one interval from now: a panel
-     * that has just been told to scan should show something for it. */
-    next_window = 0;
+    /* Not right away, tempting as that is: the boot's page load decodes every
+     * icon on the first page at once, and a scan window opening underneath it
+     * takes the heap the decodes need. Fifteen seconds leaves the first
+     * screen to itself; a beacon's telemetry arriving that much later at
+     * boot changes nothing. */
+    next_window = port_millis() + 15000;
 }
 
 void ble_scan_loop(Config &config)
@@ -526,6 +537,19 @@ void ble_scan_loop(Config &config)
 
     if (window_open == true)
     {
+        /* An interaction stops the window early. The scan and the PNG decode
+         * that page navigation triggers compete for the same heap, and an
+         * open window is when the radio holds the most of it -- the largest
+         * free block has been seen to collapse from ~22 KB to under 4 KB for
+         * the duration, which is the difference between an icon decoding and
+         * a placeholder. Somebody touching the panel has also already
+         * answered the question the scanner exists for, so what is cut here
+         * is only the rest of a window whose answer was never in doubt. What
+         * was heard so far is kept: the close below averages and publishes it
+         * like any other window, just a shorter one. */
+        if (ui_activity_active() == true)
+            port_ble_scan_stop();
+
         /* Sampled before the drain, not after: a report queued between the two
          * would otherwise be dropped on the floor along with the window it
          * belongs to. */
@@ -543,6 +567,13 @@ void ble_scan_loop(Config &config)
     }
 
     if (port_millis() < next_window)
+        return;
+
+    /* Deferred, not cancelled: next_window stays where it was, so the window
+     * that was due starts the moment the interaction ends, and the duty cycle
+     * resumes from there. Deferring rather than skipping a whole interval
+     * keeps a hand-waving user from pushing telemetry arbitrarily far out. */
+    if (ui_activity_active() == true)
         return;
 
     uint32_t window_ms = (uint32_t)item.ble.window * 1000;

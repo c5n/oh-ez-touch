@@ -8,6 +8,7 @@
 
 #include <malloc.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "esp_log.h"
@@ -76,6 +77,16 @@ size_t port_largest_free_block(void)
      * answer "enough" to any question the device answers "no" to. 0 is the
      * documented "cannot say" -- see port_sys.h. */
     return 0;
+}
+
+void port_heap_info(struct port_heap_info_s *out)
+{
+    /* What the host can say is the same as the two accessors; the rest is 0,
+     * the documented "cannot say". */
+    memset(out, 0, sizeof(*out));
+
+    out->free = port_free_heap();
+    out->largest = 0;
 }
 
 bool port_localtime(struct tm *out)

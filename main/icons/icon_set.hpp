@@ -11,7 +11,8 @@
  * slow, busy, or momentarily unreachable.
  *
  * The artwork is not in this repository. tools/build_icon_set.py fetches it,
- * quantizes each icon to 16 colours, stores it as an indexed PNG and writes
+ * quantizes each icon to 16 colours, stores it as an LVGL indexed image and
+ * writes
  *
  *     main/icons/icon_set_data.h
  *
@@ -21,9 +22,13 @@
  * HTTP exactly as it did before -- so the set is an optimisation the build
  * picks up when it is there, never something the panel needs.
  *
- * PNG rather than pixels, because the alternative is worse in both directions:
- * lodepng is linked either way for the icons that still come from the server,
- * and 32x32 ARGB8888 is 4096 bytes against the ~300 an indexed PNG takes.
+ * Indexed rather than a PNG of the same thing, because the panel is the
+ * opposite of flash-poor: a decoded icon is a 4096-byte ARGB8888 in RAM plus
+ * the output buffer and inflate state the decode wanted, per tile, on a heap
+ * that also feeds BLE and MQTT. An LVGL indexed image needs none of that --
+ * the renderer reads the palette and the packed pixels straight from the
+ * record, so the whole cost of an icon is the 576 bytes below, and the days
+ * of "the tiles draw but the icons are placeholders" end with it.
  *
  * openHAB stays authoritative for anything this set does not have. A custom
  * icon dropped into $OPENHAB_CONF/icons/classic/ exists only on that server,
@@ -41,6 +46,22 @@
  * Not taken from there by including it: this file knows about icons, not about
  * items, and openhab_connector.hpp drags in ArduinoJson. */
 #define ICON_SET_NAME_MAX 72
+
+/* The on-flash record for one icon, as the generator writes it and as the
+ * image descriptor in openhab_ui.cpp is built from it: sixteen palette
+ * entries in LVGL's lv_color32_t order -- {blue, green, red, alpha} -- then
+ * the pixels packed two per byte, high nibble first, which is LVGL's I4
+ * order. The record and the lv_image_dsc that points at it have the same
+ * layout on purpose: the renderer's indexed-image path reads both without a
+ * conversion step. */
+#ifndef ICON_SET_PIXEL_SIZE
+#define ICON_SET_PIXEL_SIZE 32
+#endif
+
+#define ICON_SET_PALETTE_BYTES (16 * 4)
+#define ICON_SET_PIXEL_BYTES (ICON_SET_PIXEL_SIZE * ICON_SET_PIXEL_SIZE / 2)
+#define ICON_SET_RECORD_SIZE (ICON_SET_PALETTE_BYTES + ICON_SET_PIXEL_BYTES)
+#define ICON_SET_STRIDE (ICON_SET_PIXEL_SIZE / 2)
 
 /**
  * Look up a built-in icon, the way openHAB resolves one.

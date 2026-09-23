@@ -18,14 +18,16 @@
  * be held for a time before the next is taken, and a swipe simply asks for
  * none.
  *
- * The SDL mouse stays registered alongside this. They do not fight:
- * lv_sdl_mouse_create() uses LV_INDEV_MODE_EVENT and this one is in the default
- * timer mode, so the window stays clickable by hand while a script drives it.
+ * The real pointer stays registered alongside this -- the SDL mouse on the
+ * simulator, the touch panel on a device. They do not fight: the SDL mouse is
+ * in LV_INDEV_MODE_EVENT and this one is in the default timer mode, so the
+ * window stays clickable by hand while a script drives it, and on the panel
+ * the finger and the script simply take turns.
  */
 
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_LINUX
+#if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF
 
 #include <stdlib.h>
 #include <string.h>
@@ -380,4 +382,4 @@ const char *testif_cmd_release(const testif_cmd_t *cmd, char *out, size_t out_si
     return push(queued_x, queued_y, false, 0) ? NULL : "queue full";
 }
 
-#endif /* CONFIG_IDF_TARGET_LINUX */
+#endif /* CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF */

@@ -2,8 +2,9 @@
  * @file testif_internal.hpp
  *
  * What the parts of the test interface expose to each other, and to nothing
- * else. Simulator-only by construction: nobody includes this from a file that
- * is not already inside `#if CONFIG_IDF_TARGET_LINUX`.
+ * else. Simulator-and-bench only by construction: nobody includes this from a
+ * file that is not already inside `#if CONFIG_IDF_TARGET_LINUX ||
+ * CONFIG_OHEZ_TESTIF`.
  *
  * The shape is one table in testif.cpp and one handler per command, so that
  * adding a command is adding a function and a row -- the same arrangement
@@ -45,6 +46,7 @@ const char *testif_cmd_release(const testif_cmd_t *cmd, char *out, size_t out_si
 
 const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_size);
 const char *testif_cmd_status(const testif_cmd_t *cmd, char *out, size_t out_size);
+const char *testif_cmd_heap(const testif_cmd_t *cmd, char *out, size_t out_size);
 const char *testif_cmd_config(const testif_cmd_t *cmd, char *out, size_t out_size);
 const char *testif_cmd_set(const testif_cmd_t *cmd, char *out, size_t out_size);
 
