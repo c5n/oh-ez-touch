@@ -74,6 +74,8 @@ class State:
         self.log_entries = deque(maxlen=LOG_CAPACITY)
         self.log_seq = 0
         self.scan = {"running": False, "done": 0, "total": 0}
+        self.refresh = {"enabled": False, "interval_s": 10, "running": False,
+                        "done": 0, "total": 0, "next_in": 0}
         self.updates = {}          # mac -> DeviceUpdate
         self._dirty = False
         self._load()
@@ -251,11 +253,31 @@ def refresh_once():
      a steady 'still there' every ten seconds is noise, not signal."""
     with STATE.lock:
         targets = {d["ip"]: mac for mac, d in STATE.devices.items()}
+        interval = STATE.settings.get("interval_s", 10)
 
     if not targets:
         return
 
-    results = probe.refresh_devices(list(targets), port=DEVICE_PORT)
+    with STATE.lock:
+        STATE.refresh["running"] = True
+        STATE.refresh["done"] = 0
+        STATE.refresh["total"] = len(targets)
+
+    def on_progress(done, total):
+        with STATE.lock:
+            STATE.refresh["done"] = done
+            STATE.refresh["total"] = total
+
+    # One dark address must not outlast the cadence: never wait longer for
+    # a single answer than half the interval the pass runs on.
+    timeout = max(0.5, min(probe.REFRESH_TIMEOUT_S, interval / 2.0))
+
+    try:
+        results = probe.refresh_devices(list(targets), port=DEVICE_PORT,
+                                        timeout=timeout, on_progress=on_progress)
+    finally:
+        with STATE.lock:
+            STATE.refresh["running"] = False
 
     for host, doc in results.items():
         mac = targets[host]
@@ -289,6 +311,8 @@ def scheduler(stop_event):
         with STATE.lock:
             enabled = STATE.settings.get("refresh_enabled", True)
             interval = STATE.settings.get("interval_s", 10)
+            STATE.refresh["enabled"] = enabled
+            STATE.refresh["interval_s"] = interval
 
         if enabled and time.time() - last >= interval:
             last = time.time()
@@ -296,6 +320,10 @@ def scheduler(stop_event):
                 refresh_once()
             except Exception as error:
                 STATE.log("error", "refresh", "refresh failed: %s" % error)
+
+        with STATE.lock:
+            STATE.refresh["next_in"] = (max(0, int(last + interval - time.time()))
+                                        if enabled else 0)
 
         STATE.save_now_if_dirty()
 
@@ -464,7 +492,7 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             return self.handle_device_config_post(match.group(1))
 
-        match = re.match(r"^/api/device/([^/]+)/(restart|chime|comment)$", path)
+        match = re.match(r"^/api/device/([^/]+)/(restart|chime|comment|refresh)$", path)
         if match:
             return self.handle_device_action(match.group(1), match.group(2))
 
@@ -500,7 +528,9 @@ class Handler(BaseHTTPRequestHandler):
                 "devices": sorted(STATE.devices.values(),
                                   key=lambda d: d.get("hostname") or d["ip"]),
                 "scan": STATE.scan,
+                "refresh": dict(STATE.refresh),
                 "updates": updates_status(),
+                "latest_version": updater.latest_version(),
             })
 
     def handle_settings(self):
@@ -678,6 +708,27 @@ class Handler(BaseHTTPRequestHandler):
 
             STATE.log("info", "api", "%s: door chime queued" % name)
             return self.send_json({"ok": True, "queued": "door_chime"})
+
+        if action == "refresh":
+            host = device_host(device)
+
+            try:
+                doc = probe.fetch_json(host, "/api/status",
+                                       probe.REFRESH_TIMEOUT_S)
+            except probe.DeviceUnreachable as error:
+                if mark_offline(mac) is not None:
+                    STATE.log("warn", "refresh", "%s went offline" % name)
+                return self.send_json({"ok": False, "error": str(error)})
+
+            if not probe.is_status(doc):
+                mark_offline(mac)
+                return self.send_json(
+                    {"ok": False, "error": "not an OhEzTouch 0.91+ device"})
+
+            upsert_device(doc, host)
+            STATE.log("info", "refresh", "%s: refreshed, now v%s"
+                      % (name, doc.get("version")))
+            return self.send_json({"ok": True})
 
         self.send_error_json("unknown action", 404)
 

@@ -12,9 +12,13 @@
 const state = {
   settings: { subnet: "", interval_s: 10, refresh_enabled: true, log_level: "info" },
   devices: [],
+  latestVersion: null,
   scan: { running: false, done: 0, total: 0 },
+  refresh: null,
+  refreshSeenAt: 0,
   updates: {},
   selected: new Set(),
+  sort: { key: "hostname", dir: 1 },
   pollTimer: null,
 };
 
@@ -76,6 +80,20 @@ function esc(text) {
   return span.innerHTML;
 }
 
+/* The RSSI bands, colour-coded wherever a signal is shown: green is
+ * comfortable, yellow is workable, red is on the edge of dropping out. */
+function rssiClass(d) {
+  if (d.wired || d.rssi == null) return "";
+  if (d.rssi >= -60) return "good";
+  if (d.rssi >= -75) return "fair";
+  return "weak";
+}
+
+function rssiText(d) {
+  if (d.wired) return "wired";
+  return d.rssi != null ? d.rssi + " dBm" : "-";
+}
+
 /* ------------------------------------------------------------- state poll */
 
 async function pollState() {
@@ -85,8 +103,13 @@ async function pollState() {
     state.devices = doc.devices;
     state.scan = doc.scan;
     state.updates = doc.updates || {};
+    state.latestVersion = doc.latest_version || null;
+    state.refresh = doc.refresh || null;
+    state.refreshSeenAt = Date.now();
+    refreshTick.was = -1;
     renderDevices();
     renderScan();
+    renderRefresh();
     renderUpdateProgress();
   } catch (error) {
     /* The manager itself is gone -- say so once, not on every tick. */
@@ -113,18 +136,100 @@ function schedulePoll() {
 
 /* ------------------------------------------------------------ device table */
 
+/* Clicking a column header sorts by it; clicking again flips the direction.
+ * The arrow in the header is CSS, from the sorted-asc/desc classes. */
+function versionTuple(version) {
+  const match = String(version || "").match(/^(\d+)\.(\d+)$/);
+  return match ? [parseInt(match[1], 10), parseInt(match[2], 10)] : [0, 0];
+}
+
+function compareTuples(a, b) {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const da = a[i] || 0, db = b[i] || 0;
+    if (da !== db) return da - db;
+  }
+  return 0;
+}
+
+function compareIp(a, b) {
+  const pa = String(a || "").split(".").map(Number);
+  const pb = String(b || "").split(".").map(Number);
+
+  for (let i = 0; i < 4; i++) {
+    const da = pa[i] || 0, db = pb[i] || 0;
+    if (da !== db) return da - db;
+  }
+  return 0;
+}
+
+/* Wired counts as the best signal there is; no reading as the worst. */
+function rssiSortValue(d) {
+  if (d.wired) return 1;
+  return d.rssi == null ? -999 : d.rssi;
+}
+
+function compareDevices(a, b) {
+  const key = state.sort.key;
+  let result = 0;
+
+  if (key === "ip") result = compareIp(a.ip, b.ip);
+  else if (key === "version")
+    result = compareTuples(versionTuple(a.version), versionTuple(b.version));
+  else if (key === "rssi") result = rssiSortValue(a) - rssiSortValue(b);
+  else if (key === "uptime") result = (a.uptime_s || 0) - (b.uptime_s || 0);
+  else if (key === "target")
+    result = String(a.target_name || "").localeCompare(String(b.target_name || ""));
+  else if (key === "last_seen")
+    result = String(a.last_seen || "").localeCompare(String(b.last_seen || ""));
+  else result = String(a.hostname || a.ip).localeCompare(String(b.hostname || b.ip));
+
+  /* The MAC fallback keeps the order stable across polls. */
+  if (result === 0) result = String(a.mac).localeCompare(String(b.mac));
+
+  return result * state.sort.dir;
+}
+
+function renderSortHeaders() {
+  for (const th of document.querySelectorAll("#devices th.sortable")) {
+    th.classList.toggle("sorted-asc",
+      th.dataset.sort === state.sort.key && state.sort.dir > 0);
+    th.classList.toggle("sorted-desc",
+      th.dataset.sort === state.sort.key && state.sort.dir < 0);
+  }
+}
+
+/* The badge a device under update wears in the version column. */
+function updateBadgeClass(phase) {
+  if (phase === "PASS") return "pass";
+  if (phase === "FAIL") return "fail";
+  if (phase === "waiting for reboot" || phase === "verifying") return "waiting";
+  return "running";
+}
+
 function renderDevices() {
   const tbody = $("device-rows");
   tbody.innerHTML = "";
 
+  const devices = [...state.devices].sort(compareDevices);
+
   $("empty-hint").classList.toggle("hidden", state.devices.length > 0);
 
-  for (const d of state.devices) {
+  const online = state.devices.filter(d => d.online).length;
+  $("device-summary").textContent =
+    state.devices.length + " device" + (state.devices.length === 1 ? "" : "s")
+    + ", " + online + " online";
+
+  renderSortHeaders();
+
+  for (const d of devices) {
     const tr = document.createElement("tr");
     tr.className = d.online ? "" : "offline";
 
     const name = d.hostname || "(unnamed)";
     const update = state.updates[d.mac];
+    const outdated = state.latestVersion && d.version
+      && compareTuples(versionTuple(d.version),
+                       versionTuple(state.latestVersion)) < 0;
 
     tr.innerHTML =
       "<td><input type='checkbox' class='row-select' data-mac='" + esc(d.mac) + "'" +
@@ -135,8 +240,14 @@ function renderDevices() {
       "<td>" + esc(d.ip) + "</td>" +
       "<td class='dim small'>" + esc(d.mac) + "</td>" +
       "<td>" + esc(d.target_name || "-") + "</td>" +
-      "<td>" + esc(d.version || "-") + (update ? " <span class='dim'>(" + esc(update.phase) + ")</span>" : "") + "</td>" +
-      "<td>" + (d.wired ? "wired" : (d.rssi != null ? esc(d.rssi) + " dBm" : "-")) + "</td>" +
+      "<td" + (outdated ? " class='outdated' title='newest firmware: "
+                        + esc(state.latestVersion) + "'" : "") + ">" +
+        esc(d.version || "-") +
+        (update ? " <span class='upd " + updateBadgeClass(update.phase) + "'>" +
+          esc(update.phase === "uploading"
+              ? "uploading " + update.percent + "%" : update.phase) +
+          "</span>" : "") + "</td>" +
+      "<td class='rssi " + rssiClass(d) + "'>" + esc(rssiText(d)) + "</td>" +
       "<td>" + fmtUptime(d.uptime_s) + "</td>" +
       "<td class='dim small'>" + esc(d.last_seen || "-") + "</td>" +
       "<td class='actions'>" +
@@ -166,12 +277,55 @@ function renderDevices() {
 }
 
 function renderBulkBar() {
-  const bar = $("bulk-bar");
   const count = [...state.selected].filter(mac =>
     state.devices.some(d => d.mac === mac)).length;
 
-  bar.classList.toggle("hidden", count === 0);
+  /* The bar is permanent; only the actions come and go with the selection. */
+  $("bulk-group").classList.toggle("hidden", count === 0);
   $("bulk-count").textContent = count + " selected";
+}
+
+/* The bottom bar's left side: how the fleet refresh is doing -- a countdown
+ * to the next pass, or the pass itself with a progress bar. The countdown
+ * is the server's number, decremented locally between polls so it moves
+ * every second instead of every poll. */
+function refreshCountdown() {
+  const r = state.refresh;
+  if (!r) return 0;
+  const elapsed = Math.floor((Date.now() - state.refreshSeenAt) / 1000);
+  return Math.max(0, r.next_in - elapsed);
+}
+
+function renderRefresh() {
+  const label = $("refresh-label");
+  const bar = $("refresh-progress");
+  const r = state.refresh;
+
+  if (r && r.running) {
+    label.textContent = "refreshing " + r.done + " / " + r.total;
+    bar.classList.remove("hidden");
+    bar.firstElementChild.style.width =
+      (r.total ? r.done * 100 / r.total : 0) + "%";
+  } else if (r && r.enabled) {
+    label.textContent = "next refresh in " + refreshCountdown() + " s";
+    bar.classList.add("hidden");
+  } else {
+    label.textContent = "auto-refresh off";
+    bar.classList.add("hidden");
+  }
+}
+
+/* One tick a second between polls keeps the countdown moving; when it runs
+ * out, one extra poll picks up the pass as it starts. */
+function refreshTick() {
+  const r = state.refresh;
+  if (!r || !r.enabled || r.running) return;
+
+  const remaining = refreshCountdown();
+  renderRefresh();
+
+  if (remaining === 0 && refreshTick.was > 0) pollState();
+  refreshTick.was = remaining;
 }
 
 function renderScan() {
@@ -526,95 +680,148 @@ async function saveConfig() {
 
 /* ------------------------------------------------------------- update modal */
 
-const updateModal = { macs: [], uploaded: null };
+const updateModal = { macs: [], uploaded: null, refreshed: new Set() };
+
+/* An update counts as running until the worker has said PASS or FAIL. */
+function updateInProgress(macs) {
+  return macs.some(mac => {
+    const u = state.updates[mac];
+    return u && u.phase !== "PASS" && u.phase !== "FAIL";
+  });
+}
 
 async function openUpdateModal(macs) {
   updateModal.macs = macs;
   updateModal.uploaded = null;
+  updateModal.refreshed = new Set();
 
-  const container = $("update-devices");
-  container.innerHTML = "";
+  const tbody = $("update-rows");
+  tbody.innerHTML = "";
 
   for (const mac of macs) {
     const d = state.devices.find(x => x.mac === mac);
     if (!d) continue;
-    const div = document.createElement("div");
-    div.className = "update-device";
-    div.dataset.mac = mac;
-    div.innerHTML = "<span class='name'>" + esc(d.hostname || d.ip) + "</span>" +
-                    "<span class='phase'>" + esc(d.target_name || "?") + ", v" + esc(d.version || "?") + "</span>";
-    container.appendChild(div);
+    const tr = document.createElement("tr");
+    tr.dataset.mac = mac;
+    tr.innerHTML =
+      "<td class='name'>" + esc(d.hostname || d.ip) + "</td>" +
+      "<td>" + esc(d.target_name || "?") + "</td>" +
+      "<td class='version'>" + esc(d.version || "?") + "</td>" +
+      "<td class='rssi " + rssiClass(d) + "'>" + esc(rssiText(d)) + "</td>" +
+      "<td class='progress-cell'>" +
+        "<span class='phase'></span>" +
+        "<div class='progress'><div></div></div>" +
+      "</td>";
+    tbody.appendChild(tr);
   }
 
-  $("update-progress").innerHTML = "";
+  /* Reopening mid-run shows the workers' progress, so the button shades
+   * itself to match. */
   $("update-modal").classList.remove("hidden");
+  $("update-start").disabled = updateInProgress(macs);
+  renderUpdateProgress();
 
   try {
     const doc = await api("/api/update/images");
-    const lines = [];
+    const rows = [];
+
     for (const [target, name] of Object.entries(doc.targets)) {
       const image = doc.images[target];
-      lines.push(name + ": " + (image.path ? image.path : "no image"));
+
+      if (image && image.path) {
+        const source = image.source === "build tree" && doc.tree_version
+          ? "build tree (v" + doc.tree_version + ")"
+          : image.source;
+        rows.push("<tr><td>" + esc(name) + "</td>" +
+                  "<td class='path'>" + esc(image.path) + "</td>" +
+                  "<td class='src'>" + esc(source) + "</td></tr>");
+      } else {
+        rows.push("<tr class='missing'><td>" + esc(name) + "</td>" +
+                  "<td colspan='2'>no image</td></tr>");
+      }
     }
-    $("update-images").innerHTML = lines.map(esc).join("<br>");
+
+    $("update-images").innerHTML =
+      "<table>" +
+      "<thead><tr><th>Target</th><th>Image</th><th>Source</th></tr></thead>" +
+      "<tbody>" + rows.join("") + "</tbody>" +
+      "</table>";
   } catch (error) {
     $("update-images").textContent = "Could not list images: " + error.message;
   }
 }
 
 function renderUpdateProgress() {
+  /* A device whose worker has finished gets one refresh of exactly that
+   * device, so its version comes back current -- no fleet refresh, and
+   * nothing poked mid-upload. Runs even when the dialog is closed. */
+  for (const mac of updateModal.macs) {
+    const u = state.updates[mac];
+
+    if (!u || (u.phase !== "PASS" && u.phase !== "FAIL")) continue;
+    if (updateModal.refreshed.has(mac)) continue;
+
+    updateModal.refreshed.add(mac);
+    api("/api/device/" + mac + "/refresh", {})
+      .then(() => pollState())
+      .catch(() => { /* the state poll reports the manager being gone */ });
+  }
+
   if ($("update-modal").classList.contains("hidden")) return;
 
   for (const mac of updateModal.macs) {
     const u = state.updates[mac];
     if (!u) continue;
 
-    let div = $("update-progress").querySelector("[data-mac='" + CSS.escape(mac) + "']");
+    const tr = $("update-rows").querySelector("[data-mac='" + CSS.escape(mac) + "']");
+    if (!tr) continue;
 
-    if (!div) {
-      div = document.createElement("div");
-      div.className = "update-device";
-      div.dataset.mac = mac;
-      const d = state.devices.find(x => x.mac === mac);
-      div.innerHTML = "<span class='name'>" + esc(d ? (d.hostname || d.ip) : mac) + "</span>" +
-                      "<span class='phase'></span>" +
-                      "<div class='progress'><div></div></div>";
-      $("update-progress").appendChild(div);
-    }
-
-    div.querySelector(".phase").textContent =
+    const phase = tr.querySelector(".phase");
+    phase.textContent =
       u.phase + (u.phase === "uploading" ? " " + u.percent + "%" : "") +
       (u.detail ? " -- " + u.detail : "");
-    div.querySelector(".phase").className = "phase " + u.phase;
-    const bar = div.querySelector(".progress");
+    phase.className = "phase " + u.phase;
+
+    const bar = tr.querySelector(".progress");
     bar.className = "progress " + u.phase;
     bar.firstElementChild.style.width = u.percent + "%";
+
+    /* The version column follows what the fleet reports, so a finished
+     * update shows the new version as soon as a refresh has read it. */
+    const d = state.devices.find(x => x.mac === mac);
+    if (d) tr.querySelector(".version").textContent = d.version || "?";
   }
+
+  $("update-start").disabled = updateInProgress(updateModal.macs);
 }
 
 async function startUpdate() {
   const source = document.querySelector("input[name=update-src]:checked").value;
   const body = { macs: updateModal.macs, image: source };
 
-  if (source === "upload") {
-    if (!updateModal.uploaded) {
-      const file = $("update-file").files[0];
-      if (!file) { toast("Choose a .bin file first", "err"); return; }
-
-      const response = await fetch("/api/update/upload",
-        { method: "POST",
-          headers: { "X-Filename": file.name,
-                     "Content-Type": "application/octet-stream" },
-          body: file });
-      const doc = await response.json();
-      if (!response.ok) { toast("Upload failed: " + (doc.error || response.status), "err"); return; }
-      updateModal.uploaded = doc.name;
-    }
-
-    body.name = updateModal.uploaded;
-  }
+  /* Inactive from the first click until every worker has finished -- or,
+   * when nothing started, until the toasts have said why. */
+  $("update-start").disabled = true;
 
   try {
+    if (source === "upload") {
+      if (!updateModal.uploaded) {
+        const file = $("update-file").files[0];
+        if (!file) { toast("Choose a .bin file first", "err"); return; }
+
+        const response = await fetch("/api/update/upload",
+          { method: "POST",
+            headers: { "X-Filename": file.name,
+                       "Content-Type": "application/octet-stream" },
+            body: file });
+        const doc = await response.json();
+        if (!response.ok) { toast("Upload failed: " + (doc.error || response.status), "err"); return; }
+        updateModal.uploaded = doc.name;
+      }
+
+      body.name = updateModal.uploaded;
+    }
+
     const doc = await api("/api/update", body);
     if (doc.skipped && doc.skipped.length) {
       for (const s of doc.skipped) {
@@ -622,10 +829,12 @@ async function startUpdate() {
         toast((d ? (d.hostname || d.ip) : s.mac) + ": skipped -- " + s.reason, "err");
       }
     }
-    pollState();
+    await pollState();
   } catch (error) {
     toast("Update failed: " + error.message, "err");
   }
+
+  $("update-start").disabled = updateInProgress(updateModal.macs);
 }
 
 /* ------------------------------------------------------------------ console */
@@ -707,6 +916,13 @@ function renderConsoleSources() {
   select.value = current;
 }
 
+/* The bulk bar rides above the console drawer; the body class is what
+ * tells the stylesheet where the drawer is. */
+function renderConsoleVisibility() {
+  document.body.classList.toggle("console-open",
+    !$("console").classList.contains("hidden"));
+}
+
 /* -------------------------------------------------------------------- setup */
 
 function wireEvents() {
@@ -756,12 +972,16 @@ function wireEvents() {
 
   $("console-btn").addEventListener("click", () => {
     $("console").classList.toggle("hidden");
+    renderConsoleVisibility();
     consoleState.unseenProblems = 0;
     renderConsoleBadge();
     pollConsole();
   });
 
-  $("console-hide").addEventListener("click", () => $("console").classList.add("hidden"));
+  $("console-hide").addEventListener("click", () => {
+    $("console").classList.add("hidden");
+    renderConsoleVisibility();
+  });
   $("console-level").addEventListener("change", renderConsole);
   $("console-source").addEventListener("change", renderConsole);
   $("console-pause").addEventListener("click", () => {
@@ -788,6 +1008,14 @@ function wireEvents() {
     }
     renderDevices();
   });
+
+  for (const th of document.querySelectorAll("#devices th.sortable")) {
+    th.addEventListener("click", () => {
+      if (state.sort.key === th.dataset.sort) state.sort.dir = -state.sort.dir;
+      else { state.sort.key = th.dataset.sort; state.sort.dir = 1; }
+      renderDevices();
+    });
+  }
 
   $("bulk-clear-btn").addEventListener("click", () => {
     state.selected.clear();
@@ -825,6 +1053,7 @@ function wireEvents() {
 
 async function boot() {
   wireEvents();
+  setInterval(refreshTick, 1000);
   await pollState();
   $("subnet").value = state.settings.subnet;
   pollConsole();

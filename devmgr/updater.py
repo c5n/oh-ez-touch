@@ -88,6 +88,16 @@ def latest_release():
     return max(versions, key=lambda name: [int(p) for p in name.split(".")])
 
 
+def latest_version():
+    """The version the fleet should be on: the newest release, or the
+    tree's own if that is newer -- a device ahead of both is not outdated."""
+    candidates = [v for v in (latest_release(), expected_version_default())
+                  if v]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda v: [int(p) for p in v.split(".")])
+
+
 def image_for(target):
     """Where the image for a target comes from: the newest release if it has
     one, the build tree otherwise. Returns (path, source) or (None, None)."""

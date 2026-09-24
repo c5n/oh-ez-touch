@@ -11,6 +11,7 @@
 <header>
   <h1>OhEzTouch <span class="dim">Device Manager</span></h1>
   <div class="header-controls">
+    <span id="device-summary" class="dim"></span>
     <input id="subnet" type="text" spellcheck="false" title="Subnet to scan, CIDR">
     <button id="scan-btn" class="primary">Scan</button>
     <button id="refresh-btn" title="Refresh all devices now">&#10227;</button>
@@ -44,20 +45,30 @@
   <button id="settings-save" class="primary">Save</button>
 </div>
 
-<div id="bulk-bar" class="hidden">
-  <span id="bulk-count"></span>
-  <button id="bulk-config-btn">Bulk edit</button>
-  <button id="bulk-update-btn">Firmware update</button>
-  <button id="bulk-restart-btn">Restart</button>
-  <button id="bulk-clear-btn" class="subtle">Clear selection</button>
+<div id="bottom-bar">
+  <span id="refresh-label" class="dim"></span>
+  <span id="refresh-progress" class="hidden"><span></span></span>
+  <span class="spacer"></span>
+  <span id="bulk-group" class="hidden">
+    <span id="bulk-count"></span>
+    <button id="bulk-config-btn">Bulk edit</button>
+    <button id="bulk-update-btn">Firmware update</button>
+    <button id="bulk-restart-btn">Restart</button>
+    <button id="bulk-clear-btn" class="subtle">Clear selection</button>
+  </span>
 </div>
 
 <table id="devices">
   <thead>
     <tr>
       <th><input id="select-all" type="checkbox" title="Select all"></th>
-      <th>Status</th><th>Hostname</th><th>IP</th><th>MAC</th><th>Target</th>
-      <th>Version</th><th>RSSI</th><th>Uptime</th><th>Last seen</th><th>Actions</th>
+      <th>Status</th><th class="sortable" data-sort="hostname">Hostname</th>
+      <th class="sortable" data-sort="ip">IP</th><th>MAC</th>
+      <th class="sortable" data-sort="target">Target</th>
+      <th class="sortable" data-sort="version">Version</th>
+      <th class="sortable" data-sort="rssi">RSSI</th>
+      <th class="sortable" data-sort="uptime">Uptime</th>
+      <th class="sortable" data-sort="last_seen">Last seen</th><th>Actions</th>
     </tr>
   </thead>
   <tbody id="device-rows"></tbody>
@@ -81,7 +92,12 @@
 <div id="update-modal" class="modal hidden">
   <div class="modal-box">
     <h2>Firmware update</h2>
-    <div id="update-devices"></div>
+    <table id="update-devices">
+      <thead>
+        <tr><th>Device</th><th>Type</th><th>Version</th><th>RSSI</th><th>Progress</th></tr>
+      </thead>
+      <tbody id="update-rows"></tbody>
+    </table>
     <div class="update-source">
       <label class="row"><input type="radio" name="update-src" value="auto" checked> Automatic image per target</label>
       <div id="update-images" class="dim small"></div>
@@ -89,7 +105,6 @@
         <input type="file" id="update-file" accept=".bin">
       </label>
     </div>
-    <div id="update-progress"></div>
     <div class="modal-actions">
       <button id="update-start" class="primary">Start update</button>
       <button id="update-close">Close</button>

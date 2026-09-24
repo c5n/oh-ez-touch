@@ -19,6 +19,8 @@ body {
   font-size: 14px;
   background: var(--bg);
   color: var(--text);
+  /* Room for the pinned bulk bar, so it never covers the last row. */
+  padding-bottom: 46px;
 }
 
 h1 { font-size: 1.15em; margin: 0; font-weight: 600; }
@@ -44,6 +46,8 @@ header {
 
 .header-controls { display: flex; gap: 8px; align-items: center; }
 
+#device-summary { font-size: .9em; white-space: nowrap; margin-right: 8px; }
+
 input[type=text], input[type=number], select {
   background: var(--panel-2);
   border: 1px solid var(--border);
@@ -60,7 +64,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 4px;
   color: var(--text);
-  padding: 6px 12px;
+  padding: 5px 10px;
   font-size: .95em;
   cursor: pointer;
 }
@@ -131,16 +135,50 @@ button.primary:disabled {
 .panel label.row input { width: auto; }
 .panel button { margin-top: 8px; width: 100%; }
 
-/* ----------------------------------------------------------------- bulk bar */
+/* -------------------------------------------------------------- bottom bar */
 
-#bulk-bar {
+/* Permanent, pinned to the bottom of the window: the refresh status on the
+ * left, the bulk actions on the right -- only while something is selected.
+ * Rides above the console drawer when that is open (body.console-open,
+ * toggled from app.js). */
+#bottom-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 26;
   display: flex;
   gap: 8px;
   align-items: center;
   padding: 8px 16px;
   background: var(--panel-2);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -4px 12px rgba(0,0,0,.3);
 }
+
+body.console-open #bottom-bar { bottom: 260px; }
+
+#refresh-label { white-space: nowrap; }
+
+#refresh-progress {
+  display: inline-block;
+  width: 90px;
+  height: 6px;
+  background: var(--panel);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-left: 8px;
+}
+
+#refresh-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .3s;
+}
+
+#bulk-group { display: flex; gap: 8px; align-items: center; }
 
 #bulk-count { color: var(--dim); margin-right: 8px; }
 
@@ -154,7 +192,7 @@ button.primary:disabled {
 
 #devices th, #devices td {
   text-align: left;
-  padding: 7px 10px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -166,6 +204,12 @@ button.primary:disabled {
   text-transform: uppercase;
   letter-spacing: .04em;
 }
+
+/* The sortable headers, with the direction arrow on the active one. */
+#devices th.sortable { cursor: pointer; user-select: none; }
+#devices th.sortable:hover { color: var(--text); }
+#devices th.sorted-asc::after { content: " \2191"; color: var(--accent); }
+#devices th.sorted-desc::after { content: " \2193"; color: var(--accent); }
 
 #devices tbody tr:hover { background: var(--panel-2); }
 #devices tr.offline td { color: var(--dim); }
@@ -181,6 +225,29 @@ button.primary:disabled {
 .status-dot.off { background: var(--err); }
 
 .hostcell .comment { display: block; font-size: .78em; color: var(--dim); }
+
+/* A version behind the newest release, with the newest one as tooltip. */
+#devices td.outdated { color: var(--warn); }
+
+/* The badge a device under update wears beside its version. */
+.upd {
+  display: inline-block;
+  font-size: .72em;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  color: #fff;
+}
+
+.upd.running { background: var(--accent); }
+.upd.waiting { background: var(--warn); }
+.upd.pass { background: var(--ok); }
+.upd.fail { background: var(--err); }
+
+/* The signal bands, shared by the device list and the update table. */
+td.rssi.good { color: var(--ok); }
+td.rssi.fair { color: var(--warn); }
+td.rssi.weak { color: var(--err); }
 
 .actions button {
   padding: 3px 7px;
@@ -287,26 +354,93 @@ button.primary:disabled {
 
 /* ------------------------------------------------------------ firmware update */
 
+/* The update dialog is the wide one: a device per row, with its version,
+ * signal and update progress side by side. */
+#update-modal .modal-box { width: 760px; }
+
 .update-source { margin: 10px 0; }
 .update-source label.row { display: flex; gap: 8px; align-items: center; margin: 6px 0; }
 
+/* The automatic-image list, one row per target: what would be flashed and
+ * where it comes from -- the release it was built for, or the build tree. */
 #update-images { margin: 4px 0 8px 24px; }
 
-.update-device {
+#update-images table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#update-images th, #update-images td {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#update-images th {
+  color: var(--dim);
+  font-weight: 500;
+  font-size: .82em;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+#update-images td.path {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#update-images td.src { color: var(--dim); }
+#update-images tr.missing td { color: var(--err); }
+
+#update-devices {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+
+#update-devices th, #update-devices td {
+  text-align: left;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+#update-devices th {
+  color: var(--dim);
+  font-weight: 500;
+  font-size: .82em;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+#update-devices td.name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#update-devices .progress-cell {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
 }
 
-.update-device .name { width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.update-device .phase { width: 130px; font-size: .85em; color: var(--dim); }
-.update-device .phase.PASS { color: var(--ok); }
-.update-device .phase.FAIL { color: var(--err); }
+#update-devices .phase {
+  width: 170px;
+  font-size: .85em;
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#update-devices .phase.PASS { color: var(--ok); }
+#update-devices .phase.FAIL { color: var(--err); }
 
 .progress {
   flex: 1;
+  min-width: 80px;
   height: 8px;
   background: var(--panel-2);
   border-radius: 4px;

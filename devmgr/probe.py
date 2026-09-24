@@ -136,16 +136,24 @@ def scan_subnet(subnet, port=80, workers=PROBE_WORKERS, on_found=None,
     return found
 
 
-def refresh_devices(hosts, port=80, workers=REFRESH_WORKERS):
+def refresh_devices(hosts, port=80, workers=REFRESH_WORKERS,
+                    timeout=REFRESH_TIMEOUT_S, on_progress=None):
     """Re-read /api/status from each host. Returns {host: doc or None} --
     None is the offline answer, and the caller decides what it means for the
-    device that was there."""
+    device that was there. The timeout is the caller's to choose: it must
+    stay below the cadence the refresh runs on, or one dark address could
+    outlast the whole interval.
+
+    on_progress(done, total) is called as each answer arrives, so the caller
+    can show how far along the pass is.
+    """
     results = {}
+    done = 0
 
     def one(host):
         target = "%s:%d" % (host, port) if port != 80 else host
         try:
-            doc = fetch_json(target, "/api/status", REFRESH_TIMEOUT_S)
+            doc = fetch_json(target, "/api/status", timeout)
         except DeviceUnreachable:
             return None
         return doc if is_status(doc) else None
@@ -155,5 +163,8 @@ def refresh_devices(hosts, port=80, workers=REFRESH_WORKERS):
 
         for future in as_completed(futures):
             results[futures[future]] = future.result()
+            done += 1
+            if on_progress is not None:
+                on_progress(done, len(futures))
 
     return results
