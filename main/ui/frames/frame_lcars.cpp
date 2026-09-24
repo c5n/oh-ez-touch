@@ -88,7 +88,7 @@ static lv_obj_t *block_label(lv_obj_t *parent, const char *text, const lv_font_t
     lv_obj_set_style_text_color(label, lv_color_hex(colour), 0);
     lv_obj_set_style_text_font(label, font, 0);
     lv_obj_set_style_text_letter_space(label, ui_style_theme()->letter_space, 0);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(label, false);
 
     return label;
 }
@@ -107,7 +107,7 @@ static void lcars_build(lv_obj_t *parent)
     lv_obj_set_pos(lcars.root, 0, 0);
     lv_obj_set_size(lcars.root, lv_pct(100), lv_pct(100));
     /* The frame is behind the tiles and must never eat a touch meant for one. */
-    lv_obj_remove_flag(lcars.root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(lcars.root, false);
 
     /* The elbow. One rounded plate, three patches that un-round the corners
      * which have to stay square, and a notch in the background colour that
@@ -315,15 +315,15 @@ static void lcars_set_notice(enum ui_notice_e notice)
 
     if (glyph == NULL)
     {
-        lv_obj_add_flag(lcars.notice, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(lcars.tag, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(lcars.notice, true);
+        lv_obj_set_hidden(lcars.tag, false);
         fill = ui_style_theme()->btn.bg; /* back to the spine's third colour */
     }
     else
     {
         lv_label_set_text(lcars.notice, glyph);
-        lv_obj_remove_flag(lcars.notice, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(lcars.tag, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(lcars.notice, false);
+        lv_obj_set_hidden(lcars.tag, true);
         fill = ui_frame_notice_color(notice);
     }
 

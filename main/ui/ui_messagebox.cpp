@@ -68,7 +68,7 @@ void Messagebox::build(void)
      * screen -- lv_obj_report_style_change() reaches the top layer, but it can
      * only refresh a style someone else owns. */
     mb = lv_msgbox_create(lv_layer_top());
-    lv_obj_remove_flag(mb, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(mb, false);
     lv_obj_add_style(mb, &ui_style_info, LV_PART_MAIN);
     lv_obj_set_width(mb, lv_display_get_horizontal_resolution(NULL) * 9 / 10);
     lv_obj_set_height(mb, LV_SIZE_CONTENT);
@@ -191,7 +191,7 @@ void Messagebox::build(void)
     lv_obj_add_event_cb(restart_btn, restart_event, LV_EVENT_CLICKED, NULL);
 
     /* Nothing offers it yet. create() says so again on every message. */
-    lv_obj_add_flag(footer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(footer, true);
 }
 
 /* Everything the box wears that comes from the theme table rather than from
@@ -311,7 +311,7 @@ void Messagebox::create(enum messagebox_type_e type, const char *topic,
      * offerRestart() runs before anything is drawn, so a message that does
      * carry one does not flicker it. */
     restart_offered = false;
-    lv_obj_add_flag(footer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(footer, true);
 
     /* The text goes straight into its label: one caller passes a sitemap URL,
      * which is longer than any buffer worth putting on this stack -- the copy
@@ -373,7 +373,7 @@ void Messagebox::offerRestart(void)
      * lv_obj_center() set an alignment rather than a position, so the next
      * layout puts the taller box back in the middle without a call here. */
     restart_offered = true;
-    lv_obj_remove_flag(footer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(footer, false);
 }
 
 void Messagebox::restart_event(lv_event_t *e)
@@ -441,7 +441,7 @@ void Messagebox::loop(void)
 void Messagebox::refresh(void) const
 {
     if (mb != NULL)
-        lv_obj_set_flag(mb, LV_OBJ_FLAG_HIDDEN, folded || covered);
+        lv_obj_set_hidden(mb, folded || covered);
 }
 
 void Messagebox::fold(void)

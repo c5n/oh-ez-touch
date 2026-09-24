@@ -14,7 +14,7 @@ lv_obj_t *ui_plain_container(lv_obj_t *parent)
 {
     lv_obj_t *obj = lv_obj_create(parent);
 
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(obj, false);
     lv_obj_set_style_pad_all(obj, 0, 0);
     lv_obj_set_style_pad_gap(obj, 0, 0);
     lv_obj_set_style_border_width(obj, 0, 0);
@@ -52,7 +52,7 @@ lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
 {
     lv_obj_t *bar = lv_obj_create(parent);
 
-    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(bar, false);
     lv_obj_set_size(bar, lv_pct(100), UI_BAR_H);
     lv_obj_set_pos(bar, 0, 0);
     lv_obj_add_style(bar, &ui_style_win_header, LV_PART_MAIN);
@@ -64,7 +64,7 @@ lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
     lv_obj_set_flex_align(bar, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
                           LV_FLEX_ALIGN_CENTER);
 
-    lv_obj_add_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(bar, true);
     lv_obj_add_event_cb(bar, cb, LV_EVENT_CLICKED, NULL);
     ui_motion_pressable(bar);
 
@@ -79,8 +79,8 @@ lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
     lv_obj_set_flex_grow(label, 1);
 
     /* The bar's children must not eat the tap: the whole bar is the target. */
-    lv_obj_remove_flag(chevron, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(chevron, false);
+    lv_obj_set_clickable(label, false);
 
     return bar;
 }
@@ -172,8 +172,8 @@ lv_obj_t *ui_reading_create(lv_obj_t *parent, lv_style_t *value_style,
 
     /* Neither label is a target: a tap belongs to whatever the reading sits
      * on -- the tile, not the text. */
-    lv_obj_remove_flag(value, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_remove_flag(unit, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(value, false);
+    lv_obj_set_clickable(unit, false);
 
     return reading;
 }

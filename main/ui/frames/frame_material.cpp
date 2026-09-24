@@ -61,7 +61,7 @@ static lv_obj_t *band_label(lv_obj_t *parent, const char *text, lv_opa_t opa)
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(label, t->font_small, 0);
     lv_obj_set_style_text_opa(label, opa, 0);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(label, false);
 
     return label;
 }

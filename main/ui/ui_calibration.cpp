@@ -191,9 +191,9 @@ static lv_obj_t *mark(lv_obj_t *parent, int32_t x, int32_t y, int32_t w, int32_t
 {
     lv_obj_t *obj = lv_obj_create(parent);
 
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ignore_layout(obj, true);
+    lv_obj_set_scrollable(obj, false);
+    lv_obj_set_clickable(obj, false);
     lv_obj_set_pos(obj, x, y);
     lv_obj_set_size(obj, w, h);
     lv_obj_set_style_pad_all(obj, 0, 0);
@@ -400,7 +400,7 @@ static void build_target(void)
         return;
 
     lv_obj_set_style_pad_all(root, 0, 0);
-    lv_obj_add_flag(root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(root, true);
     lv_obj_add_event_cb(root, overlay_deleted_event, LV_EVENT_DELETE, NULL);
     lv_obj_add_event_cb(root, press_event, LV_EVENT_PRESSED, NULL);
     lv_obj_add_event_cb(root, tap_event, LV_EVENT_CLICKED, NULL);
@@ -413,7 +413,7 @@ static void build_target(void)
 
     lv_obj_t *label = lv_label_create(root);
 
-    lv_obj_add_flag(label, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_ignore_layout(label, true);
     lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(label, lv_pct(80));
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
@@ -462,8 +462,8 @@ static void diagram_build(lv_obj_t *parent, int32_t avail_w, int32_t max_h)
 
     lv_obj_t *box = lv_obj_create(parent);
 
-    lv_obj_remove_flag(box, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(box, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollable(box, false);
+    lv_obj_set_clickable(box, false);
     lv_obj_set_size(box, box_w, box_h);
     lv_obj_set_style_pad_all(box, 0, 0);
     lv_obj_set_style_radius(box, 0, 0);
@@ -476,7 +476,7 @@ static void diagram_build(lv_obj_t *parent, int32_t avail_w, int32_t max_h)
      * drawn in: every mark belongs to a corner. */
     lv_obj_t *legend = lv_label_create(box);
 
-    lv_obj_add_flag(legend, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_set_ignore_layout(legend, true);
     lv_label_set_long_mode(legend, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(legend, box_w - (CROSS_ARM * 2));
     lv_obj_set_style_text_align(legend, LV_TEXT_ALIGN_CENTER, 0);
@@ -526,8 +526,8 @@ static void diagram_build(lv_obj_t *parent, int32_t avail_w, int32_t max_h)
 
         lv_obj_t *line = lv_line_create(box);
 
-        lv_obj_add_flag(line, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        lv_obj_remove_flag(line, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_ignore_layout(line, true);
+        lv_obj_set_clickable(line, false);
         lv_obj_set_pos(line, 0, 0);
         lv_obj_set_size(line, box_w, box_h);
         lv_obj_set_style_line_width(line, 1, 0);
@@ -570,8 +570,8 @@ static void numbers_build(lv_obj_t *parent, int32_t avail_w)
 
     lv_obj_t *table = lv_table_create(parent);
 
-    lv_obj_remove_flag(table, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(table, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollable(table, false);
+    lv_obj_set_clickable(table, false);
     lv_obj_set_style_pad_all(table, 0, 0);
     lv_obj_set_style_border_width(table, 0, 0);
     lv_obj_set_style_bg_opa(table, LV_OPA_TRANSP, 0);
@@ -665,7 +665,7 @@ static void build_result(void)
          * so on its own -- on a bare label, say -- it is invisible. */
         lv_obj_t *panel = lv_obj_create(body);
 
-        lv_obj_remove_flag(panel, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scrollable(panel, false);
         lv_obj_set_width(panel, lv_pct(96));
         lv_obj_set_height(panel, LV_SIZE_CONTENT);
         lv_obj_add_style(panel, &ui_style_info, LV_PART_MAIN);
@@ -748,7 +748,7 @@ static void build_result(void)
 
     lv_obj_t *footer = lv_obj_create(root);
 
-    lv_obj_remove_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(footer, false);
     lv_obj_set_pos(footer, 0, vres - RESULT_FOOTER_H);
     lv_obj_set_size(footer, lv_pct(100), RESULT_FOOTER_H);
     lv_obj_add_style(footer, &ui_style_win_header, LV_PART_MAIN);

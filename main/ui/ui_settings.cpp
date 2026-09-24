@@ -569,8 +569,8 @@ static lv_obj_t *overlay_create(void)
 
     overlay = lv_obj_create(screen);
 
-    lv_obj_add_flag(overlay, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    lv_obj_remove_flag(overlay, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_ignore_layout(overlay, true);
+    lv_obj_set_scrollable(overlay, false);
     lv_obj_set_pos(overlay, 0, 0);
     lv_obj_set_size(overlay, lv_pct(100), lv_pct(100));
     lv_obj_set_style_pad_all(overlay, 4, 0);
@@ -1921,7 +1921,7 @@ static void fonts_tab_build(lv_obj_t *rows)
         {
             lv_obj_t *rule = lv_obj_create(rows);
 
-            lv_obj_remove_flag(rule, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_scrollable(rule, false);
             lv_obj_set_size(rule, lv_pct(100), 2);
             lv_obj_set_style_bg_color(rule, lv_color_hex(ui_style_theme()->slider_indic.bg), 0);
             lv_obj_set_style_border_width(rule, 0, 0);
@@ -2491,7 +2491,7 @@ static void screen_show_section(uint8_t tab)
 
     lv_obj_set_pos(rows, 0, BAR_HEIGHT);
     lv_obj_set_size(rows, lv_pct(100), vres - BAR_HEIGHT - FOOTER_HEIGHT);
-    lv_obj_add_flag(rows, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(rows, true);
     lv_obj_set_scroll_dir(rows, LV_DIR_VER);
     lv_obj_set_flex_flow(rows, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(rows, 4, 0);
@@ -2503,7 +2503,7 @@ static void screen_show_section(uint8_t tab)
 
     lv_obj_t *footer = lv_obj_create(screen);
 
-    lv_obj_remove_flag(footer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(footer, false);
     lv_obj_set_pos(footer, 0, vres - FOOTER_HEIGHT);
     lv_obj_set_size(footer, lv_pct(100), FOOTER_HEIGHT);
     lv_obj_add_style(footer, &ui_style_win_header, LV_PART_MAIN);

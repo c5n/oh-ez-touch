@@ -93,7 +93,7 @@ static lv_obj_t *strip_label(lv_obj_t *parent, const char *text, lv_opa_t opa)
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(label, t->font_small, 0);
     lv_obj_set_style_text_opa(label, opa, 0);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(label, false);
 
     return label;
 }
@@ -120,7 +120,7 @@ static void jarvis_build(lv_obj_t *parent)
     jarvis.root = ui_frame_container(parent);
     lv_obj_set_pos(jarvis.root, 0, 0);
     lv_obj_set_size(jarvis.root, lv_pct(100), lv_pct(100));
-    lv_obj_remove_flag(jarvis.root, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(jarvis.root, false);
 
     /* The top strip: clock, page name, link. */
     lv_obj_t *strip = ui_frame_container(jarvis.root);

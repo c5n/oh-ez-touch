@@ -142,7 +142,7 @@ static void build(struct item_view_s *v)
     lv_obj_set_style_pad_row(v->body, 4, 0);
 
     v->control = lv_obj_create(v->body);
-    lv_obj_remove_flag(v->control, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(v->control, false);
     lv_obj_set_size(v->control, lv_pct(100), SWATCH_H);
     lv_obj_add_style(v->control, &ui_style_swatch, LV_PART_MAIN);
 

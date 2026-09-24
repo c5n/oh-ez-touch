@@ -39,7 +39,7 @@ void ui_frame_settings_target(lv_obj_t *obj)
     if (obj == NULL)
         return;
 
-    lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_clickable(obj, true);
     lv_obj_add_event_cb(obj, settings_event, LV_EVENT_CLICKED, NULL);
 }
 
@@ -66,8 +66,8 @@ lv_obj_t *ui_frame_notice(lv_obj_t *parent)
     lv_obj_t *label = lv_label_create(parent);
 
     lv_label_set_text(label, "");
-    lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(label, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_hidden(label, true);
+    lv_obj_set_clickable(label, true);
     lv_obj_set_ext_click_area(label, 10);
     lv_obj_add_event_cb(label, notice_event, LV_EVENT_CLICKED, NULL);
 
@@ -116,13 +116,13 @@ void ui_frame_notice_set(lv_obj_t *label, enum ui_notice_e notice)
 
     if (glyph == NULL)
     {
-        lv_obj_add_flag(label, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_hidden(label, true);
         return;
     }
 
     lv_label_set_text(label, glyph);
     lv_obj_set_style_text_color(label, lv_color_hex(ui_frame_notice_color(notice)), 0);
-    lv_obj_remove_flag(label, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_hidden(label, false);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -145,8 +145,8 @@ lv_obj_t *ui_frame_block(lv_obj_t *parent, int16_t x, int16_t y, int16_t w, int1
 {
     lv_obj_t *obj = lv_obj_create(parent);
 
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollable(obj, false);
+    lv_obj_set_clickable(obj, false);
     lv_obj_set_style_pad_all(obj, 0, 0);
     lv_obj_set_style_border_width(obj, 0, 0);
     lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);

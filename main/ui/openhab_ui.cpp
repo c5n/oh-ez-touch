@@ -993,8 +993,8 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
         return;
 
     wctx->container = lv_obj_create(parent);
-    lv_obj_remove_flag(wctx->container, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(wctx->container, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_scrollable(wctx->container, false);
+    lv_obj_set_clickable(wctx->container, true);
     lv_obj_add_event_cb(wctx->container, event_handler, LV_EVENT_CLICKED, wctx);
     lv_obj_set_pos(wctx->container, cell.x, cell.y);
     lv_obj_set_size(wctx->container, cell.w, cell.h);
@@ -1080,7 +1080,7 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
         /* A swatch rather than a label: update_state_widget() paints it with
          * the item's current colour. */
         lv_obj_t *state_obj = lv_obj_create(wctx->container);
-        lv_obj_remove_flag(state_obj, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_scrollable(state_obj, false);
         lv_obj_move_foreground(state_obj);
         /* A percentage, not lv_obj_get_width(container) / 3: v9 defers layout,
          * so the container the swatch was just added to still reports zero. */

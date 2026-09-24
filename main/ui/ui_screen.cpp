@@ -58,7 +58,7 @@ void ui_screen_setup(void)
      * and still holding the styles applied to it. */
     root = lv_screen_active();
 
-    lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(root, false);
     lv_obj_set_style_pad_all(root, 0, 0);
 
     /* ui_style_init() used to add ui_style_screen to lv_screen_active() behind a
@@ -79,7 +79,7 @@ lv_obj_t *ui_screen_create(void)
 {
     lv_obj_t *screen = lv_obj_create(NULL);
 
-    lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollable(screen, false);
     lv_obj_add_style(screen, &ui_style_screen, LV_PART_MAIN);
     lv_obj_set_style_pad_all(screen, 0, 0);
     lv_obj_set_style_pad_gap(screen, 0, 0);
