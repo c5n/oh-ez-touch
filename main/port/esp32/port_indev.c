@@ -308,16 +308,21 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
         return;
     }
 
-    uint16_t x = 0;
-    uint16_t y = 0;
+    esp_lcd_touch_point_data_t point = { 0 };
     uint8_t point_num = 0;
 
     esp_lcd_touch_read_data(touch);
 
-    bool pressed = esp_lcd_touch_get_coordinates(touch, &x, &y, NULL, &point_num, 1);
+    esp_lcd_touch_get_data(touch, &point, &point_num, 1);
 
-    if (pressed == true && point_num > 0)
+    /* The old esp_lcd_touch_get_coordinates() also reported whether the
+     * panel was touched; get_data() leaves that to the point count. The
+     * drivers report one point if and only if there is a finger down. */
+    if (point_num > 0)
     {
+        uint16_t x = point.x;
+        uint16_t y = point.y;
+
         if (holding == false)
         {
             /* Nothing to compare against, or the two readings are too far
