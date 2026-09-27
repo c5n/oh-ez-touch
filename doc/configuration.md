@@ -27,8 +27,8 @@ it does not stay up indefinitely.
 
 **A device without WLAN credentials also opens the settings screen by itself
 at boot**, on the WLAN page. The full setup can be done on the panel: scan,
-pick the network, type the password, **Save**. No second device and no
-browser are necessary.
+pick the network, type the password, then leave the page. No second device
+and no browser are necessary.
 
 > **NOTE:** The station speaks WPA2, not WPA3. `CONFIG_ESP_WIFI_ENABLE_WPA3_SAE`
 > is off in `sdkconfig.defaults.esp32`. This saves 37 KB of flash. A
@@ -42,30 +42,38 @@ browser are necessary.
 Press the upper bar to open the settings screen. The screen is a menu of
 large cells. Each cell has a pictogram and a name. Press a cell to open that
 section. The bar across the top of every page is the way back. From the first
-menu, the **X** closes the screen. A section's own buttons (**Save**, and
-**Scan** or **Restart** where they apply) are in a bar along the bottom.
+menu, the **X** closes the screen. What a page can do (**Scan** where it
+applies, **Test** on the Audio page) is in a bar along the bottom.
 
 | Page | Contents |
 | --- | --- |
 | Theme (eye symbol) | Theme family, the night variant and its schedule, the backlight levels and the dim timeout |
-| Audio (speaker symbol) | The beeper: on or off, volume, and a **Test** button that plays the theme's boot chime at the level being edited |
+| Audio (speaker symbol) | The beeper: an on/off switch, a volume slider, and a **Test** button that plays the theme's boot chime at the level being edited |
 | System (gear symbol) | A menu of the seven sections below |
-| &nbsp;&nbsp;WLAN | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Press one to fill in its name. **Save** stores the credentials and reconnects. |
+| &nbsp;&nbsp;WLAN | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Press one to fill in its name. Leaving the page stores the credentials and reconnects. |
 | &nbsp;&nbsp;openHAB (house symbol) | Two lists: the openHAB servers on the network, and the sitemaps of the selected server. Press one to select it. **Scan** asks again. **Manual** opens a page with host, port and sitemap as fields. |
 | &nbsp;&nbsp;MQTT (upload symbol) | Broker, port, credentials, and what to publish. See [MQTT](mqtt.md). |
 | &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner. |
 | &nbsp;&nbsp;Device (pencil symbol) | The hostname. It is also the name of the setup access point. |
 | &nbsp;&nbsp;Touch (keyboard symbol) | The four touchscreen calibration numbers, and a **Calibrate** button. See [Calibrating the touchscreen](#calibrating-the-touchscreen). |
 | &nbsp;&nbsp;Time (sync symbol) | The NTP host, the GMT offset and daylight saving. |
-| Info (list symbol) | The system information table: uptime, version, IP address. And a **Restart** button. |
+| Info (list symbol) | The system information, one topic per page -- the firmware, the network addresses, the radio link, the sensors and relays -- turned by the arrows in the bottom bar. |
 
-Press a row to open an on-screen keyboard for text and number settings.
-Switches and drop-down settings toggle in place. Nothing is stored until you
-press **Save** on that page. Leaving the screen discards your changes.
+Every setting is a row with the name on the left and the value's control
+beside it: an on/off switch for the two-state settings, a slider for values
+over a range that fits one (the volume, the brightnesses, the night hours),
+a button showing the current value for everything else. Press a value button
+to open an on-screen keyboard, or to step an option through its choices.
+A section whose rows do not fit on the screen is split into pages of its
+own logical groups, turned by the arrows in the bottom bar; nothing scrolls.
+
+**Leaving a page saves it.** There is no Save button: a value changed is
+stored, and applied at once where it can be, when you leave the page -- by
+the back bar, by opening another section, or by closing the screen.
 
 If a changed setting is one of the few that are only read at boot (the
-hostname, the BME280 and BLE on/off, the orientation), **Save** offers a
-restart.
+hostname, the BME280 and BLE on/off, the orientation), the panel asks
+whether to restart once it has left the page.
 
 ## Calibrating the touchscreen
 

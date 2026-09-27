@@ -106,6 +106,13 @@ struct config_field_s
 {
     const char        *name;   /* POST argument name; [a-z0-9_] only        */
     const char        *label;
+    /* The unit a numeric value is read in ("%", "s", "h"), if it has one.
+     * Deliberately not part of `label`: a name that carries its own unit
+     * ("Volume [%]") reads as a sentence on a page and as a caption on a
+     * row, while the value it annotates is where somebody looking for it
+     * expects to find it. The front ends put it next to the value, each in
+     * its own way. NULL when the value is a bare number. */
+    const char        *unit;
     const char *const *names;  /* SETTINGS_ENUM: the option names           */
 
     /* Where the field lives in config.json. `json_path` is the containing

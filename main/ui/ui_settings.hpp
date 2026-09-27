@@ -37,7 +37,7 @@ const char *ui_settings_page_name(void);
 /* Rebuild the screen in place, on whatever page it is showing. For a theme
  * change: the shared styles carry the colours and fonts by themselves, but the
  * bars and the keyboard have local styles set at creation, and the Info
- * table's cell values are a snapshot. Called from openhab_ui.cpp's
+ * page's lines are a snapshot. Called from openhab_ui.cpp's
  * theme_apply_pending(), next to where it rebuilds the tile page for the same
  * reason. */
 void ui_settings_rebuild(void);
@@ -63,11 +63,11 @@ void      ui_settings_overlay_dismiss(void);
  * config, to the file, and into the pointer.
  *
  * Its own transaction rather than a change to the draft alone, unlike every
- * other row on this screen. A calibration is accepted on a screen of its own
- * that says what it will do, and the alternative is a user who taps Keep, then
- * taps the back bar instead of Save, and silently loses it -- on the one page
- * where the reason they came is that tapping is not working properly. Other
- * pending edits in the draft are left alone. */
+ * other row on this screen. The pointer has to pick the numbers up at once,
+ * on the one page where the reason the user came is that tapping is not
+ * working properly -- and waiting for the page to be left and committed would
+ * leave a "Keep" that nothing kept. Other pending edits in the draft are left
+ * alone. */
 void ui_settings_touch_cal_keep(const struct touch_cal_s *cal);
 
 #if CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF

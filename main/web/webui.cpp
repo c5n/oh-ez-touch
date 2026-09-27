@@ -302,8 +302,14 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
             continue;
         }
 
-        webui_putf(o, "<label>%s%s%s", f->label,
-                   (f->flags & SETTINGS_F_RESTART) ? " *" : "",
+        webui_putf(o, "<label>%s", f->label);
+
+        /* The unit belongs to the value, so it stands where the value is
+         * about to be entered rather than inside the label's sentence. */
+        if (f->unit != NULL)
+            webui_putf(o, " [%s]", f->unit);
+
+        webui_putf(o, "%s%s", (f->flags & SETTINGS_F_RESTART) ? " *" : "",
                    (f->kind == SETTINGS_BOOL) ? " " : "<br>");
 
         switch (f->kind)

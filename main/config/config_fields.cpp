@@ -30,19 +30,19 @@
  *   lo/hi  accepted range, clamped  fl   SETTINGS_F_* flags
  */
 #define SEC(lbl, tb) \
-    {NULL, (lbl), NULL, NULL, NULL, NULL, 0, 0, 0, 0, SETTINGS_SECTION, 0, 0, 0, (tb)}
+    {NULL, (lbl), NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, SETTINGS_SECTION, 0, 0, 0, (tb)}
 #define TXT(nm, lbl, fld, jp, jk, dv, fl) \
-    {(nm), (lbl), NULL, (jp), (jk), (dv), 0, OFF(fld), 0, 0, SETTINGS_TEXT, SZ(fld), 0, (fl), 0}
-#define SINT(nm, lbl, fld, jp, jk, dv, lo, hi) \
-    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_INT, 0, 0, 0, 0}
-#define UINT(nm, lbl, fld, jp, jk, dv, lo, hi) \
-    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_UINT, 0, 0, 0, 0}
-#define ULNG(nm, lbl, fld, jp, jk, dv, lo, hi) \
-    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_ULONG, 0, 0, 0, 0}
+    {(nm), (lbl), NULL, NULL, (jp), (jk), (dv), 0, OFF(fld), 0, 0, SETTINGS_TEXT, SZ(fld), 0, (fl), 0}
+#define SINT(nm, lbl, un, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), (un), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_INT, 0, 0, 0, 0}
+#define UINT(nm, lbl, un, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), (un), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_UINT, 0, 0, 0, 0}
+#define ULNG(nm, lbl, un, fld, jp, jk, dv, lo, hi) \
+    {(nm), (lbl), (un), NULL, (jp), (jk), NULL, (dv), OFF(fld), (lo), (hi), SETTINGS_ULONG, 0, 0, 0, 0}
 #define CHK(nm, lbl, fld, jp, jk, dv, fl) \
-    {(nm), (lbl), NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 1, SETTINGS_BOOL, 0, 0, (fl), 0}
+    {(nm), (lbl), NULL, NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 1, SETTINGS_BOOL, 0, 0, (fl), 0}
 #define SEL(nm, lbl, fld, jp, jk, dv, tbl, n, fl) \
-    {(nm), (lbl), (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), (fl), 0}
+    {(nm), (lbl), NULL, (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), (fl), 0}
 
 /* The SETTINGS_F_RESTART flags say what the code actually does, which is not
  * what they used to say. settings_apply_live() re-applies the openHAB endpoint,
@@ -79,15 +79,15 @@ const struct config_field_s config_fields[] = {
      * 0 is the default and means "the constants this board was built with", so
      * clearing all four is how a bad calibration is undone. See config.hpp. */
     SEC("Touch panel", SETTINGS_TAB_TOUCH),
-    UINT("touch_x_org", "X origin (raw)", touch.x_origin, "touch", "x_origin", 0, 0, 4095),
-    UINT("touch_x_span", "X span (raw)", touch.x_span, "touch", "x_span", 0, 0, 4095),
-    UINT("touch_y_org", "Y origin (raw)", touch.y_origin, "touch", "y_origin", 0, 0, 4095),
-    UINT("touch_y_span", "Y span (raw)", touch.y_span, "touch", "y_span", 0, 0, 4095),
+    UINT("touch_x_org", "X origin (raw)", NULL, touch.x_origin, "touch", "x_origin", 0, 0, 4095),
+    UINT("touch_x_span", "X span (raw)", NULL, touch.x_span, "touch", "x_span", 0, 0, 4095),
+    UINT("touch_y_org", "Y origin (raw)", NULL, touch.y_origin, "touch", "y_origin", 0, 0, 4095),
+    UINT("touch_y_span", "Y span (raw)", NULL, touch.y_span, "touch", "y_span", 0, 0, 4095),
 
     SEC("NTP Time", SETTINGS_TAB_TIME),
     TXT("ntp_host", "Host", ntp.hostname, "ntp", "hostname", "pool.ntp.org",
         SETTINGS_F_HOSTCHARS),
-    SINT("ntp_gmt", "GMT offset [h]", ntp.gmt_offset, "ntp", "gmt_offset", 1, -12, 14),
+    SINT("ntp_gmt", "GMT offset", "h", ntp.gmt_offset, "ntp", "gmt_offset", 1, -12, 14),
     CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, "ntp", "daylightsaving", 0, 0),
 
     SEC("Appearance", SETTINGS_TAB_THEME),
@@ -112,15 +112,15 @@ const struct config_field_s config_fields[] = {
     SEL("orientation", "Orientation", ui.orientation, "ui", "orientation",
         UI_ORIENTATION_NAME_LANDSCAPE, ui_orientation_names, UI_ORIENTATION_COUNT,
         SETTINGS_F_RESTART),
-    UINT("night_from", "Night from [h]", ui.night_from, "ui", "night_from", 22, 0, 23),
-    UINT("night_to", "Night to [h]", ui.night_to, "ui", "night_to", 6, 0, 23),
+    UINT("night_from", "Night from", "h", ui.night_from, "ui", "night_from", 22, 0, 23),
+    UINT("night_to", "Night to", "h", ui.night_to, "ui", "night_to", 6, 0, 23),
 
     SEC("LCD Backlight Dimming", SETTINGS_TAB_THEME),
-    ULNG("bl_timeout", "Activity timeout [s] (0=off)", backlight.activity_timeout,
+    ULNG("bl_timeout", "Activity timeout (0=off)", "s", backlight.activity_timeout,
          "backlight", "activity_timeout", 60, 0, 86400),
-    UINT("bl_normal", "Normal brightness [%]", backlight.normal_brightness,
+    UINT("bl_normal", "Normal brightness", "%", backlight.normal_brightness,
          "backlight", "normal_brightness", 100, 0, 100),
-    UINT("bl_dim", "Dim brightness [%]", backlight.dim_brightness,
+    UINT("bl_dim", "Dim brightness", "%", backlight.dim_brightness,
          "backlight", "dim_brightness", 40, 0, 100),
     /* No SETTINGS_F_RESTART: the dim state is a runtime question, and the
      * screen this asks for appears (or disappears) at the next dim or wake.
@@ -134,14 +134,14 @@ const struct config_field_s config_fields[] = {
     /* Duty cycle, not decibels: a piezo's loudness goes as sin(pi*duty)
      * and peaks at 50 %, which is what 100 here means. No
      * SETTINGS_F_RESTART -- the task reads it per note. */
-    UINT("beeper_vol", "Volume [%]", beeper.volume, "beeper", "volume", 25, 0, 100),
+    UINT("beeper_vol", "Volume", "%", beeper.volume, "beeper", "volume", 25, 0, 100),
 
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
     /* The two an mDNS scan fills in. SETTINGS_FIELD_HOST and _PORT are how
      * both front ends find these rows to hang that list off. */
     TXT(SETTINGS_FIELD_HOST, "Host", openhab.hostname, "openhab", "hostname", "openhabian",
         SETTINGS_F_HOSTCHARS),
-    SINT(SETTINGS_FIELD_PORT, "Port", openhab.port, "openhab", "port", 8080, 1, 65535),
+    SINT(SETTINGS_FIELD_PORT, "Port", NULL, openhab.port, "openhab", "port", 8080, 1, 65535),
     /* Still a text field, and deliberately: the panel offers what
      * /rest/sitemaps says the server has, and a server that cannot be reached
      * at the moment the settings are opened must not stop anyone naming a
@@ -156,7 +156,7 @@ const struct config_field_s config_fields[] = {
     CHK("mqtt_use", "Enable MQTT", mqtt.enabled, "mqtt", "enabled", 0, 0),
     TXT("mqtt_host", "Host", mqtt.hostname, "mqtt", "hostname", "mosquitto",
         SETTINGS_F_HOSTCHARS),
-    SINT("mqtt_port", "Port", mqtt.port, "mqtt", "port", 1883, 1, 65535),
+    SINT("mqtt_port", "Port", NULL, mqtt.port, "mqtt", "port", 1883, 1, 65535),
     TXT("mqtt_user", "User (empty: none)", mqtt.user, "mqtt", "user", "", 0),
     TXT("mqtt_pass", "Password", mqtt.password, "mqtt", "password", "", SETTINGS_F_SECRET),
 
@@ -166,7 +166,7 @@ const struct config_field_s config_fields[] = {
      * characters that would actually break a topic -- '+' and '#', the
      * subscription wildcards -- when it assembles the prefix. */
     TXT("mqtt_topic", "Base topic", mqtt.topic, "mqtt", "topic", "oheztouch", 0),
-    SINT("mqtt_interval", "Publish interval [s]", mqtt.interval, "mqtt", "interval",
+    SINT("mqtt_interval", "Publish interval", "s", mqtt.interval, "mqtt", "interval",
          60, 5, 86400),
     CHK("mqtt_retain", "Retain published values", mqtt.retain, "mqtt", "retain", 1, 0),
 
@@ -175,7 +175,7 @@ const struct config_field_s config_fields[] = {
      * BME280 under "sensors", against the day a second chip joins it. */
     CHK("bme_use", "Use BME280 sensor", sensors.bme280.use, "sensors/bme280", "use", 0,
         SETTINGS_F_RESTART),
-    SINT("bme_interval", "Update interval [s]", sensors.bme280.interval,
+    SINT("bme_interval", "Update interval", "s", sensors.bme280.interval,
          "sensors/bme280", "interval", 180, 1, 86400),
 
     /* On the Sensors page rather than one of its own: a beacon scanner is a
@@ -183,11 +183,11 @@ const struct config_field_s config_fields[] = {
     SEC("Bluetooth LE Beacons", SETTINGS_TAB_SENSORS),
     CHK("ble_use", "Scan for BLE beacons", ble.enabled, "ble", "enabled", 0,
         SETTINGS_F_RESTART),
-    SINT("ble_interval", "Scan every [s]", ble.interval, "ble", "interval", 30, 5, 3600),
-    SINT("ble_window", "Scan for [s]", ble.window, "ble", "window", 5, 1, 60),
-    SINT("ble_rssi", "Ignore weaker than [dBm]", ble.rssi_min, "ble", "rssi_min",
+    SINT("ble_interval", "Scan every", "s", ble.interval, "ble", "interval", 30, 5, 3600),
+    SINT("ble_window", "Scan for", "s", ble.window, "ble", "window", 5, 1, 60),
+    SINT("ble_rssi", "Ignore weaker than", "dBm", ble.rssi_min, "ble", "rssi_min",
          -90, -100, 0),
-    SINT("ble_expire", "Forget after [s]", ble.expire, "ble", "expire", 120, 10, 86400),
+    SINT("ble_expire", "Forget after", "s", ble.expire, "ble", "expire", 120, 10, 86400),
     CHK("ble_all", "Publish non-beacon devices", ble.publish_all, "ble", "publish_all", 0, 0),
 };
 

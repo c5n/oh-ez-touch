@@ -48,13 +48,16 @@ lv_obj_t *ui_themed_button(lv_obj_t *parent, const char *text);
 /* A back bar: `symbol` at the left, `title` beside it, and the whole bar is
  * the target.
  *
- * `symbol` is the caller's because it is the one thing the two users disagree
- * on -- an item screen always goes back, the settings screen closes when it
- * is already at its root. Both labels have their click flag removed, so a tap
- * anywhere on the bar reaches `cb` rather than being eaten by whichever child
- * it landed on. */
+ * `height` is the caller's because the screens disagree on how much they can
+ * spend on chrome: an item window has room to be generous, the settings screen
+ * counts its pixels -- see ui_settings.cpp. `symbol` is the caller's for the
+ * same reason it always was, the one thing the two users disagree on -- an
+ * item screen always goes back, the settings screen closes when it is already
+ * at its root. Both labels have their click flag removed, so a tap anywhere
+ * on the bar reaches `cb` rather than being eaten by whichever child it
+ * landed on. */
 lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
-                      lv_event_cb_t cb);
+                      int32_t height, lv_event_cb_t cb);
 
 /* A reading: a value and its unit, the unit a face smaller.
  *

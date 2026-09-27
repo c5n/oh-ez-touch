@@ -146,7 +146,7 @@ void item_screen_open(Item *item, uint8_t slot)
      * in the three themes. */
 
     /* Always a chevron: there is always a page under an item screen. */
-    ui_back_bar(view.screen, LV_SYMBOL_LEFT, item->getLabel(), back_event);
+    ui_back_bar(view.screen, LV_SYMBOL_LEFT, item->getLabel(), ITEM_BAR_H, back_event);
 
     view.body = item_screen_container(view.screen);
     lv_obj_set_size(view.body, lv_pct(100),

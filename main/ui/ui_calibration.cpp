@@ -324,8 +324,8 @@ static void keep_event(lv_event_t *e)
 
     /* Stores, saves, applies and takes the overlay down. The next press is
      * already converted with what is on this screen, which is the point of
-     * doing it here rather than leaving it in the draft for a Save the user
-     * would have to find. */
+     * doing it here rather than leaving it in the draft for the page to be
+     * left. */
     ui_settings_touch_cal_keep(&after_cal);
 }
 

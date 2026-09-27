@@ -13,10 +13,10 @@
  * refetch, no tile rebuild -- which also means openhab_ui_loop() can carry on
  * updating it while the user is in here.
  *
- * Edits go into a draft copy of Config::item, not into the live one. Closing
- * without saving therefore changes nothing, a half-typed hostname never reaches
- * wlan_setup(), and Save can tell exactly which fields moved -- which is what
- * decides whether a restart is worth offering.
+ * Edits go into a draft copy of Config::item, not into the live one. Leaving
+ * the page commits the draft -- there is no Save button -- so a half-typed
+ * hostname never reaches wlan_setup(), and the commit can tell exactly which
+ * fields moved, which is what decides whether a restart is worth offering.
  */
 
 #include "sdkconfig.h"
@@ -29,6 +29,9 @@
 #include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "control/beeper_control.hpp"
+#include "peripherals/relay.hpp"
+#include "peripherals/sensor_bme280.hpp"
+#include "peripherals/sensor_main.hpp"
 #include "ui_beep.hpp"
 #include "ui_calibration.hpp"
 #include "ui_motion.hpp"
@@ -66,12 +69,33 @@
 #define SETTINGS_ANIM_MS 240
 
 /* A bar across the top that is entirely the way back, the same one the item
- * screens wear, and rows sized for the finger this panel is operated with.
- * ROW_HEIGHT was 30, which is four and a half millimetres on a 167 dpi panel;
- * 48 is a little over seven. */
-#define BAR_HEIGHT    UI_BAR_H
+ * screens wear -- but slimmer than theirs, because every pixel it spends is
+ * one a settings row cannot, and its two labels read as well at 40 px as at
+ * the 56 an item window can afford. The rows are sized for the finger this
+ * panel is operated with, and a row is now a name beside a control rather
+ * than a full-width button, so 44 px -- a fingertip's floor -- remains the
+ * budget the footer and the pager have to live within. */
+#define BAR_HEIGHT    40
 #define FOOTER_HEIGHT 40
-#define ROW_HEIGHT    48
+#define ROW_HEIGHT    44
+
+/* The gap between the rows, and the padding of the area they sit in. A page
+ * counts these the way it counts its rows -- see field_pages_walk(). */
+#define ROWS_PAD 4
+#define ROW_GAP  4
+
+/* One section heading, where a page carries more than one section. */
+#define HEADING_H (lv_font_get_line_height(ui_style_theme()->font_small) + 2)
+
+/* A numeric field whose range spans no more than this is a slider rather
+ * than a keyboard: a range that fits the panel's width fits a finger's drag,
+ * and anything wider (a port, a timeout in seconds up to a day) is faster to
+ * type than to sweep. */
+#define SLIDER_RANGE_MAX 100
+#define SLIDER_TRACK_H  16
+#define SLIDER_KNOB_W   6
+#define SLIDER_WIDTH    120
+#define SLIDER_VALUE_W  56
 
 /* A menu is two columns and as many rows as its entries need, rather than a
  * scrolling list, so every entry is on screen at once. Six 48 px rows would
@@ -91,14 +115,31 @@
 #define ICON_PAGE_COLS 5
 #define ICON_PAGE_GAP  6
 
-/* The four ways a footer button turns one of those pages, in the order the
- * buttons sit in it. */
-enum icons_page_e
+/* The two ways a footer button turns a multi-page screen's pages. One pair
+ * of arrows for every screen that pages -- the Systeminfo screen and the
+ * Icons catalogue -- rather than each inventing a footer of its own; a
+ * direction and not a target, because from anywhere the ends are one tap
+ * away, which is all the first/last jumps this used to have bought. */
+enum pager_dir_e
 {
-    ICONS_PAGE_FIRST, /* << */
-    ICONS_PAGE_PREV,  /* <  */
-    ICONS_PAGE_NEXT,  /* >  */
-    ICONS_PAGE_LAST   /* >> */
+    PAGER_PREV, /* LV_SYMBOL_LEFT  */
+    PAGER_NEXT  /* LV_SYMBOL_RIGHT */
+};
+
+/* The Systeminfo screen's pages, in the order the arrows walk through them. */
+enum info_page_e
+{
+    INFO_PAGE_GENERAL = 0, /* the firmware                    */
+    INFO_PAGE_NETWORK,     /* the addresses it answers to     */
+    INFO_PAGE_WIFI,        /* the radio link                  */
+    INFO_PAGE_SENSORS,     /* the sensors, and the relays     */
+    INFO_PAGE_COUNT
+};
+
+/* The pages' names, for the bar: the footer counts them, and the bar is
+ * where "Systeminfo (General)" spells out which one is showing. */
+static const char *const info_page_names[INFO_PAGE_COUNT] = {
+    "General", "Network", "WiFi", "Sensors",
 };
 
 /* Enough for the widest text field in Config, which is the 63 character MQTT
@@ -156,6 +197,28 @@ static lv_image_dsc_t *icon_dscs = NULL;
  * not a navigation, and must not throw away where the user was. */
 static uint16_t icons_page = 0;
 
+/* Which page of the Systeminfo screen is showing, with the same lifecycle
+ * as the one above for the same reasons. */
+static uint8_t info_page = INFO_PAGE_GENERAL;
+
+/* Which family the Fonts screen is showing, likewise. */
+static uint8_t fonts_page = 0;
+
+/* Which page of a section's rows is showing, and how many that section takes.
+ * The rows of a section are packed one logical group per page (see
+ * field_pages_walk()); pages beyond the first carry the group's remaining
+ * rows without repeating its heading, and the footer turns them.
+ *
+ * One pair per tab rather than one shared counter: a section keeps its place
+ * the way the Icons catalogue and the Systeminfo screen keep theirs, and a
+ * rebuild -- a theme change -- goes through screen_show_section() and must
+ * not move it. field_pages[] is recomputed on every screen_show_section(),
+ * because it follows the theme's small font and the panel's height; the
+ * clamp that goes with it keeps a page that no longer exists from being the
+ * one showing when the rebuild settles. */
+static uint8_t field_page[SETTINGS_TAB_COUNT];
+static uint8_t field_pages[SETTINGS_TAB_COUNT];
+
 /* The keyboard or the confirmation prompt -- only ever one at a time, and a
  * child of the screen rather than of lv_layer_top(), because open() hides that
  * layer to keep the Messagebox banner off this screen. */
@@ -169,7 +232,8 @@ static char                          *edit_buffer = NULL;
 static size_t                         edit_buffer_size = 0;
 static lv_obj_t                      *edit_row = NULL;
 
-/* The WLAN tab. The credentials are edited here and only reach NVS on Save. */
+/* The WLAN tab. The credentials are edited here and reach NVS when the page
+ * is left, like every other edit on it. */
 static char wlan_ssid_buf[WLAN_SSID_SIZE];
 static char wlan_psk_buf[WLAN_PSK_SIZE];
 
@@ -205,7 +269,7 @@ static uint64_t wlan_state_refresh_deadline = 0;
  * The section is one entry in the menu and two screens under it: the lists of
  * what is out there, and the three fields behind the Manual button. They are
  * one section because they are one setting seen twice -- the lists write the
- * fields, and Save on either saves the same draft -- and two pages because a
+ * fields, and leaving either commits the same draft -- and two pages because a
  * 240 px screen that carried both was a page nobody could read. The flag is
  * cleared by every way of *arriving* at the section, so the lists are what it
  * opens on, and by Back on the manual page; a rebuild for a theme change goes
@@ -395,9 +459,18 @@ static void info_tab_build(lv_obj_t *rows);
 static void fonts_tab_build(lv_obj_t *rows);
 static void icons_tab_build(lv_obj_t *rows);
 static void icons_page_event(lv_event_t *e);
+static void info_page_event(lv_event_t *e);
+static void fonts_page_event(lv_event_t *e);
+static void fields_page_event(lv_event_t *e);
 static void wlan_state_update(void);
 static void keyboard_cancel_event(lv_event_t *e);
 static void keyboard_key_event(lv_event_t *e);
+
+/* The commit every navigation away from a page runs, and the restart a
+ * commit may have earned -- defined with the save machinery, reached from
+ * the handlers that navigate. */
+static void page_leave(const char **restart_label);
+static void restart_prompt(const char *label);
 
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f);
 
@@ -466,16 +539,12 @@ wlan_scan_list = NULL;
 
 /* ---------------------------------------------------------------- builders */
 
-/* A settings row: full width, the name on the left and the current value on the
- * right. Both a button and a two-column layout, so that the whole row is the
- * touch target -- at 30 px tall there is no room for a separate control.
- *
- * Built on ui_themed_button() rather than on a bare lv_button, so that the row
- * and the buttons in the footer cannot disagree about what a press looks like.
- * The label that helper centres becomes the left column: a child of a parent
- * with a layout is positioned by the layout, so its own alignment is simply
- * not read. */
-static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
+/* A list entry, not a settings row: a full-width button with a name on the
+ * left and a detail on the right, the way the WLAN scan results and the
+ * server and sitemap lists read. The whole thing is the target, because
+ * choosing one of these is the point of the list. Kept beside the settings
+ * row below because both are "a row", and only one of them is a setting. */
+static lv_obj_t *list_row_create(lv_obj_t *parent, const char *name)
 {
     lv_obj_t *row = ui_themed_button(parent, name);
 
@@ -490,7 +559,7 @@ static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
     lv_label_set_long_mode(name_label, LV_LABEL_LONG_DOT);
     lv_obj_set_flex_grow(name_label, 1);
 
-    /* Child 1, which is what row_set_value() writes to. */
+    /* Child 1, which is what list_row_value() writes to. */
     lv_obj_t *value_label = lv_label_create(row);
 
     lv_label_set_text(value_label, "");
@@ -502,9 +571,131 @@ static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
     return row;
 }
 
-static void row_set_value(lv_obj_t *row, const char *value)
+static void list_row_value(lv_obj_t *row, const char *value)
 {
     lv_label_set_text(lv_obj_get_child(row, 1), value);
+}
+
+/* -------------------------------------------------------- the settings row */
+
+/* The control a field's value takes. An on/off value is a switch, a number
+ * over a range the panel can sweep is a slider, and everything else -- a
+ * name to type, an option to cycle, a number too wide to drag -- is a button
+ * that shows the value and opens the keyboard. */
+enum row_ctrl_e
+{
+    ROW_CTRL_BUTTON,
+    ROW_CTRL_SWITCH,
+    ROW_CTRL_SLIDER
+};
+
+static enum row_ctrl_e row_ctrl(const struct config_field_s *f)
+{
+    switch (f->kind)
+    {
+    case SETTINGS_BOOL:
+        return ROW_CTRL_SWITCH;
+
+    case SETTINGS_INT:
+    case SETTINGS_UINT:
+    case SETTINGS_ULONG:
+        return (f->max - f->min <= SLIDER_RANGE_MAX) ? ROW_CTRL_SLIDER : ROW_CTRL_BUTTON;
+
+    default:
+        return ROW_CTRL_BUTTON;
+    }
+}
+
+/* A settings row: the name on the left, the control beside it on the right.
+ * The name is a plain label rather than the label of a full-width button,
+ * so the control is what carries the value -- the name says what the value
+ * is, the control is what changes it, and neither wears the other's job.
+ *
+ * The control's children, by kind, are the contract row_refresh() works to
+ * and the builders below write to. */
+#define ROW_CHILD_NAME   0 /* the label, every row                        */
+#define ROW_CHILD_VALUE  1 /* buttons: the button; sliders: the value text */
+#define ROW_CHILD_SLIDER 2 /* sliders only: the slider itself              */
+
+static lv_obj_t *row_create(lv_obj_t *parent, const char *name)
+{
+    lv_obj_t *row = ui_plain_container(parent);
+
+    lv_obj_set_size(row, lv_pct(100), ROW_HEIGHT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(row, 6, 0);
+    lv_obj_set_style_pad_column(row, 6, 0);
+
+    lv_obj_t *label = lv_label_create(row);
+
+    lv_label_set_text(label, name);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_add_style(label, &ui_style_label, LV_PART_MAIN);
+    lv_obj_set_flex_grow(label, 1);
+
+    return row;
+}
+
+/* The value button, for the kinds a keyboard or a cycle answers. Content-
+ * sized but capped, so a long hostname cannot push the name off the row. */
+static lv_obj_t *row_value_button(lv_obj_t *row)
+{
+    lv_obj_t *btn = ui_themed_button(row, "");
+
+    lv_obj_set_style_max_width(btn, lv_pct(60), 0);
+    lv_label_set_long_mode(lv_obj_get_child(btn, 0), LV_LABEL_LONG_DOT);
+
+    return btn;
+}
+
+static void row_value_set(lv_obj_t *row, const char *value)
+{
+    lv_obj_t *btn = lv_obj_get_child(row, ROW_CHILD_VALUE);
+
+    lv_label_set_text(lv_obj_get_child(btn, 0), value);
+}
+
+/* The switch, for an on/off value. Styled from the same three slider
+ * surfaces the item windows' controls wear, so every knob on the panel
+ * looks like the same machine drew it. */
+static lv_obj_t *row_switch(lv_obj_t *row)
+{
+    lv_obj_t *sw = lv_switch_create(row);
+
+    lv_obj_add_style(sw, &ui_style_slider, LV_PART_MAIN);
+    lv_obj_add_style(sw, &ui_style_slider_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(sw, &ui_style_slider_knob, LV_PART_KNOB);
+    lv_obj_set_size(sw, 44, 24);
+    lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_radius(sw, LV_RADIUS_CIRCLE, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(sw, 0, LV_PART_KNOB);
+
+    return sw;
+}
+
+/* The slider, for a number with a range that fits it: the value as text at
+ * the right edge of the row, and a track as wide as the name can spare.
+ *
+ * The knob is the full height of the track with a thin marker at the fill
+ * edge, laid out the way the item windows lay theirs -- see item_slider.cpp:
+ * lv_slider takes the knob's size from the track and then adds the pads, so
+ * the negative padding is what makes it a marker rather than a block. */
+static lv_obj_t *row_slider(lv_obj_t *row)
+{
+    lv_obj_t *slider = lv_slider_create(row);
+
+    lv_obj_add_style(slider, &ui_style_slider, LV_PART_MAIN);
+    lv_obj_add_style(slider, &ui_style_slider_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(slider, &ui_style_slider_knob, LV_PART_KNOB);
+    lv_obj_set_size(slider, SLIDER_WIDTH, SLIDER_TRACK_H);
+    lv_obj_set_style_radius(slider, 6, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_all(slider, 0, LV_PART_KNOB);
+    lv_obj_set_style_pad_hor(slider, -(SLIDER_TRACK_H - SLIDER_KNOB_W) / 2, LV_PART_KNOB);
+
+    return slider;
 }
 
 /* --------------------------------------------------------------- the rows */
@@ -532,12 +723,48 @@ static void field_value_text(const struct config_field_s *f, const config_item_t
     }
 }
 
+/* The same, with the unit the label no longer carries written after the
+ * number: the name says what it is, the value says how much of it. */
+static void field_value_with_unit(const struct config_field_s *f, char *buffer, size_t size)
+{
+    field_value_text(f, &draft, buffer, size);
+
+    if (f->unit != NULL && f->unit[0] != '\0')
+        snprintf(buffer + strlen(buffer), size - strlen(buffer), " %s", f->unit);
+}
+
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f)
 {
     char buffer[VALUE_BUFFER_LEN];
 
-    field_value_text(f, &draft, buffer, sizeof(buffer));
-    row_set_value(row, buffer);
+    switch (row_ctrl(f))
+    {
+    case ROW_CTRL_SWITCH:
+    {
+        lv_obj_t *sw = lv_obj_get_child(row, ROW_CHILD_VALUE);
+
+        if (config_field_read(f, &draft) != 0)
+            lv_obj_add_state(sw, LV_STATE_CHECKED);
+        else
+            lv_obj_remove_state(sw, LV_STATE_CHECKED);
+        break;
+    }
+
+    case ROW_CTRL_SLIDER:
+    {
+        field_value_with_unit(f, buffer, sizeof(buffer));
+
+        lv_label_set_text(lv_obj_get_child(row, ROW_CHILD_VALUE), buffer);
+        lv_slider_set_value(lv_obj_get_child(row, ROW_CHILD_SLIDER),
+                            config_field_read(f, &draft), LV_ANIM_OFF);
+        break;
+    }
+
+    default:
+        field_value_with_unit(f, buffer, sizeof(buffer));
+        row_value_set(row, buffer);
+        break;
+    }
 }
 
 /* --------------------------------------------------------------- overlays */
@@ -615,9 +842,9 @@ void ui_settings_touch_cal_keep(const struct touch_cal_s *cal)
         return;
 
     /* All four places at once. The draft so the rows under the overlay show
-     * what was just measured and a later Save does not put the old numbers
-     * back; the baseline so that Save is then not told a restart-flagged field
-     * moved; the live config because that is what saveConfig() writes. */
+     * what was just measured and a later commit does not put the old numbers
+     * back; the baseline so that the commit is then not told a restart-flagged
+     * field moved; the live config because that is what saveConfig() writes. */
     draft.touch.x_origin = (unsigned int)cal->x_origin;
     draft.touch.x_span = (unsigned int)cal->x_span;
     draft.touch.y_origin = (unsigned int)cal->y_origin;
@@ -629,9 +856,10 @@ void ui_settings_touch_cal_keep(const struct touch_cal_s *cal)
     bool stored = settings_config->saveConfig();
 
     /* Applies the calibration to the pointer, among everything else it
-     * re-applies. Unconditional, like save_event()'s: a calibration that could
-     * not be written is still a calibration that works until the next boot,
-     * and the user finds that out from the footer rather than from the panel. */
+     * re-applies. Unconditional, like draft_commit()'s: a calibration that
+     * could not be written is still a calibration that works until the next
+     * boot, and the user finds that out from the footer rather than from the
+     * panel. */
     settings_apply_live(settings_config);
 
     overlay_close();
@@ -743,9 +971,9 @@ static void keyboard_ready_event(lv_event_t *e)
         {
             /* The passphrase is never shown, here or in the web form. */
             if (edit_buffer == wlan_psk_buf)
-                row_set_value(edit_row, (text[0] == '\0') ? "--" : "*****");
+                row_value_set(edit_row, (text[0] == '\0') ? "--" : "*****");
             else
-                row_set_value(edit_row, (text[0] == '\0') ? "--" : text);
+                row_value_set(edit_row, (text[0] == '\0') ? "--" : text);
         }
     }
 
@@ -915,33 +1143,59 @@ static void buffer_edit_open(lv_obj_t *row, const char *title, char *buffer, siz
 
 /* ---------------------------------------------------------- row handlers */
 
+/* A switch moved: the one gesture the row knows, straight into the draft.
+ * LVGL has already set the new state before the event runs, so it is read
+ * back rather than derived -- the sound follows the value even if a theme
+ * ever refuses to draw one. */
+static void field_switch_event(lv_event_t *e)
+{
+    const struct config_field_s *f =
+        (const struct config_field_s *)lv_event_get_user_data(e);
+    lv_obj_t *sw = (lv_obj_t *)lv_event_get_current_target(e);
+    bool on = lv_obj_has_state(sw, LV_STATE_CHECKED);
+
+    config_field_write(f, &draft, on ? 1 : 0);
+
+    if (on)
+        BEEPER_EVENT_TOGGLE_ON();
+    else
+        BEEPER_EVENT_TOGGLE_OFF();
+}
+
+/* A slider moved: the draft follows the knob rather than waiting for the
+ * release, so a value dragged to and past is the value shown. No sound per
+ * step -- a sweep is one gesture, not forty, and the release says it. */
+static void field_slider_event(lv_event_t *e)
+{
+    const struct config_field_s *f =
+        (const struct config_field_s *)lv_event_get_user_data(e);
+    lv_obj_t *slider = (lv_obj_t *)lv_event_get_current_target(e);
+    char buffer[VALUE_BUFFER_LEN];
+
+    config_field_set_number(f, &draft, lv_slider_get_value(slider));
+
+    field_value_with_unit(f, buffer, sizeof(buffer));
+    lv_label_set_text(lv_obj_get_child(lv_obj_get_parent(slider), ROW_CHILD_VALUE), buffer);
+}
+
+static void field_slider_release_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    BEEPER_EVENT_CHANGE();
+}
+
+/* The value button: a tap cycles an enum -- the longest is four options,
+ * same calculus as before -- and opens the keyboard for everything that
+ * has to be typed. */
 static void field_row_event(lv_event_t *e)
 {
     const struct config_field_s *f =
         (const struct config_field_s *)lv_event_get_user_data(e);
-    lv_obj_t *row = (lv_obj_t *)lv_event_get_current_target(e);
+    lv_obj_t *row = lv_obj_get_parent((lv_obj_t *)lv_event_get_current_target(e));
 
-    switch (f->kind)
+    if (f->kind == SETTINGS_ENUM)
     {
-    case SETTINGS_BOOL:
-        config_field_write(f, &draft, config_field_read(f, &draft) ? 0 : 1);
-        row_refresh(row, f);
-
-        /* Read back rather than inferred, so the sound follows the value even
-         * if config_field_write() ever clamps or refuses one. */
-        if (config_field_read(f, &draft) != 0)
-            BEEPER_EVENT_TOGGLE_ON();
-        else
-            BEEPER_EVENT_TOGGLE_OFF();
-        break;
-
-    case SETTINGS_ENUM:
-    {
-        /* Cycled rather than picked from a list: the longest enum in the table
-         * is four options, so a dropdown and a roller both stay compiled out.
-         * It is f->count that decides, so a fifth costs nothing here -- but
-         * the tap becomes a worse way to reach the last one with every option
-         * added, and somewhere past a handful this wants a list after all. */
         int32_t next = config_field_read(f, &draft) + 1;
 
         if (next >= (int32_t)f->count)
@@ -950,25 +1204,22 @@ static void field_row_event(lv_event_t *e)
         config_field_write(f, &draft, next);
         row_refresh(row, f);
         BEEPER_EVENT_CHANGE();
-        break;
+        return;
     }
 
-    default:
-        field_edit_open(row, f);
-        break;
-    }
+    field_edit_open(row, f);
 }
 
 static void wlan_ssid_row_event(lv_event_t *e)
 {
-    buffer_edit_open((lv_obj_t *)lv_event_get_current_target(e), "Network (SSID)", wlan_ssid_buf,
-                     sizeof(wlan_ssid_buf), false);
+    buffer_edit_open(lv_obj_get_parent((lv_obj_t *)lv_event_get_current_target(e)),
+                     "Network (SSID)", wlan_ssid_buf, sizeof(wlan_ssid_buf), false);
 }
 
 static void wlan_psk_row_event(lv_event_t *e)
 {
-    buffer_edit_open((lv_obj_t *)lv_event_get_current_target(e), "Password", wlan_psk_buf,
-                     sizeof(wlan_psk_buf), true);
+    buffer_edit_open(lv_obj_get_parent((lv_obj_t *)lv_event_get_current_target(e)),
+                     "Password", wlan_psk_buf, sizeof(wlan_psk_buf), true);
 }
 
 static void scan_result_event(lv_event_t *e)
@@ -981,7 +1232,7 @@ static void scan_result_event(lv_event_t *e)
     strlcpy(wlan_ssid_buf, scan_results[index].ssid, sizeof(wlan_ssid_buf));
 
     if (wlan_ssid_row != NULL)
-        row_set_value(wlan_ssid_row, wlan_ssid_buf);
+        row_value_set(wlan_ssid_row, wlan_ssid_buf);
 
     if (scan_results[index].encrypted == false)
     {
@@ -990,7 +1241,7 @@ static void scan_result_event(lv_event_t *e)
         wlan_psk_buf[0] = '\0';
 
         if (wlan_psk_row != NULL)
-            row_set_value(wlan_psk_row, "--");
+            row_value_set(wlan_psk_row, "--");
 
         BEEPER_EVENT_CHANGE();
         return;
@@ -1019,8 +1270,8 @@ static void scan_list_rebuild(void)
         snprintf(value, sizeof(value), "%u %%%s",
                  openhab_ui_signal_quality(scan_results[i].rssi), lock);
 
-        lv_obj_t *row = row_create(wlan_scan_list, scan_results[i].ssid);
-        row_set_value(row, value);
+        lv_obj_t *row = list_row_create(wlan_scan_list, scan_results[i].ssid);
+        list_row_value(row, value);
         lv_obj_add_event_cb(row, scan_result_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
     }
 }
@@ -1252,9 +1503,9 @@ static void server_list_rebuild(void)
         snprintf(value, sizeof(value), "%s:%u", openhab_discover_host(i),
                  (unsigned)openhab_discover_port(i));
 
-        lv_obj_t *row = row_create(server_list_obj, text);
+        lv_obj_t *row = list_row_create(server_list_obj, text);
 
-        row_set_value(row, value);
+        list_row_value(row, value);
         lv_obj_add_event_cb(row, server_row_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
     }
 }
@@ -1422,12 +1673,12 @@ static void sitemap_list_rebuild(void)
 
         sitemap_row_text(i, text, sizeof(text));
 
-        lv_obj_t *row = row_create(sitemap_list_obj, text);
+        lv_obj_t *row = list_row_create(sitemap_list_obj, text);
 
         /* The label, which is what a sitemap is called rather than what it is
          * named. openHAB does not require one; SitemapList falls back to the
          * name, so this column is never blank. */
-        row_set_value(row, openhab_sitemaps_label(i));
+        list_row_value(row, openhab_sitemaps_label(i));
         lv_obj_add_event_cb(row, sitemap_row_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
     }
 }
@@ -1530,12 +1781,20 @@ static void openhab_manual_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
+    /* Leaving the lists is committing them, like leaving any page -- picking
+     * a server or a sitemap is an edit like any other. */
+    const char *restart_label = NULL;
+
+    page_leave(&restart_label);
+
     openhab_manual = true;
 
     /* The chime for going a level deeper, which is what this is: the same one
      * the index plays for opening a section. */
     BEEPER_EVENT_LINK();
     screen_show_section(SETTINGS_TAB_OPENHAB);
+
+    restart_prompt(restart_label);
 }
 
 static void openhab_scan_event(lv_event_t *e)
@@ -1558,64 +1817,168 @@ static void openhab_scan_event(lv_event_t *e)
 static void status_set(uint8_t tab, const char *text)
 {
     if (tab < SETTINGS_TAB_COUNT && tab_status[tab] != NULL)
+    {
+        /* A paged screen hides its label so the pager can have the bar's
+         * exact middle (see footer_pager()); a message is worth more than
+         * that, so saying one brings the label back. */
+        lv_obj_clear_flag(tab_status[tab], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(tab_status[tab], text);
+    }
 }
 
-static void save_event(lv_event_t *e)
+/* Whether anything in the draft has moved off the baseline. The same
+ * comparison settings_restart_needed() makes over the flagged fields, but
+ * over all of them: this is what decides whether leaving the page is worth
+ * a write at all. */
+static bool draft_changed(void)
 {
-    uint8_t     tab = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
-    const char *restart_label = NULL;
-    bool        restart_needed = settings_restart_needed(&baseline, &draft, &restart_label);
+    for (size_t i = 0; i < config_field_count; i++)
+    {
+        const struct config_field_s *f = &config_fields[i];
+
+        if (f->kind == SETTINGS_SECTION)
+            continue;
+
+        if (f->kind == SETTINGS_TEXT)
+        {
+            if (strcmp(config_field_text(f, &draft), config_field_text(f, &baseline)) != 0)
+                return true;
+        }
+        else if (config_field_read(f, &draft) != config_field_read(f, &baseline))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/* The whole of what the Save button used to do, minus the footer it used to
+ * say it through: the draft becomes the live config, is written to the file,
+ * and everything that can be applied without a reboot is applied. The status
+ * line is gone because the page it stood on is being left -- the accept
+ * chime is the receipt.
+ *
+ * On a restart-flagged field, *restart_label is set for the caller to act
+ * on once the navigation it is in the middle of has settled: the prompt is
+ * an overlay on this screen, and opening it before the screen is rebuilt
+ * would build it just in time for lv_obj_clean() to delete it. NULL means
+ * no prompt is owed. */
+static void draft_commit(const char **restart_label)
+{
+    const char *label = NULL;
+    bool restart_needed = settings_restart_needed(&baseline, &draft, &label);
 
     settings_config->item = draft;
 
     bool stored = settings_config->saveConfig();
 
     /* Whether or not the file was written, the draft is now what the running
-     * firmware believes, so the next save must not offer a restart for a change
-     * this one already applied. */
+     * firmware believes, so the next comparison must not offer a restart for
+     * a change this one already applied. */
     baseline = draft;
 
     settings_apply_live(settings_config);
 
     if (stored == false)
     {
-        /* settings_apply_live() has already run, so the values are in effect --
-         * they just will not survive a reboot. saveConfig() returns false when
-         * no config file was ever loaded, and always on the simulator, which
-         * has no filesystem. No restart is offered either: a reboot is exactly
-         * what would lose them. */
-        status_set(tab, "Applied, not saved");
+        /* settings_apply_live() has already run, so the values are in effect
+         * -- they just will not survive a reboot. saveConfig() returns false
+         * when no config file was ever loaded, and always on the simulator,
+         * which has no filesystem. No restart is offered either: a reboot is
+         * exactly what would lose them. */
         BEEPER_EVENT_ERROR();
         return;
     }
 
-    status_set(tab, "Saved");
     BEEPER_EVENT_ACCEPT();
 
 #if CONFIG_OHEZ_DEBUG_UI_SETTINGS
     debug_printf("ui_settings: saved, restart needed: %d\r\n", (int)restart_needed);
 #endif
 
-    if (restart_needed == true)
-    {
-        char text[120];
+    if (restart_needed == true && restart_label != NULL)
+        *restart_label = label;
+}
 
-        snprintf(text, sizeof(text),
-                 "\"%s\" is only read while the device boots.\n\nRestart now?",
-                 restart_label);
-        confirm_restart_open(text);
+/* The WLAN credentials are not part of Config -- they live in NVS -- so the
+ * draft says nothing about them and this is their commit, on the same
+ * gesture as every other edit on the page: leaving it.
+ *
+ * Only when something moved. Re-applying the stored pair would tear the
+ * station off the network it is on just to rejoin it, so the SSID is
+ * compared against what the screen loaded and the passphrase against what
+ * is stored -- an empty passphrase buffer means "not retyped", which is how
+ * the screen deliberately leaves it. */
+static void wlan_credentials_commit(void)
+{
+    if (wlan_ssid_buf[0] == '\0')
+        return;
+
+    char stored_ssid[WLAN_SSID_SIZE];
+    char stored_psk[WLAN_PSK_SIZE];
+
+    wlan_credentials_get(stored_ssid, sizeof(stored_ssid), stored_psk, sizeof(stored_psk));
+
+    if (strcmp(wlan_ssid_buf, stored_ssid) == 0 &&
+        (wlan_psk_buf[0] == '\0' || strcmp(wlan_psk_buf, stored_psk) == 0))
+        return;
+
+    if (wlan_set_credentials(wlan_ssid_buf, wlan_psk_buf) == false)
+    {
+        BEEPER_EVENT_ERROR();
+        return;
     }
+
+    BEEPER_EVENT_ACCEPT();
+}
+
+/* Leaving a page is what saves it. Every path away from a section runs
+ * through here -- the back bar, the Manual button, the control interface's
+ * `settings <page>`, the close -- so a value changed is a value kept,
+ * without a Save button anyone could forget or ignore. Menus carry no edits
+ * and are nobody's page, so leaving one commits nothing.
+ *
+ * A restart is only ever *offered*: the panel never reboots itself out from
+ * under a navigation. */
+static void page_leave(const char **restart_label)
+{
+    if (settings_config == NULL || screen == NULL)
+        return;
+
+    if (MENU_IS(current_tab))
+        return;
+
+    if (current_tab == SETTINGS_TAB_WLAN)
+        wlan_credentials_commit();
+
+    if (draft_changed() == true)
+        draft_commit(restart_label);
+}
+
+/* The restart a commit may have earned, asked once the navigation that
+ * caused it has finished and the screen is standing still. */
+static void restart_prompt(const char *label)
+{
+    if (label == NULL)
+        return;
+
+    char text[120];
+
+    snprintf(text, sizeof(text),
+             "\"%s\" is only read while the device boots.\n\nRestart now?",
+             label);
+    confirm_restart_open(text);
 }
 
 /* Play the family's signature chime at the volume being edited.
  *
  * The draft and not the saved value: the whole reason this button exists is to
- * let a level be judged before Save commits it, and a slider you cannot hear
- * until after you have kept it is not much of a control. The boot chime is
- * what it plays -- it is each family's longest statement, it is the one chime
- * with a chord in it worth hearing, and it is otherwise only audible by
- * restarting the panel.
+ * let a level be judged before the page is left and commits it, and a slider
+ * you cannot hear until after it is kept is not much of a control. The boot
+ * chime is what it plays -- it is each family's longest statement, it is the
+ * one chime with a chord in it worth hearing, and it is otherwise only
+ * audible by restarting the panel.
  *
  * ui_settings_close() puts the live values back, for the user who drags this
  * to 100, presses Test, and then leaves without saving. */
@@ -1694,30 +2057,6 @@ static void audio_demo_event(lv_event_t *e)
     audio_demo_refresh();
 }
 
-static void wlan_save_event(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    if (wlan_set_credentials(wlan_ssid_buf, wlan_psk_buf) == false)
-    {
-        status_set(SETTINGS_TAB_WLAN, "Needs an SSID");
-        BEEPER_EVENT_ERROR();
-        return;
-    }
-
-    status_set(SETTINGS_TAB_WLAN, "Connecting...");
-    BEEPER_EVENT_ACCEPT();
-    wlan_state_update();
-}
-
-static void restart_event(lv_event_t *e)
-{
-    LV_UNUSED(e);
-
-    BEEPER_EVENT_SCREEN();
-    confirm_restart_open("Restart the device now?");
-}
-
 /* -------------------------------------------------------------- WLAN tab */
 
 static void wlan_state_update(void)
@@ -1790,12 +2129,14 @@ static void wlan_tab_build(lv_obj_t *rows)
     wlan_state_update();
 
     wlan_ssid_row = row_create(rows, "Network (SSID)");
-    row_set_value(wlan_ssid_row, (wlan_ssid_buf[0] == '\0') ? "--" : wlan_ssid_buf);
-    lv_obj_add_event_cb(wlan_ssid_row, wlan_ssid_row_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(row_value_button(wlan_ssid_row), wlan_ssid_row_event, LV_EVENT_CLICKED,
+                        NULL);
+    row_value_set(wlan_ssid_row, (wlan_ssid_buf[0] == '\0') ? "--" : wlan_ssid_buf);
 
     wlan_psk_row = row_create(rows, "Password");
-    row_set_value(wlan_psk_row, (wlan_psk_buf[0] == '\0') ? "--" : "*****");
-    lv_obj_add_event_cb(wlan_psk_row, wlan_psk_row_event, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(row_value_button(wlan_psk_row), wlan_psk_row_event, LV_EVENT_CLICKED,
+                        NULL);
+    row_value_set(wlan_psk_row, (wlan_psk_buf[0] == '\0') ? "--" : "*****");
 
     wlan_scan_list = ui_plain_container(rows);
     lv_obj_set_size(wlan_scan_list, lv_pct(100), LV_SIZE_CONTENT);
@@ -1807,65 +2148,144 @@ static void wlan_tab_build(lv_obj_t *rows)
 
 /* -------------------------------------------------------------- Info tab */
 
-/* One row of the Info table. Returns the next free row, so the table's height
- * follows what was actually added: the eleven rows the openHAB page used to ask
- * for were eleven whether or not the network rows were compiled in, which left
- * the simulator with a blank first row and nine empty grey stripes. */
-static uint16_t info_row(lv_obj_t *table, uint16_t row, const char *name, const char *value)
+/* One plain line of the Info page: the small font at the full width of the
+ * page, with dots on the end of whatever does not fit. A line that wrapped
+ * would grow a second, and the last line of the page would sink below the
+ * fold -- and the whole layout below exists so that nothing on this page
+ * scrolls. */
+static void info_line(lv_obj_t *rows, const char *text)
 {
-    lv_table_set_cell_value(table, row, 0, name);
-    lv_table_set_cell_value(table, row, 1, value);
+    lv_obj_t *line = lv_label_create(rows);
 
-    return row + 1;
+    lv_label_set_text(line, text);
+    lv_label_set_long_mode(line, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(line, lv_pct(100));
+    lv_obj_add_style(line, &ui_style_label, LV_PART_MAIN);
 }
 
-static void info_tab_build(lv_obj_t *rows)
+/* The label column of a page's labeled lines, as wide as the longest label
+ * that page uses plus a little air. Measured against the live family's small
+ * face rather than fixed, so the values line up no matter which of the three
+ * is drawing them -- a proportional face's spaces will not do it -- and
+ * ui_settings_rebuild() redraws the page on a theme change anyway. Per page
+ * rather than once for the screen, so a page of short labels ("IP:", "DNS:")
+ * is not sized by another page's "Gateway:". */
+static int32_t info_label_width(const char *longest)
 {
-    /* Moved here from openhab_ui.cpp's header_event_handler(), which is what
-     * the status bar used to open on its own. */
-    lv_obj_t *table = lv_table_create(rows);
+    const lv_font_t *font = ui_style_theme()->font_small;
+    int32_t          width = 4;
 
-    lv_obj_add_style(table, &ui_style_table_cell, LV_PART_ITEMS);
-    /* Eleven rows do not fit 240 px, so the scrollbar is on screen and needs a
-     * colour of the theme's rather than lv_theme_simple's grey. The slider's
-     * indicator colour is the right one to borrow: a scrollbar thumb is the
-     * same idea, and for the Material theme it happens to be the very grey
-     * lv_theme_simple was supplying. */
-    lv_obj_set_style_bg_color(table, lv_color_hex(ui_style_theme()->slider_indic.bg),
-                              LV_PART_SCROLLBAR);
-    lv_table_set_column_count(table, 2);
+    for (const char *p = longest; *p != '\0'; p++)
+        width += lv_font_get_glyph_width(font, *p, *(p + 1)) + ui_style_theme()->letter_space;
 
-    int32_t table_width = lv_display_get_horizontal_resolution(NULL) - 10;
-    lv_table_set_column_width(table, 0, table_width * 30 / 100);
-    lv_table_set_column_width(table, 1, table_width * 70 / 100);
-    lv_obj_set_size(table, lv_pct(100), lv_pct(100));
+    return width;
+}
 
-    char     buffer[50];
-    uint16_t row = 0;
+/* One labeled line: the name in the column above, the value in what is left,
+ * dotted when it does not fit. A hostname or an SSID can be 32 characters,
+ * and the page has no room for a second line of either. */
+static void info_row(lv_obj_t *rows, int32_t label_width, const char *name, const char *value)
+{
+    lv_obj_t *row = ui_plain_container(rows);
+
+    lv_obj_set_size(row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+
+    lv_obj_t *label = lv_label_create(row);
+
+    lv_label_set_text(label, name);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    lv_obj_set_width(label, label_width);
+    lv_obj_add_style(label, &ui_style_label, LV_PART_MAIN);
+
+    lv_obj_t *val = lv_label_create(row);
+
+    lv_label_set_text(val, value);
+    lv_label_set_long_mode(val, LV_LABEL_LONG_DOT);
+    lv_obj_set_flex_grow(val, 1);
+    lv_obj_add_style(val, &ui_style_label, LV_PART_MAIN);
+}
+
+/* One of a page's blank lines. Not a line of text -- the pages are sized to
+ * the family that runs tallest -- but the break it stands for, at a height
+ * that does. */
+static void info_gap(lv_obj_t *rows)
+{
+    lv_obj_t *gap = ui_plain_container(rows);
+
+    lv_obj_set_size(gap, lv_pct(100), 8);
+}
+
+/* --------------------------------------------------------- the four pages */
+
+/* Page one: the firmware itself -- what is running, since when, and how much
+ * memory it has to spare. The heap pair is the web status page's diagnosis,
+ * and the largest block is what tells "full" from "fragmented". */
+static void info_general_page(lv_obj_t *rows)
+{
+    char    buffer[64];
+    int32_t labels = info_label_width("Largest:");
+
+    snprintf(buffer, sizeof(buffer), "%s %u.%02u (%s)", TARGET_NAME, VERSION_MAJOR, VERSION_MINOR,
+             __DATE__);
+    info_line(rows, buffer);
+
+    info_gap(rows);
 
     /* port_millis() is the uptime: it is monotonic since boot and nothing
      * resets it, which is the whole of what the Uptime library did. */
     unsigned long long up = (unsigned long long)(port_millis() / 1000);
 
-    snprintf(buffer, sizeof(buffer), "%llu days, %lluh %llum %llus",
-             up / 86400, (up / 3600) % 24, (up / 60) % 60, up % 60);
-    row = info_row(table, row, "Uptime", buffer);
+    snprintf(buffer, sizeof(buffer), "%llu days, %lluh %llum %llus", up / 86400,
+             (up / 3600) % 24, (up / 60) % 60, up % 60);
+    info_row(rows, labels, "Uptime:", buffer);
 
-    snprintf(buffer, sizeof(buffer), "%u.%02u (%s %s)", VERSION_MAJOR, VERSION_MINOR, __DATE__,
-             __TIME__);
-    row = info_row(table, row, "Version", buffer);
+    snprintf(buffer, sizeof(buffer), "%u bytes", (unsigned)port_free_heap());
+    info_row(rows, labels, "Heap:", buffer);
 
-    row = info_row(table, row, "Target", TARGET_NAME);
+    /* Zero is the port's documented "cannot say": the host has no way to
+     * measure its own fragmentation, and a number that is really a shrug
+     * would answer the wrong question. */
+    if (port_largest_free_block() > 0)
+        snprintf(buffer, sizeof(buffer), "%u bytes", (unsigned)port_largest_free_block());
+    else
+        snprintf(buffer, sizeof(buffer), "--");
 
+    info_row(rows, labels, "Largest:", buffer);
+}
+
+/* Page two: the addresses the panel answers to. This is the half the old
+ * table had to drop for want of room: netmask, gateway and DNS are back,
+ * and the MAC moves here from the IP line's parens, spelled out at last --
+ * the page is the one thing the addresses page never was, all of a piece. */
+static void info_network_page(lv_obj_t *rows)
+{
     port_net_info_t net;
+    int32_t         labels = info_label_width("Gateway:");
 
     port_net_info(&net);
 
-    row = info_row(table, row, "Hostname", net.hostname);
-    /* "SSID" is the interface name where there is no radio. The row is worth
-     * keeping either way: it answers "which network am I on". */
-    row = info_row(table, row, "SSID", net.ssid);
-    row = info_row(table, row, "BSSID", net.bssid);
+    info_row(rows, labels, "Name:", net.hostname);
+    info_row(rows, labels, "IP:", net.ip);
+    info_row(rows, labels, "Mask:", net.netmask);
+    info_row(rows, labels, "Gateway:", net.gateway);
+    info_row(rows, labels, "DNS:", net.dns);
+    info_row(rows, labels, "MAC:", net.mac);
+}
+
+/* Page three: the radio link. On a wired host the SSID is the interface
+ * name and the BSSID the MAC -- the page still answers "which network am I
+ * on", the only way a host can, and RSSI says "wired" for the same reason. */
+static void info_wifi_page(lv_obj_t *rows)
+{
+    char            buffer[64];
+    port_net_info_t net;
+    int32_t         labels = info_label_width("BSSID:");
+
+    port_net_info(&net);
+
+    info_row(rows, labels, "SSID:", net.ssid);
+    info_row(rows, labels, "BSSID:", net.bssid);
 
     if (net.rssi == PORT_NET_RSSI_WIRED)
         snprintf(buffer, sizeof(buffer), "wired");
@@ -1873,84 +2293,211 @@ static void info_tab_build(lv_obj_t *rows)
         snprintf(buffer, sizeof(buffer), "%i dBm (%u %%)", net.rssi,
                  openhab_ui_signal_quality(net.rssi));
 
-    row = info_row(table, row, "RSSI", buffer);
+    info_row(rows, labels, "RSSI:", buffer);
+}
 
-    row = info_row(table, row, "MAC", net.mac);
-    row = info_row(table, row, "IP Addr.", net.ip);
-    row = info_row(table, row, "Mask", net.netmask);
-    row = info_row(table, row, "Gateway", net.gateway);
-    row = info_row(table, row, "DNS", net.dns);
+/* Page four: what the panel can sense, and what it is switching. The BME280
+ * reading is taken for the page rather than cached: the chip is in forced
+ * mode, one conversion per call, and a page built on demand might as well
+ * ask for its own -- sensor_bme280.hpp separates taking a reading from
+ * publishing one for exactly this. Only when the Sensors setting is on and
+ * the chip answered at boot, so the page never runs a bus the configuration
+ * left dark.
+ *
+ * The relays are one row rather than one each: the largest board has three,
+ * and beside the sensor's three that would be seven lines, where the page
+ * has room for four and a gap at the family that runs tallest. */
+static void info_sensors_page(lv_obj_t *rows)
+{
+    char    buffer[64];
+    int32_t labels = info_label_width("BME280:");
 
-    lv_table_set_row_count(table, row);
+    if (sensor_main_bme280_active() == true)
+    {
+        float temperature_c = 0.0f;
+        float humidity_pct  = 0.0f;
+        float pressure_hpa  = 0.0f;
+
+        if (sensor_bme280_read(&temperature_c, &humidity_pct, &pressure_hpa) == true)
+        {
+            /* One decimal is a display's; the MQTT topic's three are for an
+             * item history, and a page nobody stares at for minutes wants
+             * none of them. */
+            snprintf(buffer, sizeof(buffer), "%.1f °C", temperature_c);
+            info_row(rows, labels, "Temp:", buffer);
+            snprintf(buffer, sizeof(buffer), "%.1f %%", humidity_pct);
+            info_row(rows, labels, "Hum:", buffer);
+            snprintf(buffer, sizeof(buffer), "%.0f hPa", pressure_hpa);
+            info_row(rows, labels, "Press:", buffer);
+        }
+        else
+        {
+            /* Answered at boot, silent now. The page says so rather than
+             * repeating the last value or a zero: a stale reading on a
+             * status page is a lie with its timestamp missing. */
+            info_row(rows, labels, "BME280:", "--");
+        }
+    }
+    else
+        info_row(rows, labels, "BME280:", "off");
+
+    info_gap(rows);
+
+    if (relay_count() == 0)
+    {
+        snprintf(buffer, sizeof(buffer), "none");
+    }
+    else
+    {
+        /* One row, the states numbered the way the wall plate and the MQTT
+         * topics number them -- port_relay.h says why it is the port that
+         * counts from zero instead. */
+        size_t used = 0;
+
+        buffer[0] = '\0';
+
+        for (unsigned i = 0; i < relay_count(); i++)
+        {
+            int written = snprintf(buffer + used, sizeof(buffer) - used, "%s%u:%s",
+                                  (used > 0) ? " " : "", i + 1,
+                                  relay_state(i) ? "ON" : "OFF");
+
+            if (written < 0 || (size_t)written >= sizeof(buffer) - used)
+                break;
+
+            used += (size_t)written;
+        }
+    }
+
+    info_row(rows, labels, "Relays:", buffer);
+}
+
+/* The Systeminfo screen: four pages turned by the footer's arrows, each one
+ * few enough lines to fit between the bar and the footer without scrolling
+ * -- the budget is Antonio's, the family that runs tallest: a 16 px line at
+ * 23 px, six of them in the 140 px the chrome leaves of a 240 px panel, and
+ * screen_show_section() drops the frame padding for this tab. What one page
+ * cannot carry goes on the next one rather than below the fold, which is
+ * the whole answer to what the scrolling table this replaced was asked.
+ *
+ * Moved here from openhab_ui.cpp's header_event_handler(), which is what
+ * the status bar used to open on its own. */
+static void info_tab_build(lv_obj_t *rows)
+{
+    switch (info_page)
+    {
+    case INFO_PAGE_NETWORK:
+        info_network_page(rows);
+        break;
+
+    case INFO_PAGE_WIFI:
+        info_wifi_page(rows);
+        break;
+
+    case INFO_PAGE_SENSORS:
+        info_sensors_page(rows);
+        break;
+
+    default:
+        info_general_page(rows);
+        break;
+    }
 }
 
 /* ------------------------------------------------------------- Fonts tab */
 
-/* The nine faces the firmware carries, one line each: three typefaces at the
- * three sizes ui_style.cpp hands out -- captions and table cells, state lines
- * and headers, and the big value labels. Read-only, like Systeminfo, because
- * there is nothing to configure here: the page is what the Theme page's
- * choice looks like before it is made, and the 36 px lines are plain ASCII
- * because that face is the one tools/build_fonts.sh gives no accented
- * letters -- a page about type that drew placeholder boxes would defeat
- * itself. */
+/* The three typefaces the firmware carries, one page each: a page shows a
+ * family's three sizes together, because a specimen answers "what does this
+ * family look like" and its own sizes are what it is a specimen *of*. All
+ * three are compiled in unconditionally (see ui_style.cpp's font table), so
+ * the pager always has three pages to turn. */
+static const struct
+{
+    const char      *family;
+    const lv_font_t *small;
+    const lv_font_t *normal;
+    const lv_font_t *large;
+} font_faces[] = {
+    {"Barlow (Material, Classic)", &custom_font_ui_16,   &custom_font_ui_22,
+     &custom_font_ui_36},
+    {"Rajdhani (JARVIS)",          &custom_font_hud_16,  &custom_font_hud_22,
+     &custom_font_hud_36},
+    {"Antonio (LCARS)",            &custom_font_lcars_16, &custom_font_lcars_22,
+     &custom_font_lcars_36},
+};
+
+#define FONT_FACE_COUNT (sizeof(font_faces) / sizeof(font_faces[0]))
+
+/* The Fonts screen's two arrows, the same shape as the other paged screens'.
+ * The whole section is rebuilt rather than the lines alone: the footer
+ * carries the page number, and the shared path is what keeps every pointer
+ * correct after the delete. */
+static void fonts_page_event(lv_event_t *e)
+{
+    bool    next = (lv_event_get_user_data(e) == (void *)(uintptr_t)PAGER_NEXT);
+    uint8_t page = fonts_page;
+
+    /* The ends are the ends. A button that cannot move the page any further
+     * stays quiet rather than rebuilding what is already showing. */
+    if (next == true && page < FONT_FACE_COUNT - 1)
+        page++;
+    else if (next == false && page > 0)
+        page--;
+
+    if (page == fonts_page)
+        return;
+
+    fonts_page = page;
+
+    BEEPER_EVENT_TICK();
+
+    screen_show_section(SETTINGS_TAB_FONTS);
+}
+
+/* One family's page: the name, and the three sizes ui_style.cpp hands out --
+ * captions and the Systeminfo lines, state lines and headers, and the big
+ * value labels. Read-only, like Systeminfo, because there is nothing to
+ * configure here: the page is what the Theme page's choice looks like before
+ * it is made. The 36 px line is plain ASCII because that face is the one
+ * tools/build_fonts.sh gives no accented letters -- a page about type that
+ * drew placeholder boxes would defeat itself.
+ *
+ * Every line is one line, dotted when it does not fit, never wrapped: a
+ * specimen line that wrapped would grow a second line of the very size it
+ * is there to show. LVGL's DOT mode dots only what overflows the label's
+ * height -- at LV_SIZE_CONTENT nothing ever does, the line simply wraps --
+ * so the height is pinned to one line of the line's own face. The footer's
+ * status label does the same for the same reason (see screen_show_section).
+ * The fullest page, Antonio's, measures 141 of the 144 px between bar and
+ * footer, so no page scrolls. */
 static void fonts_tab_build(lv_obj_t *rows)
 {
-    static const struct
+    lv_obj_t *heading = lv_label_create(rows);
+
+    lv_label_set_text(heading, font_faces[fonts_page].family);
+    lv_label_set_long_mode(heading, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(heading, lv_pct(100));
+    lv_obj_set_height(heading, lv_font_get_line_height(ui_style_theme()->font_small));
+    lv_obj_add_style(heading, &ui_style_label, LV_PART_MAIN);
+    lv_obj_set_style_pad_top(heading, 2, 0);
+
+    const lv_font_t *fonts[] = {font_faces[fonts_page].small, font_faces[fonts_page].normal,
+                                font_faces[fonts_page].large};
+    static const uint8_t sizes[] = {16, 22, 36};
+
+    for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
     {
-        const char      *family;
-        const lv_font_t *small;
-        const lv_font_t *normal;
-        const lv_font_t *large;
-    } faces[] = {
-        {"Barlow (Material, Classic)", &custom_font_ui_16,   &custom_font_ui_22,
-         &custom_font_ui_36},
-        {"Rajdhani (JARVIS)",          &custom_font_hud_16,  &custom_font_hud_22,
-         &custom_font_hud_36},
-        {"Antonio (LCARS)",            &custom_font_lcars_16, &custom_font_lcars_22,
-         &custom_font_lcars_36},
-    };
+        char text[40];
 
-    for (size_t f = 0; f < sizeof(faces) / sizeof(faces[0]); f++)
-    {
-        /* A rule before every family but the first, so the three blocks read
-         * as three fonts rather than as one list of nine lines. The scrollbar
-         * grey rather than a border, because a hairline that asks for a
-         * colour of its own is a hairline that is wrong in one of the themes. */
-        if (f > 0)
-        {
-            lv_obj_t *rule = lv_obj_create(rows);
+        snprintf(text, sizeof(text), "%u px: The quick brown fox", (unsigned)sizes[i]);
 
-            lv_obj_set_scrollable(rule, false);
-            lv_obj_set_size(rule, lv_pct(100), 2);
-            lv_obj_set_style_bg_color(rule, lv_color_hex(ui_style_theme()->slider_indic.bg), 0);
-            lv_obj_set_style_border_width(rule, 0, 0);
-            lv_obj_set_style_radius(rule, 0, 0);
-            lv_obj_set_style_pad_all(rule, 0, 0);
-        }
+        lv_obj_t *sample = lv_label_create(rows);
 
-        lv_obj_t *heading = lv_label_create(rows);
-
-        lv_label_set_text(heading, faces[f].family);
-        lv_obj_add_style(heading, &ui_style_label, LV_PART_MAIN);
-        lv_obj_set_style_pad_top(heading, 2, 0);
-
-        const lv_font_t *fonts[] = {faces[f].small, faces[f].normal, faces[f].large};
-        static const uint8_t sizes[] = {16, 22, 36};
-
-        for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
-        {
-            char text[40];
-
-            snprintf(text, sizeof(text), "%u px: The quick brown fox", (unsigned)sizes[i]);
-
-            lv_obj_t *sample = lv_label_create(rows);
-
-            lv_label_set_text(sample, text);
-            lv_label_set_long_mode(sample, LV_LABEL_LONG_DOT);
-            lv_obj_set_width(sample, lv_pct(100));
-            lv_obj_set_style_text_font(sample, fonts[i], 0);
-        }
+        lv_label_set_text(sample, text);
+        lv_label_set_long_mode(sample, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(sample, lv_pct(100));
+        lv_obj_set_height(sample, lv_font_get_line_height(fonts[i]));
+        lv_obj_set_style_text_font(sample, fonts[i], 0);
     }
 }
 
@@ -2006,28 +2553,21 @@ static uint16_t icons_pages(void)
     return (uint16_t)((base + per_page - 1) / per_page);
 }
 
-/* The footer's four page-turning buttons. One callback with the direction
- * the button carries: the four differ only in which way and how far, and
- * four copies of the same handler would be four ways of saying so. */
+/* The catalogue's two arrows. One callback with the direction the button
+ * carries, like the Systeminfo screen's: the shared pager hands both the
+ * same pair, and what a screen does with them is its own one counter. */
 static void icons_page_event(lv_event_t *e)
 {
-    enum icons_page_e dir = (enum icons_page_e)(uintptr_t)lv_event_get_user_data(e);
-    uint16_t          pages = icons_pages();
-    uint16_t          page = icons_page;
-
-    if (dir == ICONS_PAGE_FIRST)
-        page = 0;
-    else if (dir == ICONS_PAGE_PREV)
-        page = (page > 0) ? (uint16_t)(page - 1) : 0;
-    else if (dir == ICONS_PAGE_NEXT)
-        page = (uint16_t)(page + 1);
-    else
-        page = (uint16_t)(pages - 1);
+    bool     next = (lv_event_get_user_data(e) == (void *)(uintptr_t)PAGER_NEXT);
+    uint16_t pages = icons_pages();
+    uint16_t page = icons_page;
 
     /* The ends are the ends. A button that cannot move the page any further
      * stays quiet rather than rebuilding what is already showing. */
-    if (page >= pages)
-        page = (uint16_t)(pages - 1);
+    if (next == true && page < pages - 1)
+        page++;
+    else if (next == false && page > 0)
+        page--;
 
     if (page == icons_page)
         return;
@@ -2041,6 +2581,62 @@ static void icons_page_event(lv_event_t *e)
      * and the buttons themselves, and the shared path is what keeps every
      * pointer -- the descriptors included -- correct after the delete. */
     screen_show_section(SETTINGS_TAB_ICONS);
+}
+
+/* The Systeminfo screen's two arrows, the same shape as the catalogue's --
+ * the two differ only in the counter they turn and the section they rebuild. */
+static void info_page_event(lv_event_t *e)
+{
+    bool    next = (lv_event_get_user_data(e) == (void *)(uintptr_t)PAGER_NEXT);
+    uint8_t page = info_page;
+
+    /* The ends are the ends, as above: a button that cannot move the page
+     * any further stays quiet rather than rebuilding what is showing. */
+    if (next == true && page < INFO_PAGE_COUNT - 1)
+        page++;
+    else if (next == false && page > 0)
+        page--;
+
+    if (page == info_page)
+        return;
+
+    info_page = page;
+
+    BEEPER_EVENT_TICK();
+
+    /* The whole section, for the same reason the catalogue's does: the
+     * footer between the arrows carries the page number, and the shared
+     * path is what keeps every pointer correct after the delete. */
+    screen_show_section(SETTINGS_TAB_INFO);
+}
+
+/* A section's own two arrows, for the tabs whose rows come off the shared
+ * table and do not fit on one page -- the same shape as the read-only
+ * screens' pager, over the section's own counter. Nothing to save on the
+ * way: turning a page is not leaving it, and the draft travels with the
+ * section until the back bar commits it. */
+static void fields_page_event(lv_event_t *e)
+{
+    bool    next = (lv_event_get_user_data(e) == (void *)(uintptr_t)PAGER_NEXT);
+    uint8_t tab = current_tab;
+    uint8_t page = field_page[tab];
+
+    /* The ends are the ends, and the count is the build's: a button that
+     * cannot move the page any further stays quiet rather than rebuilding
+     * what is already showing. */
+    if (next == true && page + 1 < field_pages[tab])
+        page++;
+    else if (next == false && page > 0)
+        page--;
+
+    if (page == field_page[tab])
+        return;
+
+    field_page[tab] = page;
+
+    BEEPER_EVENT_TICK();
+
+    screen_show_section(tab);
 }
 
 /* One page of the base icons the firmware carries, one cell each: the
@@ -2168,22 +2764,14 @@ static void icons_tab_build(lv_obj_t *rows)
         built++;
     }
 
-    /* The page number beside the buttons that move it. Not on a one-page
-     * catalogue: with nothing to turn there is nothing to number. */
-    if (pages > 1)
-    {
-        char text[24];
-
-        snprintf(text, sizeof(text), "Page %u of %u", (unsigned)icons_page + 1u,
-                 (unsigned)pages);
-        status_set(SETTINGS_TAB_ICONS, text);
-    }
+    /* The page number lives in the footer's pager, beside the arrows that
+     * move it, rather than in the status label the other screens use: it is
+     * what the arrows change, and the shared pager is where a screen that
+     * pages counts its pages. */
 }
 
 /* ------------------------------------------------------------ the screen */
 
-/* A footer that stays put rather than one inside the scroll area: Save is the
- * one control that has to be reachable whatever the list is showing. */
 /* A section heading only earns one of the visible lines where the tab holds
  * more than one section: "Sensors" above the only group of the Sensors tab
  * says nothing the bar has not already said. */
@@ -2198,11 +2786,96 @@ static uint8_t tab_section_count(uint8_t tab)
     return count;
 }
 
-/* The Sensors, Other and manual openHAB pages, straight off the shared table. */
-static void field_rows_build(uint8_t tab)
+/* How many vertical pixels a section's rows have to fit in. Measured against
+ * the panel and the chrome of the moment, because the pages are sized by
+ * what does not fit: a section is split rather than scrolled. */
+static int32_t field_page_capacity(void)
 {
-    lv_obj_t *rows = tab_rows[tab];
+    int32_t vres = lv_display_get_vertical_resolution(NULL);
+
+    return vres - BAR_HEIGHT - FOOTER_HEIGHT - 2 * ROWS_PAD;
+}
+
+/* One field's row: the name, and the control its value takes. */
+static void field_row_build(lv_obj_t *rows, const struct config_field_s *f)
+{
+    lv_obj_t *row = row_create(rows, f->label);
+
+    switch (row_ctrl(f))
+    {
+    case ROW_CTRL_SWITCH:
+    {
+        lv_obj_t *sw = row_switch(row);
+
+        if (config_field_read(f, &draft) != 0)
+            lv_obj_add_state(sw, LV_STATE_CHECKED);
+
+        lv_obj_add_event_cb(sw, field_switch_event, LV_EVENT_VALUE_CHANGED, (void *)f);
+        break;
+    }
+
+    case ROW_CTRL_SLIDER:
+    {
+        lv_obj_t *value = lv_label_create(row);
+
+        lv_label_set_text(value, "");
+        lv_obj_add_style(value, &ui_style_label, LV_PART_MAIN);
+        lv_obj_set_width(value, SLIDER_VALUE_W);
+        lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_RIGHT, 0);
+
+        lv_obj_t *slider = row_slider(row);
+
+        lv_slider_set_range(slider, f->min, f->max);
+        lv_obj_add_event_cb(slider, field_slider_event, LV_EVENT_VALUE_CHANGED, (void *)f);
+        lv_obj_add_event_cb(slider, field_slider_release_event, LV_EVENT_RELEASED, NULL);
+        /* The contact tick without the plate deformation: a slider is dragged
+         * rather than pressed, so ui_motion_pressable()'s visual half would be
+         * wrong on it while the acknowledgement is still right. */
+        ui_beep_attach_press(slider);
+        break;
+    }
+
+    default:
+    {
+        lv_obj_t *btn = row_value_button(row);
+
+        lv_obj_add_event_cb(btn, field_row_event, LV_EVENT_CLICKED, (void *)f);
+        break;
+    }
+    }
+
+    row_refresh(row, f);
+
+    /* Kept so that a choice made in one of the lists below can refresh the
+     * row that now holds it. */
+    if (f == host_field())
+        host_field_row = row;
+    else if (f == port_field())
+        port_field_row = row;
+    else if (f == sitemap_field())
+        sitemap_field_row = row;
+}
+
+/* Walk a tab's rows, packing them into pages and building the one showing.
+ *
+ * A page holds one logical group: a section always begins a fresh page, so
+ * "MQTT Broker" and "MQTT Publishing" are never half of each other, and a
+ * group with more rows than a page holds continues on the next one without
+ * repeating its heading. The rows are counted, not scrolled -- whatever
+ * does not fit is a page nobody could reach, and the footer's pager is the
+ * way to it.
+ *
+ * Both jobs in one walk: screen_show_section() asks for the page count
+ * before it builds the footer that turns them, and then asks for the rows
+ * of the page it settled on. `build` says which; the arithmetic is shared
+ * because the count it returns has to be the count it laid out. */
+static uint8_t field_pages_walk(uint8_t tab, bool build)
+{
+    lv_obj_t *rows = build ? tab_rows[tab] : NULL;
     bool      headings = tab_section_count(tab) > 1;
+    int32_t   capacity = field_page_capacity();
+    int32_t   y = 0;
+    uint8_t   page = 0;
 
     for (size_t i = 0; i < config_field_count; i++)
     {
@@ -2213,34 +2886,57 @@ static void field_rows_build(uint8_t tab)
 
         if (f->kind == SETTINGS_SECTION)
         {
+            /* A new group is a new page, unless it is the first thing on
+             * the one being counted. */
+            if (y > 0)
+            {
+                page++;
+                y = 0;
+            }
+
             if (headings == true)
             {
-                lv_obj_t *heading = lv_label_create(rows);
+                if (build == true && page == field_page[tab])
+                {
+                    lv_obj_t *heading = lv_label_create(rows);
 
-                lv_label_set_text(heading, f->label);
-                /* The caption font, not the state font: a 22 px heading costs
-                 * most of a row, and this list has about five. */
-                lv_obj_add_style(heading, &ui_style_label, LV_PART_MAIN);
-                lv_obj_set_style_pad_top(heading, 2, 0);
+                    lv_label_set_text(heading, f->label);
+                    /* The caption font, not the state font: a 22 px heading
+                     * costs most of a row, and a page holds three. */
+                    lv_obj_add_style(heading, &ui_style_label, LV_PART_MAIN);
+                    lv_obj_set_style_pad_top(heading, 2, 0);
+                }
+
+                y += HEADING_H + ROW_GAP;
             }
 
             continue;
         }
 
-        lv_obj_t *row = row_create(rows, f->label);
+        if (y > 0 && y + ROW_HEIGHT > capacity)
+        {
+            page++;
+            y = 0;
+        }
 
-        row_refresh(row, f);
-        lv_obj_add_event_cb(row, field_row_event, LV_EVENT_CLICKED, (void *)f);
+        if (build == true && page == field_page[tab])
+            field_row_build(rows, f);
 
-        /* Kept so that a choice made in one of the lists below can refresh the
-         * row that now holds it. */
-        if (f == host_field())
-            host_field_row = row;
-        else if (f == port_field())
-            port_field_row = row;
-        else if (f == sitemap_field())
-            sitemap_field_row = row;
+        y += ROW_HEIGHT + ROW_GAP;
     }
+
+    return (uint8_t)(page + 1);
+}
+
+/* The rows the current page of a section holds -- and nothing to scroll: the
+ * walk above has already made sure they fit between the bar and the footer. */
+static void field_rows_build(uint8_t tab)
+{
+    lv_obj_t *rows = tab_rows[tab];
+
+    lv_obj_set_scrollable(rows, false);
+
+    field_pages_walk(tab, true);
 }
 
 /* The servers half of the openHAB page. */
@@ -2321,10 +3017,20 @@ static void openhab_tab_build(lv_obj_t *rows)
 /* The bar across the top of every settings screen, and all of it is the way
  * back -- the same affordance the item screens use, for the same reason. From
  * a section it returns to the menu that lists it, from a menu to the menu
- * above, and from the root menu it closes. */
+ * above, and from the root menu it closes.
+ *
+ * It is also, from a section, the save: the page being left commits its
+ * draft on the way through, before the navigation deletes the page it was
+ * a draft of. The restart a commit may have earned is asked about after the
+ * navigation, once the screen has stopped rebuilding -- a prompt is an
+ * overlay on this screen, and this bar is on its way somewhere. */
 static void back_event(lv_event_t *e)
 {
     LV_UNUSED(e);
+
+    const char *restart_label = NULL;
+
+    page_leave(&restart_label);
 
     if (current_tab == MENU_ROOT)
     {
@@ -2351,6 +3057,8 @@ static void back_event(lv_event_t *e)
         BEEPER_EVENT_LINK_BACK();
         screen_show_menu(menu_of(current_tab));
     }
+
+    restart_prompt(restart_label);
 }
 
 /* A close glyph at the root of the index, a chevron everywhere else: the bar
@@ -2358,24 +3066,32 @@ static void back_event(lv_event_t *e)
 static void back_bar_create(const char *title)
 {
     ui_back_bar(screen, (current_tab == MENU_ROOT) ? LV_SYMBOL_CLOSE : LV_SYMBOL_LEFT,
-                title, back_event);
+                title, BAR_HEIGHT, back_event);
 }
 
 static void index_event(lv_event_t *e)
 {
+    uint8_t target = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
+
     /* Arriving at a section is arriving at its first page -- the openHAB
-     * manual page and the Icons catalogue's page alike. Not in
-     * screen_show_target(), which is also what ui_settings_rebuild() goes
-     * through: a theme change -- including the automatic night one, at any
-     * moment -- must leave the page it happens on where it was. */
+     * manual page, the Icons catalogue's, the Systeminfo screen's, the Fonts
+     * screen's and the paged sections' alike. Not in screen_show_target(),
+     * which is also what ui_settings_rebuild() goes through: a theme change
+     * -- including the automatic night one, at any moment -- must leave the
+     * page it happens on where it was. */
     openhab_manual = false;
     icons_page = 0;
+    info_page = 0;
+    fonts_page = 0;
+
+    if (target < SETTINGS_TAB_COUNT)
+        field_page[target] = 0;
 
     /* Here and not in screen_show_target(): that function is also the
      * programmatic entry from ui_settings_open(), which is how a pristine
      * device lands on the WLAN tab with nobody having touched anything. */
     BEEPER_EVENT_LINK();
-    screen_show_target((uint8_t)(uintptr_t)lv_event_get_user_data(e));
+    screen_show_target(target);
 }
 
 /* A menu: its entries, all visible at once, all comfortably bigger than a
@@ -2454,6 +3170,79 @@ static void screen_show_menu(uint8_t menu)
     ui_motion_enter(grid);
 }
 
+/* A flex-grow nothing, for centring a footer's pager: the status label's
+ * grow goes to one of these either side of the group instead, which pins it
+ * to the middle of the bar whatever the number between the arrows is. */
+static lv_obj_t *footer_spacer(lv_obj_t *footer)
+{
+    lv_obj_t *spacer = ui_plain_container(footer);
+
+    lv_obj_set_size(spacer, 0, 0);
+    lv_obj_set_flex_grow(spacer, 1);
+
+    return spacer;
+}
+
+/* The shared page turner, and the whole of the multi-page style: arrows
+ * either side of the page number, dead centre in the bar, the same on every
+ * screen that pages.
+ *
+ * The status label goes hidden rather than merely empty: a zero-width child
+ * still pays the bar's column gap, and the pager would sit two pixels right
+ * of the middle. Nothing a paged screen does fills the label -- the screens
+ * that page are the read-only ones -- but status_set() brings it back if one
+ * ever does, at the price of the pager's exact centre.
+ *
+ * The number is fixed-width, the text centred in it: a "1/4" narrower than a
+ * "4/4" by a hair would rock both arrows a pixel each way once a page, and
+ * the number is the one thing in the group that changes when they are
+ * tapped. Measured against the widest page the screen can show, so a tenth
+ * page would widen it honestly rather than dot it. */
+static void footer_pager(uint8_t tab, lv_obj_t *footer, lv_event_cb_t event, uint16_t page,
+                        uint16_t pages)
+{
+    const lv_font_t *font = ui_style_theme()->font_normal;
+    int32_t          number_w = 0;
+
+    lv_obj_add_flag(tab_status[tab], LV_OBJ_FLAG_HIDDEN);
+
+    footer_spacer(footer);
+
+    lv_obj_add_event_cb(ui_themed_button(footer, LV_SYMBOL_LEFT), event, LV_EVENT_CLICKED,
+                        (void *)(uintptr_t)PAGER_PREV);
+
+    for (unsigned p = 1; p <= pages; p++)
+    {
+        /* Sized for the widest "65535/65535": pages is a runtime count here,
+         * so the compiler can no longer prove what the constant page count of
+         * the screen this was written for used to make obvious. */
+        char    text[12];
+        int32_t w = 0;
+
+        snprintf(text, sizeof(text), "%u/%u", p, (unsigned)pages);
+
+        for (const char *c = text; *c != '\0'; c++)
+            w += lv_font_get_glyph_width(font, *c, *(c + 1))
+                 + ui_style_theme()->letter_space;
+
+        if (w > number_w)
+            number_w = w;
+    }
+
+    char     text[12];
+    lv_obj_t *leaf = lv_label_create(footer);
+
+    snprintf(text, sizeof(text), "%u/%u", (unsigned)page + 1, (unsigned)pages);
+    lv_label_set_text(leaf, text);
+    lv_obj_set_width(leaf, number_w);
+    lv_obj_set_style_text_align(leaf, LV_TEXT_ALIGN_CENTER, 0);
+
+    lv_obj_add_event_cb(ui_themed_button(footer, LV_SYMBOL_RIGHT), event, LV_EVENT_CLICKED,
+                        (void *)(uintptr_t)PAGER_NEXT);
+
+    footer_spacer(footer);
+}
+
 /* One section: the bar, a scrolling list of rows, and a footer carrying
  * whatever that section can do. */
 static void screen_show_section(uint8_t tab)
@@ -2481,9 +3270,20 @@ static void screen_show_section(uint8_t tab)
     /* The manual page is the one screen whose title is not its section's: it
      * is a page of the openHAB section rather than the section itself, and a
      * bar that said "openHAB" on both would leave Back looking like it had
-     * done nothing. */
-    back_bar_create((tab == SETTINGS_TAB_OPENHAB && openhab_manual == true) ? "openHAB Server"
-                                                                            : target_title(tab));
+     * done nothing. The Systeminfo screen's pages get the same treatment in
+     * the other direction: the section's name names four pages, and the bar
+     * says which of them is showing. */
+    char title[48];
+
+    snprintf(title, sizeof(title), "%s",
+             (tab == SETTINGS_TAB_OPENHAB && openhab_manual == true) ? "openHAB Server"
+                                                                     : target_title(tab));
+
+    if (tab == SETTINGS_TAB_INFO)
+        snprintf(title + strlen(title), sizeof(title) - strlen(title), " (%s)",
+                 info_page_names[info_page]);
+
+    back_bar_create(title);
 
     int32_t vres = lv_display_get_vertical_resolution(NULL);
 
@@ -2496,6 +3296,18 @@ static void screen_show_section(uint8_t tab)
     lv_obj_set_flex_flow(rows, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(rows, 4, 0);
     lv_obj_set_style_pad_row(rows, 4, 0);
+
+    /* The Info pages are the ones that must not scroll, and the fullest of
+     * them -- six address rows -- fits only without the frame the scrolling
+     * pages carry: at the tallest small font it measures 138 of the 140 px
+     * between bar and footer, which the 4 px padding alone would push past.
+     * The gaps between the lines go with it -- each page draws its own. */
+    if (tab == SETTINGS_TAB_INFO)
+    {
+        lv_obj_set_style_pad_ver(rows, 2, 0);
+        lv_obj_set_style_pad_row(rows, 0, 0);
+    }
+
     lv_obj_set_style_bg_color(rows, lv_color_hex(ui_style_theme()->slider_indic.bg),
                               LV_PART_SCROLLBAR);
 
@@ -2530,102 +3342,116 @@ static void screen_show_section(uint8_t tab)
 
     if (tab == SETTINGS_TAB_INFO)
     {
-        lv_obj_add_event_cb(ui_themed_button(footer, "Restart"), restart_event, LV_EVENT_CLICKED,
-                            NULL);
+        /* Read-only, with nothing to scan for: the pager is the only thing
+         * this screen's footer carries. */
+        footer_pager(tab, footer, info_page_event, info_page, INFO_PAGE_COUNT);
     }
     else if (tab == SETTINGS_TAB_FONTS)
     {
-        /* Read-only, like Systeminfo, and there is nothing to save: the rows
-         * on it are samples, not fields. */
-    }
-    else if (tab == SETTINGS_TAB_ICONS)
-    {
-        /* The catalogue's pages, turned from the footer because the footer is
-         * where this screen keeps every action its page can take. Only when
-         * there is more than one of them: a single-page catalogue -- and a
-         * build without the icon set at all, which gets the note instead --
-         * is a page with nothing to turn. */
-        if (icons_pages() > 1)
-        {
-            lv_obj_add_event_cb(ui_themed_button(footer, "<<"), icons_page_event,
-                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_FIRST);
-            lv_obj_add_event_cb(ui_themed_button(footer, "<"), icons_page_event,
-                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_PREV);
-            lv_obj_add_event_cb(ui_themed_button(footer, ">"), icons_page_event,
-                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_NEXT);
-            lv_obj_add_event_cb(ui_themed_button(footer, ">>"), icons_page_event,
-                                LV_EVENT_CLICKED, (void *)(uintptr_t)ICONS_PAGE_LAST);
-        }
-    }
-    else if (tab == SETTINGS_TAB_AUDIO)
-    {
-        lv_obj_add_event_cb(ui_themed_button(footer, "Test"), audio_test_event,
-                            LV_EVENT_CLICKED, NULL);
-
-        /* Only where there is something to demonstrate. The polyphonic engine
-         * has no tune, and a button that reported "nothing to play" would be
-         * worse than an absent one -- see beeper_song.h. */
-        if (beeper_demo_available() == true)
-        {
-            audio_demo_button = ui_themed_button(footer, "Demo");
-
-            lv_obj_add_event_cb(audio_demo_button, audio_demo_event,
-                                LV_EVENT_CLICKED, NULL);
-
-            /* Built mid-tune if the user left the page and came back: the
-             * label has to arrive saying Stop. */
-            audio_demo_refresh();
-        }
-
-        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)tab);
-    }
-    else if (tab == SETTINGS_TAB_TOUCH)
-    {
-        /* Only where there is something to calibrate. A capacitive panel
-         * reports the pixel grid it is bonded to; there is no origin and no
-         * span, and a procedure offered anyway could only write four numbers
-         * that the pointer then ignores. The rows stay, because a config.json
-         * is read by whichever board it lands on. */
-        if (port_indev_calibratable() == true)
-        {
-            lv_obj_add_event_cb(ui_themed_button(footer, "Calibrate"), calibrate_event,
-                                LV_EVENT_CLICKED, NULL);
-        }
-        else
-        {
-            /* Said rather than left to be inferred from a missing button. The
-             * rows above are still there and still editable, because a
-             * config.json is read by whichever board it lands on. */
-            status_set(tab, "This panel needs none");
-        }
-
-        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)tab);
-    }
-    else if (tab == SETTINGS_TAB_WLAN)
-    {
-        lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), scan_event, LV_EVENT_CLICKED, NULL);
-        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), wlan_save_event, LV_EVENT_CLICKED,
-                            NULL);
-    }
-    else if (tab == SETTINGS_TAB_OPENHAB && openhab_manual == false)
-    {
-        /* Scan is the counterpart of the WLAN page's, and there for the same
-         * cases: a server that was still starting when the page opened, or a
-         * sitemap that has only just been written. Manual is the way to the
-         * fields, for everything the network did not offer. */
-        lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), openhab_scan_event,
-                            LV_EVENT_CLICKED, NULL);
-        lv_obj_add_event_cb(ui_themed_button(footer, "Manual"), openhab_manual_event,
-                            LV_EVENT_CLICKED, NULL);
-        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)tab);
+        /* Read-only, like Systeminfo: the rows on it are samples, not
+         * fields. The pager turns the families, one page each, in the same
+         * footer every paged screen wears. */
+        footer_pager(tab, footer, fonts_page_event, fonts_page, FONT_FACE_COUNT);
     }
     else
     {
-        lv_obj_add_event_cb(ui_themed_button(footer, "Save"), save_event, LV_EVENT_CLICKED,
-                            (void *)(uintptr_t)tab);
+        /* The one control that is no longer here is Save: leaving the page
+         * commits, and a button that did what was going to happen anyway
+         * was a button that only taught the wrong habit. What is left is
+         * what a page can *do* -- look again, listen, calibrate, go deeper
+         * -- and then the pager, if its rows did not fit. */
+        if (tab == SETTINGS_TAB_AUDIO)
+        {
+            lv_obj_add_event_cb(ui_themed_button(footer, "Test"), audio_test_event,
+                                LV_EVENT_CLICKED, NULL);
+
+            /* Only where there is something to demonstrate. The polyphonic
+             * engine has no tune, and a button that reported "nothing to
+             * play" would be worse than an absent one -- see beeper_song.h. */
+            if (beeper_demo_available() == true)
+            {
+                audio_demo_button = ui_themed_button(footer, "Demo");
+
+                lv_obj_add_event_cb(audio_demo_button, audio_demo_event,
+                                    LV_EVENT_CLICKED, NULL);
+
+                /* Built mid-tune if the user left the page and came back: the
+                 * label has to arrive saying Stop. */
+                audio_demo_refresh();
+            }
+        }
+        else if (tab == SETTINGS_TAB_TOUCH)
+        {
+            /* Only where there is something to calibrate. A capacitive panel
+             * reports the pixel grid it is bonded to; there is no origin and
+             * no span, and a procedure offered anyway could only write four
+             * numbers that the pointer then ignores. The rows stay, because
+             * a config.json is read by whichever board it lands on. */
+            if (port_indev_calibratable() == true)
+            {
+                lv_obj_add_event_cb(ui_themed_button(footer, "Calibrate"), calibrate_event,
+                                    LV_EVENT_CLICKED, NULL);
+            }
+            else
+            {
+                /* Said rather than left to be inferred from a missing
+                 * button. The rows above are still there and still
+                 * editable, because a config.json is read by whichever
+                 * board it lands on. */
+                status_set(tab, "This panel needs none");
+            }
+        }
+        else if (tab == SETTINGS_TAB_WLAN)
+        {
+            lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), scan_event,
+                                LV_EVENT_CLICKED, NULL);
+        }
+        else if (tab == SETTINGS_TAB_ICONS)
+        {
+            /* The catalogue's pages, in the shared pager like the read-only
+             * screens'. Only when there is more than one of them: a
+             * single-page catalogue -- and a build without the icon set at
+             * all, which gets the note instead -- is a page with nothing
+             * to turn. */
+            uint16_t pages = icons_pages();
+
+            if (pages > 1)
+                footer_pager(tab, footer, icons_page_event, icons_page, pages);
+        }
+        else if (tab == SETTINGS_TAB_OPENHAB && openhab_manual == false)
+        {
+            /* Scan is the counterpart of the WLAN page's, and there for the
+             * same cases: a server that was still starting when the page
+             * opened, or a sitemap that has only just been written. Manual
+             * is the way to the fields, for everything the network did not
+             * offer. */
+            lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), openhab_scan_event,
+                                LV_EVENT_CLICKED, NULL);
+            lv_obj_add_event_cb(ui_themed_button(footer, "Manual"), openhab_manual_event,
+                                LV_EVENT_CLICKED, NULL);
+        }
+
+        /* The pager, for the tabs whose rows come off the shared table and
+         * did not fit on one page -- one logical group per page, turned by
+         * the footer like every paged screen this UI has. The count is
+         * asked for here, before the rows are built, because the footer is
+         * built first and the walk is what knows. The clamp matters a theme
+         * change from now: the capacity follows the small font, and a page
+         * that no longer exists is not the one to be showing when the
+         * rebuild settles -- the nearest page, not the first, because a
+         * theme change is not a navigation. */
+        if (tab != SETTINGS_TAB_WLAN && tab != SETTINGS_TAB_ICONS &&
+            (tab != SETTINGS_TAB_OPENHAB || openhab_manual == true))
+        {
+            field_pages[tab] = field_pages_walk(tab, false);
+
+            if (field_page[tab] >= field_pages[tab])
+                field_page[tab] = (uint8_t)(field_pages[tab] - 1);
+
+            if (field_pages[tab] > 1)
+                footer_pager(tab, footer, fields_page_event, field_page[tab],
+                            field_pages[tab]);
+        }
     }
 
     switch (tab)
@@ -2655,7 +3481,12 @@ static void screen_show_section(uint8_t tab)
         break;
     }
 
-    ui_motion_enter(rows);
+    /* Not the Fonts screen. Its lines are the subject rather than the
+     * furniture: a specimen that fades and slides in is briefly not the
+     * shape its family draws it in, and a page turned to compare type wants
+     * every line at its final place and weight the moment it appears. */
+    if (tab != SETTINGS_TAB_FONTS)
+        ui_motion_enter(rows);
 }
 
 /* ------------------------------------------------------------------- API */
@@ -2675,10 +3506,23 @@ void ui_settings_open(enum settings_tab_e tab)
     {
         /* Already up: treat this as a request for that section, the way the
          * single open_window slot in openhab_ui.cpp stopped a second window
-         * stacking -- and arriving at the Icons catalogue is arriving at its
-         * first page, the same as every way of arriving below. */
+         * stacking. The page being left commits like any other -- this is the
+         * control interface's way around the screen, and it owes the draft
+         * the same save the back bar does -- and arriving at the Icons
+         * catalogue is arriving at its first page, the same as every way of
+         * arriving below. */
+        const char *restart_label = NULL;
+
+        page_leave(&restart_label);
+
         icons_page = 0;
+
+        if (tab < SETTINGS_TAB_COUNT)
+            field_page[tab] = 0;
+
         screen_show_target(tab);
+
+        restart_prompt(restart_label);
         return;
     }
 
@@ -2696,6 +3540,9 @@ void ui_settings_open(enum settings_tab_e tab)
     scan_running = false;
     openhab_manual = false;
     icons_page = 0;
+
+    if (tab < SETTINGS_TAB_COUNT)
+        field_page[tab] = 0;
 
     screen = ui_screen_create();
 
@@ -2716,6 +3563,14 @@ void ui_settings_close(void)
 {
     if (screen == NULL)
         return;
+
+    /* Closing is leaving a page too -- the last one, and often straight from
+     * a section (the dimmed clock pushes in, the control interface asks for
+     * `settings`). The draft commits with no restart offered: the prompt is
+     * an overlay on a screen that is on its way out, and a reboot that
+     * answered a close the user had already moved on from would be a
+     * surprise on a different scale than the ones this screen gives. */
+    page_leave(NULL);
 
     overlay_close();
 
@@ -2740,10 +3595,10 @@ void ui_settings_close(void)
 
     BEEPER_EVENT_SCREEN_OUT();
 
-    /* Undo whatever Test applied out of the draft. A no-op unless the Audio
-     * page was visited, since these are the values already in force -- and
-     * after Save they are the draft's anyway, because settings_apply_live()
-     * has been through by then. */
+    /* Undo whatever Test applied out of the draft. Usually a no-op by now,
+     * because leaving the Audio page commits the draft and the values are
+     * the live config's -- but the close can come while the page is still
+     * up, and a volume tested and abandoned is not a volume to keep. */
     if (settings_config != NULL)
     {
         beeper_set_volume((uint8_t)settings_config->item.beeper.volume);

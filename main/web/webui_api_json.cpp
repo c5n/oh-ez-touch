@@ -96,6 +96,10 @@ size_t webui_api_config_json(const config_item_t *item, char *out, size_t out_si
 
         row["name"] = f->name;
         row["label"] = f->label;
+        /* So a client can put it next to the value, the way the panel's own
+         * rows and the web form do. Null -- absent -- without one. */
+        if (f->unit != NULL)
+            row["unit"] = f->unit;
         row["kind"] = field_kind_name(f);
 
         switch (f->kind)

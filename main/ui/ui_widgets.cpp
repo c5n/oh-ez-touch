@@ -48,12 +48,12 @@ lv_obj_t *ui_themed_button(lv_obj_t *parent, const char *text)
 }
 
 lv_obj_t *ui_back_bar(lv_obj_t *parent, const char *symbol, const char *title,
-                      lv_event_cb_t cb)
+                      int32_t height, lv_event_cb_t cb)
 {
     lv_obj_t *bar = lv_obj_create(parent);
 
     lv_obj_set_scrollable(bar, false);
-    lv_obj_set_size(bar, lv_pct(100), UI_BAR_H);
+    lv_obj_set_size(bar, lv_pct(100), height);
     lv_obj_set_pos(bar, 0, 0);
     lv_obj_add_style(bar, &ui_style_win_header, LV_PART_MAIN);
     lv_obj_set_style_radius(bar, 0, 0);
