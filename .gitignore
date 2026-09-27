@@ -50,3 +50,14 @@ tools/__pycache__/
 .vscode/
 .idea/
 *.swp
+
+# An in-source `idf.py build` in test/host leaves its output next to the
+# CMakeLists.txt -- CMakeCache.txt, build.ninja, esp-idf/, the .elf and the
+# rest. The real host build lives in a build directory (covered by build/
+# above); the in-source one is an accident, so everything it drops there is
+# ignored wholesale rather than by name, and whatever a configure step
+# invents next lands in the ignore rather than in a commit.
+test/host/*
+!test/host/CMakeLists.txt
+!test/host/sdkconfig.defaults
+!test/host/main/
