@@ -518,6 +518,11 @@ void ble_scan_setup(Config &config)
     next_window = port_millis() + 15000;
 }
 
+bool ble_scan_active(void)
+{
+    return ble_available;
+}
+
 void ble_scan_loop(Config &config)
 {
     const config_item_t &item = config.item;

@@ -15,7 +15,7 @@
  *
  *      0                                                        320
  *    0 +----------------------------------------------------------+
- *      | 21:47            KITCHEN                   87% (((        |  30
+ *      | 21:47            KITCHEN                    ))) |) ~  (   |  30
  *   30 +----------------------------------------------------------+
  *      |   +----------+   +----------+   +----------+              |
  *      |   |  96 x 93 |   |          |   |          |              |
@@ -46,12 +46,18 @@ static struct
     lv_obj_t *root;
     lv_obj_t *clock;
     lv_obj_t *title;
+    lv_obj_t *fan;
     lv_obj_t *link;
+    lv_obj_t *bt;
     lv_obj_t *notice;
 } material;
 
-/* Quiet: this is context, not content. The tiles are what the eye should
- * land on, so everything up here is the caption face at partial opacity. */
+/* Quiet, not ghostly: this is context, not content, so the band holds back
+ * from the tiles -- but at part opacity rather than a whisper. The opacities
+ * below were 60 and 70 until the panels reported the band as good as absent:
+ * an ink mixed 60/40 into a mid-grey ground spends most of its contrast on
+ * the mixing, and what reaches the glass is ground with a suggestion of ink
+ * in it. Eight parts ink in ten is still visibly calmer than the tiles. */
 static lv_obj_t *band_label(lv_obj_t *parent, const char *text, lv_opa_t opa)
 {
     const struct ui_theme_s *t = ui_style_theme();
@@ -82,14 +88,23 @@ static void material_build(lv_obj_t *parent)
 
     ui_frame_settings_target(material.root);
 
-    material.clock = band_label(material.root, "--:--", LV_OPA_70);
+    material.clock = band_label(material.root, "--:--", LV_OPA_90);
 
-    material.title = band_label(material.root, "", LV_OPA_60);
+    material.title = band_label(material.root, "", LV_OPA_80);
     lv_obj_set_flex_grow(material.title, 1);
     lv_obj_set_style_text_align(material.title, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_letter_space(material.title, 1, 0);
 
-    material.link = band_label(material.root, LV_SYMBOL_POWER, LV_OPA_60);
+    /* The link, quiet like the rest of the band: the strength fan beside the
+     * glyph for the states with no strength to show, then the BLE badge. The
+     * fan and the glyph are never both visible; the band's one full-opacity
+     * glyph is still the notice below. */
+    const struct ui_theme_s *t = ui_style_theme();
+
+    material.fan = ui_frame_wifi_fan(material.root, t->screen.text, LV_OPA_80);
+    material.link = band_label(material.root, LV_SYMBOL_POWER, LV_OPA_80);
+    material.bt = band_label(material.root, LV_SYMBOL_BLUETOOTH, LV_OPA_80);
+    lv_obj_add_flag(material.bt, LV_OBJ_FLAG_HIDDEN);
 
     /* At the end of the band, and the only thing up here at full opacity. The
      * band is deliberately quiet -- context, not content -- so the one glyph
@@ -152,15 +167,31 @@ static void material_set_clock(const char *text)
 
 static void material_set_link(bool online, int rssi)
 {
-    if (material.link == NULL)
+    if (material.link == NULL || material.fan == NULL)
         return;
 
-    if (online == false)
-        lv_label_set_text(material.link, LV_SYMBOL_REFRESH);
-    else if (rssi < 0)
-        lv_label_set_text(material.link, LV_SYMBOL_SHUFFLE);
+    /* The fan in place of the number-and-glyph this used to be: a calm theme
+     * wants the link read at a glance or not at all, and a shape that fills
+     * up says more than a percentage ever did. Never both up at once; see
+     * classic_set_link() for the states that show the glyph instead. */
+    if (online == true && rssi >= 0)
+    {
+        ui_frame_wifi_fan_set(material.fan, 1 + (rssi >= 34) + (rssi >= 67));
+        lv_obj_add_flag(material.link, LV_OBJ_FLAG_HIDDEN);
+    }
     else
-        lv_label_set_text_fmt(material.link, "%d%% " LV_SYMBOL_WIFI, rssi);
+    {
+        lv_label_set_text(material.link, online ? LV_SYMBOL_SHUFFLE : LV_SYMBOL_REFRESH);
+        lv_obj_clear_flag(material.link, LV_OBJ_FLAG_HIDDEN);
+        ui_frame_wifi_fan_set(material.fan, 0);
+    }
+}
+
+static void material_set_radios(bool ble)
+{
+    if (material.bt != NULL)
+        (ble == true) ? lv_obj_clear_flag(material.bt, LV_OBJ_FLAG_HIDDEN)
+                      : lv_obj_add_flag(material.bt, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void material_set_notice(enum ui_notice_e notice)
@@ -170,4 +201,5 @@ static void material_set_notice(enum ui_notice_e notice)
 
 const struct ui_frame_ops_s ui_frame_material = {
     material_build,     material_destroy,  material_content_area, material_set_title,
-    material_set_clock, material_set_link, material_set_notice,   NULL};
+    material_set_clock, material_set_link, material_set_radios,   material_set_notice,
+    NULL};

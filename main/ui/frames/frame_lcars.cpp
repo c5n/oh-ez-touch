@@ -23,7 +23,7 @@
  *      |####|  <- the notch's top-left fillet is the inner sweep
  *   90 |####|
  *   96 +----+
- *      |####|  wifi + RSSI, and the way into the settings screen        68
+ *      |####|  the link and the radios, and the way into the settings   68
  *  164 +----+
  *  170 +----+
  *      |####|  a cell tag -- or the alert glyph, when there is one --   70
@@ -70,8 +70,9 @@ static struct
     lv_obj_t *root;
     lv_obj_t *title;
     lv_obj_t *clock;
+    lv_obj_t *fan;
     lv_obj_t *wifi;
-    lv_obj_t *signal;
+    lv_obj_t *bt;
     lv_obj_t *tag;
     lv_obj_t *notice;
     lv_obj_t *notice_cell[2];
@@ -180,8 +181,16 @@ static void lcars_build(lv_obj_t *parent)
     lv_obj_set_style_pad_row(status, 2, 0);
     ui_frame_settings_target(status);
 
-    lcars.wifi   = block_label(status, LV_SYMBOL_POWER, t->font_small, ink);
-    lcars.signal = block_label(status, "--", t->font_small, ink);
+    /* The link, stacked in the cell: the strength fan over the glyph for the
+     * states with no strength to show, then the BLE badge. The fan and the
+     * glyph are never both visible, so the column never carries a blank cell
+     * for the one that is hidden. */
+    lcars.fan = ui_frame_wifi_fan(status, ink, LV_OPA_COVER);
+
+    lcars.wifi = block_label(status, LV_SYMBOL_POWER, t->font_small, ink);
+
+    lcars.bt = block_label(status, LV_SYMBOL_BLUETOOTH, t->font_small, ink);
+    lv_obj_add_flag(lcars.bt, LV_OBJ_FLAG_HIDDEN);
 
     /* The bottom cell, and the rounded cap the spine ends on: the block is
      * rounded and a square patch flattens the top where it meets the gap.
@@ -248,16 +257,31 @@ static void lcars_set_clock(const char *text)
 
 static void lcars_set_link(bool online, int rssi)
 {
-    if (lcars.wifi != NULL)
-        lv_label_set_text(lcars.wifi, online ? LV_SYMBOL_WIFI : LV_SYMBOL_REFRESH);
-
-    if (lcars.signal == NULL)
+    if (lcars.wifi == NULL || lcars.fan == NULL)
         return;
 
-    if (rssi < 0)
-        lv_label_set_text(lcars.signal, LV_SYMBOL_SHUFFLE);
+    /* The fan carries the strength, in the ink the cell's text wears; the
+     * number this used to show beside the glyph is the web status page's,
+     * where there is room to read it. Never both fan and glyph up at once;
+     * see classic_set_link() for the states that show the glyph instead. */
+    if (online == true && rssi >= 0)
+    {
+        ui_frame_wifi_fan_set(lcars.fan, 1 + (rssi >= 34) + (rssi >= 67));
+        lv_obj_add_flag(lcars.wifi, LV_OBJ_FLAG_HIDDEN);
+    }
     else
-        lv_label_set_text_fmt(lcars.signal, "%d", rssi);
+    {
+        lv_label_set_text(lcars.wifi, online ? LV_SYMBOL_SHUFFLE : LV_SYMBOL_REFRESH);
+        lv_obj_clear_flag(lcars.wifi, LV_OBJ_FLAG_HIDDEN);
+        ui_frame_wifi_fan_set(lcars.fan, 0);
+    }
+}
+
+static void lcars_set_radios(bool ble)
+{
+    if (lcars.bt != NULL)
+        (ble == true) ? lv_obj_clear_flag(lcars.bt, LV_OBJ_FLAG_HIDDEN)
+                      : lv_obj_add_flag(lcars.bt, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* Colour is semantics here, which is both more authentic than one tile colour
@@ -333,4 +357,5 @@ static void lcars_set_notice(enum ui_notice_e notice)
 
 const struct ui_frame_ops_s ui_frame_lcars = {
     lcars_build,     lcars_destroy,  lcars_content_area, lcars_set_title,
-    lcars_set_clock, lcars_set_link, lcars_set_notice,   lcars_decorate_tile};
+    lcars_set_clock, lcars_set_link, lcars_set_radios,   lcars_set_notice,
+    lcars_decorate_tile};

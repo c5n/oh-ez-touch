@@ -68,6 +68,7 @@ static struct
     lv_obj_t *clock;
     lv_obj_t *title;
     lv_obj_t *link;
+    lv_obj_t *bt;
     lv_obj_t *notice;
     lv_obj_t *scan;
     lv_timer_t *scan_timer;
@@ -144,6 +145,14 @@ static void jarvis_build(lv_obj_t *parent)
     lv_obj_set_style_text_letter_space(jarvis.title, 1, 0);
 
     jarvis.link = strip_label(strip, LV_SYMBOL_POWER, LV_OPA_COVER);
+
+    /* The other radios' badge, past the signal bars. Same ink as the rest of
+     * the strip: this family already says the link's strength with its bars,
+     * which is its instrumentation look -- see jarvis_set_link() -- and the
+     * badge is a label of state, not a reading, so it joins the strip rather
+     * than the apparatus below it. */
+    jarvis.bt = strip_label(strip, LV_SYMBOL_BLUETOOTH, LV_OPA_COVER);
+    lv_obj_add_flag(jarvis.bt, LV_OBJ_FLAG_HIDDEN);
 
     /* The right end of the strip, past the signal bars. Reticle frames every
      * reading in the apparatus that measures it; an alert is the one thing on
@@ -258,6 +267,13 @@ static void jarvis_set_link(bool online, int rssi)
     bars[n] = '\0';
 
     lv_label_set_text(jarvis.link, bars);
+}
+
+static void jarvis_set_radios(bool ble)
+{
+    if (jarvis.bt != NULL)
+        (ble == true) ? lv_obj_clear_flag(jarvis.bt, LV_OBJ_FLAG_HIDDEN)
+                      : lv_obj_add_flag(jarvis.bt, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* ------------------------------------------------------------- the tile draw */
@@ -383,7 +399,8 @@ static void jarvis_set_notice(enum ui_notice_e notice)
 
 const struct ui_frame_ops_s ui_frame_jarvis = {
     jarvis_build,     jarvis_destroy,  jarvis_content_area, jarvis_set_title,
-    jarvis_set_clock, jarvis_set_link, jarvis_set_notice,   jarvis_decorate_tile};
+    jarvis_set_clock, jarvis_set_link, jarvis_set_radios,   jarvis_set_notice,
+    jarvis_decorate_tile};
 
 /* Told by the page whenever a ring's item moves. Not part of the frame
  * interface: only this family has rings, so only this family's page hook needs

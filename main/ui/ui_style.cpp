@@ -19,7 +19,6 @@ lv_style_t ui_style_slider;
 lv_style_t ui_style_slider_knob;
 lv_style_t ui_style_screen;
 lv_style_t ui_style_window;
-lv_style_t ui_style_table_cell;
 lv_style_t ui_style_slider_indicator;
 lv_style_t ui_style_icon;
 lv_style_t ui_style_swatch;
@@ -110,27 +109,35 @@ lv_style_t ui_style_info_error;
  *
  * UI_THEME_CLASSIC's day entry is the one that has to reproduce the look this
  * project had before it was themeable -- it was Material's until Material was
- * redesigned -- which is why it carries the five greys lv_theme_simple used to
+ * redesigned -- which is why it carries the four greys lv_theme_simple used to
  * supply underneath (0xF5F5F5 screen, 0x616161 screen text, 0xFFFFFF window,
- * 0xE0E0E0 table cell, 0x9E9E9E slider indicator). Those are
- * lv_palette_lighten(GREY, 4) / darken(GREY, 2) / white / lighten(GREY, 2) /
- * main(GREY) -- read out of the theme, not guessed. */
+ * 0x9E9E9E slider indicator). Those are
+ * lv_palette_lighten(GREY, 4) / darken(GREY, 2) / white / main(GREY) -- read
+ * out of the theme, not guessed. */
 static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
 
     /* --------------------------------------------------------------- Material
-     * Warm paper, flat white cards, and exactly one saturated colour on the
-     * screen -- a deep teal that means "this is on". The blue-on-silver the UI
-     * was born with had a gradient on every surface and a marker in four
-     * different places; what carries state here is a 4 px shelf along the
-     * bottom edge of the card, which is a border side rather than an object.
+     * A warm grey ground, flat white cards, and exactly one saturated colour
+     * on the screen -- a deep teal that means "this is on".
      *
-     * The link and active markers keep their names but stop being all-round
-     * borders: LV_BORDER_SIDE_BOTTOM is the shelf, and it follows the 18 px
-     * radius round as a stroked arc, which is what makes the card look like it
-     * is resting on it. */
+     * The ground is darker than the paper this used to be, and not for looks
+     * alone: every raised surface the family has is white, and a panel whose
+     * gamma crushes the difference between two near-whites showed no buttons
+     * at all -- a grey the cards sit a clear step above is the ground that
+     * earns them. The ink goes with it, and darker than the tiles' own: the
+     * header band's labels are this ink at part opacity (see
+     * frame_material.cpp), so what they mix down to still reads as ink on the
+     * glass rather than as ground showing through.
+     *
+     * The blue-on-silver the UI was born with had a gradient on every surface
+     * and a marker in four different places; what carries state here is a
+     * 4 px shelf along the bottom edge of the card, which is a border side
+     * rather than an object, and it follows the 18 px radius round as a
+     * stroked arc, which is what makes the card look like it is resting on
+     * it. */
     {
         UI_THEME_NAME_MATERIAL " Day", UI_THEME_MATERIAL, false,
-        /* screen       */ SURF(0xF2F0EC, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x6A6E76),
+        /* screen       */ SURF(0x8A857E, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x1B1D21),
         /* tile         */ SURF(0xFFFFFF, CK, NON, FULLO, 0xE2DED7, 1, FULLO, EK, RADIUS_CARD, 0x1B1D21),
         /* tile_pressed */ SURF(0xE8E4DC, CK, NON, MK, CK, MK, MK, EK, MK, 0x1B1D21),
         /* window       */ SURF(0xFFFFFF, CK, EK, FULLO, CK, 0, MK, EK, 0, CK),
@@ -140,7 +147,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0xE8E4DC, CK, NON, FULLO, 0xD5D0C6, 1, FULLO, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0x0B7A75, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
         /* knob         */ SURF(0x1B1D21, CK, NON, FULLO, CK, 0, MK, EK, 2, CK),
-        /* cell         */ SURF(0xFFFFFF, CK, EK, FULLO, 0xE2DED7, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0xC9C4BB, 1, MK, EK, RADIUS_PANEL, CK),
         /* info         */ SURF(0xFFFFFF, CK, EK, FULLO, 0x0B7A75, 3, MK, EK, RADIUS_PANEL, 0x1B1D21),
         /* accent       */ 0x0B7A75,
@@ -166,7 +172,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x11141A, CK, NON, FULLO, 0x2C3037, 1, FULLO, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0x48C0B0, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
         /* knob         */ SURF(0xE8E4DC, CK, NON, FULLO, CK, 0, MK, EK, 2, CK),
-        /* cell         */ SURF(0x1E2126, CK, EK, FULLO, 0x2C3037, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0x383D45, 1, MK, EK, RADIUS_PANEL, CK),
         /* info         */ SURF(0x1E2126, CK, EK, FULLO, 0x48C0B0, 3, MK, EK, RADIUS_PANEL, 0xE8E4DC),
         /* accent       */ 0x48C0B0,
@@ -212,7 +217,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x2A2A2A, CK, NON, FULLO, CK, 0, MK, EK, CIRC, CK),
         /* slider_indic */ SURF(0xFF9900, CK, EK, FULLO, CK, MK, MK, EK, CIRC, CK),
         /* knob         */ SURF(0xFFCC66, CK, NON, FULLO, CK, 0, MK, EK, CIRC, CK),
-        /* cell         */ SURF(0x000000, CK, EK, FULLO, 0xCC99CC, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0xFF9900, 2, MK, EK, CIRC, CK),
         /* info         */ SURF(0xCC6666, CK, NON, FULLO, 0xFF9900, 4, MK, EK, MK, 0x000000),
         /* accent       */ 0xFF9900,
@@ -238,7 +242,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x1A1A1A, CK, NON, FULLO, CK, 0, MK, EK, CIRC, CK),
         /* slider_indic */ SURF(0xB37300, CK, EK, FULLO, CK, MK, MK, EK, CIRC, CK),
         /* knob         */ SURF(0x8A5A2A, CK, NON, FULLO, CK, 0, MK, EK, CIRC, CK),
-        /* cell         */ SURF(0x000000, CK, EK, FULLO, 0x5A3A52, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0xB37300, 2, MK, EK, CIRC, CK),
         /* info         */ SURF(0x6A3838, CK, NON, FULLO, 0xB37300, 4, MK, EK, MK, 0xE8C89A),
         /* accent       */ 0xB37300,
@@ -280,7 +283,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x08202E, CK, NON, FULLO, 0x1E6E8C, 1, FULLO, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0x35D6FF, CK, EK, FULLO, CK, MK, MK, EK, RADIUS_PANEL, CK),
         /* knob         */ SURF(0xD8F6FF, CK, NON, FULLO, 0x35D6FF, 1, FULLO, EK, CIRC, CK),
-        /* cell         */ SURF(0x08202E, CK, EK, FULLO, 0x1E6E8C, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0x35D6FF, 1, MK, EK, MK, CK),
         /* info         */ SURF(0x0E3247, CK, NON, FULLO, 0x35D6FF, 2, FULLO, EK, MK, 0xD8F6FF),
         /* accent       */ 0x35D6FF,
@@ -306,7 +308,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x140D06, CK, NON, FULLO, 0x6A4A1A, 1, FULLO, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0xB3762A, CK, EK, FULLO, CK, MK, MK, EK, RADIUS_PANEL, CK),
         /* knob         */ SURF(0xE0A860, CK, NON, FULLO, 0xB3762A, 1, FULLO, EK, CIRC, CK),
-        /* cell         */ SURF(0x140D06, CK, EK, FULLO, 0x6A4A1A, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0xB3762A, 1, MK, EK, MK, CK),
         /* info         */ SURF(0x241706, CK, NON, FULLO, 0xB3762A, 2, FULLO, EK, MK, 0xE8C48A),
         /* accent       */ 0xB3762A,
@@ -354,7 +355,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0x9E9E9E, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
         /* knob         */ SURF(0xFFFFFF, 0xC0C0C0, VER, FULLO, 0x0B1928, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* cell         */ SURF(0xE0E0E0, CK, EK, FULLO, 0xC0C0C0, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0x000000, 1, MK, EK, MK, CK),
         /* info         */ SURF(0xC0C0C0, CK, EK, FULLO, 0x000000, 4, MK, EK, MK, 0x000000),
         /* accent       */ 0x0080FF,
@@ -380,7 +380,6 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* slider       */ SURF(0x1A2026, CK, NON, FULLO, 0x39424B, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
         /* slider_indic */ SURF(0x4A90B8, CK, EK, FULLO, CK, MK, MK, EK, MK, CK),
         /* knob         */ SURF(0x39424B, CK, NON, FULLO, 0x8A8276, BORDER_THIN, OP70, EK, RADIUS_PANEL, CK),
-        /* cell         */ SURF(0x1A2026, CK, EK, FULLO, 0x39424B, 1, MK, EK, MK, CK),
         /* swatch       */ SURF(CK, CK, EK, FULLO, 0x8A8276, 1, MK, EK, MK, CK),
         /* info         */ SURF(0x2A3138, CK, EK, FULLO, 0x8A8276, 4, MK, EK, MK, 0xE8E0D4),
         /* accent       */ 0x2A6E96,
@@ -592,7 +591,6 @@ void ui_style_init(void)
         lv_style_init(&ui_style_slider_knob);
         lv_style_init(&ui_style_screen);
         lv_style_init(&ui_style_window);
-        lv_style_init(&ui_style_table_cell);
         lv_style_init(&ui_style_slider_indicator);
         lv_style_init(&ui_style_icon);
         lv_style_init(&ui_style_swatch);
@@ -616,7 +614,6 @@ void ui_style_init(void)
         style_reinit(&ui_style_slider_knob);
         style_reinit(&ui_style_screen);
         style_reinit(&ui_style_window);
-        style_reinit(&ui_style_table_cell);
         style_reinit(&ui_style_slider_indicator);
         style_reinit(&ui_style_icon);
         style_reinit(&ui_style_swatch);
@@ -675,11 +672,6 @@ void ui_style_init(void)
 
     apply_surface(&ui_style_slider_indicator, &theme->slider_indic);
     apply_surface(&ui_style_slider_knob, &theme->knob);
-
-    /* ---- the systeminfo table ---- */
-    apply_surface(&ui_style_table_cell, &theme->cell);
-    lv_style_set_text_font(&ui_style_table_cell, theme->font_small);
-    lv_style_set_pad_ver(&ui_style_table_cell, 0);
 
     /* ---- the colour swatches ----
      * Deliberately no bg_color: the swatch's fill is the item's own colour,

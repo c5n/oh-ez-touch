@@ -31,11 +31,11 @@ typedef struct ui_chime_set_s ui_sound_set_s;
  *
  * LVGL's built-in "simple" theme still supplies the defaults underneath (see
  * main.cpp), but it supplies more than it looks: the screen background and text
- * colour, the item window background, the systeminfo table cells, the slider
- * indicator and the setpoint button matrix are all its light greys, none of
- * which this project used to set. A dark theme cannot leave any of them alone,
- * so those surfaces now have styles of their own here and are added at their
- * creation sites like everything else.
+ * colour, the item window background, the slider indicator and the setpoint
+ * button matrix are all its light greys, none of which this project used to
+ * set. A dark theme cannot leave any of them alone, so those surfaces now
+ * have styles of their own here and are added at their creation sites like
+ * everything else.
  *
  * A custom lv_theme was considered for that job and rejected:
  * lv_display_set_theme() only applies while the display's screens are still
@@ -109,7 +109,6 @@ struct ui_theme_s
     struct ui_surface_s slider;       /* ui_style_slider (MAIN)          */
     struct ui_surface_s slider_indic; /* ui_style_slider_indicator       */
     struct ui_surface_s knob;         /* ui_style_slider_knob            */
-    struct ui_surface_s cell;         /* ui_style_table_cell (ITEMS)     */
     struct ui_surface_s swatch;       /* ui_style_swatch                 */
     struct ui_surface_s info;         /* ui_style_info                   */
 
@@ -150,7 +149,7 @@ struct ui_theme_s
      * quietly pull a fourth font into the build. The roles are also the three
      * *weights* of the family's face, not three sizes of one weight, which is
      * where the hierarchy comes from -- see tools/build_fonts.sh. */
-    const lv_font_t *font_small;  /* captions, buttons, table cells */
+    const lv_font_t *font_small;  /* captions, buttons, Systeminfo  */
     const lv_font_t *font_normal; /* state lines, window headers    */
     const lv_font_t *font_large;  /* the big value labels           */
     int16_t          letter_space;
@@ -250,7 +249,6 @@ extern lv_style_t ui_style_slider_knob;
  * styles of their own. */
 extern lv_style_t ui_style_screen;           /* lv_screen_active() MAIN     */
 extern lv_style_t ui_style_window;           /* the item window's own obj   */
-extern lv_style_t ui_style_table_cell;       /* systeminfo table, ITEMS     */
 extern lv_style_t ui_style_slider_indicator; /* slider INDICATOR            */
 extern lv_style_t ui_style_icon;             /* the tile's watermark image  */
 extern lv_style_t ui_style_swatch;           /* both colour swatches        */

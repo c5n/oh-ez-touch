@@ -18,6 +18,7 @@
 #include "lodepng/lodepng.h"
 #include "time.h"
 #include "version.h"
+#include "ble/ble_scan.hpp"
 #include "debug.h"
 #include "port/port_net.h"
 #include "port/port_ntp.h"
@@ -871,6 +872,15 @@ static void header_set_title(const char *text)
     ui_style_theme()->frame->set_title(text);
 }
 
+/* The Bluetooth scanner's badge: asked as "is it running", not "is it
+ * configured" -- a host has no radio whatever the settings say. Called from
+ * the same places set_link() is: once a second from header_update(), and
+ * after a theme change rebuilt the frame. */
+static void radios_update(void)
+{
+    ui_style_theme()->frame->set_radios(ble_scan_active());
+}
+
 static void header_update(void)
 {
     static int last_second;
@@ -913,6 +923,8 @@ static void header_update(void)
                                               ? -1
                                               : openhab_ui_signal_quality(net.rssi));
     }
+
+    radios_update();
 }
 
 void widget_destroy(lv_obj_t *parent, struct widget_context_s *wctx)
@@ -1316,6 +1328,7 @@ static void theme_apply_pending(void)
 
     header_set_title(sitemap.getPageName());
     ui_style_theme()->frame->set_link(wifi_online, -1);
+    radios_update();
 
     /* reload_icons stays false: the decoded pixels are still the right ones,
      * page_generation is untouched so anything already in flight still lands,

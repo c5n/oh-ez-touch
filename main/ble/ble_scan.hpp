@@ -32,4 +32,10 @@ void ble_scan_setup(Config &config);
  */
 void ble_scan_loop(Config &config);
 
+/** Whether the scanner is actually running: the setting on, and a radio that
+ * answered. False on a host, which has no Bluetooth no matter what the
+ * configuration says -- the status row's glyph asks this rather than the
+ * setting so it never claims a radio that is not there. */
+bool ble_scan_active(void);
+
 #endif // BLE_SCAN_HPP

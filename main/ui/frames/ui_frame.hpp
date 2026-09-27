@@ -67,6 +67,14 @@ struct ui_frame_ops_s
      * (a wired host); `online` is false while the station is down. */
     void (*set_link)(bool online, int rssi);
 
+    /* The Bluetooth scanner's badge, asked as "is it running" rather than "is
+     * it configured" -- see openhab_ui.cpp's radios_update(). A family draws
+     * a glyph when it is; there is no hiding one when it is not, because
+     * nothing was ever shown for it. MQTT has no badge: a badge beside the
+     * wifi fan read as a second strength meter, so it was tried and taken
+     * down again -- see ui_frame_common.cpp. */
+    void (*set_radios)(bool ble);
+
     /* The banner indicator: what severity is waiting, or UI_NOTICE_NONE when
      * nothing is. Every family shows one, because it is the only way back to a
      * message box the user has folded away -- so this has no NULL case. */
@@ -104,6 +112,22 @@ lv_obj_t *ui_frame_container(lv_obj_t *parent);
 /* Make `obj` open the settings screen when touched. Every family puts this on
  * whatever carries its status readout. */
 void ui_frame_settings_target(lv_obj_t *obj);
+
+/* The wifi strength fan: a dot and three arcs, drawn rather than a glyph,
+ * because the arcs are what carry the strength -- no face this panel carries
+ * grades its fan, and a percentage next to a solid one says less at a glance
+ * than a shape that fills up. Colour and opacity travel in the object's own
+ * text styles, so a family gets its look by handing its label ink over;
+ * the level is the user_data, set by ui_frame_wifi_fan_set().
+ *
+ * Angles are LVGL's: 0 at three o'clock, clockwise, so the fan opens upward
+ * from a centre at the bottom edge. */
+lv_obj_t *ui_frame_wifi_fan(lv_obj_t *parent, uint32_t color, lv_opa_t opa);
+
+/* How many arcs are lit: 1 to 3. Zero hides the fan rather than drawing an
+ * empty one -- the states with no strength to show (offline, wired) get the
+ * family's REFRESH or SHUFFLE glyph instead, which says what is wrong. */
+void ui_frame_wifi_fan_set(lv_obj_t *fan, int level);
 
 /* Undo the caller's blinking colon.
  *
