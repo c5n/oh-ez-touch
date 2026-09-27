@@ -386,8 +386,8 @@ void Messagebox::restart_event(lv_event_t *e)
      * here the box above it is already the prompt, and a fault report with one
      * button under it does not need a second box to ask whether it meant it.
      *
-     * Does not return on either target: the simulator exits, which is the same
-     * statement made by a process that cannot reboot itself. */
+     * Does not return on either target: the simulator re-execs itself, which
+     * is a reboot in everything but name -- see linux/port_sys.c. */
     port_restart();
 }
 

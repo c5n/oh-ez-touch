@@ -891,8 +891,8 @@ static void confirm_restart_event(lv_event_t *e)
 {
     LV_UNUSED(e);
 
-    /* Does not return on either target: the simulator exits, which is the
-     * same statement made by a process that cannot reboot itself. */
+    /* Does not return on either target: the simulator re-execs itself, which
+     * is a reboot in everything but name -- see linux/port_sys.c. */
     port_restart();
 }
 
