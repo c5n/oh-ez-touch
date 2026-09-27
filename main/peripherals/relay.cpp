@@ -68,9 +68,12 @@ static const char *TAG = "relay";
 /* "relay/8/set" and a little room. */
 #define RELAY_TOPIC_MAX 24
 
-static unsigned relay_count = 0;
+/* The relays this board has, and what they are set to. Plain names on
+ * purpose: with relay_count()/relay_state() below as the public face, the
+ * state they answer from should not be spelling "relay" again on every line. */
+static unsigned count = 0;
 
-static bool relay_on[RELAY_MAX];
+static bool on[RELAY_MAX];
 
 /* Per relay, so that a state that changed while the broker was away is still
  * published when it comes back. Cleared on a reconnect for all of them. */
@@ -101,7 +104,7 @@ static void relay_command(const char *topic, const char *value)
     const char   *name = topic + 6;
     unsigned long number = strtoul(name, NULL, 10);
 
-    if (number < 1 || number > relay_count)
+    if (number < 1 || number > count)
     {
         /* The segment alone, not the rest of the topic: "no relay 9/set"
          * reads as though the topic were the problem. */
@@ -110,17 +113,17 @@ static void relay_command(const char *topic, const char *value)
     }
 
     unsigned index = (unsigned)number - 1;
-    bool     want = wanted_state(value, relay_on[index]);
+    bool     want = wanted_state(value, on[index]);
 
 #if CONFIG_OHEZ_DEBUG_RELAY
     printf("relay_command: %s = %s -> relay %lu %s\r\n", topic, value, number,
            want ? "on" : "off");
 #endif
 
-    if (want == relay_on[index] && relay_published[index] == true)
+    if (want == on[index] && relay_published[index] == true)
         return;
 
-    relay_on[index] = want;
+    on[index] = want;
     relay_published[index] = false;
 
     port_relay_set(index, want);
@@ -132,17 +135,17 @@ static void relay_command(const char *topic, const char *value)
 
 void relay_setup(void)
 {
-    relay_count = port_relay_count();
+    count = port_relay_count();
 
-    if (relay_count > RELAY_MAX)
+    if (count > RELAY_MAX)
     {
         /* A board with more relays than this file expects: drive the ones it
          * can address rather than nothing at all, and say which were left. */
-        ESP_LOGW(TAG, "%u relays, only %u addressable", relay_count, (unsigned)RELAY_MAX);
-        relay_count = RELAY_MAX;
+        ESP_LOGW(TAG, "%u relays, only %u addressable", count, (unsigned)RELAY_MAX);
+        count = RELAY_MAX;
     }
 
-    if (relay_count == 0)
+    if (count == 0)
         return;
 
     port_relay_init();
@@ -152,7 +155,7 @@ void relay_setup(void)
 
 void relay_loop(void)
 {
-    if (relay_count == 0)
+    if (count == 0)
         return;
 
     /* A reconnected broker holds nothing from the last session, so everything
@@ -161,7 +164,7 @@ void relay_loop(void)
     bool connected = ohez_mqtt_connected();
 
     if (connected == true && relay_was_connected == false)
-        for (unsigned i = 0; i < relay_count; i++)
+        for (unsigned i = 0; i < count; i++)
             relay_published[i] = false;
 
     relay_was_connected = connected;
@@ -169,7 +172,7 @@ void relay_loop(void)
     if (connected == false)
         return;
 
-    for (unsigned i = 0; i < relay_count; i++)
+    for (unsigned i = 0; i < count; i++)
     {
         char suffix[RELAY_TOPIC_MAX];
 
@@ -181,7 +184,25 @@ void relay_loop(void)
         /* Only marked published when it actually went: a publish that failed
          * is retried on the next pass rather than leaving the broker holding
          * a state the panel is not in. */
-        if (ohez_mqtt_publish_value(suffix, relay_on[i] ? "ON" : "OFF") == true)
+        if (ohez_mqtt_publish_value(suffix, on[i] ? "ON" : "OFF") == true)
             relay_published[i] = true;
     }
+}
+
+/* -------------------------------------------------------------- the readout */
+
+/* What the Systeminfo page shows. The state is `on` verbatim rather than a
+ * read of the pin, because there is nothing to read back: the coil is driven
+ * from a GPIO with no sense line, and the file comment above says the rest. */
+unsigned relay_count(void)
+{
+    return count;
+}
+
+bool relay_state(unsigned index)
+{
+    if (index >= count)
+        return false;
+
+    return on[index];
 }

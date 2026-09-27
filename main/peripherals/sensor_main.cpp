@@ -44,8 +44,13 @@ void sensor_main_loop(Config &config)
          * its own MQTT binding rather than being POSTed to from here. That is
          * also the whole of the coupling between the sensors and MQTT -- the
          * client is told about a reading, it does not go looking for one, so
-         * enabling the sensor still means the one setting it always did, and it
-         * returns at once when there is no broker connection. */
+         * enabling the sensor still means the one setting it always did, and
+         * it returns at once when there is no broker connection. */
         ohez_mqtt_publish_bme280(temperature, humidity, pressure);
     }
+}
+
+bool sensor_main_bme280_active(void)
+{
+    return sensor_bme280_initialized;
 }
