@@ -152,8 +152,10 @@ are then saved -- from the panel, the web form, the REST API or MQTT -- stores
 variable.
 
 The clock follows the *configured* GMT offset, not the host's timezone. That
-is what the panel would show. `OHEZ_NIGHT=auto` can be watched crossing its
-boundary.
+is what the panel would show. Daylight saving, when enabled, follows the EU
+rule rather than the host's too, so both boundaries can be checked against a
+clock set to a Sunday in March or October. `OHEZ_NIGHT=auto` can be watched
+crossing its boundary.
 
 `OHEZ_MQTT`, `OHEZ_MQTT_HOST`, `OHEZ_MQTT_PORT` and `OHEZ_MQTT_TOPIC` point
 the MQTT client at a broker for one run:

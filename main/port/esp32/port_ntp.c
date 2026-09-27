@@ -13,6 +13,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 #include "esp_log.h"
@@ -26,13 +27,46 @@ static bool sntp_started;
 void port_ntp_setup(const char *server, int gmt_offset_s, int dst_offset_s)
 {
     /* POSIX TZ counts west of UTC, the opposite way round from the setting.
-     * With no rule after it the DST offset is simply always in effect, which is
-     * exactly what configTime()'s two-offset form meant. */
-    int west_s = -(gmt_offset_s + dst_offset_s);
-    char tz[32];
+     * The rule is the EU's -- the last Sunday of March to the last Sunday of
+     * October, both at 01:00 UTC -- which is what switches the panel by
+     * itself where the fixed +1 h the setting used to mean had to be flipped
+     * by hand twice a year. tzset() parses the rule, so SNTP needs no
+     * re-issuing when a boundary passes mid-run. */
+    int  west_s = -gmt_offset_s;
+    char tz[64];
 
     snprintf(tz, sizeof(tz), "OHEZ%+d:%02d:%02d",
              west_s / 3600, abs((west_s / 60) % 60), abs(west_s % 60));
+
+    if (dst_offset_s > 0)
+    {
+        int west_dst_s = -(gmt_offset_s + dst_offset_s);
+        int hours      = gmt_offset_s / 3600;
+
+        /* The rule's times are local, in the offset in force at the moment
+         * of the switch: 01:00 UTC is one o'clock plus the offset in March
+         * and one o'clock plus the offset *and* the saving in October, which
+         * is why they are computed rather than spelled -- the canonical
+         * M3.5.0/2,M10.5.0/3 is what these come to for a CET panel. */
+        int march   = hours + 1;
+        int october = hours + 2;
+
+        /* No EU zone is west of UTC, so this only fires on a GMT offset
+         * the rule was never meant for; it keeps the string well-formed,
+         * which matters because a TZ tzset() cannot parse is discarded
+         * whole and the clock falls back to UTC. */
+        if (march < 0)
+            march = 0;
+        if (october < 0)
+            october = 0;
+
+        size_t used = strlen(tz);
+
+        snprintf(tz + used, sizeof(tz) - used,
+                 "OHEZDST%+d:%02d:%02d,M3.5.0/%d,M10.5.0/%d",
+                 west_dst_s / 3600, abs((west_dst_s / 60) % 60),
+                 abs(west_dst_s % 60), march, october);
+    }
 
     setenv("TZ", tz, 1);
     tzset();

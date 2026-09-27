@@ -36,6 +36,7 @@ extern "C" void app_main(void)
     test_item_setters_run();
     test_mdns_query_run();
     test_multipart_run();
+    test_port_ntp_run();
     test_testif_parse_run();
     test_touch_cal_run();
     test_item_state_run();

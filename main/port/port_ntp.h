@@ -29,7 +29,9 @@ extern "C" {
  *
  * @param server        NTP host name; ignored where the clock is not ours to set
  * @param gmt_offset_s  seconds east of UTC
- * @param dst_offset_s  additional seconds while daylight saving is in effect
+ * @param dst_offset_s  additional seconds while daylight saving is in effect;
+ *                      when non-zero, the EU rule -- the last Sunday of March
+ *                      to the last Sunday of October -- switches it on and off
  */
 void port_ntp_setup(const char *server, int gmt_offset_s, int dst_offset_s);
 

@@ -21,6 +21,7 @@ void test_icon_set_run(void);
 void test_item_setters_run(void);
 void test_mdns_query_run(void);
 void test_multipart_run(void);
+void test_port_ntp_run(void);
 void test_item_state_run(void);
 void test_item_urls_run(void);
 void test_outputs_run(void);

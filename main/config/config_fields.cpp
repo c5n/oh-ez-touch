@@ -88,7 +88,12 @@ const struct config_field_s config_fields[] = {
     TXT("ntp_host", "Host", ntp.hostname, "ntp", "hostname", "pool.ntp.org",
         SETTINGS_F_HOSTCHARS),
     SINT("ntp_gmt", "GMT offset", "h", ntp.gmt_offset, "ntp", "gmt_offset", 1, -12, 14),
-    CHK("ntp_dst", "Daylight saving (+1h)", ntp.daylightsaving, "ntp", "daylightsaving", 0, 0),
+    /* Not the "+1h" it used to be: the flag now asks for the EU rule, which
+     * switches by itself and is the correct clock for the default CET offset
+     * -- a panel that boots on the defaults lands on the right time all year
+     * rather than one hour ahead from October to March. Zones without a
+     * saving of their own leave it off, as before. */
+    CHK("ntp_dst", "Daylight saving (EU rule)", ntp.daylightsaving, "ntp", "daylightsaving", 1, 0),
 
     SEC("Appearance", SETTINGS_TAB_THEME),
     /* The option names come straight from ui_theme.hpp, so the dropdown, the

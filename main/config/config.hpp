@@ -48,6 +48,10 @@ public:
         {
             char hostname[32];
             int gmt_offset;
+            /* Not a fixed +1h but the EU rule -- last Sunday of March to
+             * last Sunday of October -- applied by port_ntp_setup(), which
+             * encodes it as the rule part of the TZ string and lets the C
+             * library switch it. See port/esp32/port_ntp.c. */
             bool daylightsaving;
         } ntp;
         struct

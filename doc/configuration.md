@@ -200,7 +200,7 @@ raw distance across the whole screen, not the reading at its far edge. See
 | --- | --- | --- |
 | Host | pool.ntp.org | Host which serves the time. For example pool.ntp.org or your router. |
 | GMT Offset | 1 | Offset of your timezone from Greenwich Mean Time. |
-| Daylight Saving | 0 | Daylight saving +1 hour. |
+| Daylight Saving | 1 | On: the EU rule switches automatically -- one hour ahead from the last Sunday in March to the last Sunday in October, both at 01:00 UTC. Off for a zone with no daylight saving. |
 
 ### Appearance
 

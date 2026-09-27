@@ -40,7 +40,7 @@
 static const char shipped_json[] =
     "{"
     "\"general\":{\"hostname\":\"oheztouch-new\"},"
-    "\"ntp\":{\"hostname\":\"pool.ntp.org\",\"gmt_offset\":1,\"daylightsaving\":false},"
+    "\"ntp\":{\"hostname\":\"pool.ntp.org\",\"gmt_offset\":1,\"daylightsaving\":true},"
     "\"ui\":{\"theme\":\"Material\",\"night_mode\":\"off\",\"night_from\":22,\"night_to\":6},"
     "\"touch\":{\"x_origin\":0,\"x_span\":0,\"y_origin\":0,\"y_span\":0},"
     "\"backlight\":{\"activity_timeout\":60,\"normal_brightness\":100,"
@@ -160,6 +160,9 @@ static void test_no_file_gives_the_built_in_defaults(void)
     TEST_ASSERT_EQUAL_STRING("oheztouch-new", config.item.general.hostname);
     TEST_ASSERT_EQUAL_STRING("pool.ntp.org", config.item.ntp.hostname);
     TEST_ASSERT_EQUAL_INT(1, config.item.ntp.gmt_offset);
+    /* On by default now that the flag names the EU rule rather than a fixed
+     * +1h: with the default CET offset it is simply the correct clock. */
+    TEST_ASSERT_TRUE(config.item.ntp.daylightsaving);
     TEST_ASSERT_EQUAL_INT(UI_THEME_MATERIAL, config.item.ui.theme);
     TEST_ASSERT_EQUAL_INT(UI_NIGHT_OFF, config.item.ui.night_mode);
     TEST_ASSERT_EQUAL_UINT(22, config.item.ui.night_from);

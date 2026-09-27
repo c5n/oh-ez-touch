@@ -90,6 +90,13 @@
 # that produces one from four taps. Both used to be four #defines and one
 # expression inside port_indev.c, where nothing could reach them.
 #
+# port/linux/port_ntp.c joined them when daylight saving stopped being a fixed
+# hour and became the EU rule: the TZ string it builds is what both targets
+# read the clock through, and a rule that is wrong is wrong on two Sundays a
+# year and right in front of nobody. Its one device-only half -- SNTP -- never
+# runs here, which is the split the header exists for; what is left is
+# setenv(), tzset() and the arithmetic the tests pin down.
+#
 # It includes nothing but <stdbool.h>, <stddef.h> and <stdint.h> -- no LVGL, no
 # IDF, and deliberately not board_pins.h, which is what lets a board's shipped
 # constants be a test fixture here rather than a compile-time fact. And it is
@@ -109,6 +116,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_item_setters.cpp"
                             "test_mdns_query.cpp"
                             "test_multipart.cpp"
+                            "test_port_ntp.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
                             "test_outputs.cpp"
@@ -136,6 +144,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_ntp.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/multipart.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/web/webui_api_json.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"

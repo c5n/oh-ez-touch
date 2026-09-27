@@ -7,7 +7,7 @@
     {
         "hostname":         "pool.ntp.org",
         "gmt_offset":       1,
-        "daylightsaving":   false
+        "daylightsaving":   true
     },
     "ui":
     {
