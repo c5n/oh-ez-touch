@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 36 px
  * Bpp: 4
- * Opts: --format lvgl --lv-include lvgl.h --bpp 4 --force-fast-kern-format --size 36 --font /tmp/ohez-fonts-kgUXel/Barlow-SemiBold.ttf -r 0x20-0x7F -r 0xB0 -r 0xE4 --font components/lvgl/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 61550,63650,61543,61544,61512,61515,61516,61517,61521,61523,61559,61560 --lv-font-name custom_font_ui_36 -o components/lvgl/fonts/custom_font_ui_36.c
+ * Opts: --format lvgl --lv-include lvgl.h --bpp 4 --force-fast-kern-format --size 36 --font /tmp/ohez-fonts-vwJEIX/Barlow-SemiBold.ttf -r 0x20-0x7F -r 0xB0 -r 0xE4 --font components/lvgl/lvgl/scripts/generators/built_in_font/FontAwesome5-Solid+Brands+Regular.woff -r 61550,63650,61543,61544,61512,61515,61516,61517,61521,61523,61559,61560 --lv-font-name custom_font_ui_36 -o components/lvgl/fonts/custom_font_ui_36.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

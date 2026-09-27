@@ -43,7 +43,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 OUT="components/lvgl/fonts"
-FA="components/lvgl/lvgl/scripts/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
+FA="components/lvgl/lvgl/scripts/generators/built_in_font/FontAwesome5-Solid+Brands+Regular.woff"
 GF="https://raw.githubusercontent.com/google/fonts/main/ofl"
 ANTONIO_URL="$GF/antonio/Antonio%5Bwght%5D.ttf"
 ANTONIO="${ANTONIO:-$(mktemp -t Antonio-XXXXXX.ttf)}"
@@ -137,7 +137,7 @@ if [ "$FAMILY" = ui ] || [ "$FAMILY" = all ]; then
     gen "$(fetch "$BARLOW_URL_NORMAL" Barlow-Medium.ttf)"   custom_font_ui_22 22 -r 0x20-0x7F -r 0xA0-0xFF -- "$FA_FULL"
     gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_ui_36 36 -r 0x20-0x7F -r 0xB0 -r "$FA_UMLAUT" -- "$FA_LARGE"
 
-    # The screensaver's time face: 130 px, well over three times the largest role.
+    # The screensaver's time face: 117 px, well over three times the largest role.
     # Not a theme role -- the screensaver already abandons the theme's colours,
     # and a clock from across the room owes its legibility to one face everyone
     # gets. The range is the whole of what the time line can spell: the digits,
@@ -146,7 +146,7 @@ if [ "$FAMILY" = ui ] || [ "$FAMILY" = all ]; then
     # FontAwesome symbols -- an empty list breaks the converter, so it gets
     # the one code point that renders as nothing. At this size "HH:MM" still
     # leaves a margin at the panel's edges.
-    gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_clock_130 130 -r 0x2D-0x3A -- "0x20"
+    gen "$(fetch "$BARLOW_URL_LARGE"  Barlow-SemiBold.ttf)" custom_font_clock_117 117 -r 0x2D-0x3A -- "0x20"
 fi
 
 if [ "$FAMILY" = hud ] || [ "$FAMILY" = all ]; then

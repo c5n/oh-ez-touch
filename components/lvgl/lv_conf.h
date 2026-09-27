@@ -767,7 +767,7 @@
                                LV_FONT_DECLARE(custom_font_lcars_16) \
                                LV_FONT_DECLARE(custom_font_lcars_22) \
                                LV_FONT_DECLARE(custom_font_lcars_36) \
-                               LV_FONT_DECLARE(custom_font_clock_130)
+                               LV_FONT_DECLARE(custom_font_clock_117)
 
 /** Always set a default font */
 #define LV_FONT_DEFAULT &custom_font_ui_16
