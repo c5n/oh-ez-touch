@@ -104,7 +104,7 @@ void port_indev_init(lv_display_t *disp, bool portrait)
     touch_portrait = portrait;
     truth_from_env();
 
-    ui_input_disable_swipes(lv_sdl_mouse_create());
+    ui_input_pointer_policy(lv_sdl_mouse_create());
 }
 
 bool port_indev_calibratable(void)

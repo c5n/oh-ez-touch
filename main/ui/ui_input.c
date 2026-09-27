@@ -1,7 +1,7 @@
 /**
  * @file ui_input.c
  *
- * Swipes, and why this panel does not have any.
+ * The panel's whole pointer policy: what a finger is allowed to mean.
  *
  * A swipe used to do three different things depending on which theme was
  * loaded, and one of them was dangerous.
@@ -14,63 +14,78 @@
  * click away. In the Material theme the back tile happens to sit at the top
  * left, where a right-swipe begins, so the page went back and the mechanism
  * was never questioned. In LCARS the same swipe starts on the spine and opened
- * the settings screen; in JARVIS it starts on a bracket and did nothing. And a
- * swipe that started anywhere else did what tapping there would have done --
+ * the settings screen; in JARVIS it starts on a bracket and did nothing. And
+ * a swipe that started anywhere else did what tapping there would have done --
  * across the top row of a page that meant **a swipe turned a light on**,
  * confirmed against a real openHAB server.
  *
- * So the policy is now simply that a swipe does nothing, anywhere, in any
- * theme. Two halves, because LVGL can turn a finger that moves into a click by
- * two different routes:
+ * The policy, in full: a tap is the only thing a finger can mean here.
  *
- *   - no object anywhere registers LV_EVENT_GESTURE any more. The item screen
- *     was the last one; its back bar was always the documented way out and the
+ *   - no object anywhere registers LV_EVENT_GESTURE. The item screen was the
+ *     last one; its back bar was always the documented way out and the
  *     resistive ArduiTouch panels could never swipe reliably anyway. Nothing
  *     listens, so nothing happens.
- *   - a press that has travelled does not become a tap. That is what this file
- *     is: one callback on the input device itself, which LVGL offers every
- *     click *before* the widget sees it.
+ *   - nothing scrolls and nothing ever has to be dragged. Every container in
+ *     the firmware is built non-scrollable, and LVGL's own drag detection is
+ *     pinned out of reach on top of that (see ui_input_pointer_policy()).
+ *   - a tap acts the moment the press is confirmed, not when the finger lifts.
+ *     The click goes to whatever the finger landed on, and where it drifts
+ *     afterwards is irrelevant: the resistive panel's reported point wanders
+ *     several pixels while a finger flattens onto it, and a tap that is judged
+ *     at lift-off has to decide whether that drift was a drag -- which is how
+ *     a panel full of buttons ends up needing three presses to land one.
  *
- * The hook is lv_indev_add_event_cb() plus lv_indev_stop_processing(): LVGL's
- * send_event() passes PRESSED/CLICKED/SHORT_CLICKED and friends to the
- * indev's own event list first, and skips the object entirely if a handler
- * there asks it to. One callback per indev therefore covers every clickable
- * widget in the firmware -- the twenty-odd tiles, buttons, rows and glyphs
- * that would otherwise each need guarding, and any added later.
+ * The last of those is what this file is. Two callbacks on the input device
+ * itself, which LVGL offers every event *before* the widget sees it:
+ *
+ *   - press_event() hands the object under the finger its LV_EVENT_CLICKED
+ *     while the press is still going on. It is the same lv_obj_send_event()
+ *     call LVGL makes at release -- same code, same param, same bubbling --
+ *     so a widget cannot tell the difference, except that it no longer has to
+ *     wait for the lift. One callback per indev covers every clickable widget
+ *     in the firmware, and any added later.
+ *   - click_event() swallows the release-time SHORT_CLICKED and CLICKED, so
+ *     nothing hears the tap twice.
+ *
+ * What the policy costs is the slide-off cancel: a finger that lands on the
+ * Restart button has restarted, and sliding away cannot take it back. On a
+ * panel where nothing scrolls and nothing swipes there is nothing else for a
+ * moving finger to mean, so there is nothing left to cancel.
+ *
+ * Deliberately left alone:
+ *
+ *   - LV_EVENT_RELEASED. LVGL's own core turns it into the checked-state
+ *     toggle on checkable widgets (the switch, checkable buttons), so those
+ *     still flip when the finger comes up, exactly as before. Sliders and the
+ *     keyboard's keys also live on PRESSED/PRESSING/RELEASED, none of which
+ *     this file touches.
+ *   - LV_EVENT_LONG_PRESSED and LV_EVENT_LONG_PRESSED_REPEAT. They are what
+ *     holding the setpoint's +/- pad and the keyboard's keys runs on, and a
+ *     hold is not a swipe -- a swipe is over long before LVGL's 400 ms
+ *     long-press threshold.
+ *
+ * A press that wakes the dimmed panel never reaches this file at all: the port
+ * swallows it below LVGL (port_indev.c), so the first tap after waking only
+ * wakes. The two-polls-agree confirmation there still applies to every press,
+ * phantom ones included, before any click this file delivers.
  */
 #include "ui_input.h"
 
-/* How far a press may travel and still count as a tap, in panel pixels.
- *
- * This is LVGL's own LV_INDEV_DEF_SCROLL_LIMIT, the distance at which it
- * decides a press on a *scrollable* widget has become a drag and withholds the
- * click. Reusing that number is the point rather than a coincidence: every
- * scrolling list in the settings screen has always behaved this way, and a
- * tile was the odd one out. LVGL publishes a setter for the value and no
- * getter, so it is repeated here.
- *
- * It also catches the case LVGL's own gesture detection misses. A gesture
- * needs both distance (50 px) and speed -- lv_indev.c zeroes the accumulated
- * distance on any read that moved less than gesture_min_velocity -- so a
- * deliberately slow drag is never reported as a swipe, and would otherwise
- * still have landed as a tap.
- */
-#define UI_INPUT_TAP_SLOP 10
-
-/* At most this many pointer indevs get a guard: the panel's touch controller,
- * or the simulator's mouse, plus the test interface's synthetic pointer. */
+/* At most this many pointer indevs get the policy: the panel's touch
+ * controller, or the simulator's mouse, plus the test interface's synthetic
+ * pointer. */
 #define UI_INPUT_INDEV_MAX 4
 
-/* Where the press being processed started, per input device.
- *
+/* What this file remembers about the press an input device is in.
+
  * Per device rather than one global, because the simulator runs two pointers
  * at once -- the SDL mouse and the test interface -- and a script driving one
  * while a hand rests on the other must not make either forget where it began.
  */
 struct press_origin_s
 {
-    lv_point_t point;
-    bool       known;
+    bool known;   /* a PRESSED was seen for the press now being released */
+    bool clicked; /* its click has already been delivered, at press-down */
 };
 
 static struct press_origin_s origins[UI_INPUT_INDEV_MAX];
@@ -87,34 +102,31 @@ static void press_event(lv_event_t *e)
     if (indev == NULL)
     {
         origin->known = false;
+        origin->clicked = false;
         return;
     }
 
-    lv_indev_get_point(indev, &origin->point);
     origin->known = true;
+    origin->clicked = false;
+
+    /* The object the finger landed on. Valid here because this callback runs
+     * inside LVGL's own send_event(LV_EVENT_PRESSED) -- after the hit test has
+     * found the object, before the object hears anything -- and it is that
+     * object LVGL would be sending the press to. NULL is a press on nothing:
+     * no object, no click. */
+    lv_obj_t *obj = lv_indev_get_active_obj();
+
+    if (obj == NULL)
+        return;
+
+    /* The whole point: the click arrives now, not at lift-off. */
+    lv_obj_send_event(obj, LV_EVENT_CLICKED, indev);
+
+    origin->clicked = true;
 }
 
-/* Whether the press that is ending travelled far enough not to be a tap. */
-static bool press_travelled(lv_indev_t *indev, const struct press_origin_s *origin)
-{
-    lv_point_t now;
-
-    /* LVGL has already made up its mind: this was a swipe. */
-    if (lv_indev_get_gesture_dir(indev) != LV_DIR_NONE)
-        return true;
-
-    /* A press whose start was never seen -- the first event after a reset, say
-     * -- is given the benefit of the doubt. Swallowing it would lose a real
-     * tap, which is the one failure this must not introduce. */
-    if (origin->known == false)
-        return false;
-
-    lv_indev_get_point(indev, &now);
-
-    return (LV_ABS(now.x - origin->point.x) > UI_INPUT_TAP_SLOP)
-        || (LV_ABS(now.y - origin->point.y) > UI_INPUT_TAP_SLOP);
-}
-
+/* Whether the release-time SHORT_CLICKED / CLICKED must be kept from the
+ * widget, because the widget already heard from this press. */
 static void click_event(lv_event_t *e)
 {
     struct press_origin_s *origin = (struct press_origin_s *)lv_event_get_user_data(e);
@@ -123,32 +135,37 @@ static void click_event(lv_event_t *e)
     if (indev == NULL || origin == NULL)
         return;
 
-    if (press_travelled(indev, origin) == false)
+    /* A press whose start was never seen -- the first event after a reset,
+     * say -- is given the benefit of the doubt. Swallowing it would lose a
+     * real tap, which is the one failure this must not introduce. */
+    if (origin->known == false || origin->clicked == false)
         return;
 
-    /* The widget under the finger never hears about it. */
+    /* The widget under the finger never hears the tap twice. */
     lv_indev_stop_processing(indev);
 }
 
-void ui_input_disable_swipes(lv_indev_t *indev)
+void ui_input_pointer_policy(lv_indev_t *indev)
 {
     struct press_origin_s *origin;
 
     if (indev == NULL || origin_count >= UI_INPUT_INDEV_MAX)
         return;
 
+    /* Out of reach, not merely out of use: 255 px is more than any of these
+     * panels is tall, and it is the widest the uint8_t LVGL stores these in
+     * goes. A press that moves can no longer be recognised as a drag on a
+     * scrollable widget or accumulate into a swipe, whatever is on screen. */
+    lv_indev_set_scroll_limit(indev, UINT8_MAX);
+    lv_indev_set_gesture_min_distance(indev, UINT8_MAX);
+    lv_indev_set_gesture_min_velocity(indev, UINT8_MAX);
+
     origin = &origins[origin_count++];
 
     lv_indev_add_event_cb(indev, press_event, LV_EVENT_PRESSED, origin);
 
-    /* Only the two that mean "a tap happened".
-     *
-     * LV_EVENT_LONG_PRESSED and LV_EVENT_LONG_PRESSED_REPEAT are deliberately
-     * left alone. They are what holding the setpoint's +/- pad and the
-     * keyboard's keys runs on, a hold is not a swipe -- a swipe is over long
-     * before LVGL's 400 ms long-press threshold -- and cancelling them on
-     * travel would break a finger that drifts a few pixels during a deliberate
-     * three-second hold on a resistive panel. */
+    /* Only the two that mean "a tap happened", and only to take them back:
+     * both were delivered already, at press-down. */
     lv_indev_add_event_cb(indev, click_event, LV_EVENT_SHORT_CLICKED, origin);
     lv_indev_add_event_cb(indev, click_event, LV_EVENT_CLICKED, origin);
 }

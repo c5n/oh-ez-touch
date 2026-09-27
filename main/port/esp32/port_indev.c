@@ -562,5 +562,5 @@ void port_indev_init(lv_display_t *disp, bool portrait)
     lv_indev_set_read_cb(indev, read_cb);
     lv_indev_set_display(indev, disp);
 
-    ui_input_disable_swipes(indev);
+    ui_input_pointer_policy(indev);
 }

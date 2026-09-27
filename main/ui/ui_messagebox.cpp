@@ -76,8 +76,8 @@ void Messagebox::build(void)
     /* A ceiling on what the content may grow to. The old plain-object banner
      * had none and got away with it, but the title bar now takes vertical room
      * the text used to have, and one caller's text is a sitemap URL of no
-     * particular length. Past this the content area scrolls, which is what the
-     * msgbox's content is for. */
+     * particular length. Nothing in this UI scrolls, so what passes the
+     * ceiling is clipped rather than scrolled to. */
     lv_obj_set_style_max_height(mb, lv_pct(90), 0);
 
     /* The title bar reaches the box's edges, so the box keeps no padding of
@@ -151,6 +151,7 @@ void Messagebox::build(void)
      * msgbox's header, content and footer are three classes of their own, so
      * all three come up transparent, borderless and unpadded. That is why the
      * bar above had to be given a surface by hand. */
+    lv_obj_set_scrollable(lv_msgbox_get_content(mb), false);
     lv_obj_set_style_pad_all(lv_msgbox_get_content(mb), PAD_CONTENT, 0);
 
     /* ---- the restart button ----

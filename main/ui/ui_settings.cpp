@@ -172,7 +172,7 @@ static lv_obj_t *screen = NULL;
  * tables below). The tabview used to answer this. */
 static uint8_t current_tab = SETTINGS_TAB_COUNT;
 
-/* One per tab: the scrollable list of rows, and the footer's message label. */
+/* One per tab: the list of rows, and the footer's message label. */
 static lv_obj_t *tab_rows[SETTINGS_TAB_COUNT];
 static lv_obj_t *tab_status[SETTINGS_TAB_COUNT];
 
@@ -3243,7 +3243,7 @@ static void footer_pager(uint8_t tab, lv_obj_t *footer, lv_event_cb_t event, uin
     footer_spacer(footer);
 }
 
-/* One section: the bar, a scrolling list of rows, and a footer carrying
+/* One section: the bar, the section's list of rows, and a footer carrying
  * whatever that section can do. */
 static void screen_show_section(uint8_t tab)
 {
@@ -3291,25 +3291,21 @@ static void screen_show_section(uint8_t tab)
 
     lv_obj_set_pos(rows, 0, BAR_HEIGHT);
     lv_obj_set_size(rows, lv_pct(100), vres - BAR_HEIGHT - FOOTER_HEIGHT);
-    lv_obj_set_scrollable(rows, true);
-    lv_obj_set_scroll_dir(rows, LV_DIR_VER);
+    lv_obj_set_scrollable(rows, false);
     lv_obj_set_flex_flow(rows, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_pad_all(rows, 4, 0);
     lv_obj_set_style_pad_row(rows, 4, 0);
 
-    /* The Info pages are the ones that must not scroll, and the fullest of
-     * them -- six address rows -- fits only without the frame the scrolling
-     * pages carry: at the tallest small font it measures 138 of the 140 px
-     * between bar and footer, which the 4 px padding alone would push past.
-     * The gaps between the lines go with it -- each page draws its own. */
+    /* The Info pages are the tightest fit, and the fullest of them -- six
+     * address rows -- fits only with the padding reduced: at the tallest small
+     * font it measures 138 of the 140 px between bar and footer, which the
+     * 4 px padding alone would push past. The gaps between the lines go with
+     * it -- each page draws its own. */
     if (tab == SETTINGS_TAB_INFO)
     {
         lv_obj_set_style_pad_ver(rows, 2, 0);
         lv_obj_set_style_pad_row(rows, 0, 0);
     }
-
-    lv_obj_set_style_bg_color(rows, lv_color_hex(ui_style_theme()->slider_indic.bg),
-                              LV_PART_SCROLLBAR);
 
     tab_rows[tab] = rows;
 

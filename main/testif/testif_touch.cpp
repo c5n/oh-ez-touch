@@ -156,7 +156,7 @@ void testif_touch_init(void)
     /* The same policy the finger gets. A script that swipes has to see exactly
      * what a hand would see, or the interface stops being a way to test the
      * panel and becomes a second, more permissive one. */
-    ui_input_disable_swipes(indev);
+    ui_input_pointer_policy(indev);
 }
 
 /* ------------------------------------------------------------------ presses */
