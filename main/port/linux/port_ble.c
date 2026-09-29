@@ -82,13 +82,20 @@ static const uint8_t fixture_eddystone_tlm[] = {
     0x00, 0x00, 0x27, 0x10  /* 1000 s of uptime, in 0.1 s */
 };
 
-/* Not a beacon at all: something with a name and a transmit power, which is
- * what most of a room looks like. Only published when the settings ask for
- * non-beacon devices. */
+/* Not a beacon at all: something with a transmit power, which is what most of
+ * a room looks like. Only published when the settings ask for non-beacon
+ * devices. The name is split off into the scan response below, which is where
+ * a real device carries it -- the pair exists to show what the active scan
+ * setting buys. */
 static const uint8_t fixture_device[] = {
     0x02, 0x01, 0x06,
-    0x09, 0x09, 'L', 'i', 'v', 'i', 'n', 'g', 'T', 'V',
-    0x02, 0x0A, 0xF4  /* -12 dBm */
+    0x02, 0x0A, 0xF4 /* -12 dBm */
+};
+
+/* The same advertiser's scan response, served only when the scan is active: a
+ * passive scan never sends the request that would fetch it. */
+static const uint8_t fixture_device_rsp[] = {
+    0x09, 0x09, 'L', 'i', 'v', 'i', 'n', 'g', 'T', 'V'
 };
 
 struct fixture_s
@@ -98,17 +105,20 @@ struct fixture_s
     uint8_t        addr[6];
     uint8_t        addr_type;
     int8_t         rssi;
+    bool           scan_rsp; /* only an active scan ever hears this one */
 };
 
 static const struct fixture_s fixtures[] = {
     { fixture_ibeacon, sizeof(fixture_ibeacon),
-      { 0xC1, 0x37, 0x1F, 0x0A, 0x22, 0x81 }, PORT_BLE_ADDR_RANDOM, -67 },
+      { 0xC1, 0x37, 0x1F, 0x0A, 0x22, 0x81 }, PORT_BLE_ADDR_RANDOM, -67, false },
     { fixture_eddystone_uid, sizeof(fixture_eddystone_uid),
-      { 0xF4, 0xB8, 0x5E, 0x12, 0x34, 0x56 }, PORT_BLE_ADDR_PUBLIC, -78 },
+      { 0xF4, 0xB8, 0x5E, 0x12, 0x34, 0x56 }, PORT_BLE_ADDR_PUBLIC, -78, false },
     { fixture_eddystone_tlm, sizeof(fixture_eddystone_tlm),
-      { 0xF4, 0xB8, 0x5E, 0x12, 0x34, 0x56 }, PORT_BLE_ADDR_PUBLIC, -79 },
+      { 0xF4, 0xB8, 0x5E, 0x12, 0x34, 0x56 }, PORT_BLE_ADDR_PUBLIC, -79, false },
     { fixture_device, sizeof(fixture_device),
-      { 0x5C, 0x31, 0x7B, 0xAA, 0xBB, 0xCC }, PORT_BLE_ADDR_PUBLIC, -55 },
+      { 0x5C, 0x31, 0x7B, 0xAA, 0xBB, 0xCC }, PORT_BLE_ADDR_PUBLIC, -55, false },
+    { fixture_device_rsp, sizeof(fixture_device_rsp),
+      { 0x5C, 0x31, 0x7B, 0xAA, 0xBB, 0xCC }, PORT_BLE_ADDR_PUBLIC, -54, true },
 };
 
 #define FIXTURE_COUNT ((int)(sizeof(fixtures) / sizeof(fixtures[0])))
@@ -121,6 +131,7 @@ static const struct fixture_s fixtures[] = {
 /* --------------------------------------------------------------- the port */
 
 static bool     ble_enabled = false;
+static bool     ble_active = false;
 static uint64_t ble_scan_until = 0;
 static int      ble_next = 0;
 static int      ble_pending = 0;
@@ -137,14 +148,14 @@ bool port_ble_init(void)
         return false;
     }
 
-    ESP_LOGI(TAG, "fixture mode: serving %d compiled-in advertisers", FIXTURE_COUNT);
+    ESP_LOGI(TAG, "fixture mode: %d compiled-in advertisement reports", FIXTURE_COUNT);
 
     ble_enabled = true;
 
     return true;
 }
 
-bool port_ble_scan_start(uint32_t duration_ms)
+bool port_ble_scan_start(uint32_t duration_ms, bool active)
 {
     if (ble_enabled == false)
         return false;
@@ -156,6 +167,7 @@ bool port_ble_scan_start(uint32_t duration_ms)
     ble_pending = FIXTURE_COUNT * FIXTURE_REPEATS;
     ble_next = 0;
     ble_window++;
+    ble_active = active;
 
     return true;
 }
@@ -173,29 +185,37 @@ bool port_ble_scanning(void)
 
 bool port_ble_adv_next(port_ble_adv_t *out)
 {
-    if (ble_pending <= 0)
-        return false;
+    while (ble_pending > 0)
+    {
+        const struct fixture_s *f = &fixtures[ble_next % FIXTURE_COUNT];
+        int                     next = ble_next;
 
-    const struct fixture_s *f = &fixtures[ble_next % FIXTURE_COUNT];
+        /* Jittered, and differently each window, so that the mean, the distance
+         * estimate and the topics that carry them visibly move -- a fixture whose
+         * RSSI never changes cannot show that the averaging works. Deterministic,
+         * because a reproducible screen is the point. */
+        int jitter = (int)((ble_window + (uint32_t)next) % 7) - 3;
 
-    memset(out, 0, sizeof(*out));
-    memcpy(out->addr, f->addr, sizeof(out->addr));
-    out->addr_type = f->addr_type;
-    out->adv_len = (uint8_t)f->adv_len;
-    memcpy(out->adv, f->adv, f->adv_len);
+        ble_next++;
+        ble_pending--;
 
-    /* Jittered, and differently each window, so that the mean, the distance
-     * estimate and the topics that carry them visibly move -- a fixture whose
-     * RSSI never changes cannot show that the averaging works. Deterministic,
-     * because a reproducible screen is the point. */
-    int jitter = (int)((ble_window + (uint32_t)ble_next) % 7) - 3;
+        /* The one thing this port does with the active flag: a scan response is
+         * only sent to a scan that asked for it, so a passive window simply
+         * never hears this fixture. */
+        if (f->scan_rsp == true && ble_active == false)
+            continue;
 
-    out->rssi = (int8_t)(f->rssi + jitter);
+        memset(out, 0, sizeof(*out));
+        memcpy(out->addr, f->addr, sizeof(out->addr));
+        out->addr_type = f->addr_type;
+        out->adv_len = (uint8_t)f->adv_len;
+        memcpy(out->adv, f->adv, f->adv_len);
+        out->rssi = (int8_t)(f->rssi + jitter);
 
-    ble_next++;
-    ble_pending--;
+        return true;
+    }
 
-    return true;
+    return false;
 }
 
 uint32_t port_ble_dropped(void)

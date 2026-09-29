@@ -48,6 +48,7 @@ second new panel does not publish over the first.
 | `config/<setting>` | on connect, and after every save | One topic per setting |
 | `relay/<n>` | on change, and on connect | `ON` or `OFF`. Only on a board with relays. |
 | `led/<name>` | on change, and on connect | `0` to `100`. Only on a board with LEDs. |
+| `ble/...` | on discovery, and every window | One group of topics per BLE advertiser in range. See [Bluetooth LE beacons](ble.md). Needs **Scan for BLE beacons** turned on. |
 
 Everything is published at QoS 0. Everything is retained unless **Retain
 published values** is turned off. Every topic carries the current value of

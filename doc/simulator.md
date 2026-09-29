@@ -167,10 +167,12 @@ OHEZ_MQTT=on OHEZ_MQTT_HOST=localhost ./build/linux/oh-ez-touch.elf
 `OHEZ_MQTT` takes `on` or `off`. Anything that is not `off` or `0` enables
 it.
 
-`OHEZ_BLE_FIXTURE=1` serves four compiled-in BLE advertisements instead of
+`OHEZ_BLE_FIXTURE=1` serves compiled-in BLE advertisements instead of
 real Bluetooth: an iBeacon, an Eddystone-UID, an Eddystone-TLM frame from the
-same advertiser, and a plain named device. They go through the same parsers
-as a real advertisement:
+same advertiser, and a plain device whose name arrives as a scan response --
+served only when the **Active scan** setting is on, the way a real scan
+response only arrives when something asked for it. They go through the same
+parsers as a real advertisement:
 
 ```bash
 OHEZ_BLE_FIXTURE=1 ./build/linux/oh-ez-touch.elf

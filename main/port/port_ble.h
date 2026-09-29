@@ -31,9 +31,11 @@ extern "C" {
  * The advertisement payload, at its largest.
  *
  * 31 bytes is all a legacy advertisement may carry, and a scan response may
- * add 31 more. A passive scan never asks for the second, but the buffer is
- * sized for both so that turning the scan active stays a parameter rather than
- * a rewrite.
+ * add 31 more. A passive scan never asks for the second; an active one gets
+ * it, as a separate report from the same address, so neither report is longer
+ * than 31 -- but the buffer is sized for both so that a port that merges them
+ * into one report, or a future extended advertisement, fits without a
+ * rewrite.
  */
 #define PORT_BLE_ADV_MAX 62
 
@@ -87,10 +89,17 @@ bool port_ble_init(void);
  * listening to it, and a filtered scan reports each advertiser once and then
  * goes quiet.
  *
+ * `active` asks the controller to request scan responses. A passive scan
+ * hears only the advertise packet; a scannable device's response -- which is
+ * where its name lives -- arrives as a further report from the same address,
+ * so the caller's merge of successive reports is what puts the two together.
+ * The request costs transmit airtime, which on the panel comes out of WiFi's
+ * share.
+ *
  * @return false if a scan could not be started, including when one is already
  *   running.
  */
-bool port_ble_scan_start(uint32_t duration_ms);
+bool port_ble_scan_start(uint32_t duration_ms, bool active);
 
 /** Stop early. Harmless when no scan is running. */
 void port_ble_scan_stop(void);

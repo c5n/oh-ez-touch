@@ -58,6 +58,10 @@ static void test_ibeacon(void)
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_POWER_UNKNOWN, beacon.tx_power);
     TEST_ASSERT_EQUAL_STRING("", beacon.name);
     TEST_ASSERT_FALSE(beacon.have_telemetry);
+    /* An iBeacon's manufacturer data *is* its identity, which the id carries
+     * digested; publishing the same bytes again as hex would be a second copy
+     * of one thing. */
+    TEST_ASSERT_EQUAL_STRING("", beacon.manufacturer);
 }
 
 /* The identity buffer is sized for the longest this format can produce, and
@@ -92,6 +96,11 @@ static void test_manufacturer_data_from_another_company(void)
 
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
     TEST_ASSERT_EQUAL_STRING("", beacon.id);
+    /* The whole structure, kept as hex with the company first: what a
+     * manufacturer puts there is theirs to define, and a raw copy loses
+     * nothing. */
+    TEST_ASSERT_EQUAL_STRING(
+        "59000215f7826da64fa24e988024bc5b71e0893e03e8002ac5", beacon.manufacturer);
 }
 
 /* A structure whose subtype or subtype length is not Apple's proximity pair. */
@@ -105,6 +114,10 @@ static void test_apple_data_that_is_not_a_beacon(void)
     ble_beacon_parse(adv, sizeof(adv), &beacon);
 
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
+    /* Apple data that is not a beacon is manufacturer data like anyone
+     * else's, and lands in the raw field rather than vanishing. */
+    TEST_ASSERT_EQUAL_STRING(
+        "4c000c15f7826da64fa24e988024bc5b71e0893e03e8002ac5", beacon.manufacturer);
 }
 
 /* -------------------------------------------------------------- Eddystone */
@@ -129,6 +142,11 @@ static void test_eddystone_uid(void)
      * conversion to one metre is 41 dB, applied on the way in so that
      * ref_power means one thing whichever format it came from. */
     TEST_ASSERT_EQUAL_INT(-21 - 41, beacon.ref_power);
+    /* The 0x03 structure at the front lists the Eddystone service UUID, which
+     * is collected like any other -- and the service data itself is Eddystone,
+     * so it does not also land in the raw service field. */
+    TEST_ASSERT_EQUAL_STRING("feaa", beacon.uuids);
+    TEST_ASSERT_EQUAL_STRING("", beacon.service);
 }
 
 /* Real beacons sometimes leave the two reserved bytes off the end. */
@@ -330,6 +348,115 @@ static void test_the_complete_name_wins(void)
     TEST_ASSERT_EQUAL_STRING("Abcdef", beacon.name);
 }
 
+/* ------------------------------------------------------------ the raw fields */
+
+/* 0x03 is the complete list of 16-bit service UUIDs, which is where a plain
+ * device says what it is. */
+static void test_the_uuid_list_is_collected(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x07, 0x03, 0x0F, 0x18, 0xAA, 0xFE, 0x0D, 0x18
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
+    TEST_ASSERT_EQUAL_STRING("180f,feaa,180d", beacon.uuids);
+}
+
+/* 0x02 is the incomplete list, and an advertiser may send both it and the
+ * complete one: the two are appended rather than one replacing the other. */
+static void test_the_incomplete_uuid_list_appends(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x05, 0x02, 0x0F, 0x18, 0x0A, 0x18,
+        0x05, 0x03, 0xAA, 0xFE, 0x0D, 0x18
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    TEST_ASSERT_EQUAL_STRING("180f,180a,feaa,180d", beacon.uuids);
+}
+
+/* 0x07 is the 128-bit list, and its entries are 32 hex characters rather than
+ * 4 -- the length tells them apart, so they share one field. */
+static void test_a_128_bit_uuid_list(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x11, 0x07,
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+        0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    /* The 16 bytes come out reversed: UUIDs travel little-endian, and this
+     * test's fixture is written in wire order. */
+    TEST_ASSERT_EQUAL_STRING("18171615141312110807060504030201", beacon.uuids);
+}
+
+/* A list whose length is not a whole number of UUIDs: the leftover byte is
+ * dropped, because a UUID is whole or it is nothing. */
+static void test_an_odd_leftover_uuid_byte_is_dropped(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x04, 0x03, 0x0F, 0x18, 0xAB
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    TEST_ASSERT_EQUAL_STRING("180f", beacon.uuids);
+}
+
+/* Company 0x0059 (Nordic), with a payload only Nordic defines. Kept as hex,
+ * company first, exactly as the bytes sit on the wire. */
+static void test_manufacturer_data_is_kept_as_hex(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x05, 0xFF, 0x59, 0x00, 0x02, 0x15
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
+    TEST_ASSERT_EQUAL_STRING("59000215", beacon.manufacturer);
+}
+
+/* Service data under a UUID that is not Eddystone's, kept the same way: UUID
+ * first, then the payload, in the order the bytes sit on the wire. */
+static void test_service_data_is_kept_as_hex(void)
+{
+    const uint8_t adv[] = {
+        AD_FLAGS,
+        0x07, 0x16, 0x0D, 0x18, 0x64, 0x40, 0x01, 0x00
+    };
+
+    ble_beacon_parse(adv, sizeof(adv), &beacon);
+
+    TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
+    TEST_ASSERT_EQUAL_STRING("0d1864400100", beacon.service);
+}
+
+/* A scan response: a name and nothing else, no flags, the shape a scannable
+ * device's second packet takes. It parses like any other payload, and the
+ * caller merges it onto what the first packet said. */
+static void test_a_scan_response_is_just_a_payload(void)
+{
+    const uint8_t rsp[] = {
+        0x09, 0x09, 'L', 'i', 'v', 'i', 'n', 'g', 'T', 'V'
+    };
+
+    ble_beacon_parse(rsp, sizeof(rsp), &beacon);
+
+    TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
+    TEST_ASSERT_EQUAL_STRING("LivingTV", beacon.name);
+}
+
 /* -------------------------------------------------------- malformed input */
 
 static void test_out_is_assigned_even_for_nothing_at_all(void)
@@ -347,6 +474,9 @@ static void test_out_is_assigned_even_for_nothing_at_all(void)
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_POWER_UNKNOWN, beacon.ref_power);
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_POWER_UNKNOWN, beacon.tx_power);
     TEST_ASSERT_FALSE(beacon.have_telemetry);
+    TEST_ASSERT_EQUAL_STRING("", beacon.uuids);
+    TEST_ASSERT_EQUAL_STRING("", beacon.manufacturer);
+    TEST_ASSERT_EQUAL_STRING("", beacon.service);
 
     ble_beacon_parse(ibeacon, 0, &beacon);
     TEST_ASSERT_EQUAL_INT(BLE_BEACON_NONE, beacon.kind);
@@ -491,6 +621,13 @@ void test_ble_beacon_run(void)
     RUN_TEST(test_service_data_under_another_uuid);
     RUN_TEST(test_a_named_device_is_not_a_beacon);
     RUN_TEST(test_the_complete_name_wins);
+    RUN_TEST(test_the_uuid_list_is_collected);
+    RUN_TEST(test_the_incomplete_uuid_list_appends);
+    RUN_TEST(test_a_128_bit_uuid_list);
+    RUN_TEST(test_an_odd_leftover_uuid_byte_is_dropped);
+    RUN_TEST(test_manufacturer_data_is_kept_as_hex);
+    RUN_TEST(test_service_data_is_kept_as_hex);
+    RUN_TEST(test_a_scan_response_is_just_a_payload);
     RUN_TEST(test_out_is_assigned_even_for_nothing_at_all);
     RUN_TEST(test_a_length_past_the_end_is_refused);
     RUN_TEST(test_every_truncation_of_a_valid_advertisement);

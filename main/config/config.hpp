@@ -142,6 +142,13 @@ public:
              * WiFi -- see ble/ble_scan.cpp. */
             int  interval;
             int  window;
+            /* Ask scannable advertisers for their scan response, which is
+             * where a phone or a watch carries its name. Off by default: the
+             * request costs transmit airtime, which the coexistence arbiter
+             * takes out of WiFi's share. Read at the start of every window,
+             * so a change takes effect on the next one and not after a
+             * restart. */
+            bool active;
             /* Advertisements weaker than this are dropped, which is what keeps
              * the beacon table to things in the same room. */
             int  rssi_min;

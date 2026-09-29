@@ -10,9 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Advertising data types, from the Bluetooth assigned numbers. Only the four
+/* Advertising data types, from the Bluetooth assigned numbers. Only the ones
  * that carry something worth having. */
-#define AD_TYPE_UUID16_COMPLETE 0x03
+#define AD_TYPE_UUID16_INCOMPLETE 0x02
+#define AD_TYPE_UUID16_COMPLETE   0x03
+#define AD_TYPE_UUID128_INCOMPLETE 0x06
+#define AD_TYPE_UUID128_COMPLETE   0x07
 #define AD_TYPE_NAME_SHORT      0x08
 #define AD_TYPE_NAME_COMPLETE   0x09
 #define AD_TYPE_TX_POWER        0x0A
@@ -71,6 +74,61 @@ static void copy_name(struct ble_beacon_s *out, const uint8_t *d, uint8_t dl)
      * for. */
     memcpy(out->name, d, n);
     out->name[n] = '\0';
+}
+
+/* Bytes as hex, into one of the raw-data fields. Whatever these structures
+ * mean is up to the manufacturer that defined them, so nothing here tries:
+ * hex is a faithful rendering of bytes nobody here can interpret. */
+static void copy_hex(char *dst, size_t size, const uint8_t *d, uint8_t dl)
+{
+    size_t n = 0;
+
+    for (uint8_t i = 0; i < dl && n + 2 < size; i++)
+        n += (size_t)snprintf(&dst[n], size - n, "%02x", d[i]);
+
+    dst[n] = '\0';
+}
+
+/* One more UUID in the comma-separated list. Appended rather than replaced,
+ * because an advertiser may send both list structures, or a 16-bit and a
+ * 128-bit one. A leftover odd byte is the caller's problem: a UUID is whole
+ * or it is nothing. */
+static void uuids_add(struct ble_beacon_s *out, const char *one)
+{
+    size_t used    = strlen(out->uuids);
+    size_t one_len = strlen(one);
+
+    if (used + 1 >= sizeof(out->uuids))
+        return;
+
+    if (used > 0)
+        out->uuids[used++] = ',';
+
+    if (one_len > sizeof(out->uuids) - 1 - used)
+        one_len = sizeof(out->uuids) - 1 - used;
+
+    memcpy(&out->uuids[used], one, one_len);
+    out->uuids[used + one_len] = '\0';
+}
+
+/* A UUID list structure: `step` is 2 for the 16-bit lists and 16 for the
+ * 128-bit ones, and every entry in the list is that wide. */
+static void add_uuids(struct ble_beacon_s *out, const uint8_t *d, uint8_t dl, uint8_t step)
+{
+    for (uint8_t i = 0; i + step <= dl; i += step)
+    {
+        /* 2 * 16 for the widest UUID, plus a NUL. */
+        char   one[2 * 16 + 1];
+        size_t n = 0;
+
+        /* UUIDs travel little-endian and are read big-endian, so the bytes
+         * come out in reverse: 0xAA, 0xFE on the wire is the UUID 0xFEAA,
+         * and "feaa" is how every other tool in the world writes it. */
+        for (uint8_t j = 0; j < step; j++)
+            n += (size_t)snprintf(&one[n], sizeof(one) - n, "%02x", d[i + step - 1 - j]);
+
+        uuids_add(out, one);
+    }
 }
 
 static void parse_ibeacon(struct ble_beacon_s *out, const uint8_t *d, uint8_t dl)
@@ -263,20 +321,37 @@ void ble_beacon_parse(const uint8_t *adv, size_t len, struct ble_beacon_s *out)
                 out->tx_power = (int8_t)d[0];
             break;
 
+        case AD_TYPE_UUID16_INCOMPLETE:
+        case AD_TYPE_UUID16_COMPLETE:
+            add_uuids(out, d, dl, 2);
+            break;
+
+        case AD_TYPE_UUID128_INCOMPLETE:
+        case AD_TYPE_UUID128_COMPLETE:
+            add_uuids(out, d, dl, 16);
+            break;
+
         case AD_TYPE_MANUFACTURER:
             if (dl >= 2 && le16(d) == COMPANY_APPLE)
+            {
                 parse_ibeacon(out, d, dl);
+
+                /* Only when it really is one, which the kind now says. Apple
+                 * devices that are not beacons send manufacturer data too, and
+                 * theirs lands in the raw field like anyone else's rather than
+                 * vanishing because the first two bytes were 0x004C. */
+                if (out->kind == BLE_BEACON_IBEACON)
+                    break;
+            }
+
+            copy_hex(out->manufacturer, sizeof(out->manufacturer), d, dl);
             break;
 
         case AD_TYPE_SERVICE_DATA16:
             if (dl >= 2 && le16(d) == UUID_EDDYSTONE)
                 parse_eddystone(out, d, dl);
-            break;
-
-        case AD_TYPE_UUID16_COMPLETE:
-            /* Eddystone advertises 0xFEAA here as well as in its service data.
-             * Nothing is taken from it: the service data is what carries the
-             * frame, and a device may list the UUID without sending one. */
+            else if (dl >= 2)
+                copy_hex(out->service, sizeof(out->service), d, dl);
             break;
 
         default:

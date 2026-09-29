@@ -22,11 +22,18 @@ address, lower case hex, no separators.
 | `<addr>/type` | on discovery | `iBeacon`, `Eddystone-UID`, `Eddystone-URL` or `device` |
 | `<addr>/id` | on discovery | The beacon's own identity, or empty for a device that has none |
 | `<addr>/name` | on discovery | The advertised name, when there is one |
+| `<addr>/addrtype` | on discovery | `public` or `random`. A random address is rotated, and cannot be tracked. |
+| `<addr>/uuids` | on discovery | The service UUIDs the device advertises, comma-separated hex. What a device *is* tends to live here. |
+| `<addr>/manufacturer` | on discovery | Manufacturer data as hex (company first), when the device sends any that is not an iBeacon |
+| `<addr>/service` | on discovery | Service data as hex (UUID first), when the device sends any that is not Eddystone |
 | `<addr>/power` | on discovery | dBm: the power at one metre a beacon declares, or a plain device's transmit power |
 | `<addr>/rssi` | every window | dBm, averaged over the window |
 | `<addr>/distance` | every window | Metres, estimated. Beacons only. See below. |
 | `<addr>/battery` | every window | mV, Eddystone-TLM only |
 | `<addr>/temperature` | every window | Degrees Celsius, Eddystone-TLM only |
+
+The "on discovery" rows are published once and again only when they change.
+The identity of an advertiser is not telemetry.
 
 Three formats are recognized:
 
@@ -39,8 +46,28 @@ between their identity frames. Its battery and temperature are merged onto
 the entry the identity frames built.
 
 Anything else in range (a phone, a watch, a thermostat) is a `device`. It is
-published with its advertised name and transmit power, and only when
-**Publish non-beacon devices** is on.
+published with its advertised name, transmit power, service UUIDs and
+manufacturer data, and only when **Publish non-beacon devices** is on.
+
+## Active scan
+
+Off by default. With it off, the panel listens passively: it hears the
+advertise packet and nothing else, and most devices put everything interesting
+— the name, above all — in the *scan response*, which is only sent to a radio
+that asks. A passive scan therefore tends to publish a stream of addresses and
+RSSI values with no data attached to them.
+
+With **Active scan (request scan responses)** on, the panel asks scannable
+advertisers for their response, and the name and whatever else the response
+carries is merged onto the entry the advertise packet built. The ask costs a
+little transmit airtime per scannable advertiser per window, which the
+WiFi/Bluetooth coexistence arbiter takes out of the openHAB polling's share —
+hence off by default. The setting is live: it is read at the start of each
+scan window, so a change takes effect on the next one.
+
+Real iBeacon and Eddystone hardware carries its frames in the advertise packet
+itself, precisely so that passive-only receivers can read it: beacons do not
+need the setting. Phones, watches and software beacons usually do.
 
 When an advertiser has not been heard for **Forget after** seconds, all of
 its topics are cleared with a zero-length retained publish. That is how a
@@ -99,5 +126,7 @@ is averaged and published like any other.
 
 ## Testing without hardware
 
-The simulator can serve four compiled-in advertisements. See
-[Simulator](simulator.md#environment-overrides), `OHEZ_BLE_FIXTURE`.
+The simulator can serve the compiled-in advertisement fixtures — an iBeacon,
+an Eddystone-UID and its TLM frame, and a plain device whose name arrives as
+a scan response, so that the active scan setting makes a visible difference.
+See [Simulator](simulator.md#environment-overrides), `OHEZ_BLE_FIXTURE`.

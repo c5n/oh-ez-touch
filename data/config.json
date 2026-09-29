@@ -51,6 +51,7 @@
         "enabled":      false,
         "interval":     30,
         "window":       5,
+        "active":       false,
         "rssi_min":     -90,
         "expire":       120,
         "publish_all":  false

@@ -327,6 +327,7 @@ binding.
 | Scan for BLE beacons `*` | off | Listen for BLE advertisements and publish them over MQTT. See [Bluetooth LE beacons](ble.md). |
 | Scan every | 30 | Seconds between the starts of two scan windows. |
 | Scan for | 5 | Seconds each window lasts. Not continuous, because the radio is shared with WiFi. |
+| Active scan | off | Ask scannable advertisers for their scan response, which is where a phone or a watch carries its name and most of its data. Off by default: the ask costs transmit airtime, which comes out of WiFi's share. Read at the start of each window, so a change applies without a restart. |
 | Ignore weaker than | -90 | Advertisements below this RSSI are dropped. |
 | Forget after | 120 | Seconds of silence before a beacon is dropped and its topics cleared. |
 | Publish non-beacon devices | off | Publish plain BLE devices too, not only recognized beacons. |

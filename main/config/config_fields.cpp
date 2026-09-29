@@ -190,6 +190,12 @@ const struct config_field_s config_fields[] = {
         SETTINGS_F_RESTART),
     SINT("ble_interval", "Scan every", "s", ble.interval, "ble", "interval", 30, 5, 3600),
     SINT("ble_window", "Scan for", "s", ble.window, "ble", "window", 5, 1, 60),
+    /* A passive scan hears only the advertise packet, which for most devices
+     * is flags and little else: their name is in the scan response, and so is
+     * whatever else they have to say. Asking for it is one extra transmit per
+     * scannable advertiser per window. No SETTINGS_F_RESTART: ble_scan.cpp
+     * reads this at the start of each window. */
+    CHK("ble_active", "Active scan (request scan responses)", ble.active, "ble", "active", 0, 0),
     SINT("ble_rssi", "Ignore weaker than", "dBm", ble.rssi_min, "ble", "rssi_min",
          -90, -100, 0),
     SINT("ble_expire", "Forget after", "s", ble.expire, "ble", "expire", 120, 10, 86400),

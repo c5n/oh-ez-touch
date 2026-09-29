@@ -63,6 +63,19 @@ enum ble_beacon_kind_e
  * in a legacy advertisement, so this truncates nothing that fits in one. */
 #define BLE_BEACON_NAME_SIZE 30
 
+/* The UUID list at its longest: the 16-bit list structure can hold fourteen
+ * entries -- 28 bytes of the 31 a payload has -- which is 69 characters with
+ * the separators, and a 128-bit one a 32 character UUID. Generous rather than
+ * exact, because truncation here is harmless and a size that is both the
+ * longest and a round number is easier to hold in one's head. */
+#define BLE_BEACON_UUIDS_SIZE 96
+
+/* Manufacturer data and service data at their longest: the AD structure can
+ * hold 28 bytes of data, so 56 hex characters, and the company or service
+ * UUID is inside those. Sized to a round number above that for the same
+ * reason as the UUID list. */
+#define BLE_BEACON_MFR_SIZE 60
+
 struct ble_beacon_s
 {
     enum ble_beacon_kind_e kind;
@@ -105,6 +118,37 @@ struct ble_beacon_s
     bool     have_telemetry;
     uint16_t battery_mv;
     float    temperature_c;
+
+    /**
+     * The service UUIDs the advertisement lists, comma-separated hex, or "".
+     *
+     * 16-bit UUIDs from the two list structures and 128-bit ones from theirs,
+     * in the order the advertisement listed them and each in the big-endian
+     * form every other tool prints -- the wire order is little-endian, and
+     * 0xAA, 0xFE on the wire is the UUID 0xFEAA. The lists say what a device
+     * is -- 0x180F is the battery service, 0xFD6F the exposure notification
+     * one -- which is most of the identity a plain device offers. Truncated
+     * at the buffer, visibly: a shorter list is a shorter list and not a
+     * different one.
+     */
+    char uuids[BLE_BEACON_UUIDS_SIZE];
+
+    /**
+     * Manufacturer-specific data that is not an iBeacon, as hex, or "".
+     *
+     * Company identifier first, little-endian as it is on the wire, then the
+     * payload. Raw on purpose: what a manufacturer puts there is theirs to
+     * define and nobody here has a better idea, and hex loses nothing. Apple
+     * data that did not parse as an iBeacon lands here too.
+     */
+    char manufacturer[BLE_BEACON_MFR_SIZE];
+
+    /**
+     * Service data under some UUID other than Eddystone's, as hex, or "".
+     * The UUID first, little-endian as it is on the wire, then the payload --
+     * the same shape as the manufacturer field, and for the same reason.
+     */
+    char service[BLE_BEACON_MFR_SIZE];
 };
 
 /**

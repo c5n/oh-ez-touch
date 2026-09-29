@@ -15,6 +15,11 @@
  *   ble/<addr>/type             iBeacon, Eddystone-UID, Eddystone-URL, device
  *   ble/<addr>/id               the beacon's own identity, when it has one
  *   ble/<addr>/name             the advertised name, when it has one
+ *   ble/<addr>/addrtype         public, or random -- a random address is
+ *                               rotated, and cannot be tracked
+ *   ble/<addr>/uuids            the service UUIDs it advertises, when any
+ *   ble/<addr>/manufacturer     manufacturer data as hex, when it has any
+ *   ble/<addr>/service          non-Eddystone service data as hex, ditto
  *   ble/<addr>/power            dBm: the power at one metre that a beacon
  *                               format declares, or a plain device's
  *                               advertised transmit power, whichever it has
@@ -33,7 +38,7 @@
  * makes this awkward, and one of those will come and go under a new key each
  * time. A beacon meant to be tracked advertises a stable address.
  *
- * The first four topics change only when the advertiser changes what it says,
+ * The identity topics change only when the advertiser changes what it says,
  * so they are published once and on change; the rest go out at the end of every
  * scan window. Same split, and the same reason, as the `system/` topics: an
  * identity is not telemetry.
@@ -92,16 +97,25 @@ static const char *TAG = "ble_scan";
  */
 #define BLE_SCAN_MAX 24
 
-/* "ble/" + 12 hex + "/" + the longest leaf, which is "temperature". */
+/* "ble/" + 12 hex + "/" + the longest leaf, which is "manufacturer" or
+ * "temperature", at twelve and eleven. */
 #define BLE_TOPIC_MAX 40
 
-#define BLE_VALUE_MAX 64
+/* The longest published value is the UUID list at BLE_BEACON_UUIDS_SIZE - 1
+ * characters. */
+#define BLE_VALUE_MAX 100
 
 struct entry_s
 {
     bool     used;
     char     key[13]; /* the address as a topic segment: 12 hex plus a NUL */
     uint64_t last_seen;
+
+    /* Public or random, from the port. Not part of ble_beacon_s because it is
+     * a fact about the report rather than about the payload, and it is worth
+     * publishing for the same reason the port reports it: a random address is
+     * rotated, and knowing that is knowing the entry cannot be tracked. */
+    uint8_t  addr_type;
 
     /* Accumulated over the window in progress, then collapsed into rssi. */
     int32_t  rssi_sum;
@@ -198,8 +212,10 @@ static int32_t entry_score(const struct entry_s *e)
  * carried out of the building would sit there at its last RSSI forever. */
 static void entry_clear_topics(struct entry_s *e)
 {
-    static const char *const leaves[] = {"type", "id",       "name",    "power",
-                                         "rssi", "distance", "battery", "temperature"};
+    static const char *const leaves[] = {"type",    "id",     "name",   "addrtype",
+                                         "uuids",   "manufacturer", "service",
+                                         "power",   "rssi",   "distance", "battery",
+                                         "temperature"};
 
     if (e->on_broker == false)
         return;
@@ -311,6 +327,29 @@ static void merge(struct entry_s *e, const struct ble_beacon_s *b)
         e->identity_dirty = true;
     }
 
+    /* The raw-data fields, likewise: only when this report carried one, so a
+     * name-only or telemetry-only frame cannot blank what another frame of the
+     * same advertiser filled in. The comparison rather than a plain copy is
+     * what keeps a device whose manufacturer data rolls -- a counter, mostly --
+     * from re-publishing its identity every single window it is heard in. */
+    if (b->uuids[0] != '\0' && strcmp(e->beacon.uuids, b->uuids) != 0)
+    {
+        strlcpy(e->beacon.uuids, b->uuids, sizeof(e->beacon.uuids));
+        e->identity_dirty = true;
+    }
+
+    if (b->manufacturer[0] != '\0' && strcmp(e->beacon.manufacturer, b->manufacturer) != 0)
+    {
+        strlcpy(e->beacon.manufacturer, b->manufacturer, sizeof(e->beacon.manufacturer));
+        e->identity_dirty = true;
+    }
+
+    if (b->service[0] != '\0' && strcmp(e->beacon.service, b->service) != 0)
+    {
+        strlcpy(e->beacon.service, b->service, sizeof(e->beacon.service));
+        e->identity_dirty = true;
+    }
+
     if (b->have_telemetry == true)
     {
         e->beacon.have_telemetry = true;
@@ -343,6 +382,16 @@ static void collect(const config_item_t &item)
 
         merge(e, &b);
 
+        /* The port knows the address type even when the payload says nothing,
+         * so this is set from every report rather than merged from the parse.
+         * A fresh entry is memset to PORT_BLE_ADDR_PUBLIC and corrected here,
+         * in the same report that created it, before anything is published. */
+        if (e->addr_type != adv.addr_type)
+        {
+            e->addr_type = adv.addr_type;
+            e->identity_dirty = true;
+        }
+
         e->last_seen = port_millis();
         e->rssi_sum += adv.rssi;
         e->rssi_count++;
@@ -369,6 +418,20 @@ static void publish_identity(struct entry_s *e)
 
     printable(e->beacon.name, value, sizeof(value));
     ok = publish_leaf(e->key, "name", value) && ok;
+
+    /* The kind of address, in words, because a dashboard shows this one rather
+     * than charting it: "random" is the answer to "why does this thing keep
+     * arriving under a new key". */
+    ok = publish_leaf(e->key, "addrtype",
+                      (e->addr_type == PORT_BLE_ADDR_RANDOM) ? "random" : "public")
+         && ok;
+
+    /* All three raw-data fields are published even when empty, for the reason
+     * the id is: a subscriber that sees the topic exist can tell "this
+     * advertiser says nothing here" from "this topic never arrived". */
+    ok = publish_leaf(e->key, "uuids", e->beacon.uuids) && ok;
+    ok = publish_leaf(e->key, "manufacturer", e->beacon.manufacturer) && ok;
+    ok = publish_leaf(e->key, "service", e->beacon.service) && ok;
 
     /* The calibrated one when there is one, and the advertised transmit power
      * otherwise: a reader of this topic wants "how loud is it", and the
@@ -585,7 +648,7 @@ void ble_scan_loop(Config &config)
 
     next_window = port_millis() + (uint64_t)item.ble.interval * 1000;
 
-    if (port_ble_scan_start(window_ms) == false)
+    if (port_ble_scan_start(window_ms, item.ble.active) == false)
     {
         ESP_LOGW(TAG, "could not start a scan window");
         return;

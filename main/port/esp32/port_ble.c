@@ -63,8 +63,9 @@ static volatile bool ble_scanning = false;
  * be the one that fails. */
 static volatile bool     ble_scan_wanted = false;
 static volatile uint32_t ble_scan_wanted_ms = 0;
+static volatile bool     ble_scan_wanted_active = false;
 
-static bool scan_begin(uint32_t duration_ms);
+static bool scan_begin(uint32_t duration_ms, bool active);
 
 /* ---------------------------------------------------------------- reporting */
 
@@ -157,7 +158,7 @@ static void ble_on_sync(void)
     if (ble_scan_wanted == true)
     {
         ble_scan_wanted = false;
-        scan_begin(ble_scan_wanted_ms);
+        scan_begin(ble_scan_wanted_ms, ble_scan_wanted_active);
     }
 }
 
@@ -216,7 +217,7 @@ bool port_ble_init(void)
 
 /* --------------------------------------------------------------- scanning */
 
-static bool scan_begin(uint32_t duration_ms)
+static bool scan_begin(uint32_t duration_ms, bool active)
 {
     struct ble_gap_disc_params params = {0};
     uint8_t                    own_addr_type = BLE_OWN_ADDR_PUBLIC;
@@ -230,16 +231,20 @@ static bool scan_begin(uint32_t duration_ms)
         return false;
     }
 
-    /* Passive: a beacon is a broadcaster and has nothing more to say if asked,
-     * so a scan request would spend transmit time and radio share for
-     * nothing.
+    /* Passive unless asked: a scan request spends transmit time and radio
+     * share for nothing, when the advertiser is a beacon -- and a beacon is
+     * what the passive default was sized for. Active when the setting asks,
+     * because most other devices carry their name, and much else, only in the
+     * scan response. Either way the response comes back as a separate report
+     * from the same address, which the merge above the port is already built
+     * to fold in.
      *
      * filter_duplicates off, which is the decision that makes this a beacon
      * scanner rather than a device finder. With it on the controller reports
      * each advertiser once per scan and the RSSI stops arriving, and RSSI is
      * what is being measured. The cost is a great many more reports, which is
      * what the queue above is sized for. */
-    params.passive = 1;
+    params.passive = (active == true) ? 0 : 1;
     params.filter_duplicates = 0;
     params.limited = 0;
     params.filter_policy = BLE_HCI_SCAN_FILT_NO_WL;
@@ -263,7 +268,7 @@ static bool scan_begin(uint32_t duration_ms)
     return true;
 }
 
-bool port_ble_scan_start(uint32_t duration_ms)
+bool port_ble_scan_start(uint32_t duration_ms, bool active)
 {
     if (ble_queue == NULL)
         return false;
@@ -279,10 +284,11 @@ bool port_ble_scan_start(uint32_t duration_ms)
          * because it is the one the user is watching. */
         ble_scan_wanted = true;
         ble_scan_wanted_ms = duration_ms;
+        ble_scan_wanted_active = active;
         return true;
     }
 
-    return scan_begin(duration_ms);
+    return scan_begin(duration_ms, active);
 }
 
 void port_ble_scan_stop(void)

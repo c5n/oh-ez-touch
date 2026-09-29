@@ -48,8 +48,8 @@ static const char shipped_json[] =
     "\"beeper\":{\"enabled\":true,\"volume\":25},"
     "\"mqtt\":{\"enabled\":false,\"hostname\":\"mosquitto\",\"port\":1883,\"user\":\"\","
     "\"password\":\"\",\"topic\":\"oheztouch\",\"interval\":60,\"retain\":true},"
-    "\"ble\":{\"enabled\":false,\"interval\":30,\"window\":5,\"rssi_min\":-90,"
-    "\"expire\":120,\"publish_all\":false},"
+    "\"ble\":{\"enabled\":false,\"interval\":30,\"window\":5,\"active\":false,"
+    "\"rssi_min\":-90,\"expire\":120,\"publish_all\":false},"
     "\"openhab\":{\"hostname\":\"openhabian\",\"port\":8080,\"sitemap\":\"oheztouch\"},"
     "\"sensors\":{\"bme280\":{\"use\":false,\"interval\":180}}"
     "}";
@@ -176,6 +176,7 @@ static void test_no_file_gives_the_built_in_defaults(void)
     TEST_ASSERT_FALSE(config.item.sensors.bme280.use);
     TEST_ASSERT_EQUAL_INT(180, config.item.sensors.bme280.interval);
     TEST_ASSERT_EQUAL_INT(-90, config.item.ble.rssi_min);
+    TEST_ASSERT_FALSE(config.item.ble.active);
 }
 
 /* The shipped file loads, and every path in it is the one the table names. */
@@ -214,8 +215,8 @@ static void test_every_section_round_trips(void)
         "\"mqtt\":{\"enabled\":true,\"hostname\":\"broker.lan\",\"port\":8883,"
         "\"user\":\"panel\",\"password\":\"sekrit\",\"topic\":\"home/panels\","
         "\"interval\":15,\"retain\":false},"
-        "\"ble\":{\"enabled\":true,\"interval\":45,\"window\":9,\"rssi_min\":-70,"
-        "\"expire\":300,\"publish_all\":true},"
+        "\"ble\":{\"enabled\":true,\"interval\":45,\"window\":9,\"active\":true,"
+        "\"rssi_min\":-70,\"expire\":300,\"publish_all\":true},"
         "\"openhab\":{\"hostname\":\"oh.lan\",\"port\":8090,\"sitemap\":\"panel\"},"
         "\"sensors\":{\"bme280\":{\"use\":true,\"interval\":90}}"
         "}";
@@ -261,6 +262,7 @@ static void test_every_section_round_trips(void)
     TEST_ASSERT_TRUE(config.item.ble.enabled);
     TEST_ASSERT_EQUAL_INT(45, config.item.ble.interval);
     TEST_ASSERT_EQUAL_INT(9, config.item.ble.window);
+    TEST_ASSERT_TRUE(config.item.ble.active);
     TEST_ASSERT_EQUAL_INT(-70, config.item.ble.rssi_min);
     TEST_ASSERT_EQUAL_INT(300, config.item.ble.expire);
     TEST_ASSERT_TRUE(config.item.ble.publish_all);
