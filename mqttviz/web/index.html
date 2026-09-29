@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OhEzTouch MQTT Visualizer</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <div id="brand">
+    <span class="bar elbow"></span>
+    <span id="brand-text">OhEzTouch <b>MQTT Visualizer</b></span>
+  </div>
+  <div id="broker-chip" class="chip">
+    <span id="broker-dot" class="dot"></span>
+    <span id="broker-label">not connected</span>
+  </div>
+  <div class="spacer"></div>
+  <button id="btn-settings" class="lcars-btn" title="MQTT configuration">Config</button>
+  <button id="btn-console" class="lcars-btn">Console<span id="console-badge" class="badge hidden">0</span></button>
+</header>
+
+<main id="stage">
+  <canvas id="canvas"></canvas>
+
+  <aside id="detail" class="hidden">
+    <div class="panel-head">
+      <span id="detail-title" class="panel-title">device</span>
+      <button id="detail-close" class="lcars-btn small">close</button>
+    </div>
+    <div id="detail-status" class="detail-status"></div>
+    <div id="detail-controls" class="detail-section hidden">
+      <h3>Controls</h3>
+      <div id="detail-relays" class="control-row hidden"></div>
+      <div id="detail-leds" class="leds hidden"></div>
+      <div class="control-row">
+        <select id="detail-sound"></select>
+        <button id="detail-sound-play" class="lcars-btn small">play</button>
+      </div>
+    </div>
+    <div class="detail-section">
+      <h3>Topics</h3>
+      <div id="detail-topics" class="topic-list"></div>
+    </div>
+    <div class="detail-section">
+      <button id="detail-delete" class="lcars-btn small danger">remove from list</button>
+    </div>
+  </aside>
+
+  <div id="settings" class="modal hidden">
+    <div class="modal-card">
+      <div class="panel-head">
+        <span class="panel-title">MQTT configuration</span>
+        <button id="settings-close" class="lcars-btn small">close</button>
+      </div>
+      <form id="settings-form">
+        <label class="check-row">
+          <input type="checkbox" id="set-enabled"> connected to the broker
+        </label>
+        <div class="grid2">
+          <label>broker host
+            <input type="text" id="set-host" autocomplete="off">
+          </label>
+          <label>broker port
+            <input type="number" id="set-port" min="1" max="65535">
+          </label>
+          <label>username
+            <input type="text" id="set-user" autocomplete="off">
+          </label>
+          <label>password
+            <input type="password" id="set-pass" autocomplete="new-password">
+          </label>
+        </div>
+        <label>base topic
+          <input type="text" id="set-base" autocomplete="off">
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="set-verbose"> log every message
+        </label>
+        <p class="hint">Saving reconnects the broker. The password is
+        stored in mqttviz/data/mqttviz.json, which git does not keep.</p>
+        <div class="form-actions">
+          <button type="submit" id="settings-save" class="lcars-btn">save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="console" class="hidden">
+    <div class="panel-head">
+      <span class="panel-title">Console</span>
+      <div id="console-filters">
+        <button class="lcars-btn small filter" data-level="debug">debug</button>
+        <button class="lcars-btn small filter active" data-level="info">info</button>
+        <button class="lcars-btn small filter" data-level="warn">warn</button>
+        <button class="lcars-btn small filter active" data-level="error">error</button>
+      </div>
+      <div class="spacer"></div>
+      <button id="console-copy" class="lcars-btn small">copy</button>
+      <button id="console-clear" class="lcars-btn small">clear</button>
+      <button id="console-close" class="lcars-btn small">close</button>
+    </div>
+    <div id="console-entries"></div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+  <div id="debug-geom" hidden></div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

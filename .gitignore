@@ -21,6 +21,10 @@ retry.json
 devmgr/data/
 devmgr/__pycache__/
 
+# The MQTT visualizer's runtime state: it holds the broker password
+mqttviz/data/
+mqttviz/__pycache__/
+
 # The simulator's emulated flash image (NVS), created on first run
 state/
 
