@@ -13,13 +13,18 @@
     <span class="bar elbow"></span>
     <span id="brand-text">OhEzTouch <b>MQTT Visualizer</b></span>
   </div>
+  <select id="broker-select" class="broker-select"
+          title="the broker to watch" data-i18n-title="tip.brokerSelect"></select>
   <div id="broker-chip" class="chip">
     <span id="broker-dot" class="dot"></span>
-    <span id="broker-label">not connected</span>
+    <span id="broker-label" data-i18n="broker.notConnected">not connected</span>
   </div>
   <div class="spacer"></div>
-  <button id="btn-settings" class="lcars-btn" title="MQTT configuration">Config</button>
-  <button id="btn-console" class="lcars-btn">Console<span id="console-badge" class="badge hidden">0</span></button>
+  <button id="btn-view-broker" class="lcars-btn view-toggle" data-i18n-title="tip.brokerView" data-i18n="word.broker">Broker</button>
+  <button id="btn-view-beacons" class="lcars-btn view-toggle" data-i18n-title="tip.beaconsView" data-i18n="word.beacons">Beacons</button>
+  <button id="btn-physics" class="lcars-btn" data-i18n-title="tip.physics" data-i18n="word.physics">Physics</button>
+  <button id="btn-settings" class="lcars-btn" data-i18n-title="tip.config" data-i18n="word.config">Config</button>
+  <button id="btn-console" class="lcars-btn"><span data-i18n="word.console">Console</span><span id="console-badge" class="badge hidden">0</span></button>
 </header>
 
 <main id="stage">
@@ -28,61 +33,107 @@
   <aside id="detail" class="hidden">
     <div class="panel-head">
       <span id="detail-title" class="panel-title">device</span>
-      <button id="detail-close" class="lcars-btn small">close</button>
+      <button id="detail-close" class="lcars-btn small" data-i18n="word.close">close</button>
     </div>
     <div id="detail-status" class="detail-status"></div>
+    <div id="detail-seenby" class="detail-section hidden">
+      <h3 data-i18n="detail.heardBy">Heard by</h3>
+      <div id="seenby-list" class="topic-list"></div>
+    </div>
     <div id="detail-controls" class="detail-section hidden">
-      <h3>Controls</h3>
+      <h3 data-i18n="detail.controls">Controls</h3>
       <div id="detail-relays" class="control-row hidden"></div>
       <div id="detail-leds" class="leds hidden"></div>
       <div class="control-row">
         <select id="detail-sound"></select>
-        <button id="detail-sound-play" class="lcars-btn small">play</button>
+        <button id="detail-sound-play" class="lcars-btn small" data-i18n="word.play">play</button>
       </div>
     </div>
     <div class="detail-section">
-      <h3>Topics</h3>
+      <h3 data-i18n="detail.topics">Topics</h3>
       <div id="detail-topics" class="topic-list"></div>
     </div>
     <div class="detail-section">
-      <button id="detail-delete" class="lcars-btn small danger">remove from list</button>
+      <button id="detail-delete" class="lcars-btn small danger" data-i18n="detail.remove">remove from list</button>
     </div>
+  </aside>
+
+  <aside id="physics" class="hidden">
+    <div class="panel-head">
+      <span class="panel-title" data-i18n="word.physics">Physics</span>
+      <button id="physics-close" class="lcars-btn small" data-i18n="word.close">close</button>
+    </div>
+    <div id="physics-tabs" class="segment">
+      <button id="phys-tab-nodes" class="seg-btn active" data-i18n="physics.nodes">Panels</button>
+      <button id="phys-tab-beacons" class="seg-btn" data-i18n="physics.beacons">Beacons</button>
+      <button id="phys-tab-broker" class="seg-btn" data-i18n="word.broker">Broker</button>
+    </div>
+    <p class="hint" data-i18n="hint.physics">How the boxes move and the lines hang. Every slider
+    acts on the canvas the moment it is touched; save keeps the feel,
+    closing without saving puts it back.</p>
+    <form id="physics-form" onSubmit="return false;">
+      <div id="physics-rows-nodes"></div>
+      <div id="physics-rows-beacons" class="hidden"></div>
+      <div id="physics-rows-broker" class="hidden"></div>
+      <div class="control-row">
+        <button type="button" id="physics-reset" class="lcars-btn small danger" data-i18n="word.defaults">defaults</button>
+        <div class="spacer"></div>
+        <button type="button" id="physics-save" class="lcars-btn" data-i18n="word.save">save</button>
+      </div>
+    </form>
   </aside>
 
   <div id="settings" class="modal hidden">
     <div class="modal-card">
       <div class="panel-head">
-        <span class="panel-title">MQTT configuration</span>
-        <button id="settings-close" class="lcars-btn small">close</button>
+        <span class="panel-title" data-i18n="set.title">MQTT brokers</span>
+        <button id="settings-close" class="lcars-btn small" data-i18n="word.close">close</button>
       </div>
       <form id="settings-form">
         <label class="check-row">
-          <input type="checkbox" id="set-enabled"> connected to the broker
+          <input type="checkbox" id="set-enabled">
+          <span data-i18n="set.connected">connected to the broker</span>
         </label>
+        <div id="broker-list" class="broker-list"></div>
+        <div class="control-row">
+          <button type="button" id="broker-add" class="lcars-btn small" data-i18n="set.add">add broker</button>
+          <button type="button" id="broker-remove" class="lcars-btn small danger" data-i18n="set.remove">remove selected</button>
+        </div>
         <div class="grid2">
-          <label>broker host
+          <label><span data-i18n="set.name">name</span>
+            <input type="text" id="set-name" autocomplete="off">
+          </label>
+          <label><span data-i18n="set.base">base topic</span>
+            <input type="text" id="set-base" autocomplete="off">
+          </label>
+          <label><span data-i18n="set.host">broker host</span>
             <input type="text" id="set-host" autocomplete="off">
           </label>
-          <label>broker port
+          <label><span data-i18n="set.port">broker port</span>
             <input type="number" id="set-port" min="1" max="65535">
           </label>
-          <label>username
+          <label><span data-i18n="set.user">username</span>
             <input type="text" id="set-user" autocomplete="off">
           </label>
-          <label>password
+          <label><span data-i18n="set.pass">password</span>
             <input type="password" id="set-pass" autocomplete="new-password">
           </label>
         </div>
-        <label>base topic
-          <input type="text" id="set-base" autocomplete="off">
+        <label class="lang-row"><span data-i18n="set.language">language</span>
+          <select id="set-lang">
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
         </label>
         <label class="check-row">
-          <input type="checkbox" id="set-verbose"> log every message
+          <input type="checkbox" id="set-verbose">
+          <span data-i18n="set.verbose">log every message</span>
         </label>
-        <p class="hint">Saving reconnects the broker. The password is
-        stored in mqttviz/data/mqttviz.json, which git does not keep.</p>
+        <p class="hint" data-i18n="hint.settings">Saving keeps every profile; the one in use is picked
+        with the selector in the top bar. The passwords are stored in
+        mqttviz/data/mqttviz.json, which git does not keep.</p>
         <div class="form-actions">
-          <button type="submit" id="settings-save" class="lcars-btn">save</button>
+          <button type="submit" id="settings-save" class="lcars-btn" data-i18n="word.save">save</button>
         </div>
       </form>
     </div>
@@ -90,17 +141,17 @@
 
   <div id="console" class="hidden">
     <div class="panel-head">
-      <span class="panel-title">Console</span>
+      <span class="panel-title" data-i18n="word.console">Console</span>
       <div id="console-filters">
-        <button class="lcars-btn small filter" data-level="debug">debug</button>
-        <button class="lcars-btn small filter active" data-level="info">info</button>
-        <button class="lcars-btn small filter" data-level="warn">warn</button>
-        <button class="lcars-btn small filter active" data-level="error">error</button>
+        <button class="lcars-btn small filter" data-level="debug" data-i18n="lvl.debug">debug</button>
+        <button class="lcars-btn small filter active" data-level="info" data-i18n="lvl.info">info</button>
+        <button class="lcars-btn small filter" data-level="warn" data-i18n="lvl.warn">warn</button>
+        <button class="lcars-btn small filter active" data-level="error" data-i18n="lvl.error">error</button>
       </div>
       <div class="spacer"></div>
-      <button id="console-copy" class="lcars-btn small">copy</button>
-      <button id="console-clear" class="lcars-btn small">clear</button>
-      <button id="console-close" class="lcars-btn small">close</button>
+      <button id="console-copy" class="lcars-btn small" data-i18n="word.copy">copy</button>
+      <button id="console-clear" class="lcars-btn small" data-i18n="word.clear">clear</button>
+      <button id="console-close" class="lcars-btn small" data-i18n="word.close">close</button>
     </div>
     <div id="console-entries"></div>
   </div>
@@ -109,6 +160,7 @@
   <div id="debug-geom" hidden></div>
 </main>
 
+<script src="lang.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -49,7 +49,57 @@ PUBLISHABLE = re.compile(r"^(?:relay/[^/]+|led/[^/]+|sound|config/[^/]+)"
 PAYLOAD_MAX = 200
 SECRET_MASK = "***"
 
+# One topic per BLE advertiser, keyed by its hardware address: lowercase
+# hex, no separators (doc/ble.md). Stale advertisers are cleared with an
+# empty retained publish -- the absence is information too.
+BLE_TOPIC = re.compile(r"^ble/([0-9a-f]{12})/([^/]+)$")
+
 ON_VALUES = ("online", "on", "true", "yes", "1")
+
+
+# The physics sliders, as the page sends them: whole numbers in their
+# ranges, mapped to real constants in the page. These defaults are the
+# thick oil the canvas ships with; the values exist server-side only so
+# the choice survives a restart, like everything else the page changes.
+# Gravity is the one slider that reaches below zero -- buoyancy is a
+# setting too.
+PHYS_DEFAULTS = {
+    "drag": 60,
+    "tether": 30,
+    "length": 50,
+    "homing": 35,
+    "convection": 50,
+    "convection_speed": 50,
+    "shove": 16,
+    "wall": 30,
+    "sag": 50,
+    "gravity": 0,
+}
+
+PHYS_RANGES = {
+    "gravity": (-100, 100),
+}
+
+# The three kinds of things in the picture, each with its own physics:
+# the panels, the beacons, and the broker itself -- the hub never
+# moves, but its gravity is a setting like any other object's.
+PHYS_KINDS = ("phys_nodes", "phys_beacons", "phys_broker")
+
+
+def normalise_phys(raw):
+    """One set of physics sliders, whatever the file or the page said:
+    whole numbers, each within its range, missing ones at their
+    defaults."""
+    phys = dict(PHYS_DEFAULTS)
+    if isinstance(raw, dict):
+        for key, default in PHYS_DEFAULTS.items():
+            low, high = PHYS_RANGES.get(key, (0, 100))
+            try:
+                value = int(raw.get(key, default))
+            except (TypeError, ValueError):
+                value = default
+            phys[key] = max(low, min(high, value))
+    return phys
 
 
 def topic_sanitise(base):
@@ -62,6 +112,90 @@ def topic_sanitise(base):
 
 # --------------------------------------------------------------------- state
 
+# One broker profile. The passwords live in the settings file, which git
+# keeps out; the state API masks them the way devmgr masks its secrets.
+DEFAULT_BROKER = {
+    "name": "default",
+    "mqtt_host": "localhost",
+    "mqtt_port": 1883,
+    "mqtt_user": "",
+    "mqtt_pass": "",
+    "base_topic": "oheztouch",
+}
+
+BROKER_KEYS = ("mqtt_host", "mqtt_port", "mqtt_user", "mqtt_pass",
+               "base_topic")
+
+
+def normalise_broker(profile):
+    """One profile entry, whatever the file or the page said, into the
+    shape the rest of the tool reads."""
+    out = dict(DEFAULT_BROKER)
+
+    # A stable id is what follows a profile through renames and reorders:
+    # the page sends masks for unchanged passwords, and the mask is
+    # "leave the one with this id alone" -- by name would fail the moment
+    # the name is the very thing being edited.
+    out["id"] = str(profile.get("id") or "").strip()[:32] or os.urandom(4).hex()
+
+    out["name"] = str(profile.get("name") or "").strip()[:40] or "broker"
+    host = str(profile.get("mqtt_host") or "").strip()
+    out["mqtt_host"] = host if host and "/" not in host else "localhost"
+
+    try:
+        port = int(profile.get("mqtt_port") or DEFAULT_BROKER["mqtt_port"])
+    except (TypeError, ValueError):
+        port = DEFAULT_BROKER["mqtt_port"]
+    out["mqtt_port"] = port if 1 <= port <= 65535 \
+        else DEFAULT_BROKER["mqtt_port"]
+
+    out["mqtt_user"] = str(profile.get("mqtt_user") or "").strip()
+    out["mqtt_pass"] = str(profile.get("mqtt_pass") or "")
+    out["base_topic"] = topic_sanitise(profile.get("base_topic")
+                                       or DEFAULT_BROKER["base_topic"])
+    return out
+
+
+def sort_brokers(brokers, follow_id=None, follow_name=None):
+    """The list is kept alphabetical -- it is a list of places, and
+    places are looked up by name. The entry the tool is connected to
+    follows its profile wherever the sort puts it: by id, by name, and
+    only as a last resort back to the first. Returns (sorted, index)."""
+    ordered = sorted(brokers, key=lambda profile: profile["name"].lower())
+
+    index = None
+    if follow_id:
+        index = next((i for i, profile in enumerate(ordered)
+                      if profile.get("id") == follow_id), None)
+    if index is None and follow_name:
+        index = next((i for i, profile in enumerate(ordered)
+                      if profile["name"] == follow_name), None)
+    return ordered, 0 if index is None else index
+
+
+def active_broker():
+    """The profile the tool is connected to, or trying to: (index, copy)."""
+    with STATE.lock:
+        brokers = STATE.settings.get("brokers") or [dict(DEFAULT_BROKER)]
+        index = STATE.settings.get("broker_index") or 0
+        if not 0 <= index < len(brokers):
+            index = 0
+        return index, dict(brokers[index])
+
+
+def connection_snapshot():
+    """Everything a broker connection depends on, in one comparable tuple:
+    a restart is only worth its reconnect-backoff when this changed. The
+    profile's index is not in it -- a save that reorders or renames the
+    list while keeping the same connection to the same profile is no
+    reason to disconnect."""
+    _, broker = active_broker()
+    with STATE.lock:
+        enabled = bool(STATE.settings.get("mqtt_enabled"))
+    return (enabled, broker["mqtt_host"], broker["mqtt_port"],
+            broker["mqtt_user"], broker["mqtt_pass"], broker["base_topic"])
+
+
 class State:
     """The settings, the device registry and the console log, one lock over
     all of it: the broker thread, the saver and the HTTP handlers all write
@@ -69,19 +203,27 @@ class State:
 
     DEFAULT_SETTINGS = {
         "mqtt_enabled": True,
-        "mqtt_host": "localhost",
-        "mqtt_port": 1883,
-        "mqtt_user": "",
-        "mqtt_pass": "",
-        "base_topic": "oheztouch",
+        "brokers": [dict(DEFAULT_BROKER)],
+        "broker_index": 0,
         "log_level": "info",
         "verbose": False,
+        "show_broker": True,
+        "show_beacons": True,
+        "lang": "en",
+        "phys_nodes": dict(PHYS_DEFAULTS),
+        "phys_beacons": dict(PHYS_DEFAULTS),
+        "phys_broker": dict(PHYS_DEFAULTS),
     }
 
     def __init__(self):
         self.lock = threading.RLock()
         self.settings = dict(self.DEFAULT_SETTINGS)
+        self.settings["brokers"] = [dict(DEFAULT_BROKER)]
+        self.settings["phys_nodes"] = dict(PHYS_DEFAULTS)
+        self.settings["phys_beacons"] = dict(PHYS_DEFAULTS)
+        self.settings["phys_broker"] = dict(PHYS_DEFAULTS)
         self.devices = {}          # hostname -> device dict
+        self.beacons = {}          # address -> beacon dict, memory only
         self.log_entries = deque(maxlen=LOG_CAPACITY)
         self.log_seq = 0
         self._dirty = False
@@ -98,6 +240,64 @@ class State:
             for key in self.DEFAULT_SETTINGS:
                 if key in doc["settings"]:
                     self.settings[key] = doc["settings"][key]
+
+            # A settings file from before the profile list kept the
+            # connection flat: host, port and credentials as single
+            # settings. They become the one profile of the new shape, so
+            # a switch to the new version moves nothing.
+            flat = {key: doc["settings"][key] for key in BROKER_KEYS
+                    if key in doc["settings"]}
+
+            if flat and not isinstance(doc["settings"].get("brokers"), list):
+                self.settings["brokers"] = [normalise_broker(
+                    {"name": "default", **flat})]
+                self.settings["broker_index"] = 0
+
+        # Whatever the file said a profile list is, it is one now.
+        if not isinstance(self.settings.get("brokers"), list):
+            self.settings["brokers"] = [dict(DEFAULT_BROKER)]
+
+        old_index = self.settings.get("broker_index") or 0
+        profiles = [normalise_broker(profile)
+                     for profile in self.settings["brokers"]]
+
+        # A file that arrived with an empty list gets the one true
+        # profile; the rest of the tool never has to defend against none.
+        if not profiles:
+            profiles = [normalise_broker(dict(DEFAULT_BROKER))]
+
+        # The list is kept alphabetical, and the entry the tool was
+        # connected to keeps its place in the connection through it.
+        old = profiles[old_index] if 0 <= old_index < len(profiles) else None
+        self.settings["brokers"], self.settings["broker_index"] = sort_brokers(
+            profiles, follow_id=old and old.get("id"),
+            follow_name=old and old["name"])
+
+        # Whatever the file said the sliders were, they are sliders now:
+        # every one whole, in range, and missing ones at their defaults.
+        # A file from before the two halves were set apart kept one set
+        # under "phys"; it becomes both halves, so nothing on the canvas
+        # moves the day after the upgrade.
+        file_settings = doc.get("settings") if isinstance(
+            doc.get("settings"), dict) else {}
+        legacy = file_settings.get("phys")
+        if isinstance(legacy, dict) and "phys_nodes" not in file_settings \
+                and "phys_beacons" not in file_settings:
+            self.settings["phys_nodes"] = normalise_phys(legacy)
+            self.settings["phys_beacons"] = normalise_phys(legacy)
+            self.settings["phys_broker"] = normalise_phys(legacy)
+        else:
+            self.settings["phys_nodes"] = normalise_phys(
+                self.settings.get("phys_nodes"))
+            self.settings["phys_beacons"] = normalise_phys(
+                self.settings.get("phys_beacons"))
+            self.settings["phys_broker"] = normalise_phys(
+                self.settings.get("phys_broker"))
+
+        # The language of the page: English or German, kept with the rest
+        # so every browser that opens the tool starts right.
+        if self.settings.get("lang") not in ("en", "de"):
+            self.settings["lang"] = "en"
 
         if isinstance(doc.get("devices"), dict):
             self.devices = doc["devices"]
@@ -134,6 +334,12 @@ class State:
         with open(tmp, "w") as handle:
             json.dump(doc, handle, indent=2)
             handle.write("\n")
+
+        # The previous good state is kept one generation back: whatever
+        # a corrupted write, a full disk or a mistaken rm does to the
+        # live file, the last thing that was true is still beside it.
+        if os.path.exists(STATE_FILE):
+            os.replace(STATE_FILE, STATE_FILE + ".bak")
         os.replace(tmp, STATE_FILE)
 
     def log(self, level, source, message):
@@ -158,7 +364,10 @@ class State:
                     and LEVELS.index(entry["level"]) >= LEVELS.index(min_level)]
 
 
-STATE = State()
+# The state itself is created in main(), once the --data-dir option has
+# had its say: everything below refers to STATE as it runs, never as the
+# module loads.
+STATE = None
 
 
 # ----------------------------------------------------------- device registry
@@ -219,14 +428,115 @@ def note_message(host, suffix, value, retain):
 
         STATE.save()
 
+    # The BLE subtree is double-booked: the raw topics stay with the
+    # device (its detail view lists them), and the beacons themselves
+    # become mesh objects on the page, keyed by address, one box however
+    # many panels see it.
+    if value == "" or BLE_TOPIC.match(suffix):
+        note_beacon(host, suffix, value)
+
+
+# ----------------------------------------------------------- beacon registry
+
+def beacon_label(addr, beacon=None):
+    if beacon:
+        name = beacon["fields"].get("name", {}).get("value")
+        if name:
+            return "%s (%s)" % (name, addr)
+    return addr
+
+
+def note_beacon(host, suffix, value):
+    """One ble/<address>/<field> message into the beacon registry. An
+    empty value is the firmware's way of saying the advertiser is gone:
+    the field is dropped, and a beacon nobody sees any more is no beacon
+    at all. Beacons are not persisted -- they are radio contacts, and
+    the broker's retained messages rebuild the picture on every start."""
+    match = BLE_TOPIC.match(suffix)
+    if not match:
+        return                                    # ble/count, ble/dropped
+
+    addr, field = match.groups()
+    now = time.time()
+
+    with STATE.lock:
+        beacon = STATE.beacons.get(addr)
+
+        if value == "":
+            if beacon is None:
+                return
+
+            seen = beacon["devices"].get(host)
+            if seen is not None:
+                seen["fields"].discard(field)
+                if not seen["fields"]:
+                    del beacon["devices"][host]
+
+            if not beacon["devices"]:
+                del STATE.beacons[addr]
+                STATE.log("info", "beacon",
+                          "beacon %s removed -- cleared" % beacon_label(addr, beacon))
+            return
+
+        if beacon is None:
+            beacon = {
+                "addr": addr,
+                "fields": {},
+                "devices": {},       # host -> {fields, rssi, count, ts}
+                "history": [],       # best rssi, for the box's sparkline
+                "first_seen": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            STATE.beacons[addr] = beacon
+            STATE.log("info", "beacon",
+                      "new beacon %s, seen by %s" % (addr, host))
+
+        seen = beacon["devices"].setdefault(
+            host, {"fields": set(), "rssi": None, "count": 0, "ts": now})
+        seen["fields"].add(field)
+        seen["count"] += 1
+        seen["ts"] = now
+
+        beacon["fields"][field] = {"value": value, "ts": now}
+
+        if field == "rssi":
+            try:
+                seen["rssi"] = int(float(value))
+            except (TypeError, ValueError):
+                pass
+
+            # The sparkline follows the strongest hearing of the moment;
+            # which panel that is changes as the beacon moves around.
+            best = max((d["rssi"] for d in beacon["devices"].values()
+                        if d["rssi"] is not None), default=None)
+            if best is not None:
+                beacon["history"].append([round(now, 3), best])
+                if len(beacon["history"]) > HISTORY_CAP:
+                    del beacon["history"][:-HISTORY_CAP]
+
+
+def forget_device_everywhere(host):
+    """A device removed from the list is removed from its beacons too --
+    the panel is gone, the radio contacts it reported are not facts any
+    more. A beacon with no panels left seeing it goes with it."""
+    with STATE.lock:
+        for addr in list(STATE.beacons):
+            beacon = STATE.beacons[addr]
+            if host in beacon["devices"]:
+                del beacon["devices"][host]
+            if not beacon["devices"]:
+                del STATE.beacons[addr]
+                STATE.log("info", "beacon",
+                          "beacon %s removed -- nobody sees it"
+                          % beacon_label(addr, beacon))
+
 
 def on_mqtt_message(topic, payload, retain):
     """The whole tree arrives through one wildcard subscription; the levels
     between the base topic and the rest say which panel it came from."""
     value = payload.decode("utf-8", "replace")
 
-    with STATE.lock:
-        base = STATE.settings.get("base_topic", "oheztouch")
+    _, broker = active_broker()
+    base = broker["base_topic"]
 
     prefix = base + "/"
     if not topic.startswith(prefix):
@@ -270,24 +580,33 @@ class Broker:
             STATE.log("info", "mqtt", "disconnected on request")
 
     def restart(self):
-        with STATE.lock:
-            settings = dict(STATE.settings)
+        index, broker = active_broker()
 
         self.stop()
 
-        if not settings.get("mqtt_enabled"):
+        # The picture so far belongs to the broker we are leaving: what
+        # it said stays visible, but nothing of it is known to be true
+        # any more -- the new connection's retained messages decide,
+        # exactly as they do at startup.
+        with STATE.lock:
+            for device in STATE.devices.values():
+                device["online"] = False
+            STATE.beacons = {}
+            STATE.save()
+
+        if not connection_snapshot()[0]:
             self.connected = False
             STATE.log("info", "mqtt", "the broker connection is off")
             return
 
-        base = topic_sanitise(settings.get("base_topic"))
-        self.host = settings.get("mqtt_host") or "localhost"
-        self.port = int(settings.get("mqtt_port") or 1883)
+        base = broker["base_topic"]
+        self.host = broker["mqtt_host"]
+        self.port = broker["mqtt_port"]
 
         client = mqtt_client.MQTTClient(
             self.host, self.port, "mqttviz-%s" % os.uname().nodename.lower(),
-            username=settings.get("mqtt_user") or "",
-            password=settings.get("mqtt_pass") or "",
+            username=broker["mqtt_user"],
+            password=broker["mqtt_pass"],
             on_connect=self._on_connect,
             on_disconnect=self._on_disconnect,
             on_message=self._on_message,
@@ -299,8 +618,8 @@ class Broker:
         client.subscribe(base + "/#")
         client.start()
 
-        STATE.log("info", "mqtt", "connecting to %s:%d, watching %s/#"
-                  % (self.host, self.port, base))
+        STATE.log("info", "mqtt", "connecting to %s:%d (%s), watching %s/#"
+                  % (self.host, self.port, broker["name"], base))
 
     def publish(self, host, suffix, payload):
         """The page may only ever speak the topics the firmware subscribes
@@ -314,7 +633,9 @@ class Broker:
         with STATE.lock:
             if host not in STATE.devices:
                 return False, "unknown device"
-            base = topic_sanitise(STATE.settings.get("base_topic"))
+
+        _, broker = active_broker()
+        base = broker["base_topic"]
 
         with self.lock:
             client = self.client
@@ -376,11 +697,21 @@ def json_bytes(doc):
 
 
 def masked_settings():
-    """The page sees every setting except the password, which is masked the
-    way devmgr masks it: a mask sent back means 'unchanged'."""
-    settings = dict(STATE.settings)
-    if settings.get("mqtt_pass"):
-        settings["mqtt_pass"] = SECRET_MASK
+    """The page sees every setting except the passwords, which are masked
+    the way devmgr masks its secrets: a mask sent back means 'unchanged'."""
+    with STATE.lock:
+        settings = dict(STATE.settings)
+        settings["brokers"] = []
+
+        brokers = STATE.settings.get("brokers") or [dict(DEFAULT_BROKER)]
+        for profile in brokers:
+            masked = dict(profile)
+            if masked.get("mqtt_pass"):
+                masked["mqtt_pass"] = SECRET_MASK
+            settings["brokers"].append(masked)
+
+        index = STATE.settings.get("broker_index") or 0
+        settings["broker_index"] = max(0, min(index, len(brokers) - 1))
     return settings
 
 
@@ -423,7 +754,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/":
             return self.serve_static("index.html", "text/html")
-        if path in ("/app.js", "/style.css"):
+        if path in ("/app.js", "/lang.js", "/style.css"):
             mime = "text/javascript" if path.endswith(".js") else "text/css"
             return self.serve_static(path[1:], mime)
 
@@ -495,9 +826,53 @@ class Handler(BaseHTTPRequestHandler):
                     "history": device.get("history", {}),
                 })
 
+            now = time.time()
+            beacons = []
+            for addr in sorted(STATE.beacons):
+                beacon = STATE.beacons[addr]
+                fields = beacon["fields"]
+                heard = []
+
+                best_rssi = None
+                latest_ts = 0
+                for host, seen in beacon["devices"].items():
+                    heard.append({
+                        "host": host,
+                        "rssi": seen["rssi"],
+                        "age": max(0, round(now - seen["ts"])),
+                        "count": seen["count"],
+                    })
+                    if seen["rssi"] is not None \
+                            and (best_rssi is None or seen["rssi"] > best_rssi):
+                        best_rssi = seen["rssi"]
+                    latest_ts = max(latest_ts, seen["ts"])
+
+                # A beacon the panels still list but have not heard for a
+                # while is drawn as asleep, not gone: walking out of range
+                # and back is what beacons do.
+                heard.sort(key=lambda d: -(d["rssi"] if d["rssi"] is not None
+                                            else -999))
+
+                beacons.append({
+                    "addr": addr,
+                    "name": fields.get("name", {}).get("value", ""),
+                    "id": fields.get("id", {}).get("value", ""),
+                    "type": fields.get("type", {}).get("value", ""),
+                    "fields": {field: {"value": record["value"],
+                                       "age": max(0, round(now - record["ts"]))}
+                               for field, record in fields.items()},
+                    "devices": heard,
+                    "rssi": best_rssi,
+                    "active": (now - latest_ts) < 90,
+                    "age": max(0, round(now - latest_ts)) if latest_ts else None,
+                    "history": beacon.get("history", [])[-HISTORY_CAP:],
+                    "first_seen": beacon.get("first_seen"),
+                })
+
             self.send_json({
                 "settings": masked_settings(),
                 "devices": devices,
+                "beacons": beacons,
                 "broker": BROKER.as_dict(),
             })
 
@@ -508,54 +883,135 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error_json("expected a JSON object")
 
         with STATE.lock:
-            before = dict(STATE.settings)
+            before = connection_snapshot()
 
             if "mqtt_enabled" in body:
                 STATE.settings["mqtt_enabled"] = bool(body["mqtt_enabled"])
 
-            if "mqtt_host" in body:
-                host = str(body["mqtt_host"]).strip()
-                if not host or "/" in host:
-                    return self.send_error_json("bad broker host")
-                STATE.settings["mqtt_host"] = host
+            # The profile list arrives whole: the page owns adding,
+            # removing and editing entries, this end makes them true.
+            # The password mask means "leave it alone", matched by the
+            # profile's id, so renaming and reordering are safe. An
+            # explicit index in the same body refers to the incoming
+            # list's order, before the alphabetical sort.
+            if "brokers" in body:
+                incoming = body["brokers"]
 
-            if "mqtt_port" in body:
+                if not isinstance(incoming, list) or not incoming:
+                    return self.send_error_json(
+                        "the broker list cannot be empty")
+
+                names = [str(p.get("name") or "").strip()
+                         for p in incoming]
+                if any(not name for name in names):
+                    return self.send_error_json("every broker needs a name")
+                if len(set(names)) != len(names):
+                    return self.send_error_json(
+                        "the broker names must be distinct")
+
+                existing = STATE.settings.get("brokers") or []
+                old_index = STATE.settings.get("broker_index") or 0
+                active = existing[old_index] \
+                    if 0 <= old_index < len(existing) else None
+
+                profiles = []
+                for profile in incoming:
+                    merged = dict(profile)
+                    if merged.get("mqtt_pass") == SECRET_MASK:
+                        # by id, and by position as the fallback for a
+                        # list that predates ids
+                        old = next((p for p in existing
+                                    if p.get("id") == merged.get("id")), None)
+                        if old is None:
+                            position = incoming.index(profile)
+                            if 0 <= position < len(existing):
+                                old = existing[position]
+                        if old is not None:
+                            merged["mqtt_pass"] = old["mqtt_pass"]
+                    profiles.append(normalise_broker(merged))
+
+                STATE.settings["brokers"], follow = sort_brokers(
+                    profiles, follow_id=active and active.get("id"),
+                    follow_name=active and active["name"])
+                STATE.settings["broker_index"] = follow
+
+            if "broker_index" in body:
                 try:
-                    port = int(body["mqtt_port"])
+                    index = int(body["broker_index"])
                 except (TypeError, ValueError):
-                    return self.send_error_json("port must be a number")
-                if port < 1 or port > 65535:
-                    return self.send_error_json("port out of range (1..65535)")
-                STATE.settings["mqtt_port"] = port
+                    return self.send_error_json("broker index must be a number")
 
-            if "mqtt_user" in body:
-                STATE.settings["mqtt_user"] = str(body["mqtt_user"]).strip()
-
-            if "mqtt_pass" in body:
-                # The mask the state API hands out means "leave it alone".
-                if body["mqtt_pass"] != SECRET_MASK:
-                    STATE.settings["mqtt_pass"] = str(body["mqtt_pass"])
-
-            if "base_topic" in body:
-                STATE.settings["base_topic"] = topic_sanitise(body["base_topic"])
+                if "brokers" in body:
+                    # a switch made in the same breath as the new list
+                    # names a position of the incoming list
+                    if not 0 <= index < len(incoming):
+                        return self.send_error_json("no broker at that index")
+                    chosen = incoming[index]
+                    STATE.settings["broker_index"] = next(
+                        i for i, profile in enumerate(STATE.settings["brokers"])
+                        if profile.get("id") == chosen.get("id")
+                        or profile["name"] == chosen.get("name"))
+                else:
+                    brokers = STATE.settings.get("brokers") or []
+                    if not 0 <= index < len(brokers):
+                        return self.send_error_json("no broker at that index")
+                    STATE.settings["broker_index"] = index
 
             if "log_level" in body:
                 if body["log_level"] not in LEVELS:
                     return self.send_error_json("unknown log level")
                 STATE.settings["log_level"] = body["log_level"]
 
+            # View switches -- what the page draws, not what it knows.
+            # The devices keep tracking either way.
+            if "show_broker" in body:
+                STATE.settings["show_broker"] = bool(body["show_broker"])
+
+            if "show_beacons" in body:
+                STATE.settings["show_beacons"] = bool(body["show_beacons"])
+
+            # The physics sliders: whole numbers in their ranges, whatever
+            # the page meant by them, clamped here -- and set apart for
+            # the two kinds of things that float, the panels and the
+            # beacons. The canvas takes care of what the numbers mean.
+            for phys_key in PHYS_KINDS:
+                if phys_key not in body:
+                    continue
+
+                incoming = body[phys_key]
+                if not isinstance(incoming, dict):
+                    return self.send_error_json(
+                        phys_key + " must be an object")
+
+                merged = dict(STATE.settings.get(phys_key) or {})
+                for key, default in PHYS_DEFAULTS.items():
+                    if key not in incoming:
+                        continue
+                    try:
+                        value = int(incoming[key])
+                    except (TypeError, ValueError):
+                        return self.send_error_json(
+                            "%s.%s must be a number" % (phys_key, key))
+                    low, high = PHYS_RANGES.get(key, (0, 100))
+                    merged[key] = max(low, min(high, value))
+                STATE.settings[phys_key] = normalise_phys(merged)
+
+            # The language of the page: English or German.
+            if "lang" in body:
+                if body["lang"] not in ("en", "de"):
+                    return self.send_error_json("lang must be 'en' or 'de'")
+                STATE.settings["lang"] = body["lang"]
+
             if "verbose" in body:
                 STATE.settings["verbose"] = bool(body["verbose"])
 
             STATE.save()
             STATE.save_now_if_dirty()
-            after = dict(STATE.settings)
+            after = connection_snapshot()
 
-        # Only a change to the connection is worth a reconnect; log level
-        # and verbosity are read as they are.
-        keys = ("mqtt_enabled", "mqtt_host", "mqtt_port", "mqtt_user",
-                "mqtt_pass", "base_topic")
-        if any(before[key] != after[key] for key in keys):
+        # Only a change to the connection is worth a reconnect; log level,
+        # verbosity and view switches are read as they are.
+        if before != after:
             threading.Thread(target=BROKER.restart, daemon=True).start()
 
         self.send_json({"settings": masked_settings()})
@@ -608,6 +1064,7 @@ class Handler(BaseHTTPRequestHandler):
         if device is None:
             return self.send_error_json("not found", 404)
 
+        forget_device_everywhere(host)
         STATE.log("info", "device", "%s removed from the list" % host)
         self.send_json({"ok": True})
 
@@ -659,6 +1116,10 @@ def main():
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
                         help="where the page is served (default %d)"
                         % DEFAULT_PORT)
+    parser.add_argument("--data-dir", metavar="DIR",
+                        help="keep the state somewhere else -- which is how"
+                             " a second instance, or a test run, avoids"
+                             " touching the live configuration")
     parser.add_argument("--mqtt-host", help="the MQTT broker to watch")
     parser.add_argument("--mqtt-port", type=int, help="the broker's port")
     parser.add_argument("--user", help="the broker username, if any")
@@ -668,18 +1129,32 @@ def main():
                         help="start without connecting to the broker")
     args = parser.parse_args()
 
-    # Command line overrides: they are written into the settings, so what
-    # was typed once is what the next start remembers.
-    if args.mqtt_host:
-        STATE.settings["mqtt_host"] = args.mqtt_host
-    if args.mqtt_port:
-        STATE.settings["mqtt_port"] = args.mqtt_port
-    if args.user is not None:
-        STATE.settings["mqtt_user"] = args.user
-    if args.password is not None:
-        STATE.settings["mqtt_pass"] = args.password
-    if args.base:
-        STATE.settings["base_topic"] = topic_sanitise(args.base)
+    global STATE, DATA_DIR, STATE_FILE
+
+    if args.data_dir:
+        DATA_DIR = args.data_dir
+        STATE_FILE = os.path.join(DATA_DIR, "mqttviz.json")
+
+    STATE = State()
+
+    # Command line overrides: they are written into the settings -- into
+    # the profile the tool is connected to, that is -- so what was typed
+    # once is what the next start remembers.
+    if args.mqtt_host or args.mqtt_port or args.user is not None \
+            or args.password is not None or args.base:
+        index, profile = active_broker()
+        if args.mqtt_host:
+            profile["mqtt_host"] = args.mqtt_host
+        if args.mqtt_port:
+            profile["mqtt_port"] = args.mqtt_port
+        if args.user is not None:
+            profile["mqtt_user"] = args.user
+        if args.password is not None:
+            profile["mqtt_pass"] = args.password
+        if args.base:
+            profile["base_topic"] = topic_sanitise(args.base)
+        STATE.settings["brokers"][index] = normalise_broker(profile)
+        STATE.save_now_if_dirty()
     if args.no_mqtt:
         STATE.settings["mqtt_enabled"] = False
 
