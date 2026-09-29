@@ -125,6 +125,9 @@ const I18N = {
     "phys.wall": "wall spring",
     "phys.sag": "line sag",
     "phys.gravity": "gravity",
+    "phys.signalPull": "signal pull",
+    "phys.minSignal": "min signal",
+    "phys.lineTimeout": "line timeout",
 
     "help.drag": "How thick the oil is: how quickly a shoved box stops."
                  + " High = heavy, almost frozen; low = it keeps sliding.",
@@ -147,6 +150,21 @@ const I18N = {
                  + " reaches them.",
     "help.sag": "How far the lines droop below the straight path between"
                 + " their two ends, like cables.",
+    "help.signalPull": "How much a beacon line's hearing pulls: a strong"
+                       + " signal shortens the leash, and this scales by how"
+                       + " much. At ×0.00 every line wants the same length;"
+                       + " at ×1.00 the radio alone says how far the beacon"
+                       + " sits. Beacons only.",
+    "help.minSignal": "The weakest hearing a line may carry: a panel whose"
+                      + " signal falls below this is no longer connected --"
+                      + " the line is gone, however fresh it heard. -100 dBm"
+                      + " -- the shipped default -- lets every line stay."
+                      + " Beacons only.",
+    "help.lineTimeout": "How long a panel's last hearing keeps its line"
+                        + " alive: a line whose panel has not reported the"
+                        + " beacon for this long is gone, and a beacon with"
+                        + " no lines left is gone with it. 30 to 300"
+                        + " seconds. Beacons only.",
     "help.gravity": "Every object carries a gravity of its own and pulls"
                     + " on every other object: positive attracts, negative"
                     + " repels. Zero -- the shipped default -- leaves the"
@@ -275,6 +293,9 @@ const I18N = {
     "phys.wall": "Wandfeder",
     "phys.sag": "Liniendurchhang",
     "phys.gravity": "Gravitation",
+    "phys.signalPull": "Signal-Zug",
+    "phys.minSignal": "Mindestsignal",
+    "phys.lineTimeout": "Leinen-Timeout",
 
     "help.drag": "Wie zäh das Öl ist: wie schnell eine geschubste Box"
                  + " stehen bleibt. Hoch = schwer, fast gefroren;"
@@ -302,6 +323,21 @@ const I18N = {
                  + " zurückdrängen, die sie erreicht.",
     "help.sag": "Wie weit die Linien unter der geraden Verbindung"
                 + " zwischen ihren beiden Enden durchhängen, wie Kabel.",
+    "help.signalPull": "Wie stark das Hören an einer Beacon-Linie zieht: ein"
+                       + " gutes Signal kürzt die Leine, und dies sagt, um"
+                       + " wie viel. Bei ×0.00 will jede Linie dieselbe"
+                       + " Länge; bei ×1.00 sagt allein das Radio, wie weit"
+                       + " der Beacon sitzt. Nur Beacons.",
+    "help.minSignal": "Das schwächste Hören, das eine Linie tragen darf: Ein"
+                      + " Panel, dessen Signal darunter fällt, ist nicht"
+                      + " mehr verbunden -- die Linie ist fort, so frisch sie"
+                      + " auch hörte. -100 dBm -- der ausgelieferte Standard"
+                      + " -- lässt jede Linie bleiben. Nur Beacons.",
+    "help.lineTimeout": "Wie lange das letzte Hören eines Panels seine Linie"
+                        + " am Leben hält: eine Linie, deren Panel den"
+                        + " Beacon so lange nicht gemeldet hat, ist fort --"
+                        + " und ein Beacon ohne Linien mit ihm. 30 bis 300"
+                        + " Sekunden. Nur Beacons.",
     "help.gravity": "Jedes Objekt trägt eine Gravitation der eigenen und"
                     + " zieht an jedem anderen Objekt: positiv zieht,"
                     + " negativ schiebt. Null — der ausgelieferte Standard"

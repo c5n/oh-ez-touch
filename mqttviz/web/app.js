@@ -5,7 +5,7 @@
  * in order. The devices are objects on a canvas: boxes that spring to an
  * orbit around the broker, drift a little while idle, repel each other,
  * and can be picked up and thrown. Every message a panel publishes
- * becomes a particle flowing from the broker to its box.
+ * becomes a particle flowing from its box to the broker.
  */
 "use strict";
 
@@ -290,7 +290,7 @@ function syncBoxes() {
     box.h = rowHeight(box.rows);
 
     /* Anything with a new timestamp just changed on the panel: flash the
-     * field, wake the link, and let a particle say where it came from. */
+     * field, wake the link, and let a particle carry the news home. */
     let any = false;
     for (const suffix in dev.topics) {
       const ts = dev.topics[suffix].ts;
@@ -306,7 +306,7 @@ function syncBoxes() {
     if (delta > 0) {
       box.lastMsgcount = dev.msgcount;
       box.activity = 1;
-      for (let i = 0; i < Math.min(3, delta); i++) spawnParticle(box);
+      for (let i = 0; i < Math.min(3, delta); i++) spawnParticle(null, box);
     }
   }
 
@@ -314,7 +314,19 @@ function syncBoxes() {
    * boxes vanish from the canvas and the seats the moment they are not,
    * and the beacons keep being tracked behind the switch. */
   if (state.settings.show_beacons !== false) {
+    /* A line is only a line while its hearing is fresh and strong
+     * enough: one whose panel has not reported the beacon for the line
+     * timeout, or whose signal is weaker than the minimum, is gone --
+     * and a beacon with no lines left is gone with it. A hearing that
+     * never carried a signal reading counts as the floor. */
+    const params = physParams("beacon");
+
     for (const beacon of state.beacons) {
+      const lines = beacon.devices.filter(
+        (d) => d.age <= params.lineTimeout
+          && (d.rssi == null ? -100 : d.rssi) >= params.minSignal);
+      if (!lines.length) continue;
+
       const key = "beacon:" + beacon.addr;
       live.add(key);
 
@@ -325,7 +337,7 @@ function syncBoxes() {
          * whole mesh to find its place; one nobody has placed yet waits
          * on the outer band, where the beacons end up anyway. */
         let sx = 0, sy = 0, heard = 0;
-        for (const seen of beacon.devices) {
+        for (const seen of lines) {
           const panelBox = boxFor(seen.host);
           if (panelBox) { sx += panelBox.cx; sy += panelBox.cy; heard++; }
         }
@@ -357,13 +369,15 @@ function syncBoxes() {
         boxes.push(box);
       }
 
-      box.dev = beacon;
-      box.rows = beaconRows(beacon);
+      /* The box keeps only the live lines: the drawing, the springs and
+       * the particles all follow what is still connected. */
+      box.dev = { ...beacon, devices: lines };
+      box.rows = beaconRows(box.dev);
       box.h = beaconHeight(box.rows);
 
       /* A panel hearing the beacon again is a particle along that link:
        * the count says which link, so the flow follows who is listening. */
-      for (const seen of beacon.devices) {
+      for (const seen of lines) {
         const delta = seen.count - (box.lastCounts[seen.host] || 0);
         if (delta > 0) {
           box.lastCounts[seen.host] = seen.count;
@@ -381,7 +395,7 @@ function syncBoxes() {
       /* A panel that stopped seeing the beacon does not take the box with
        * it -- others may still hear it -- but the flow from it stops. */
       for (const host in box.lastCounts) {
-        if (!beacon.devices.some((d) => d.host === host)) {
+        if (!lines.some((d) => d.host === host)) {
           delete box.lastCounts[host];
         }
       }
@@ -393,6 +407,8 @@ function syncBoxes() {
   }
 }
 
+/* A particle travels from its box to the box it is heard by, or --
+ * with no destination box -- from a panel to the broker hub. */
 function spawnParticle(to, from, rssi) {
   if (particles.length > 120) particles.shift();
 
@@ -437,6 +453,9 @@ const PHYS_DEFAULTS = {
   wall: 30,
   sag: 50,
   gravity: 0,
+  signal_pull: 100,
+  line_timeout: 90,
+  min_signal: -100,
 };
 
 /* What each slider is and says, in the order the panel shows them. The
@@ -481,8 +500,25 @@ const BROKER_SPEC = [
            + " " + t("unit.grav100") },
 ];
 
+/* Three settings the beacons have to themselves, appended to the ones
+ * every floating thing shares: how hard a line's hearing pulls on its
+ * leash, how weak a hearing may be before its line is gone, and how
+ * long a hearing keeps its line alive. The timeout is the one slider
+ * measured in seconds, the minimum signal the one in dBm. */
+const BEACON_EXTRA = [
+  { key: "signal_pull", label: "phys.signalPull", help: "help.signalPull",
+    fmt: (v) => "×" + (v / 100).toFixed(2) },
+  { key: "min_signal", label: "phys.minSignal", help: "help.minSignal",
+    min: -100, max: -30,
+    fmt: (v) => v + " dBm" },
+  { key: "line_timeout", label: "phys.lineTimeout", help: "help.lineTimeout",
+    min: 30, max: 300,
+    fmt: (v) => v + " s" },
+];
+
 function physSpecFor(kind) {
-  return kind === "broker" ? BROKER_SPEC : PHYS_SPEC;
+  if (kind === "broker") return BROKER_SPEC;
+  return kind === "beacon" ? PHYS_SPEC.concat(BEACON_EXTRA) : PHYS_SPEC;
 }
 
 const PHYS_SETTINGS_KEY = {
@@ -533,15 +569,29 @@ function physParams(kind) {
      * neighbour barely tugs and a near one draws the box off its
      * springs. */
     grav: gravity / 100 * 8,
+    /* How much the radio says about a beacon's leashes: the spread of
+     * their rest lengths by signal quality, scaled to nothing at zero
+     * and to the full word of the radio at one. Beacons only. */
+    beaconPull: value("signal_pull", 0, 100) / 100,
+    /* The weakest hearing a line may carry, in dBm: a panel whose
+     * signal falls below it is not connected. At the floor of -100
+     * every line stays. Beacons only. */
+    minSignal: value("min_signal", -100, -30),
+    /* How long a panel's last hearing keeps its line alive, in seconds.
+     * A line whose hearing is older is no line, and a beacon left with
+     * no lines is no beacon. Beacons only. */
+    lineTimeout: value("line_timeout", 30, 300),
   };
 }
 
 /* How long a beacon's line to a panel wants to be: the stronger the
  * hearing, the shorter the leash -- a beacon heard at -40 dBm sits
  * close enough to touch its panels, one scraped at -90 hangs out on a
- * long line at the far edge of the mesh. */
-function beaconRest(q) {
-  return 170 + (1 - q) * 300;
+ * long line at the far edge of the mesh. The pull factor scales how
+ * much the hearing gets to say: at zero every leash wants the same
+ * length, at one the radio alone places the beacon. */
+function beaconRest(q, pull) {
+  return 170 + (1 - q) * 300 * pull;
 }
 
 function physicsStep(dt, time) {
@@ -585,7 +635,7 @@ function physicsStep(dt, time) {
 
         const q = seen.rssi == null ? 0
                   : Math.max(0, Math.min(1, (seen.rssi + 100) / 70));
-        const rest = beaconRest(q) * p.lenScale;
+        const rest = beaconRest(q, p.beaconPull) * p.lenScale;
         const dx = deviceBox.cx - box.cx, dy = deviceBox.cy - box.cy;
         const dist = Math.hypot(dx, dy);
         if (!dist) continue;
@@ -865,33 +915,37 @@ function draw(time) {
     const p = particles[i];
     p.t += dt / 60 / p.dur;
 
-    if (p.t >= 1 || !boxes.includes(p.to)
-        || (p.from && !boxes.includes(p.from))) {
-      p.to.activity = 1;
+    if (p.t >= 1 || (p.from && !boxes.includes(p.from))
+        || (p.to && !boxes.includes(p.to))) {
+      /* A broker-bound particle has no box to arrive at, so it wakes
+       * the panel it set out from instead. */
+      const arrived = p.to || p.from;
+      arrived.activity = 1;
       particles.splice(i, 1);
       continue;
     }
 
     /* A broker particle is part of the broker picture. */
-    if (!p.from && !showBroker) continue;
+    if (!p.to && !showBroker) continue;
 
-    const fx = p.from ? p.from.cx : bx;
-    const fy = p.from ? p.from.cy : by;
-    const target = p.to;
+    const fx = p.from.cx;
+    const fy = p.from.cy;
+    const tx = p.to ? p.to.cx : bx;
+    const ty = p.to ? p.to.cy : by;
     /* The particle rides the line that hangs there, with a little slack
      * of its own, so a busy link is a bundle of threads and not one. */
-    const hang = hangControl(fx, fy, target.cx, target.cy,
-                             p.from ? "beacon" : "device");
+    const hang = hangControl(fx, fy, tx, ty,
+                             p.to ? "beacon" : "device");
     const cx1 = hang.x, cy1 = hang.y + p.off * 0.15;
 
     for (let trail = 0; trail < 3; trail++) {
       const t = Math.max(0, p.t - trail * 0.045);
       const u = 1 - t;
-      const px = u * u * fx + 2 * u * t * cx1 + t * t * target.cx;
-      const py = u * u * fy + 2 * u * t * cy1 + t * t * target.cy;
+      const px = u * u * fx + 2 * u * t * cx1 + t * t * tx;
+      const py = u * u * fy + 2 * u * t * cy1 + t * t * ty;
       ctx.beginPath();
       ctx.arc(px, py, 2.4 - trail * 0.7, 0, Math.PI * 2);
-      const tint = p.from ? "95, 201, 176" : "153, 194, 255";
+      const tint = p.to ? "95, 201, 176" : "153, 194, 255";
       ctx.fillStyle = "rgba(" + tint + "," + (0.9 - trail * 0.3) + ")";
       ctx.fill();
     }

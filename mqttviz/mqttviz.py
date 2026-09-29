@@ -61,8 +61,10 @@ ON_VALUES = ("online", "on", "true", "yes", "1")
 # ranges, mapped to real constants in the page. These defaults are the
 # thick oil the canvas ships with; the values exist server-side only so
 # the choice survives a restart, like everything else the page changes.
-# Gravity is the one slider that reaches below zero -- buoyancy is a
-# setting too.
+# Gravity is the one common slider that reaches below zero -- buoyancy is
+# a setting too. The beacons keep the two sliders with units of their
+# own: the line timeout, the one measured in seconds, and the minimum
+# signal, the one measured in dBm.
 PHYS_DEFAULTS = {
     "drag": 60,
     "tether": 30,
@@ -74,10 +76,15 @@ PHYS_DEFAULTS = {
     "wall": 30,
     "sag": 50,
     "gravity": 0,
+    "signal_pull": 100,
+    "line_timeout": 90,
+    "min_signal": -100,
 }
 
 PHYS_RANGES = {
     "gravity": (-100, 100),
+    "line_timeout": (30, 300),
+    "min_signal": (-100, -30),
 }
 
 # The three kinds of things in the picture, each with its own physics:

@@ -97,8 +97,13 @@ paint the new world at once, exactly as they do at startup.
   a sparkline of how the hearing has been going, and whatever telemetry
   the beacon carried along (battery, temperature, power). A beacon
   nobody has heard for a while is drawn asleep, grey, until it
-  advertises again. Click it for every field it advertised and which
-  panel hears it how well.
+  advertises again. A line whose panel has not reported the beacon for
+  the line timeout (a beacon physics slider, 30 to 300 s, 90 s as
+  shipped) is gone, and so is a line whose signal is weaker than the
+  minimum signal (another one, -100 to -30 dBm, everything as shipped);
+  a beacon left with no lines at all leaves the canvas -- the mesh says
+  what the radio says, and a radio nobody reports is no radio. Click it
+  for every field it advertised and which panel hears it how well.
 * **Controls that publish back** -- the relay badges answer a click with
   `relay/<n>/set` (a toggle, so a push-button that does not know the
   state works too), the LED sliders publish `led/<name>/set`, and the
@@ -139,7 +144,14 @@ paint the new world at once, exactly as they do at startup.
   springs keep it a clump, not a collapse. The broker never moves, so
   it has the one setting that can act from a standstill: its own
   gravity, positive gathering the whole mesh toward the hub, negative
-  blowing it outward, and every line answering. The panel never blocks
+  blowing it outward, and every line answering. The beacons add three
+  sliders of their own: the signal pull, how much a line's hearing
+  shortens its leash (at zero every line wants the same length, at full
+  the radio alone places the beacon), the minimum signal, the weakest
+  hearing a line may carry before it is gone (-100 dBm, the default,
+  keeps every line), and the line timeout, how long a panel's last
+  hearing keeps its line alive before the line -- and with the last of
+  them the beacon -- is gone. The panel never blocks
   the canvas -- the
   fleet keeps moving while the sliders are dragged, and when the device
   detail is open, the physics panel steps to its left. Every slider
