@@ -131,6 +131,18 @@ async function pollState() {
     if (doc.settings.lang && doc.settings.lang !== lang) {
       setLang(doc.settings.lang);
     }
+
+    /* The camera is adopted once, where the last session left it
+     * looking; after that the hands own it, and it is saved when it
+     * settles. */
+    if (!camAdopted && doc.settings.cam) {
+      camAdopted = true;
+      const c = clampCam(Number(doc.settings.cam.zoom) || 1,
+                         Number(doc.settings.cam.x), Number(doc.settings.cam.y));
+      cam.zoom = cam.tZoom = c.zoom;
+      cam.x = cam.tx = c.x;
+      cam.y = cam.ty = c.y;
+    }
   } catch (error) {
     if (!state.failed) {
       state.failed = true;
@@ -162,18 +174,127 @@ const ctx = canvas.getContext("2d");
 
 const BOX_W = 250;
 const BEACON_W = 190;
+const AP_W = 190;
 const PAD = 8;
 const ROWS = { header: 30, sub: 15, sys: 22, net: 18, ui: 22, sens: 30,
                out: 28, foot: 18 };
 const BEACON_ROWS = { header: 26, sub: 15, rssi: 20, spark: 22, chips: 20,
                       foot: 15 };
 const BEACON_PAD = 6;
+const AP_ROWS = { header: 26, sub: 15, rssi: 20, foot: 15 };
+const AP_PAD = 6;
 
 const stage = { w: 0, h: 0 };
 const boxes = [];
 const particles = [];
+const waves = [];          // expanding rings: pin shockwaves, arrivals
+const ghostLinks = [];      // links whose box died, fading out
 let hits = [];            // the previous frame's clickable regions
 let frameTime = performance.now();
+let hovered = null;        // the box under the cursor, for the lift
+
+/* ------------------------------------------------------------- view mode */
+
+function isTopology() {
+  return state.settings.view_mode === "topology";
+}
+
+function fxOn() {
+  return state.settings.show_fx !== false;
+}
+
+/* One access point key, whatever the panel published: the firmware
+ * sends the MAC as lowercase hex with colons; the simulator sends its
+ * own. Anything else is not an access point. */
+function normaliseBssid(value) {
+  if (value == null) return null;
+  const bssid = String(value).trim().toLowerCase()
+    .replace(/[\s:.-]/g, "");
+  return /^[0-9a-f]{12}$/.test(bssid) ? bssid : null;
+}
+
+function deviceBssid(dev) {
+  const record = dev.topics && dev.topics["system/bssid"];
+  return record ? normaliseBssid(record.value) : null;
+}
+
+function deviceSsid(dev) {
+  const record = dev.topics && dev.topics["system/ssid"];
+  return record && record.value ? String(record.value) : "";
+}
+
+/* The WLAN quality of a panel, as the panels report it: rssi on the
+ * scale the beacon lines use, so a strong link is a short leash. */
+function deviceWifiQ(dev) {
+  const rssi = Number(dev.topics && dev.topics["system/rssi"]
+                     && dev.topics["system/rssi"].value);
+  if (!isFinite(rssi) || rssi === 0) return 0;
+  return Math.max(0, Math.min(1, (rssi + 100) / 70));
+}
+
+function pinKeyFor(box) {
+  if (box.kind === "broker") return "broker";
+  if (box.kind === "ap") return "ap:" + box.bssid;
+  return "panel:" + box.host;
+}
+
+/* ------------------------------------------------------------------- fx */
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+const spriteCache = {};
+
+/* A soft radial glow, rendered once per colour and stamped additively
+ * under every box: the halo is the cheapest thing on the canvas that
+ * makes it look alive. */
+function glowSprite(hex) {
+  if (spriteCache[hex]) return spriteCache[hex];
+
+  const sprite = document.createElement("canvas");
+  sprite.width = sprite.height = 128;
+  const c = sprite.getContext("2d");
+  const [r, g, b] = hexRgb(hex);
+  const grad = c.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "rgba(" + r + "," + g + "," + b + ",0.55)");
+  grad.addColorStop(0.4, "rgba(" + r + "," + g + "," + b + ",0.16)");
+  grad.addColorStop(1, "rgba(" + r + "," + g + "," + b + ",0)");
+  c.fillStyle = grad;
+  c.fillRect(0, 0, 128, 128);
+
+  spriteCache[hex] = sprite;
+  return sprite;
+}
+
+function stampGlow(x, y, size, alpha, hex) {
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+  ctx.drawImage(glowSprite(hex), x - size / 2, y - size / 2, size, size);
+  ctx.restore();
+}
+
+function easeOutBack(t) {
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+
+/* One expanding ring: a pin snapping in, a particle arriving, a box
+ * letting go of its pin. */
+function wave(x, y, color, r1, dur) {
+  if (waves.length > 40) waves.shift();
+  waves.push({ x, y, color, r1, dur, t0: performance.now() });
+}
+
+/* The workspace the topology view lays out in: twice the canvas each
+ * way -- four times the area -- with the classic canvas picture in its
+ * middle. The stage is the workspace: every coordinate the physics
+ * and the drawing speak is a point in it. The viewport is the window
+ * the camera looks through. */
+const WORLD_SCALE = 2;
+const view = { w: 0, h: 0 };
 
 function resize() {
   const rect = canvas.getBoundingClientRect();
@@ -181,11 +302,166 @@ function resize() {
   canvas.width = Math.round(rect.width * dpr);
   canvas.height = Math.round(rect.height * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  stage.w = rect.width;
-  stage.h = rect.height;
+  view.w = rect.width;
+  view.h = rect.height;
+  stage.w = rect.width * WORLD_SCALE;
+  stage.h = rect.height * WORLD_SCALE;
+  buildBackground();
 }
 
 new ResizeObserver(resize).observe(canvas);
+
+/* ---------------------------------------------------------------- camera */
+
+/* How the viewport looks at the workspace: a zoom and the workspace
+ * point it is centred on, kept as fractions so the picture survives a
+ * resize. It eases toward what the input asked for, the way the boxes
+ * ease toward their pins -- a zoom is the workspace gliding, not
+ * snapping. The mesh view keeps it home: zoom 1, centred, which shows
+ * exactly the middle the canvas always was. */
+const ZOOM_MIN = 0.5;        // the whole workspace at once: 4x the canvas
+const ZOOM_MAX = 2.5;
+const CAM_HOME = { zoom: 1, x: 0.5, y: 0.5 };
+
+const cam = { zoom: 1, x: 0.5, y: 0.5,          // what is shown
+              tZoom: 1, tx: 0.5, ty: 0.5 };     // what was asked for
+let camAdopted = false;       // the settings say where to look, once
+
+function clampCam(zoom, x, y) {
+  const f = (v) => Math.max(0, Math.min(1, v));
+  return { zoom: Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom)),
+           x: f(x), y: f(y) };
+}
+
+/* The camera as the transform speaks it: the viewport's top-left
+ * corner in workspace pixels -- held inside the workspace whatever
+ * the fractions say, and at the minimum zoom the viewport is the
+ * workspace. */
+function camView(zoom = cam.zoom, x = cam.x, y = cam.y) {
+  const spanX = view.w / zoom, spanY = view.h / zoom;
+  const lx = Math.max(0, Math.min(stage.w - spanX, x * stage.w - spanX / 2));
+  const ly = Math.max(0, Math.min(stage.h - spanY, y * stage.h - spanY / 2));
+  return { zoom, x: lx, y: ly };
+}
+
+/* One frame of the camera's motion: home in the mesh view, eased
+ * toward the hand's request in the topology view. */
+function camStep(dtSec) {
+  if (!isTopology()) {
+    cam.zoom = cam.tZoom = CAM_HOME.zoom;
+    cam.x = cam.tx = CAM_HOME.x;
+    cam.y = cam.ty = CAM_HOME.y;
+    return;
+  }
+  const k = 1 - Math.exp(-dtSec * 10);
+  cam.zoom += (cam.tZoom - cam.zoom) * k;
+  cam.x += (cam.tx - cam.x) * k;
+  cam.y += (cam.ty - cam.y) * k;
+}
+
+/* Where in the workspace the pointer points, through the camera that
+ * is on the screen right now. */
+function eventWorld(event) {
+  const rect = canvas.getBoundingClientRect();
+  const v = camView();
+  return { x: v.x + (event.clientX - rect.left) / v.zoom,
+           y: v.y + (event.clientY - rect.top) / v.zoom };
+}
+
+/* The wheel: the point under the cursor stays under the cursor -- the
+ * workspace does not slide away while it is being inspected. A
+ * trackpad's pinch arrives here too. */
+canvas.addEventListener("wheel", (event) => {
+  if (!isTopology()) return;
+  event.preventDefault();
+
+  const rect = canvas.getBoundingClientRect();
+  const sx = event.clientX - rect.left, sy = event.clientY - rect.top;
+  const now = camView();
+  const wx = now.x + sx / now.zoom;
+  const wy = now.y + sy / now.zoom;
+
+  const next = clampCam(cam.tZoom * Math.exp(-event.deltaY * 0.0016),
+                        cam.tx, cam.ty);
+  const spanX = view.w / next.zoom, spanY = view.h / next.zoom;
+  cam.tZoom = next.zoom;
+  cam.tx = (wx - sx / next.zoom + spanX / 2) / stage.w;
+  cam.ty = (wy - sy / next.zoom + spanY / 2) / stage.h;
+  saveCamSoon();
+}, { passive: false });
+
+/* The buttons: one step in, one step out, around the middle of the
+ * viewport, and home -- a glide back to the classic picture. */
+function zoomBy(factor) {
+  const v = camView(cam.tZoom, cam.tx, cam.ty);
+  const zoom = clampCam(cam.tZoom * factor, cam.tx, cam.ty).zoom;
+  const wx = v.x + view.w / (2 * v.zoom);
+  const wy = v.y + view.h / (2 * v.zoom);
+  cam.tZoom = zoom;
+  cam.tx = wx / stage.w;
+  cam.ty = wy / stage.h;
+  saveCamSoon();
+}
+
+$("btn-zoom-in").addEventListener("click", () => zoomBy(1.25));
+$("btn-zoom-out").addEventListener("click", () => zoomBy(0.8));
+$("btn-zoom-home").addEventListener("click", () => {
+  cam.tZoom = CAM_HOME.zoom;
+  cam.tx = CAM_HOME.x;
+  cam.ty = CAM_HOME.y;
+  saveCamSoon();
+});
+
+/* The camera is a view like the others: kept with the settings, so the
+ * page comes up looking where it was left -- and saved when it
+ * settles, because the poll's copy would fight the hand on the
+ * wheel. */
+let camSaveTimer = null;
+
+function saveCamSoon() {
+  clearTimeout(camSaveTimer);
+  camSaveTimer = setTimeout(() => {
+    api("/api/settings", { cam: {
+      zoom: Math.round(cam.tZoom * 1000) / 1000,
+      x: Math.round(cam.tx * 10000) / 10000,
+      y: Math.round(cam.ty * 10000) / 10000,
+    } }).catch(() => {});
+  }, 800);
+}
+
+/* The background is a faint dot grid, pre-rendered once and stamped
+ * with a slow drift -- a HUD that breathes without ever getting loud. */
+let bgPattern = null;
+let bgFill = null;
+let vignette = null;
+
+function buildBackground() {
+  const cell = 28;
+
+  bgPattern = document.createElement("canvas");
+  bgPattern.width = bgPattern.height = cell;
+  const c = bgPattern.getContext("2d");
+  c.fillStyle = "rgba(143, 161, 184, 0.055)";
+  c.fillRect(cell / 2 - 0.5, cell / 2 - 0.5, 1, 1);
+  c.fillStyle = "rgba(143, 161, 184, 0.028)";
+  c.fillRect(0.5, cell / 2 - 0.5, 1, 1);
+  c.fillRect(cell - 0.5, cell / 2 - 0.5, 1, 1);
+  c.fillRect(cell / 2 - 0.5, 0.5, 1, 1);
+  c.fillRect(cell / 2 - 0.5, cell - 0.5, 1, 1);
+  bgFill = ctx.createPattern(bgPattern, "repeat");
+
+  vignette = document.createElement("canvas");
+  vignette.width = Math.max(1, Math.round(stage.w));
+  vignette.height = Math.max(1, Math.round(stage.h));
+  const v = vignette.getContext("2d");
+  const grad = v.createRadialGradient(
+    stage.w / 2, stage.h / 2, Math.min(stage.w, stage.h) * 0.35,
+    stage.w / 2, stage.h / 2, Math.max(stage.w, stage.h) * 0.75);
+  grad.addColorStop(0, "rgba(5, 7, 11, 0)");
+  grad.addColorStop(1, "rgba(5, 7, 11, 0.5)");
+  v.fillStyle = grad;
+  v.fillRect(0, 0, stage.w, stage.h);
+}
 
 /* Which of a device's rows exist at all: only the hardware that is
  * publishing gets a row, the way only the hardware that exists
@@ -239,55 +515,254 @@ function beaconHeight(rows) {
 }
 
 function boxFor(host) {
-  return boxes.find((b) => b.kind !== "beacon" && b.host === host);
+  return boxes.find((b) => b.kind === "device" && b.host === host);
 }
 
+function apBoxFor(bssid) {
+  return boxes.find((b) => b.kind === "ap" && b.bssid === bssid);
+}
+
+/* The broker is a box like the others -- the hub of every link and the
+ * one object that never floats: pinned, in the middle of the canvas in
+ * the mesh view, wherever it was pinned in the topology view. */
+let brokerBox = null;
+
+function ensureBrokerBox(live) {
+  if (!brokerBox || !boxes.includes(brokerBox)) {
+    brokerBox = {
+      kind: "broker",
+      key: "broker",
+      host: "broker",
+      cx: stage.w / 2, cy: stage.h / 2,
+      vx: 0, vy: 0,
+      w: 190, h: 48,
+      seed: Math.random() * 7,
+      bornAt: performance.now(),
+      activity: 0, flash: {},
+      hoverEase: 0,
+      drag: null, pinned: true, pin: { x: 0.5, y: 0.5 },
+    };
+    boxes.unshift(brokerBox);
+  }
+  live.add("broker");
+
+  const stored = (state.settings.positions || {})["broker"];
+  brokerBox.pinned = true;
+  brokerBox.pin = (isTopology() && stored) ? stored : { x: 0.5, y: 0.5 };
+}
+
+/* A box leaves the canvas the way it arrived: it fades and shrinks over
+ * a few hundred milliseconds, its links leave ghosts behind, and only
+ * then is it really gone. */
+function startDeath(box) {
+  if (box === brokerBox) return;              // the hub never dies
+  box.dyingAt = performance.now();
+  const now = performance.now();
+
+  const ghost = (x0, y0, x1, y1, hex) => {
+    if (ghostLinks.length > 48) ghostLinks.shift();
+    const hang = hangControl(x0, y0, x1, y1);
+    ghostLinks.push({ x0, y0, cx: hang.x, cy: hang.y, x1, y1,
+                      hex, t0: now });
+  };
+
+  const bp = brokerBox;
+  if (box.kind === "device") {
+    const uplink = (isTopology() && box.ap && apBoxFor(box.ap))
+                   || (isTopology() ? null : bp);
+    if (uplink && state.settings.show_broker !== false)
+      ghost(uplink.cx, uplink.cy, box.cx, box.cy, PALETTE.peri);
+    for (const other of boxes)
+      if (other.kind === "beacon" && other.dev
+          && other.dev.devices.some((d) => d.host === box.host))
+        ghost(other.cx, other.cy, box.cx, box.cy, PALETTE.teal);
+  } else if (box.kind === "ap") {
+    if (state.settings.show_broker !== false)
+      ghost(bp.cx, bp.cy, box.cx, box.cy, PALETTE.peri);
+    for (const other of boxes)
+      if (other.kind === "device" && other.ap === box.bssid)
+        ghost(box.cx, box.cy, other.cx, other.cy, PALETTE.peri);
+  } else if (box.kind === "beacon" && box.dev) {
+    for (const seen of box.dev.devices) {
+      const deviceBox = boxFor(seen.host);
+      if (deviceBox) ghost(box.cx, box.cy, deviceBox.cx, deviceBox.cy,
+                           PALETTE.teal);
+    }
+  }
+
+  dyingBoxes.push(box);
+}
+
+const dyingBoxes = [];
+
 /* Turn the polled device and beacon lists into box objects. A new box
- * is born near the middle of the canvas, where its links begin, and
- * the network grows from there: the springs pull, the shoves spread,
- * and a moment later the mesh has found its shape. */
+ * is born where its links already point, so the network grows from
+ * there: the springs pull, the shoves spread, and a moment later the
+ * mesh has found its shape. In the topology view the access points come
+ * first -- one per BSSID the panels report -- and the panels are born
+ * at their access point, the beacons at the middle of the panels that
+ * hear them. */
 function syncBoxes() {
   const live = new Set();
+  const topo = isTopology();
+  const positions = state.settings.positions || {};
+
+  ensureBrokerBox(live);
+
+  /* -- the access points: one box per BSSID any panel reports -------- */
+
+  if (topo) {
+    const groups = new Map();
+    for (const dev of state.devices) {
+      const bssid = deviceBssid(dev);
+      if (!bssid) continue;
+      if (!groups.has(bssid)) groups.set(bssid, deviceSsid(dev));
+    }
+
+    const bssids = [...groups.keys()].sort();
+    bssids.forEach((bssid, index) => {
+      const key = "ap:" + bssid;
+      live.add(key);
+
+      let box = boxes.find((b) => b.key === key);
+      if (!box) {
+        const angle = (index / Math.max(1, bssids.length)) * Math.PI * 2
+                      + (Math.random() - 0.5) * 0.4;
+        const born_r = physParams("ap").brokerRest * 0.45;
+        box = {
+          kind: "ap",
+          key,
+          bssid,
+          host: bssid,          // the debug dump and the pin key say who it is
+          ssid: groups.get(bssid),
+          cx: brokerBox.cx + Math.cos(angle) * born_r,
+          cy: brokerBox.cy + Math.sin(angle) * born_r,
+          vx: 0,
+          vy: 0,
+          w: AP_W,
+          seed: Math.random() * 7,
+          bornAt: performance.now(),
+          rows: [],
+          h: 60,
+          flash: {},
+          activity: 0,
+          hoverEase: 0,
+          panels: [],
+          drag: null,
+          pinned: false,
+          pin: null,
+        };
+
+        const pos = positions[key];
+        if (pos) {
+          box.pinned = true;
+          box.pin = pos;
+          box.cx = pos.x * stage.w;
+          box.cy = pos.y * stage.h;
+        }
+        boxes.push(box);
+      }
+
+      box.ssid = groups.get(bssid);
+      box.panels = state.devices
+        .filter((dev) => deviceBssid(dev) === bssid)
+        .map((dev) => {
+          const rssi = Number(dev.topics["system/rssi"]
+                              && dev.topics["system/rssi"].value);
+          return { host: dev.host, q: deviceWifiQ(dev),
+                   rssi: isFinite(rssi) ? rssi : null,
+                   online: !!dev.online };
+        });
+      box.rows = ["header", "sub", "rssi", "foot"];
+      box.h = apHeight(box.rows);
+
+      const pos = positions[key];
+      if (pos) {
+        box.pinned = true;
+        box.pin = pos;
+      } else {
+        box.pinned = false;
+      }
+    });
+  }
 
   let born = 0;
   for (const dev of state.devices) {
     live.add(dev.host);
 
-    let box = boxes.find((b) => b.kind !== "beacon" && b.host === dev.host);
+    let box = boxes.find((b) => b.kind === "device" && b.host === dev.host);
     if (!box) {
-      /* Born on its own slice of the ring, pointing outward: every
-       * panel then glides along its own angle to its place, and none of
-       * them has to cross the fleet to get there. */
-      const angle = (born / Math.max(1, state.devices.length)) * Math.PI * 2
-                    + (Math.random() - 0.5) * 0.4;
-      const born_r = physParams("device").brokerRest * 0.45;
+      /* Born where its links already point: at its pinned place when it
+       * has one, at its access point in the topology view, and on its
+       * own slice of the ring around the broker in the mesh view -- so
+       * none of them ever has to cross the fleet to find its place. */
+      let sx, sy;
+      const pos = positions["panel:" + dev.host];
+      if (topo && pos) {
+        sx = pos.x * stage.w;
+        sy = pos.y * stage.h;
+      } else if (topo) {
+        const bssid = deviceBssid(dev);
+        const apBox = bssid && apBoxFor(bssid);
+        if (apBox) {
+          const ang = Math.random() * Math.PI * 2;
+          const r = 120 + Math.random() * 130;
+          sx = apBox.cx + Math.cos(ang) * r;
+          sy = apBox.cy + Math.sin(ang) * r;
+        } else {
+          sx = brokerBox.cx + (Math.random() - 0.5) * 260;
+          sy = brokerBox.cy + (Math.random() - 0.5) * 260;
+        }
+      } else {
+        const angle = (born / Math.max(1, state.devices.length)) * Math.PI * 2
+                      + (Math.random() - 0.5) * 0.4;
+        const born_r = physParams("device").brokerRest * 0.45;
+        sx = brokerBox.cx + Math.cos(angle) * born_r;
+        sy = brokerBox.cy + Math.sin(angle) * born_r;
+      }
       box = {
         kind: "device",
         key: dev.host,
         host: dev.host,
-        cx: stage.w / 2 + Math.cos(angle) * born_r,
-        cy: stage.h / 2 + Math.sin(angle) * born_r,
+        cx: sx,
+        cy: sy,
         vx: 0,
         vy: 0,
         w: BOX_W,
         seed: Math.random() * 7,
+        bornAt: performance.now(),
         rows: [],
         h: 80,
         lastTs: {},
         flash: {},
         activity: 0,
+        hoverEase: 0,
         lastMsgcount: dev.msgcount,
         ledLocal: {},
         ledPublishAt: 0,
         drag: null,
+        pinned: false,
+        pin: null,
+        ap: null,
       };
       boxes.push(box);
       born++;
     }
 
     box.dev = dev;
+    box.ap = topo ? deviceBssid(dev) : null;
     box.rows = boxRows(dev);
     box.h = rowHeight(box.rows);
+
+    /* A panel placed by hand stays where it was put -- but only in the
+     * topology view, whose picture is places; the mesh view is links. */
+    const pos = positions["panel:" + dev.host];
+    if (topo && pos) {
+      box.pinned = true;
+      box.pin = pos;
+    } else {
+      box.pinned = false;
+    }
 
     /* Anything with a new timestamp just changed on the panel: flash the
      * field, wake the link, and let a particle carry the news home. */
@@ -306,7 +781,16 @@ function syncBoxes() {
     if (delta > 0) {
       box.lastMsgcount = dev.msgcount;
       box.activity = 1;
-      for (let i = 0; i < Math.min(3, delta); i++) spawnParticle(null, box);
+
+      /* A message a panel publishes travels its uplink: to its access
+       * point in the topology view, straight home in the mesh view. The
+       * access point answers by carrying the news on to the broker. */
+      const apBox = box.ap ? apBoxFor(box.ap) : null;
+      const rssi = Number(topicValue(dev, "system/rssi"));
+      if (apBox) apBox.activity = Math.max(apBox.activity, 0.8);
+      for (let i = 0; i < Math.min(3, delta); i++)
+        spawnParticle(apBox || null, box,
+                      isFinite(rssi) && rssi !== 0 ? rssi : null);
     }
   }
 
@@ -359,11 +843,14 @@ function syncBoxes() {
           vy: 0,
           w: BEACON_W,
           seed: Math.random() * 7,
+          bornAt: performance.now(),
           rows: [],
           h: 60,
           lastCounts: {},
           flash: {},
           activity: 0,
+          hoverEase: 0,
+          trail: [],
           drag: null,
         };
         boxes.push(box);
@@ -402,9 +889,29 @@ function syncBoxes() {
     }
   }
 
+  /* What the poll no longer knows is on its way out: the box fades and
+   * shrinks over the next few hundred milliseconds, its links leave
+   * ghosts, and then it is really gone. */
   for (let i = boxes.length - 1; i >= 0; i--) {
-    if (!live.has(boxes[i].key)) boxes.splice(i, 1);
+    if (!live.has(boxes[i].key)) {
+      startDeath(boxes[i]);
+      boxes.splice(i, 1);
+    }
   }
+
+  /* The dead finish dying on their own clock. */
+  const now = performance.now();
+  for (let i = dyingBoxes.length - 1; i >= 0; i--) {
+    if (now - dyingBoxes[i].dyingAt > 350) dyingBoxes.splice(i, 1);
+  }
+}
+
+/* The rows of an access point box: a header with the network's name,
+ * the BSSID, the best of its panels' signals, and who is on it. */
+function apHeight(rows) {
+  let h = 2 * AP_PAD;
+  for (const row of rows) h += AP_ROWS[row];
+  return h;
 }
 
 /* A particle travels from its box to the box it is heard by, or --
@@ -456,6 +963,7 @@ const PHYS_DEFAULTS = {
   signal_pull: 100,
   line_timeout: 90,
   min_signal: -100,
+  metre_px: 60,
 };
 
 /* What each slider is and says, in the order the panel shows them. The
@@ -502,9 +1010,10 @@ const BROKER_SPEC = [
 
 /* Three settings the beacons have to themselves, appended to the ones
  * every floating thing shares: how hard a line's hearing pulls on its
- * leash, how weak a hearing may be before its line is gone, and how
- * long a hearing keeps its line alive. The timeout is the one slider
- * measured in seconds, the minimum signal the one in dBm. */
+ * leash, how weak a hearing may be before its line is gone, how long a
+ * hearing keeps its line alive -- and the metre scale of the topology
+ * view, how many pixels a reported metre is worth. The timeout is
+ * measured in seconds, the minimum signal in dBm, the scale in px/m. */
 const BEACON_EXTRA = [
   { key: "signal_pull", label: "phys.signalPull", help: "help.signalPull",
     fmt: (v) => "×" + (v / 100).toFixed(2) },
@@ -514,23 +1023,33 @@ const BEACON_EXTRA = [
   { key: "line_timeout", label: "phys.lineTimeout", help: "help.lineTimeout",
     min: 30, max: 300,
     fmt: (v) => v + " s" },
+  { key: "metre_px", label: "phys.metrePx", help: "help.metrePx",
+    min: 10, max: 200,
+    fmt: (v) => v + " px/m" },
 ];
+
+/* The access points float on the same sliders as the panels -- they are
+ * pinned or they settle, and the settling is the panels' physics. */
+const AP_SPEC = PHYS_SPEC;
 
 function physSpecFor(kind) {
   if (kind === "broker") return BROKER_SPEC;
+  if (kind === "ap") return AP_SPEC;
   return kind === "beacon" ? PHYS_SPEC.concat(BEACON_EXTRA) : PHYS_SPEC;
 }
 
 const PHYS_SETTINGS_KEY = {
   device: "phys_nodes",
+  ap: "phys_aps",
   beacon: "phys_beacons",
   broker: "phys_broker",
 };
 
-const PHYS_KINDS = ["device", "beacon", "broker"];
+const PHYS_KINDS = ["device", "ap", "beacon", "broker"];
 
 function physRowsId(kind) {
   return kind === "beacon" ? "physics-rows-beacons"
+       : kind === "ap" ? "physics-rows-aps"
        : kind === "broker" ? "physics-rows-broker"
        : "physics-rows-nodes";
 }
@@ -581,37 +1100,71 @@ function physParams(kind) {
      * A line whose hearing is older is no line, and a beacon left with
      * no lines is no beacon. Beacons only. */
     lineTimeout: value("line_timeout", 30, 300),
+    /* How many pixels a reported metre is worth, in the topology view:
+     * the beacon's distance estimate is a leash in metres, and this is
+     * the scale that turns it into one on the canvas. Beacons only. */
+    metrePx: value("metre_px", 10, 200),
   };
 }
 
-/* How long a beacon's line to a panel wants to be: the stronger the
- * hearing, the shorter the leash -- a beacon heard at -40 dBm sits
- * close enough to touch its panels, one scraped at -90 hangs out on a
- * long line at the far edge of the mesh. The pull factor scales how
- * much the hearing gets to say: at zero every leash wants the same
- * length, at one the radio alone places the beacon. */
+/* How long a beacon's line to a panel wants to be. In the topology
+ * view the panel's distance estimate has the first word -- a metre is
+ * metrePx pixels, clamped to what the canvas can show -- and the
+ * hearing's strength speaks only where the beacon reports no distance.
+ * The pull factor scales how much the hearing gets to say: at zero
+ * every leash wants the same length, at one the radio alone places the
+ * beacon. */
 function beaconRest(q, pull) {
   return 170 + (1 - q) * 300 * pull;
 }
 
+function beaconRestFor(seen, p) {
+  const distance = Number(seen.distance);
+  if (isTopology() && isFinite(distance) && distance > 0) {
+    return Math.max(40, Math.min(900, distance * p.metrePx));
+  }
+  const q = seen.rssi == null ? 0
+            : Math.max(0, Math.min(1, (seen.rssi + 100) / 70));
+  return beaconRest(q, p.beaconPull);
+}
+
 function physicsStep(dt, time) {
   const params = { device: physParams("device"),
+                   ap: physParams("ap"),
                    beacon: physParams("beacon"),
                    broker: physParams("broker") };
-  const cx = stage.w / 2, cy = stage.h / 2;
+  const topo = isTopology();
+  const bp = brokerBox;
+  const cx = bp.cx, cy = bp.cy;
+
+  const paramsFor = (box) =>
+    box.kind === "beacon" ? params.beacon
+    : box.kind === "ap" ? params.ap
+    : box.kind === "broker" ? params.broker : params.device;
 
   /* The panels share the ring around the broker, and the ring must
    * have room for them all: the broker link's rest length is never
    * shorter than the radius a full circle of boxes -- with their air
-   * margin -- would need. */
-  let panels = 0;
-  for (const box of boxes) if (box.kind !== "beacon") panels++;
+   * margin -- would need. The access points have a ring of their own
+   * in the topology view, and the panels a smaller one around each
+   * access point. */
+  let panels = 0, aps = 0;
+  const perAp = {};
+  for (const box of boxes) {
+    if (box.kind === "device") {
+      panels++;
+      if (topo && box.ap) perAp[box.ap] = (perAp[box.ap] || 0) + 1;
+    } else if (box.kind === "ap") {
+      aps++;
+    }
+  }
   const brokerRest = Math.max(params.device.brokerRest,
                               panels * (BOX_W + 50) / (Math.PI * 2));
+  const apRest = Math.max(params.ap.brokerRest,
+                         aps * (AP_W + 50) / (Math.PI * 2));
 
-  for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i];
-    const p = box.kind === "beacon" ? params.beacon : params.device;
+  for (const box of boxes) {
+    const p = paramsFor(box);
 
     if (box.drag) {
       box.vx = box.drag.cx - box.cx;
@@ -621,42 +1174,80 @@ function physicsStep(dt, time) {
       continue;
     }
 
-    /* The links are springs, and they are the layout: a panel is held
-     * by its line to the broker -- a true spring, two-way, so the ring
-     * spreads -- while a beacon hangs on leashes to the panels that
-     * hear it: a strong hearing a short leash, a weak one a long one.
-     * A leash only ever pulls; when a beacon sits closer to a panel
-     * than its line wants, the line goes slack rather than shoving the
-     * panel away, so a crowded mesh never grinds against itself. */
+    /* A pinned box is where it was put. It eases toward its pin --
+     * firmly enough to feel fixed, gently enough that a mode switch or
+     * a window resize is a glide and not a jump. */
+    if (box.pinned && box.pin) {
+      const tx = box.pin.x * stage.w, ty = box.pin.y * stage.h;
+      const k = 1 - Math.exp(-dt * 6);
+      box.vx = 0;
+      box.vy = 0;
+      box.cx += (tx - box.cx) * k;
+      box.cy += (ty - box.cy) * k;
+      continue;
+    }
+
+    /* The broker never floats: it is pinned, above, and done. */
+    if (box.kind === "broker") continue;
+
+    /* The links are springs, and they are the layout. A beacon hangs on
+     * leashes to the panels that hear it -- a strong hearing a short
+     * leash, a distance estimate a leash of metres scaled to pixels. An
+     * access point is held by its line to the broker; a panel by its
+     * line to its access point, whose rest length follows the WLAN -- a
+     * strong signal a short line, a weak one a long one. A leash only
+     * ever pulls; a line whose ends are closer than it wants goes slack
+     * rather than shoving, so a crowded mesh never grinds. */
     if (box.kind === "beacon" && box.dev) {
       for (const seen of box.dev.devices) {
         const deviceBox = boxFor(seen.host);
         if (!deviceBox || deviceBox === box) continue;
 
-        const q = seen.rssi == null ? 0
-                  : Math.max(0, Math.min(1, (seen.rssi + 100) / 70));
-        const rest = beaconRest(q, p.beaconPull) * p.lenScale;
+        const rest = beaconRestFor(seen, p) * p.lenScale;
         const dx = deviceBox.cx - box.cx, dy = deviceBox.cy - box.cy;
         const dist = Math.hypot(dx, dy);
         if (!dist) continue;
 
-        /* Stretched, the leash pulls both ends. Slack, it only sends
-         * the beacon itself back out to the length of its line -- the
-         * panel never feels a crowded mesh leaning on it. */
         const force = p.spring * (dist - rest) / dist * dt;
         box.vx += dx * force;
         box.vy += dy * force;
-        if (dist > rest && !deviceBox.drag) {
+        if (dist > rest && !deviceBox.drag && !deviceBox.pinned) {
           deviceBox.vx -= dx * force;
           deviceBox.vy -= dy * force;
         }
       }
-    } else {
+    } else if (box.kind === "ap") {
       const dx = cx - box.cx, dy = cy - box.cy;
       const dist = Math.hypot(dx, dy) || 1;
-      const force = p.spring * (dist - brokerRest) / dist * dt;
+      const force = p.spring * (dist - apRest) / dist * dt;
       box.vx += dx * force;
       box.vy += dy * force;
+    } else {
+      let target = null;
+      let rest = brokerRest;
+
+      if (topo && box.ap) {
+        const apBox = apBoxFor(box.ap);
+        if (apBox) {
+          target = apBox;
+          const q = box.dev ? deviceWifiQ(box.dev) : 0;
+          const ring = (perAp[box.ap] || 1) * (BOX_W + 50) / (Math.PI * 2);
+          rest = Math.max(params.device.brokerRest * (0.55 + 0.9 * (1 - q)),
+                          ring);
+        }
+      }
+
+      const tx = target ? target.cx : cx;
+      const ty = target ? target.cy : cy;
+      const dx = tx - box.cx, dy = ty - box.cy;
+      const dist = Math.hypot(dx, dy) || 1;
+      const force = p.spring * (dist - rest) / dist * dt;
+      box.vx += dx * force;
+      box.vy += dy * force;
+      if (target && dist > rest && !target.drag && !target.pinned) {
+        target.vx -= dx * force;
+        target.vy -= dy * force;
+      }
     }
 
     /* The gravity of the broker itself: the hub never moves, but its
@@ -671,7 +1262,7 @@ function physicsStep(dt, time) {
       box.vy += dy / d * (params.broker.grav / d) * dt;
     }
 
-    /* The home pull: a whisper toward the middle, so nothing the links
+    /* The home pull: a whisper toward the hub, so nothing the links
      * have lost ever drifts off the canvas for good. */
     const hdx = cx - box.cx, hdy = cy - box.cy;
     const hDist = Math.hypot(hdx, hdy) || 1;
@@ -694,16 +1285,30 @@ function physicsStep(dt, time) {
     if (box.cy < marginY) box.vy += (marginY - box.cy) * p.wall * dt;
     if (box.cy > stage.h - marginY) box.vy -= (box.cy - stage.h + marginY) * p.wall * dt;
 
-    /* Overlap is resolved positionally, on both axes at once, so a box
-     * can always slide around the box in its way instead of bouncing
-     * back off it. A held box is carried, not pushed; everything else
-     * shares the work. */
+    /* Heavy oil: drag beats momentum almost the moment it appears --
+     * a shoved box travels a few of its own widths and stops, forced
+     * motion creeps, and nothing ever swings, it all eases. The motion
+     * is always overdamped. */
+    const damp = p.damp;
+    box.vx *= Math.pow(damp, dt);
+    box.vy *= Math.pow(damp, dt);
+    box.cx += box.vx * dt;
+    box.cy += box.vy * dt;
+  }
+
+  /* Gravity between the objects, and the separation of the ones that
+   * touch: a pass of its own, so a pinned box -- which skipped its
+   * springs above -- is still a mass the others feel and still a wall
+   * they are pushed off. */
+  for (let i = 0; i < boxes.length; i++) {
+    const box = boxes[i];
+    const p = paramsFor(box);
+    const stillBox = box.drag || box.pinned;
+
     for (let j = i + 1; j < boxes.length; j++) {
       const other = boxes[j];
+      const q = paramsFor(other);
 
-      /* Nodes rest with a breath of air between them: the margin keeps
-       * a pressed pair from ever visually overlapping, so a mesh that
-       * leans together still reads as separate things. */
       const needX = (box.w + other.w) / 2 + 20;
       const needY = (box.h + other.h) / 2 + 20;
       const dx = other.cx - box.cx, dy = other.cy - box.cy;
@@ -716,19 +1321,24 @@ function physicsStep(dt, time) {
        * with distance and never grows past arm's length, so a clump
        * settles as boxes that lean toward each other and rest, held by
        * their springs, not a collapse into one point. */
-      const q = other.kind === "beacon" ? params.beacon : params.device;
       if (p.grav !== 0 || q.grav !== 0) {
         const d = Math.max(Math.hypot(dx, dy), 80) || 80;
         const ax = dx / d, ay = dy / d;      // unit vector, box -> other
-        other.vx -= ax * (p.grav / d) * dt;  // this box's pull on it
-        other.vy -= ay * (p.grav / d) * dt;
-        box.vx += ax * (q.grav / d) * dt;    // its pull on this box
-        box.vy += ay * (q.grav / d) * dt;
+        if (!other.drag && !other.pinned) {
+          other.vx -= ax * (p.grav / d) * dt;  // this box's pull on it
+          other.vy -= ay * (p.grav / d) * dt;
+        }
+        if (!stillBox) {
+          box.vx += ax * (q.grav / d) * dt;    // its pull on this box
+          box.vy += ay * (q.grav / d) * dt;
+        }
       }
 
       if (overlapX > 0 && overlapY > 0) {
-        const weightBox = box.drag ? 0 : 1;
-        const weightOther = other.drag ? 0 : 1;
+        /* A held or pinned box is carried or fixed, never pushed;
+         * everything else shares the work. */
+        const weightBox = stillBox ? 0 : 1;
+        const weightOther = (other.drag || other.pinned) ? 0 : 1;
         const total = weightBox + weightOther;
         if (!total) continue;
 
@@ -747,22 +1357,25 @@ function physicsStep(dt, time) {
         other.cy += pushY * weightOther / total;
 
         /* A nudge in the same direction, so the flow keeps some of it. */
-        box.vx -= dirX * 0.12 * ease * weightBox / total;
-        box.vy -= dirY * 0.12 * ease * weightBox / total;
-        other.vx += dirX * 0.12 * ease * weightOther / total;
-        other.vy += dirY * 0.12 * ease * weightOther / total;
+        if (weightBox) {
+          box.vx -= dirX * 0.12 * ease * weightBox / total;
+          box.vy -= dirY * 0.12 * ease * weightBox / total;
+        }
+        if (weightOther) {
+          other.vx += dirX * 0.12 * ease * weightOther / total;
+          other.vy += dirY * 0.12 * ease * weightOther / total;
+        }
       }
     }
+  }
 
-    /* Heavy oil: drag beats momentum almost the moment it appears --
-     * a shoved box travels a few of its own widths and stops, forced
-     * motion creeps, and nothing ever swings, it all eases. The motion
-     * is always overdamped. */
-    const damp = p.damp;
-    box.vx *= Math.pow(damp, dt);
-    box.vy *= Math.pow(damp, dt);
-    box.cx += box.vx * dt;
-    box.cy += box.vy * dt;
+  /* A mobile thing leaves a trail: the last few positions of every
+   * beacon, remembered so the canvas can draw where it has been. */
+  for (const box of boxes) {
+    if (box.kind !== "beacon" || !box.trail) continue;
+    const speed = Math.hypot(box.vx, box.vy);
+    box.trail.push({ x: box.cx, y: box.cy, s: speed });
+    if (box.trail.length > 16) box.trail.shift();
   }
 }
 
@@ -804,7 +1417,8 @@ function text(str, x, y, font, color, align) {
  * the midpoint; its deepest point is half the sag, at half the way. */
 function hangControl(x0, y0, x1, y1, kind) {
   const len = Math.hypot(x1 - x0, y1 - y0);
-  const p = physParams(kind === "beacon" ? "beacon" : "device");
+  const p = physParams(kind === "beacon" ? "beacon"
+                          : kind === "ap" ? "ap" : "device");
   const sag = Math.min(55, len * p.sag);
   return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 + sag };
 }
@@ -837,21 +1451,286 @@ function isOn(value) {
     && ["ON", "TRUE", "YES", "1", "ONLINE"].includes(String(value).toUpperCase());
 }
 
+/* ------------------------------------------------------- the fx pipeline */
+
+/* A box's birth: from nothing to full size in four hundred milliseconds,
+ * with a little overshoot -- the way things settle, not the way they
+ * snap. */
+function birthT(box, time) {
+  if (!box.bornAt) return 1;
+  return Math.max(0, Math.min(1, (time - box.bornAt) / 400));
+}
+
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+/* Which end of a new link reaches out, and how far it has come: the
+ * younger of the two boxes grows the line from itself. */
+function linkGrow(a, b, time) {
+  const younger = (a.bornAt || 0) >= (b.bornAt || 0) ? a : b;
+  return { t: birthT(younger, time), reverse: younger === b };
+}
+
+/* A hanging quadratic, drawn whole or as the first part of it -- a
+ * link that is being born reaches out from its origin. */
+function linkPath(x0, y0, c, x1, y1, t) {
+  ctx.moveTo(x0, y0);
+  if (t >= 1) {
+    ctx.quadraticCurveTo(c.x, c.y, x1, y1);
+    return;
+  }
+  const q = (a, b, u) => a + (b - a) * u;
+  const cx1 = q(x0, c.x, t), cy1 = q(y0, c.y, t);
+  const ex = q(q(x0, c.x, t), q(c.x, x1, t), t);
+  const ey = q(q(y0, c.y, t), q(c.y, y1, t), t);
+  ctx.quadraticCurveTo(cx1, cy1, ex, ey);
+}
+
+/* One link, the way the canvas draws them all: a soft additive glow
+ * under a thin bright core, growing out of whichever end is younger. */
+function drawLink(x0, y0, x1, y1, kind, opts) {
+  if (opts.grow <= 0) return;
+  const c = hangControl(x0, y0, x1, y1, kind);
+
+  const paint = () => {
+    ctx.beginPath();
+    linkPath(x0, y0, c, x1, y1, opts.grow);
+    ctx.strokeStyle = opts.color;
+    ctx.lineWidth = opts.width || 1;
+    ctx.setLineDash(opts.dash || []);
+    ctx.lineDashOffset = opts.dashOffset || 0;
+    ctx.stroke();
+    ctx.setLineDash([]);
+  };
+
+  if (opts.glow) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.beginPath();
+    linkPath(x0, y0, c, x1, y1, opts.grow);
+    ctx.strokeStyle = opts.glow;
+    ctx.lineWidth = (opts.width || 1) * 3.2;
+    ctx.setLineDash(opts.dash || []);
+    ctx.lineDashOffset = opts.dashOffset || 0;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  paint();
+}
+
+function drawBackground(time) {
+  if (!fxOn() || !bgFill) return;
+  const cell = 28;
+  const ox = (time * 0.004) % cell, oy = (time * 0.0023) % cell;
+  ctx.save();
+  ctx.translate(-ox, -oy);
+  ctx.fillStyle = bgFill;
+  ctx.fillRect(0, 0, stage.w + cell, stage.h + cell);
+  ctx.restore();
+  if (vignette) ctx.drawImage(vignette, 0, 0);
+}
+
+/* A radar sweep around the hub: faint, slow, and only there when the
+ * effects are on and the broker is in the picture. */
+function drawSweep(time) {
+  if (!fxOn() || !ctx.createConicGradient || !brokerBox) return;
+  const r = Math.max(stage.w, stage.h) * 0.55;
+  const grad = ctx.createConicGradient(time * 0.00035,
+                                       brokerBox.cx, brokerBox.cy);
+  grad.addColorStop(0, "rgba(255, 156, 0, 0)");
+  grad.addColorStop(0.9, "rgba(255, 156, 0, 0)");
+  grad.addColorStop(0.97, "rgba(255, 156, 0, 0.045)");
+  grad.addColorStop(1, "rgba(255, 156, 0, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(brokerBox.cx, brokerBox.cy);
+  ctx.arc(brokerBox.cx, brokerBox.cy, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawGhosts(time) {
+  for (let i = ghostLinks.length - 1; i >= 0; i--) {
+    const gh = ghostLinks[i];
+    const u = (time - gh.t0) / 350;
+    if (u >= 1) {
+      ghostLinks.splice(i, 1);
+      continue;
+    }
+    const [r, g, b] = hexRgb(gh.hex);
+    ctx.beginPath();
+    ctx.moveTo(gh.x0, gh.y0);
+    ctx.quadraticCurveTo(gh.cx, gh.cy, gh.x1, gh.y1);
+    ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + ","
+                      + (0.35 * (1 - u)) + ")";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+/* Where a mobile thing has been: the last positions of every beacon,
+ * stamped additively and fading behind it as it moves. */
+function drawTrails() {
+  if (!fxOn()) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const [r, g, b] = hexRgb(PALETTE.teal);
+  for (const box of boxes) {
+    if (box.kind !== "beacon" || !box.trail) continue;
+    for (let i = 0; i < box.trail.length; i++) {
+      const pt = box.trail[i];
+      if (pt.s < 0.03) continue;
+      const u = (i + 1) / box.trail.length;
+      ctx.fillStyle = "rgba(" + r + "," + g + "," + b + ","
+                      + (0.22 * u * Math.min(1, pt.s * 3)) + ")";
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 1 + 2.2 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+/* The halo under every box: a soft light in the colour of its kind,
+ * breathing on its own phase, brighter while it talks or lifts. */
+function drawHalos(time) {
+  if (!fxOn()) return;
+  for (const box of boxes) {
+    if (box.kind === "broker") continue;          // the hub glows on its own
+    const hex = box.kind === "beacon" ? PALETTE.teal
+              : box.kind === "ap" ? PALETTE.peri : PALETTE.orange;
+    const size = Math.max(box.w, box.h) * 1.55
+                 * (1 + 0.05 * Math.sin(time * 0.0011 + box.seed * 6));
+    const alpha = (0.10 + 0.22 * box.activity + 0.12 * box.hoverEase)
+                  * (0.3 + 0.7 * birthT(box, time));
+    stampGlow(box.cx, box.cy, size, alpha, hex);
+  }
+}
+
+function drawWaves(time) {
+  for (let i = waves.length - 1; i >= 0; i--) {
+    const wv = waves[i];
+    const u = (time - wv.t0) / wv.dur;
+    if (u >= 1) {
+      waves.splice(i, 1);
+      continue;
+    }
+    const [r, g, b] = hexRgb(wv.color);
+    ctx.beginPath();
+    ctx.arc(wv.x, wv.y, 4 + wv.r1 * easeOut(u), 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(" + r + "," + g + "," + b + ","
+                      + (0.55 * (1 - u)) + ")";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+/* A box that left the poll finishes leaving on its own clock: it fades
+ * and shrinks for a few hundred milliseconds before it is really
+ * gone. Its links are ghosts by then; the box follows. */
+function drawDying(time) {
+  const liveHits = hits;
+  hits = [];
+
+  for (const box of dyingBoxes) {
+    const u = Math.min(1, (time - box.dyingAt) / 350);
+    ctx.save();
+    ctx.globalAlpha = 1 - u;
+    const s = 1 - 0.3 * u;
+    ctx.translate(box.cx, box.cy);
+    ctx.scale(s, s);
+    ctx.translate(-box.cx, -box.cy);
+    if (box.kind === "beacon") drawBeacon(box, time);
+    else if (box.kind === "ap") drawAp(box, time);
+    else drawBox(box, time);
+    ctx.restore();
+  }
+
+  hits = liveHits;
+}
+
+/* Everything a box does to the canvas happens through its own scale:
+ * born overshooting, breathing on its own phase, lifting under the
+ * cursor. The scale never moves the box -- physics owns the position. */
+function boxTransform(box, time, fn) {
+  let s = easeOutBack(birthT(box, time));
+  if (fxOn()) s *= 1 + 0.008 * Math.sin(time * 0.0012 + box.seed * 6);
+  s *= 1 + 0.03 * (box.hoverEase || 0);
+  if (Math.abs(s - 1) < 0.001) {
+    fn();
+    return;
+  }
+  ctx.save();
+  ctx.translate(box.cx, box.cy);
+  ctx.scale(s, s);
+  ctx.translate(-box.cx, -box.cy);
+  fn();
+  ctx.restore();
+}
+
+/* A pinned box carries a small reticle: the mark of a place kept, and
+ * the thing to click to let it go again. */
+function drawPinGlyph(box, x, y) {
+  if (!isTopology() || !box.pinned) return;
+  const gx = x + box.w - 16, gy = y + 4;
+  ctx.save();
+  ctx.strokeStyle = "rgba(255, 170, 40, 0.9)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.arc(gx + 5, gy + 5, 4.2, 0, Math.PI * 2);
+  ctx.stroke();
+  for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]) {
+    ctx.beginPath();
+    ctx.moveTo(gx + 5 + dx * 5.4, gy + 5 + dy * 5.4);
+    ctx.lineTo(gx + 5 + dx * 8, gy + 5 + dy * 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+  hits.push({ type: "pin", box, x: gx - 3, y: gy - 3, w: 16, h: 16 });
+}
+
+function bssidText(bssid) {
+  return String(bssid).replace(/(..)(?=.)/g, "$1:");
+}
+
+/* ------------------------------------------------------------------ draw */
+
 function draw(time) {
-  const w = stage.w, h = stage.h;
-  ctx.clearRect(0, 0, w, h);
+  const topo = isTopology();
+  const showBroker = state.settings.show_broker !== false;
+
+  /* -- the camera ------------------------------------------------------- */
+
+  /* The viewport clears whole, and then looks at the workspace through
+   * the camera: everything below is drawn in workspace pixels, and the
+   * pointer finds its way back through the same transform. */
+  const dpr = window.devicePixelRatio || 1;
+  const dtSec = Math.max(0, Math.min(0.05, (time - frameTime) / 1000));
+  camStep(dtSec);
+  const v = camView();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, view.w, view.h);
+  ctx.setTransform(dpr * v.zoom, 0, 0, dpr * v.zoom,
+                   -dpr * v.zoom * v.x, -dpr * v.zoom * v.y);
 
   hits = [];
 
-  const bx = w / 2, by = h / 2;
-
-  /* -- links ------------------------------------------------------ */
+  /* -- the breath of the picture ------------------------------------ */
 
   for (const box of boxes) {
     box.activity = Math.max(0, box.activity - 0.008);
     for (const suffix in box.flash)
       box.flash[suffix] = Math.max(0, box.flash[suffix] - 0.015);
+    box.hoverEase = (box.hoverEase || 0)
+      + (((box === hovered && !box.drag) ? 1 : 0) - (box.hoverEase || 0))
+        * 0.12;
   }
+
+  drawBackground(time);
+  drawGhosts(time);
+
+  /* -- links ---------------------------------------------------------- */
 
   /* The radio links, beacon to panel. The strength of the line is the
    * strength of the hearing: -40 dBm is a fat, bright, steady stroke,
@@ -867,46 +1746,99 @@ function draw(time) {
       const rssi = seen.rssi;
       const q = rssi == null ? 0
                 : Math.max(0, Math.min(1, (rssi + 100) / 70));
-
-      const hang = hangControl(box.cx, box.cy, deviceBox.cx, deviceBox.cy,
-                               "beacon");
-      ctx.beginPath();
-      ctx.moveTo(box.cx, box.cy);
-      ctx.quadraticCurveTo(hang.x, hang.y, deviceBox.cx, deviceBox.cy);
+      const grow = linkGrow(box, deviceBox, time);
+      let x0 = box.cx, y0 = box.cy;
+      let x1 = deviceBox.cx, y1 = deviceBox.cy;
+      if (grow.reverse) {
+        x0 = x1; y0 = y1;
+        x1 = box.cx; y1 = box.cy;
+      }
 
       const mix = (a, b) => Math.round(a + (b - a) * q);
       const pulse = 0.06 * q * (1 + Math.sin(time * 0.003 + box.seed * 4));
       const asleep = box.dev.active ? 1 : 0.4;
-      ctx.strokeStyle = "rgba(" + mix(90, 95) + "," + mix(107, 201) + ","
-                        + mix(128, 176) + ","
-                        + ((0.10 + 0.55 * q + pulse) * asleep) + ")";
-      ctx.lineWidth = 0.6 + 2.6 * q;
-      ctx.stroke();
+      const alpha = (0.10 + 0.55 * q + pulse) * asleep;
+      drawLink(x0, y0, x1, y1, "beacon", {
+        color: "rgba(" + mix(90, 95) + "," + mix(107, 201) + ","
+               + mix(128, 176) + "," + alpha + ")",
+        glow: fxOn() ? "rgba(95, 201, 176," + (0.12 * q * asleep) + ")" : null,
+        width: 0.6 + 2.6 * q,
+        grow: grow.t,
+      });
     }
   }
 
-  /* The broker links: every panel hangs on the broker -- and the node
-   * with them, because links to nothing are a picture of the wrong
-   * thing. The panels themselves stay anchored to the middle of the
-   * canvas either way. */
-  const showBroker = state.settings.show_broker !== false;
-
+  /* The broker's own lines. In the mesh view every panel hangs on the
+   * hub; in the topology view the LAN reaches out to the access
+   * points, and a panel that reports no access point hangs on the hub
+   * directly -- links to nothing are a picture of the wrong thing. */
   if (showBroker) {
-    for (const box of boxes) {
-      if (box.kind === "beacon") continue;
+    const uplinkOf = (box) =>
+      (topo && box.kind === "ap") || (topo && box.kind === "device"
+                                      && !(box.ap && apBoxFor(box.ap)))
+        || (!topo && box.kind === "device");
 
-      const hang = hangControl(bx, by, box.cx, box.cy);
-      ctx.beginPath();
-      ctx.moveTo(bx, by);
-      ctx.quadraticCurveTo(hang.x, hang.y, box.cx, box.cy);
-      ctx.strokeStyle = "rgba(153, 194, 255, " + (0.05 + box.activity * 0.22)
-                        + ")";
-      ctx.lineWidth = 1;
-      ctx.stroke();
+    for (const box of boxes) {
+      if (!uplinkOf(box)) continue;
+
+      const grow = linkGrow(brokerBox, box, time);
+      const lan = topo && box.kind === "ap";
+      const alpha = lan ? 0.10 + box.activity * 0.25
+                         : 0.05 + box.activity * 0.22;
+      drawLink(brokerBox.cx, brokerBox.cy, box.cx, box.cy,
+               lan ? "ap" : "device", {
+        color: "rgba(153, 194, 255," + alpha + ")",
+        glow: fxOn() ? "rgba(153, 194, 255,0.05)" : null,
+        width: lan ? 1.4 : 1,
+        /* The LAN is a cable with a current in it: the dashes walk
+         * toward the broker, the way the messages do. */
+        dash: lan && fxOn() ? [3, 9] : [],
+        dashOffset: lan ? time * 0.02 : 0,
+        grow: grow.t,
+      });
     }
   }
 
-  /* -- particles ---------------------------------------------------- */
+  /* The WLAN links, access point to panel: the strength of the line is
+   * the strength of the connection, and the energy in it flows toward
+   * the access point, the way the messages do. */
+  if (topo) {
+    for (const box of boxes) {
+      if (box.kind !== "ap") continue;
+
+      for (const panel of box.panels) {
+        const deviceBox = boxFor(panel.host);
+        if (!deviceBox) continue;
+
+        const grow = linkGrow(box, deviceBox, time);
+        let x0 = box.cx, y0 = box.cy;
+        let x1 = deviceBox.cx, y1 = deviceBox.cy;
+        if (grow.reverse) {
+          x0 = x1; y0 = y1;
+          x1 = box.cx; y1 = box.cy;
+        }
+
+        const alpha = 0.10 + 0.45 * panel.q + deviceBox.activity * 0.20;
+        drawLink(x0, y0, x1, y1, "device", {
+          color: "rgba(153, 194, 255," + alpha + ")",
+          glow: fxOn() ? "rgba(153, 194, 255,"
+                        + (0.05 + 0.10 * panel.q) + ")" : null,
+          width: 0.7 + 1.8 * panel.q,
+          dash: fxOn() && panel.q > 0.25 ? [2, 8] : [],
+          dashOffset: fxOn() && panel.q > 0.25 ? time * 0.02 : 0,
+          grow: grow.t,
+        });
+      }
+    }
+  }
+
+  /* -- light ---------------------------------------------------------- */
+
+  drawTrails();
+  drawHalos(time);
+  if (showBroker) drawSweep(time);
+
+  /* -- particles ------------------------------------------------------ */
 
   const dt = Math.min(0.05, (time - frameTime) / 1000) * 60;
   frameTime = time;
@@ -918,9 +1850,18 @@ function draw(time) {
     if (p.t >= 1 || (p.from && !boxes.includes(p.from))
         || (p.to && !boxes.includes(p.to))) {
       /* A broker-bound particle has no box to arrive at, so it wakes
-       * the panel it set out from instead. */
+       * the box it set out from instead. An access point carries the
+       * news on: a second particle walks its LAN line home. */
       const arrived = p.to || p.from;
       arrived.activity = 1;
+      if (fxOn()) {
+        wave(arrived.cx, arrived.cy,
+             p.to && p.to.kind === "device" ? PALETTE.teal : PALETTE.peri,
+             24, 450);
+      }
+      if (p.to && p.to.kind === "ap" && showBroker) {
+        spawnParticle(null, p.to);
+      }
       particles.splice(i, 1);
       continue;
     }
@@ -930,37 +1871,49 @@ function draw(time) {
 
     const fx = p.from.cx;
     const fy = p.from.cy;
-    const tx = p.to ? p.to.cx : bx;
-    const ty = p.to ? p.to.cy : by;
+    const tx = p.to ? p.to.cx : brokerBox.cx;
+    const ty = p.to ? p.to.cy : brokerBox.cy;
     /* The particle rides the line that hangs there, with a little slack
      * of its own, so a busy link is a bundle of threads and not one. */
     const hang = hangControl(fx, fy, tx, ty,
-                             p.to ? "beacon" : "device");
+                             p.to && p.to.kind === "device" ? "beacon"
+                             : "device");
     const cx1 = hang.x, cy1 = hang.y + p.off * 0.15;
+    const tint = p.to && p.to.kind === "device" ? "95, 201, 176"
+                 : "153, 194, 255";
 
-    for (let trail = 0; trail < 3; trail++) {
-      const t = Math.max(0, p.t - trail * 0.045);
+    ctx.save();
+    if (fxOn()) ctx.globalCompositeOperation = "lighter";
+    for (let trail = 0; trail < 5; trail++) {
+      const t = Math.max(0, p.t - trail * 0.04);
       const u = 1 - t;
       const px = u * u * fx + 2 * u * t * cx1 + t * t * tx;
       const py = u * u * fy + 2 * u * t * cy1 + t * t * ty;
       ctx.beginPath();
-      ctx.arc(px, py, 2.4 - trail * 0.7, 0, Math.PI * 2);
-      const tint = p.to ? "95, 201, 176" : "153, 194, 255";
-      ctx.fillStyle = "rgba(" + tint + "," + (0.9 - trail * 0.3) + ")";
+      ctx.arc(px, py, 2.6 - trail * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(" + tint + "," + (0.9 - trail * 0.18) + ")";
       ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /* -- boxes ---------------------------------------------------------- */
+
+  for (const box of boxes) {
+    if (box.kind === "broker") {
+      if (showBroker)
+        boxTransform(box, time, () => drawBroker(box, time));
+    } else if (box.kind === "ap") {
+      boxTransform(box, time, () => drawAp(box, time));
+    } else if (box.kind === "beacon") {
+      boxTransform(box, time, () => drawBeacon(box, time));
+    } else {
+      boxTransform(box, time, () => drawBox(box, time));
     }
   }
 
-  /* -- broker node --------------------------------------------------- */
-
-  if (showBroker) drawBroker(bx, by);
-
-  /* -- device boxes --------------------------------------------------- */
-
-  for (const box of boxes) {
-    if (box.kind === "beacon") drawBeacon(box, time);
-    else drawBox(box, time);
-  }
+  drawDying(time);
+  drawWaves(time);
 
   /* -- physics and repeat ---------------------------------------------- */
 
@@ -969,43 +1922,171 @@ function draw(time) {
   requestAnimationFrame(draw);
 }
 
-function drawBroker(bx, by) {
+/* The hub: a chip like the others, in the orange of the broker links,
+ * with a core that pulses with the traffic and a ring that turns --
+ * the one object that never drifts, drawn as the still point it is. */
+function drawBroker(box, time) {
   const b = state.broker;
   const label = b.connected ? b.host + ":" + b.port : t("broker.noBroker");
   const sub = b.connected
     ? "in " + b.messages_in + "  ·  out " + b.messages_out
     : t("broker.connectionOff");
 
-  const nw = 190, nh = 48;
-  const x = bx - nw / 2, y = by - nh / 2;
+  const x = Math.round(box.cx - box.w / 2);
+  const y = Math.round(box.cy - box.h / 2);
+
+  if (fxOn()) {
+    const alive = b.connected ? 1 : 0.3;
+    stampGlow(box.cx, box.cy, 150 + 18 * Math.sin(time * 0.002),
+              (0.12 + 0.20 * box.activity) * alive, PALETTE.orange);
+
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 156, 0, "
+                      + ((0.08 + 0.18 * box.activity) * alive) + ")";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 7]);
+    ctx.lineDashOffset = -time * 0.02;
+    ctx.beginPath();
+    ctx.arc(box.cx, box.cy, 36, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   ctx.save();
   ctx.shadowColor = "rgba(255, 156, 0, " + (b.connected ? 0.5 : 0.15) + ")";
   ctx.shadowBlur = 18;
-  chip(x, y, nw, nh, b.connected ? "#1a2030" : "#191521",
+  chip(x, y, box.w, box.h, b.connected ? "#1a2030" : "#191521",
        b.connected ? PALETTE.orange : PALETTE.bad);
   ctx.restore();
 
   ctx.fillStyle = b.connected ? PALETTE.orange : PALETTE.bad;
-  rr(x - 8, y + 6, 8, nh - 12, 3);
+  rr(x - 8, y + 6, 8, box.h - 12, 3);
   ctx.fill();
 
+  const pulse = b.connected ? 1 + 0.25 * Math.sin(time * 0.004) : 1;
   ctx.beginPath();
-  ctx.arc(x + 22, y + nh / 2, 5, 0, Math.PI * 2);
+  ctx.arc(x + 22, y + box.h / 2, 5 * pulse, 0, Math.PI * 2);
   ctx.fillStyle = b.connected ? PALETTE.good : PALETTE.bad;
   ctx.shadowColor = b.connected ? PALETTE.good : PALETTE.bad;
   ctx.shadowBlur = 8;
   ctx.fill();
   ctx.shadowBlur = 0;
 
-  text(trunc(label, 22), x + 36, y + nh / 2 - 8, SANS(13, 600), PALETTE.text);
-  text(sub, x + 36, y + nh / 2 + 10, MONO(10), PALETTE.dim);
+  text(trunc(label, 22), x + 36, y + box.h / 2 - 8, SANS(13, 600),
+       PALETTE.text);
+  text(sub, x + 36, y + box.h / 2 + 10, MONO(10), PALETTE.dim);
+
+  hits.push({ type: "broker-box", box, x, y, w: box.w, h: box.h });
+  drawPinGlyph(box, x, y);
 
   if (!state.devices.length) {
     text(tf("broker.waiting",
             { topic: state.settings.base_topic || "oheztouch" }),
-         bx, by + nh / 2 + 34, SANS(13), PALETTE.dim, "center");
+         box.cx, box.cy + box.h / 2 + 34, SANS(13), PALETTE.dim, "center");
   }
+}
+
+/* An access point box: a compact card in the blue of the LAN links,
+ * one per BSSID the panels report. The header says the network's name
+ * and how many panels are on it, the sub says the BSSID, the bar says
+ * the best of its panels' signals, and the footer says who is on it. */
+function drawAp(box, time) {
+  ctx.save();
+  const x = Math.round(box.cx - box.w / 2);
+  const y = Math.round(box.cy - box.h / 2);
+  let cursorY = y + AP_PAD;
+
+  const glow = Math.max(0, ...Object.values(box.flash), box.activity * 0.6);
+  if (glow > 0.02) {
+    ctx.save();
+    ctx.shadowColor = "rgba(153, 194, 255, " + glow * 0.45 + ")";
+    ctx.shadowBlur = 22;
+    chip(x, y, box.w, box.h, PALETTE.panel, PALETTE.edge);
+    ctx.restore();
+  } else {
+    chip(x, y, box.w, box.h, PALETTE.panel, PALETTE.edge);
+  }
+
+  /* -- header -------------------------------------------------------- */
+
+  const grad = ctx.createLinearGradient(x, y, x + box.w, y);
+  grad.addColorStop(0, "#99c2ff");
+  grad.addColorStop(1, "#5f83c9");
+  rr(x, y, box.w, AP_ROWS.header, 8);
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.fillRect(x + 5, y + AP_ROWS.header - 9, box.w - 10, 9);
+
+  /* The antenna glyph: arcs whose number follows the best of its
+   * panels' connections, breathing so the card never sits still. */
+  const gy = y + AP_ROWS.header / 2;
+  const best = box.panels.reduce((m, p) => Math.max(m, p.q), 0);
+  const arcCount = best > 0.66 ? 3 : best > 0.33 ? 2 : best > 0 ? 1 : 0;
+
+  ctx.strokeStyle = "#101a2e";
+  ctx.fillStyle = "#101a2e";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(x + 14, gy + 7);
+  ctx.lineTo(x + 14, gy - 1);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x + 14, gy + 7, 1.8, 0, Math.PI * 2);
+  ctx.fill();
+  for (let i = 0; i < arcCount; i++) {
+    const breath = 0.55 + 0.45 * Math.sin(time * 0.004 + i * 1.3 + box.seed);
+    ctx.globalAlpha = 0.4 + 0.6 * breath;
+    ctx.beginPath();
+    ctx.arc(x + 14, gy + 7, 4 + i * 4, -2.25, -0.9);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  text(trunc(box.ssid || "AP", 18), x + 26, gy + 1, SANS(12, 700),
+       "#101a2e");
+
+  const count = String(box.panels.length);
+  ctx.font = MONO(10);
+  const cw = ctx.measureText(count).width + 12;
+  rr(x + box.w - cw - 6, y + 6, cw, AP_ROWS.header - 12, 7);
+  ctx.fillStyle = "#101a2e";
+  ctx.fill();
+  text(count, x + box.w - 12, gy + 1, MONO(10), "#99c2ff", "right");
+
+  cursorY += AP_ROWS.header;
+  hits.push({ type: "ap-box", box, x, y, w: box.w, h: box.h });
+  drawPinGlyph(box, x, y);
+
+  /* -- sub: the BSSID ------------------------------------------------- */
+
+  text(bssidText(box.bssid), x + AP_PAD, cursorY + 7, MONO(9), PALETTE.dim);
+  cursorY += AP_ROWS.sub;
+
+  /* -- the best of its panels' signals --------------------------------- */
+
+  const bestPanel = box.panels.reduce((m, p) => (p.q > m.q ? p : m),
+                                      { q: 0, rssi: null });
+  chip(x + AP_PAD, cursorY + 3, 52, 6, "#171c27", PALETTE.edge);
+  ctx.fillStyle = best >= 0.6 ? PALETTE.good
+                  : best >= 0.3 ? PALETTE.orange : PALETTE.bad;
+  rr(x + AP_PAD, cursorY + 3, 52 * best, 6, 3);
+  ctx.fill();
+  text(bestPanel.rssi != null && isFinite(bestPanel.rssi)
+       ? Math.round(bestPanel.rssi) + " dBm" : "-",
+       x + AP_PAD + 58, cursorY + 7, MONO(10), PALETTE.text);
+  cursorY += AP_ROWS.rssi;
+
+  /* -- footer: who is on it --------------------------------------------- */
+
+  const names = box.panels.map((p) => p.host);
+  const heard = names.length
+    ? (names.length <= 2
+        ? trunc(names.join(", "), 22)
+        : tf("beacon.heardByPanels", { n: names.length }))
+    : t("beacon.nobody");
+  text(heard, x + AP_PAD, cursorY + 6, MONO(9), PALETTE.dim);
+
+  ctx.restore();
 }
 
 /* A beacon box: a smaller card in the teal of the radio links, one per
@@ -1245,6 +2326,7 @@ function drawBox(box, time) {
 
   cursorY += ROWS.header;
   hits.push({ type: "box", box, x, y, w: box.w, h: box.h });
+  drawPinGlyph(box, x, y);
 
   const hasRow = (row) => box.rows.includes(row);
   const t = (suffix) => dev.topics[suffix];
@@ -1480,8 +2562,7 @@ function hitAt(px, py) {
 }
 
 canvas.addEventListener("pointerdown", (event) => {
-  const rect = canvas.getBoundingClientRect();
-  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const { x: px, y: py } = eventWorld(event);
   const hit = hitAt(px, py);
 
   pointer.down = { x: px, y: py };
@@ -1502,12 +2583,20 @@ canvas.addEventListener("pointerdown", (event) => {
                         startHit: hit };
     canvas.setPointerCapture(event.pointerId);
     canvas.classList.add("grabbing");
+    return;
+  }
+
+  /* Nothing under the pointer, and the picture can be moved: the hand
+   * is on the workspace itself. */
+  if (isTopology()) {
+    pointer.camDrag = { x: cam.x, y: cam.y, px, py };
+    canvas.setPointerCapture(event.pointerId);
+    canvas.classList.add("grabbing");
   }
 });
 
 canvas.addEventListener("pointermove", (event) => {
-  const rect = canvas.getBoundingClientRect();
-  const px = event.clientX - rect.left, py = event.clientY - rect.top;
+  const { x: px, y: py } = eventWorld(event);
 
   if (pointer.ledDrag) {
     ledSetValue(pointer.ledDrag, px);
@@ -1524,10 +2613,53 @@ canvas.addEventListener("pointermove", (event) => {
     return;
   }
 
+  if (pointer.camDrag) {
+    const drag = pointer.camDrag;
+    pointer.moved = Math.max(pointer.moved,
+                             Math.hypot(px - drag.px, py - drag.py));
+    cam.x = cam.tx = drag.x - (px - drag.px) / stage.w;
+    cam.y = cam.ty = drag.y - (py - drag.py) / stage.h;
+    saveCamSoon();
+    return;
+  }
+
   /* A hover over anything clickable should say so. */
   const hit = hitAt(px, py);
+  hovered = hit && hit.box ? hit.box : null;
   canvas.style.cursor = hit ? "pointer" : "grab";
 });
+
+/* A stationary object dropped in the topology view keeps the place it
+ * was given: the position is pinned, saved as a fraction of the canvas,
+ * and confirmed by a ring. In the mesh view the same drop is a throw
+ * like any other -- the links gather the box back in. */
+function savePin(box) {
+  const x = Math.max(0, Math.min(1, box.cx / Math.max(1, stage.w)));
+  const y = Math.max(0, Math.min(1, box.cy / Math.max(1, stage.h)));
+
+  box.pinned = true;
+  box.pin = { x, y };
+
+  state.settings.positions = { ...(state.settings.positions || {}) };
+  state.settings.positions[pinKeyFor(box)] = box.pin;
+
+  if (fxOn()) wave(box.cx, box.cy, PALETTE.orange, 46, 550);
+  api("/api/position", { key: pinKeyFor(box), x, y })
+    .catch((error) => toast(error.message, "err"));
+}
+
+/* Letting a pinned object go again: it floats on its links, and the
+ * place it kept is forgotten. */
+function unpinBox(box) {
+  box.pinned = false;
+
+  state.settings.positions = { ...(state.settings.positions || {}) };
+  delete state.settings.positions[pinKeyFor(box)];
+
+  if (fxOn()) wave(box.cx, box.cy, PALETTE.peri, 40, 500);
+  api("/api/position/delete", { key: pinKeyFor(box) })
+    .catch((error) => toast(error.message, "err"));
+}
 
 async function publish(box, suffix, payload) {
   try {
@@ -1569,17 +2701,28 @@ canvas.addEventListener("pointerup", (event) => {
       const hit = drag.startHit;
       if (hit.type === "relay") {
         publish(hit.box, hit.suffix + "/set", "TOGGLE");
+      } else if (hit.type === "pin") {
+        unpinBox(hit.box);
       } else if (drag.box.kind === "beacon") {
         openBeaconDetail(drag.box.host);
+      } else if (drag.box.kind === "ap") {
+        openApDetail(drag.box.bssid);
+      } else if (drag.box.kind === "broker") {
+        /* the hub has nothing more to say for itself */
       } else {
         openDetail(drag.box.host);
       }
+    } else if (isTopology() && drag.box.kind !== "beacon") {
+      /* A stationary object dropped in the topology view keeps its
+       * place; the broker does too, in the topology view alone. */
+      savePin(drag.box);
     }
     /* A thrown box keeps its throw, and the links gather it back into
      * the mesh -- the network heals the same way it was made. */
   }
 
   pointer.boxDrag = null;
+  pointer.camDrag = null;
   pointer.down = null;
   canvas.classList.remove("grabbing");
 });
@@ -1587,6 +2730,7 @@ canvas.addEventListener("pointerup", (event) => {
 canvas.addEventListener("pointercancel", () => {
   if (pointer.boxDrag) pointer.boxDrag.box.drag = null;
   pointer.boxDrag = null;
+  pointer.camDrag = null;
   pointer.ledDrag = null;
   canvas.classList.remove("grabbing");
 });
@@ -1613,6 +2757,14 @@ function renderViewToggles() {
                                         state.settings.show_broker === false);
   $("btn-view-beacons").classList.toggle("off",
                                          state.settings.show_beacons === false);
+  $("btn-view-fx").classList.toggle("off",
+                                    state.settings.show_fx === false);
+  $("btn-mode-mesh").classList.toggle("active", !isTopology());
+  $("btn-mode-topology").classList.toggle("active", isTopology());
+
+  /* The zoom belongs to the topology view alone -- the mesh is its own
+   * fixed picture. */
+  $("zoom-controls").classList.toggle("hidden", !isTopology());
 }
 
 async function toggleView(key, button) {
@@ -1629,10 +2781,40 @@ async function toggleView(key, button) {
   }
 }
 
+/* Which picture the canvas draws of the same facts: the classic mesh,
+ * or the topology of broker, access points and panels. The boxes stay
+ * where they are and the springs do the moving -- a switch is the mesh
+ * re-forming itself, not the page starting over. */
+async function switchViewMode(mode) {
+  const before = state.settings.view_mode;
+  if (before === mode) return;
+  state.settings.view_mode = mode;
+
+  renderViewToggles();
+  renderPhysicsTabs();
+  syncBoxes();
+
+  try {
+    await api("/api/settings", { view_mode: mode });
+  } catch (error) {
+    state.settings.view_mode = before;
+    renderViewToggles();
+    renderPhysicsTabs();
+    syncBoxes();
+    toast(error.message, "err");
+  }
+}
+
 $("btn-view-broker").addEventListener("click", () =>
   toggleView("show_broker"));
 $("btn-view-beacons").addEventListener("click", () =>
   toggleView("show_beacons"));
+$("btn-view-fx").addEventListener("click", () =>
+  toggleView("show_fx"));
+$("btn-mode-mesh").addEventListener("click", () =>
+  switchViewMode("mesh"));
+$("btn-mode-topology").addEventListener("click", () =>
+  switchViewMode("topology"));
 
 /* ---------------------------------------------------------------- physics */
 
@@ -1704,7 +2886,13 @@ function syncPhysicsReadouts() {
 }
 
 function renderPhysicsTabs() {
+  /* The access points are a kind of the topology view; the mesh has
+   * none, so its slider tab is not offered there. */
+  $("phys-tab-aps").classList.toggle("hidden", !isTopology());
+  if (!isTopology() && physicsKind === "ap") physicsKind = "device";
+
   for (const [kind, id] of [["device", "phys-tab-nodes"],
+                            ["ap", "phys-tab-aps"],
                             ["beacon", "phys-tab-beacons"],
                             ["broker", "phys-tab-broker"]]) {
     $(id).classList.toggle("active", physicsKind === kind);
@@ -1714,6 +2902,10 @@ function renderPhysicsTabs() {
 
 $("phys-tab-nodes").addEventListener("click", () => {
   physicsKind = "device";
+  renderPhysicsTabs();
+});
+$("phys-tab-aps").addEventListener("click", () => {
+  physicsKind = "ap";
   renderPhysicsTabs();
 });
 $("phys-tab-beacons").addEventListener("click", () => {
@@ -1789,7 +2981,37 @@ $("physics-save").addEventListener("click", async () => {
 
 /* ------------------------------------------------------------ detail panel */
 
-let detailTarget = null;        // {kind: "device", host} | {kind: "beacon", addr}
+let detailTarget = null;        // {kind} | {kind: "device", host}
+                               // | {kind: "beacon", addr}
+                               // | {kind: "ap", bssid}
+
+/* The pin button of the detail panel: it says what the box is -- pinned
+ * or floating -- and does the other thing. */
+function renderDetailPin(box) {
+  const button = $("detail-pin");
+  if (isTopology() && box && box.kind !== "beacon") {
+    button.classList.remove("hidden");
+    button.textContent = box.pinned ? t("detail.unpin") : t("detail.pin");
+  } else {
+    button.classList.add("hidden");
+  }
+}
+
+function detailBox() {
+  if (!detailTarget) return null;
+  if (detailTarget.kind === "device") return boxFor(detailTarget.host);
+  if (detailTarget.kind === "ap")
+    return boxes.find((b) => b.kind === "ap" && b.bssid === detailTarget.bssid);
+  return null;
+}
+
+$("detail-pin").addEventListener("click", () => {
+  const box = detailBox();
+  if (!box) return;
+  if (box.pinned) unpinBox(box);
+  else savePin(box);
+  renderDetailPin(box);
+});
 
 function openDetail(host) {
   detailTarget = { kind: "device", host };
@@ -1812,6 +3034,12 @@ function openBeaconDetail(addr) {
   renderDetail();
 }
 
+function openApDetail(bssid) {
+  detailTarget = { kind: "ap", bssid };
+  $("detail").classList.remove("hidden");
+  renderDetail();
+}
+
 function closeDetail() {
   detailTarget = null;
   $("detail").classList.add("hidden");
@@ -1820,6 +3048,7 @@ function closeDetail() {
 function renderDetail() {
   if (!detailTarget) return closeDetail();
   if (detailTarget.kind === "beacon") return renderBeaconDetail();
+  if (detailTarget.kind === "ap") return renderApDetail();
 
   const dev = state.byHost[detailTarget.host];
   if (!dev) return closeDetail();
@@ -1827,6 +3056,7 @@ function renderDetail() {
   $("detail-seenby").classList.add("hidden");
   $("detail-delete").classList.remove("hidden");
   $("detail-title").textContent = dev.host;
+  renderDetailPin(boxFor(dev.host));
 
   const target = topicValue(dev, "system/target") || "?";
   const version = topicValue(dev, "system/version") || "?";
@@ -1935,6 +3165,7 @@ function renderBeaconDetail() {
   $("detail-seenby").classList.remove("hidden");
   $("detail-controls").classList.add("hidden");
   $("detail-delete").classList.add("hidden");
+  renderDetailPin(null);
 
   $("detail-title").textContent = beacon.name
     || (beacon.addr.slice(0, 4) + "…" + beacon.addr.slice(-4));
@@ -1953,6 +3184,8 @@ function renderBeaconDetail() {
 
   const seenby = $("seenby-list");
   seenby.innerHTML = "";
+  const heading = $("detail-seenby").querySelector("h3");
+  if (heading) heading.textContent = t("detail.heardBy");
   for (const seen of beacon.devices) {
     const row = document.createElement("div");
     row.className = "topic-row seenby-row";
@@ -1977,6 +3210,59 @@ function renderBeaconDetail() {
       + '<span class="t-age">' + fmtAge(record.age) + "</span>";
     list.appendChild(row);
   }
+}
+
+/* The access point's detail: which panels are on it and how well it
+ * hears each of them. Nothing to control -- an access point is
+ * listened to, not talked to -- and the pin button, because a place
+ * kept is a thing worth seeing here too. */
+function renderApDetail() {
+  const box = boxes.find((b) => b.kind === "ap"
+                            && b.bssid === detailTarget.bssid);
+  if (!box) return closeDetail();
+
+  $("detail-seenby").classList.remove("hidden");
+  $("detail-controls").classList.add("hidden");
+  $("detail-delete").classList.add("hidden");
+
+  $("detail-title").textContent = box.ssid
+    || (box.bssid.slice(0, 4) + "…" + box.bssid.slice(-4));
+
+  const bestPanel = box.panels.reduce((m, p) => (p.q > m.q ? p : m),
+                                      { q: 0, rssi: null });
+  $("detail-status").innerHTML =
+    tf("detail.apStatus", {
+      bssid: esc(bssidText(box.bssid)),
+      n: box.panels.length,
+      best: bestPanel.rssi != null && isFinite(bestPanel.rssi)
+        ? Math.round(bestPanel.rssi) + " dBm" : "-",
+    });
+
+  const heading = $("detail-seenby").querySelector("h3");
+  if (heading) heading.textContent = t("detail.panels");
+
+  const seenby = $("seenby-list");
+  seenby.innerHTML = "";
+  for (const panel of box.panels) {
+    const deviceBox = boxFor(panel.host);
+    const row = document.createElement("div");
+    row.className = "topic-row seenby-row";
+    row.innerHTML =
+      '<span class="t-suffix">' + esc(panel.host) + "</span>"
+      + '<span class="t-value">'
+      + (panel.rssi != null ? esc(Math.round(panel.rssi)) + " dBm" : "-")
+      + "</span>"
+      + '<span class="t-age">'
+      + (deviceBox ? (deviceBox.dev && deviceBox.dev.online
+                      ? t("word.online") : t("word.offline")) : "-")
+      + "</span>";
+    seenby.appendChild(row);
+  }
+
+  const list = $("detail-topics");
+  list.innerHTML = "";
+
+  renderDetailPin(box);
 }
 
 $("detail-close").addEventListener("click", closeDetail);
@@ -2199,6 +3485,192 @@ $("settings-form").addEventListener("submit", async (event) => {
   }
 });
 
+/* ---------------------------------------------------------------- layouts */
+
+/* The topology view's arrangements are worth keeping more than one of:
+ * this dialog saves the canvas as it stands under a name, brings a
+ * saved one back whole -- places and picture both, which is what a
+ * layout is -- and hands the whole table over as a file. The server
+ * keeps a backup file beside the state (mqttviz/data/layouts.json,
+ * rewritten on every change, remembering what stood before the last
+ * restore), and the button here writes the same content to a file of
+ * the user's own; importing one adds, it never wipes. */
+
+function layoutList() {
+  return state.settings.layouts || {};
+}
+
+function openLayouts() {
+  renderLayouts();
+  $("layouts").classList.remove("hidden");
+}
+
+function closeLayouts() {
+  $("layouts").classList.add("hidden");
+}
+
+$("btn-layouts").addEventListener("click", openLayouts);
+$("layouts-close").addEventListener("click", closeLayouts);
+
+function renderLayouts() {
+  const list = $("layout-list");
+  list.textContent = "";
+
+  const layouts = layoutList();
+  const names = Object.keys(layouts).sort((a, b) =>
+    String(layouts[b].saved_at).localeCompare(String(layouts[a].saved_at)));
+
+  if (!names.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = t("lay.empty");
+    list.appendChild(empty);
+    return;
+  }
+
+  for (const name of names) {
+    const layout = layouts[name];
+    const pins = Object.keys(layout.positions || {}).length;
+    const mode = t(layout.view_mode === "topology"
+                   ? "view.topology" : "view.mesh");
+
+    const row = document.createElement("div");
+    row.className = "layout-row";
+
+    const label = document.createElement("span");
+    label.className = "l-name";
+    label.textContent = name;
+
+    const meta = document.createElement("span");
+    meta.className = "l-meta";
+    meta.textContent = tf("lay.meta",
+                          { n: pins, mode, date: layout.saved_at || "" });
+
+    const load = document.createElement("button");
+    load.className = "lcars-btn small";
+    load.textContent = t("lay.load");
+    load.addEventListener("click", () => loadLayout(name));
+
+    const del = document.createElement("button");
+    del.className = "lcars-btn small danger";
+    del.textContent = t("lay.delete");
+    del.addEventListener("click", () => deleteLayout(name));
+
+    row.append(label, meta, load, del);
+    list.appendChild(row);
+  }
+}
+
+/* Saving follows the arrangement the canvas has right now, not the
+ * poll's copy of it: the settings the route answers with are the
+ * truth the moment the name was given. */
+async function saveLayout() {
+  const input = $("layout-name");
+  const name = input.value.trim();
+  if (!name) return toast(t("lay.nameNeeded"), "err");
+
+  try {
+    const doc = await api("/api/layout/save", { name });
+    state.settings = doc.settings;
+    renderLayouts();
+    input.value = "";
+    toast(tf("toast.layoutSaved", { name }));
+  } catch (error) {
+    toast(error.message, "err");
+  }
+}
+
+/* Restoring is the canvas re-forming itself: the springs move the
+ * boxes to the places the layout kept, the way a view switch does --
+ * and what stood before is in the backup file, so trying a layout on
+ * costs nothing. */
+async function loadLayout(name) {
+  try {
+    const doc = await api("/api/layout/load", { name });
+    state.settings = doc.settings;
+    syncBoxes();
+    renderViewToggles();
+    renderPhysicsTabs();
+    renderLayouts();
+    if (fxOn()) {
+      const pos = (state.settings.positions || {})["broker"];
+      if (pos) wave(pos.x * stage.w, pos.y * stage.h, PALETTE.orange,
+                   46, 550);
+    }
+    toast(tf("toast.layoutLoaded", { name }));
+  } catch (error) {
+    toast(error.message, "err");
+  }
+}
+
+async function deleteLayout(name) {
+  try {
+    const doc = await api("/api/layout/delete", { name });
+    state.settings = doc.settings;
+    renderLayouts();
+    toast(tf("toast.layoutDeleted", { name }));
+  } catch (error) {
+    toast(error.message, "err");
+  }
+}
+
+$("layout-save").addEventListener("click", saveLayout);
+
+/* The file the page writes is the file the server keeps: current
+ * arrangement, every saved layout -- the same content, in a place the
+ * user chooses. */
+$("layout-download").addEventListener("click", () => {
+  const doc = {
+    written: new Date().toISOString().slice(0, 19).replace("T", " "),
+    current: {
+      view_mode: state.settings.view_mode || "mesh",
+      positions: state.settings.positions || {},
+    },
+    layouts: layoutList(),
+  };
+
+  const blob = new Blob([JSON.stringify(doc, null, 2) + "\n"],
+                        { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "mqttviz-layouts.json";
+  link.click();
+  URL.revokeObjectURL(link.href);
+  toast(t("toast.backupWritten"));
+});
+
+/* Reading one back: the downloaded file or the server's backup file,
+ * or a bare table of layouts -- anything with layouts in it. The
+ * server checks every entry, so a file that is not one says so by
+ * importing nothing. */
+$("layout-import").addEventListener("change", async (event) => {
+  const file = event.target.files[0];
+  event.target.value = "";        // picking the same file again counts
+  if (!file) return;
+
+  let doc;
+  try {
+    doc = JSON.parse(await file.text());
+  } catch (error) {
+    return toast(t("toast.layoutImportFail"), "err");
+  }
+
+  const incoming = (doc && typeof doc === "object" && doc.layouts)
+                   || (doc && typeof doc === "object" ? doc : null);
+  if (!incoming || typeof incoming !== "object") {
+    return toast(t("toast.layoutImportFail"), "err");
+  }
+
+  try {
+    const result = await api("/api/layout/import", { layouts: incoming });
+    state.settings = result.settings;
+    renderLayouts();
+    toast(tf("toast.layoutImported", { n: result.imported }));
+  } catch (error) {
+    toast(error.message, "err");
+  }
+});
+
 /* ---------------------------------------------------------------- console */
 
 function pollConsole() {
@@ -2323,6 +3795,10 @@ if (location.hash === "#debug") {
       boxes: boxes.map((b) => ({ kind: b.kind, host: b.host,
                                  cx: Math.round(b.cx), cy: Math.round(b.cy),
                                  w: b.w, h: b.h })),
+      cam: { zoom: Math.round(cam.zoom * 100) / 100,
+             x: Math.round(camView().x), y: Math.round(camView().y) },
+      view: { w: Math.round(view.w), h: Math.round(view.h) },
+      stage: { w: Math.round(stage.w), h: Math.round(stage.h) },
       brokerSelectValue: $("broker-select").value,
       brokerSelectOptions: [...$("broker-select").options]
         .map((o) => o.textContent),
@@ -2338,6 +3814,9 @@ requestAnimationFrame(function tick(time) {
 
 resize();
 buildPhysicsPanel();
+/* The hub exists before the first poll: the physics and the particles
+ * both reference it from their very first frame. */
+ensureBrokerBox(new Set());
 /* Deep link: #physics opens the physics panel, the way devmgr's
  * #config=<mac> opens a device's settings. */
 if (location.hash === "#physics") openPhysics();

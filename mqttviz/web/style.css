@@ -116,6 +116,31 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
 .dot.on { background: var(--good); box-shadow: 0 0 6px var(--good); }
 
+/* The saved-arrangement list in the layouts dialog: one row per name,
+ * what it kept beside it, restore and delete at the right edge. */
+.layout-list { max-height: 240px; overflow-y: auto; }
+
+.layout-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #171c27;
+  border: 1px solid transparent;
+  font-size: 13px;
+}
+.layout-row:hover { border-color: var(--panel-edge); }
+.layout-row .l-name { font-weight: 600; color: var(--text); }
+.layout-row .l-meta {
+  flex: 1;
+  color: var(--dim);
+  font: 11px ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ------------------------------------------------------------------ buttons */
 
 .lcars-btn {
@@ -167,6 +192,18 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 
 #canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #canvas.grabbing { cursor: grabbing; }
+
+/* The zoom of the topology view: three quiet buttons in the canvas's
+ * own corner, only there while the picture can be moved at all. */
+.zoom-controls {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  display: flex;
+  gap: 6px;
+  z-index: 5;
+}
+.zoom-controls .lcars-btn { min-width: 30px; }
 
 /* -------------------------------------------------------------- detail panel */
 
@@ -302,6 +339,25 @@ input[type="range"] { flex: 1; accent-color: var(--lcars-orange); }
   border-color: var(--lcars-orange);
   color: var(--lcars-orange);
   background: rgba(255, 156, 0, 0.08);
+}
+
+/* The view mode switch in the top bar: the same segment, but compact
+ * and never stretched -- it says which of the two pictures is drawn,
+ * not which half of a panel is open. */
+.topbar-segment { gap: 0; }
+.topbar-segment .seg-btn {
+  flex: none;
+  padding: 5px 14px;
+  font-size: 11px;
+  border-radius: 0;
+  background: transparent;
+}
+.topbar-segment .seg-btn:first-child {
+  border-radius: 10px 0 0 10px;
+  border-right: none;
+}
+.topbar-segment .seg-btn:last-child {
+  border-radius: 0 10px 10px 0;
 }
 
 /* The physics sliders: label and the live readout of the effective

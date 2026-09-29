@@ -34,6 +34,7 @@ import mqtt_client
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA_DIR, "mqttviz.json")
+LAYOUT_FILE = os.path.join(DATA_DIR, "layouts.json")
 WEB_DIR = os.path.join(HERE, "web")
 
 DEFAULT_PORT = 8089
@@ -62,9 +63,9 @@ ON_VALUES = ("online", "on", "true", "yes", "1")
 # thick oil the canvas ships with; the values exist server-side only so
 # the choice survives a restart, like everything else the page changes.
 # Gravity is the one common slider that reaches below zero -- buoyancy is
-# a setting too. The beacons keep the two sliders with units of their
-# own: the line timeout, the one measured in seconds, and the minimum
-# signal, the one measured in dBm.
+# a setting too. The beacons keep the sliders with units of their own:
+# the line timeout, the one measured in seconds, the minimum signal, the
+# one measured in dBm, and the metre scale, the one measured in pixels.
 PHYS_DEFAULTS = {
     "drag": 60,
     "tether": 30,
@@ -79,18 +80,142 @@ PHYS_DEFAULTS = {
     "signal_pull": 100,
     "line_timeout": 90,
     "min_signal": -100,
+    "metre_px": 60,
 }
 
 PHYS_RANGES = {
     "gravity": (-100, 100),
     "line_timeout": (30, 300),
     "min_signal": (-100, -30),
+    "metre_px": (10, 200),
 }
 
-# The three kinds of things in the picture, each with its own physics:
-# the panels, the beacons, and the broker itself -- the hub never
-# moves, but its gravity is a setting like any other object's.
-PHYS_KINDS = ("phys_nodes", "phys_beacons", "phys_broker")
+# The kinds of things in the picture, each with its own physics: the
+# panels, the WLAN access points of the topology view, the beacons, and
+# the broker itself -- the hub never moves, but its gravity is a setting
+# like any other object's.
+PHYS_KINDS = ("phys_nodes", "phys_aps", "phys_beacons", "phys_broker")
+
+# What a stored position may be keyed by: the broker, an access point by
+# its BSSID, or a panel by its hostname. The page owns the keys; this
+# end only bounds them.
+POSITION_KEY_MAX = 80
+
+VIEW_MODES = ("mesh", "topology")
+
+# One saved layout, whatever the page named it: short enough to be a
+# name, never empty, never a filename nobody asked for.
+LAYOUT_NAME_MAX = 40
+
+# The topology view's camera: how much of the workspace it shows, and
+# how close it may be brought to the facts. The minimum is the whole
+# workspace at once.
+CAM_ZOOM_MIN = 0.5
+CAM_ZOOM_MAX = 2.5
+
+
+def normalise_position_key(key):
+    """One stored-position key, whatever the page said: a short non-empty
+    string, or nothing."""
+    key = str(key or "").strip()
+    if not key or len(key) > POSITION_KEY_MAX or "/" in key:
+        return None
+    return key
+
+
+def normalise_position(raw):
+    """One stored position, whatever the page said: x and y as fractions
+    of the canvas, whole enough to survive the round trip."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        x = max(0.0, min(1.0, float(raw.get("x"))))
+        y = max(0.0, min(1.0, float(raw.get("y"))))
+    except (TypeError, ValueError):
+        return None
+    return {"x": round(x, 4), "y": round(y, 4)}
+
+
+def normalise_positions(raw):
+    """The whole stored-position table: every key a valid key, every
+    entry a valid position, everything else dropped."""
+    positions = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            key = normalise_position_key(key)
+            pos = normalise_position(value)
+            if key and pos:
+                positions[key] = pos
+    return positions
+
+
+def normalise_layout_name(name):
+    """One name for a saved arrangement, whatever the page said: a
+    short non-empty string."""
+    name = str(name or "").strip()
+    if not name or len(name) > LAYOUT_NAME_MAX:
+        return None
+    return name
+
+
+def normalise_layout(raw):
+    """One saved layout: the places the topology view keeps, the
+    picture they belong to, and when they were kept."""
+    if not isinstance(raw, dict):
+        return None
+    view_mode = raw.get("view_mode")
+    return {
+        "positions": normalise_positions(raw.get("positions")),
+        "view_mode": view_mode if view_mode in VIEW_MODES else "topology",
+        "saved_at": str(raw.get("saved_at") or ""),
+    }
+
+
+def normalise_layouts(raw):
+    """The whole saved-layout table: every name a valid name, every
+    entry a valid layout, everything else dropped."""
+    layouts = {}
+    if isinstance(raw, dict):
+        for name, value in raw.items():
+            name = normalise_layout_name(name)
+            layout = normalise_layout(value)
+            if name and layout:
+                layouts[name] = layout
+    return layouts
+
+
+def normalise_cam(raw):
+    """The topology view's camera, whatever the file or the page said:
+    how much of the workspace it shows and which point of the
+    workspace it is centred on -- fractions, so the picture survives a
+    resize."""
+    cam = {"zoom": 1.0, "x": 0.5, "y": 0.5}
+    if isinstance(raw, dict):
+        try:
+            cam["zoom"] = max(CAM_ZOOM_MIN,
+                              min(CAM_ZOOM_MAX, float(raw.get("zoom", 1.0))))
+        except (TypeError, ValueError):
+            pass
+        for axis in ("x", "y"):
+            try:
+                cam[axis] = max(0.0, min(1.0, float(raw.get(axis, 0.5))))
+            except (TypeError, ValueError):
+                pass
+    cam["zoom"] = round(cam["zoom"], 3)
+    cam["x"] = round(cam["x"], 4)
+    cam["y"] = round(cam["y"], 4)
+    return cam
+
+
+def positions_into_workspace(positions):
+    """Positions were fractions of the canvas once; the topology view
+    lays out in a workspace of four times that area now, with the
+    canvas's picture in its middle. A position from before the
+    workspace keeps its place on the eye by moving into that middle --
+    and every pin lands exactly where it was left."""
+    return {key: {"x": round(0.25 + 0.5 * pos["x"], 4),
+                  "y": round(0.25 + 0.5 * pos["y"], 4)}
+            for key, pos in positions.items()}
 
 
 def normalise_phys(raw):
@@ -216,8 +341,15 @@ class State:
         "verbose": False,
         "show_broker": True,
         "show_beacons": True,
+        "show_fx": True,
+        "view_mode": "mesh",
         "lang": "en",
+        "positions": {},
+        "pos_space": "world",
+        "layouts": {},
+        "cam": {"zoom": 1.0, "x": 0.5, "y": 0.5},
         "phys_nodes": dict(PHYS_DEFAULTS),
+        "phys_aps": dict(PHYS_DEFAULTS),
         "phys_beacons": dict(PHYS_DEFAULTS),
         "phys_broker": dict(PHYS_DEFAULTS),
     }
@@ -227,6 +359,7 @@ class State:
         self.settings = dict(self.DEFAULT_SETTINGS)
         self.settings["brokers"] = [dict(DEFAULT_BROKER)]
         self.settings["phys_nodes"] = dict(PHYS_DEFAULTS)
+        self.settings["phys_aps"] = dict(PHYS_DEFAULTS)
         self.settings["phys_beacons"] = dict(PHYS_DEFAULTS)
         self.settings["phys_broker"] = dict(PHYS_DEFAULTS)
         self.devices = {}          # hostname -> device dict
@@ -234,6 +367,10 @@ class State:
         self.log_entries = deque(maxlen=LOG_CAPACITY)
         self.log_seq = 0
         self._dirty = False
+        # What the canvas looked like right before the last layout was
+        # restored -- memory only, written to the layout backup file so
+        # trying a layout on costs nothing that cannot be taken back.
+        self.before_load = None
         self._load()
 
     def _load(self):
@@ -283,23 +420,61 @@ class State:
         # Whatever the file said the sliders were, they are sliders now:
         # every one whole, in range, and missing ones at their defaults.
         # A file from before the two halves were set apart kept one set
-        # under "phys"; it becomes both halves, so nothing on the canvas
+        # under "phys"; it becomes all of them, so nothing on the canvas
         # moves the day after the upgrade.
         file_settings = doc.get("settings") if isinstance(
             doc.get("settings"), dict) else {}
         legacy = file_settings.get("phys")
-        if isinstance(legacy, dict) and "phys_nodes" not in file_settings \
-                and "phys_beacons" not in file_settings:
-            self.settings["phys_nodes"] = normalise_phys(legacy)
-            self.settings["phys_beacons"] = normalise_phys(legacy)
-            self.settings["phys_broker"] = normalise_phys(legacy)
+        phys_keys = ("phys_nodes", "phys_aps", "phys_beacons", "phys_broker")
+        if isinstance(legacy, dict) and not any(
+                k in file_settings for k in phys_keys):
+            for key in phys_keys:
+                self.settings[key] = normalise_phys(legacy)
         else:
-            self.settings["phys_nodes"] = normalise_phys(
-                self.settings.get("phys_nodes"))
-            self.settings["phys_beacons"] = normalise_phys(
-                self.settings.get("phys_beacons"))
-            self.settings["phys_broker"] = normalise_phys(
-                self.settings.get("phys_broker"))
+            for key in phys_keys:
+                self.settings[key] = normalise_phys(self.settings.get(key))
+
+        # Which picture the canvas draws: the classic mesh, or the
+        # topology of broker, access points and panels.
+        if self.settings.get("view_mode") not in VIEW_MODES:
+            self.settings["view_mode"] = "mesh"
+
+        # The pinned positions of the topology view: fractions of the
+        # canvas, every entry checked the way it is checked when the
+        # page sends one.
+        self.settings["positions"] = normalise_positions(
+            self.settings.get("positions"))
+
+        # The saved arrangements: named snapshots of the same, checked
+        # the same way, so a file that arrives from anywhere becomes a
+        # table the rest of the tool can trust.
+        self.settings["layouts"] = normalise_layouts(
+            self.settings.get("layouts"))
+
+        # Positions were fractions of the canvas once; the topology view
+        # lays out in a workspace of four times that area now, with the
+        # canvas's picture in its middle. A file from before the
+        # workspace keeps its places by moving them into that middle:
+        # one conversion, at load time, and every pin -- and every
+        # layout's pins -- lands exactly where the eye left it.
+        raw_settings = doc.get("settings") if isinstance(
+            doc.get("settings"), dict) else {}
+        if raw_settings.get("pos_space") != "world":
+            self.settings["positions"] = positions_into_workspace(
+                self.settings["positions"])
+            self.settings["layouts"] = {
+                name: {"positions": positions_into_workspace(
+                           layout["positions"]),
+                       "view_mode": layout["view_mode"],
+                       "saved_at": layout["saved_at"]}
+                for name, layout in self.settings["layouts"].items()}
+            self.settings["pos_space"] = "world"
+            self.save()
+
+        # Whatever the file said the camera was, it is fractions in
+        # range now -- the workspace is as big as it is, and the camera
+        # looks somewhere inside it.
+        self.settings["cam"] = normalise_cam(self.settings.get("cam"))
 
         # The language of the page: English or German, kept with the rest
         # so every browser that opens the tool starts right.
@@ -375,6 +550,54 @@ class State:
 # had its say: everything below refers to STATE as it runs, never as the
 # module loads.
 STATE = None
+
+
+# ------------------------------------------------------- layout backup file
+
+def layout_snapshot(positions, view_mode):
+    """A copy of one arrangement the way the backup file tells it: no
+    reference into the live table, so a later change cannot reach into
+    the past."""
+    return {
+        "view_mode": view_mode if view_mode in VIEW_MODES else "mesh",
+        "positions": {key: dict(pos)
+                      for key, pos in (positions or {}).items()},
+    }
+
+
+def write_layout_backup():
+    """The whole arrangement situation in one readable file beside the
+    state: the live places as they stand, every layout the page has
+    saved, and -- once a layout has been restored -- what the canvas
+    looked like right before that. Whatever a later write corrupts in
+    the state file, the places found by hand are still here, human
+    readable, to be typed back in or imported whole. Written atomically
+    like the state, and never fatal to the request that asked for it:
+    a backup that cannot be written is a warning, not a lost
+    arrangement."""
+    with STATE.lock:
+        doc = {
+            "written": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "current": layout_snapshot(STATE.settings.get("positions"),
+                                       STATE.settings.get("view_mode")),
+            "layouts": {name: {"positions": dict(layout["positions"]),
+                               "view_mode": layout["view_mode"],
+                               "saved_at": layout["saved_at"]}
+                        for name, layout
+                        in (STATE.settings.get("layouts") or {}).items()},
+        }
+        if STATE.before_load:
+            doc["before_load"] = dict(STATE.before_load)
+
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        tmp = LAYOUT_FILE + ".tmp"
+        with open(tmp, "w") as handle:
+            json.dump(doc, handle, indent=2)
+            handle.write("\n")
+        os.replace(tmp, LAYOUT_FILE)
+    except OSError as error:
+        STATE.log("warn", "backup", "layout backup not written: %s" % error)
 
 
 # ----------------------------------------------------------- device registry
@@ -519,6 +742,15 @@ def note_beacon(host, suffix, value):
                 beacon["history"].append([round(now, 3), best])
                 if len(beacon["history"]) > HISTORY_CAP:
                     del beacon["history"][:-HISTORY_CAP]
+
+        # The distance estimate is per scanner: each panel hears the
+        # beacon from where it stands. The topology view places the
+        # beacon by these, as springs of metres scaled to pixels.
+        if field == "distance":
+            try:
+                seen["distance"] = max(0.0, float(value))
+            except (TypeError, ValueError):
+                pass
 
 
 def forget_device_everywhere(host):
@@ -777,6 +1009,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/settings":
             return self.handle_settings()
+        if path == "/api/position":
+            return self.handle_position()
+        if path == "/api/position/delete":
+            return self.handle_position_delete()
+        if path == "/api/layout/save":
+            return self.handle_layout_save()
+        if path == "/api/layout/load":
+            return self.handle_layout_load()
+        if path == "/api/layout/delete":
+            return self.handle_layout_delete()
+        if path == "/api/layout/import":
+            return self.handle_layout_import()
         if path == "/api/publish":
             return self.handle_publish()
         if path == "/api/log/clear":
@@ -846,6 +1090,7 @@ class Handler(BaseHTTPRequestHandler):
                     heard.append({
                         "host": host,
                         "rssi": seen["rssi"],
+                        "distance": seen.get("distance"),
                         "age": max(0, round(now - seen["ts"])),
                         "count": seen["count"],
                     })
@@ -977,6 +1222,24 @@ class Handler(BaseHTTPRequestHandler):
             if "show_beacons" in body:
                 STATE.settings["show_beacons"] = bool(body["show_beacons"])
 
+            # The effects layer: the physics is the same either way, the
+            # glow is what the switch turns off.
+            if "show_fx" in body:
+                STATE.settings["show_fx"] = bool(body["show_fx"])
+
+            # Which picture the canvas draws of the same facts.
+            if "view_mode" in body:
+                STATE.settings["view_mode"] = \
+                    body["view_mode"] if body["view_mode"] in VIEW_MODES \
+                    else "mesh"
+
+            # The topology view's camera: how much of the workspace the
+            # viewport shows, and where it looks. The page owns the
+            # motion while it is being moved; this is where the settled
+            # picture is kept.
+            if "cam" in body:
+                STATE.settings["cam"] = normalise_cam(body.get("cam"))
+
             # The physics sliders: whole numbers in their ranges, whatever
             # the page meant by them, clamped here -- and set apart for
             # the two kinds of things that float, the panels and the
@@ -1016,12 +1279,178 @@ class Handler(BaseHTTPRequestHandler):
             STATE.save_now_if_dirty()
             after = connection_snapshot()
 
+        # The backup file follows the picture switch too -- the
+        # arrangement and the picture it belongs to are one fact.
+        write_layout_backup()
+
         # Only a change to the connection is worth a reconnect; log level,
         # verbosity and view switches are read as they are.
         if before != after:
             threading.Thread(target=BROKER.restart, daemon=True).start()
 
         self.send_json({"settings": masked_settings()})
+
+    def handle_position(self):
+        """Pin one object of the topology view to the canvas: the key
+        says which object, x and y say where, as fractions of the
+        canvas."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        key = normalise_position_key(body.get("key"))
+        pos = normalise_position(body)
+        if not key or not pos:
+            return self.send_error_json("a position needs a key, x and y")
+
+        with STATE.lock:
+            STATE.settings.setdefault("positions", {})[key] = pos
+            STATE.settings["positions"] = normalise_positions(
+                STATE.settings["positions"])
+            STATE.save()
+            STATE.save_now_if_dirty()
+            positions = dict(STATE.settings["positions"])
+
+        # The backup file follows every place the canvas keeps, the
+        # moment it is kept.
+        write_layout_backup()
+
+        self.send_json({"ok": True, "positions": positions})
+
+    def handle_position_delete(self):
+        """Unpin one object: it floats on its links again."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        key = normalise_position_key(body.get("key"))
+        if not key:
+            return self.send_error_json("a position needs a key")
+
+        with STATE.lock:
+            STATE.settings.setdefault("positions", {}).pop(key, None)
+            STATE.save()
+            STATE.save_now_if_dirty()
+            positions = dict(STATE.settings["positions"])
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "positions": positions})
+
+    def handle_layout_save(self):
+        """Keep the arrangement as it stands under a name: the pinned
+        places and the picture they belong to, to be brought back whole.
+        The same name twice is the newer arrangement winning -- a name
+        is a slot, not a promise."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        name = normalise_layout_name(body.get("name"))
+        if not name:
+            return self.send_error_json("a layout needs a name")
+
+        with STATE.lock:
+            layouts = normalise_layouts(STATE.settings.get("layouts"))
+            layouts[name] = layout_snapshot(STATE.settings.get("positions"),
+                                            STATE.settings.get("view_mode"))
+            layouts[name]["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            STATE.settings["layouts"] = layouts
+            STATE.save()
+            STATE.save_now_if_dirty()
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "settings": masked_settings()})
+
+    def handle_layout_load(self):
+        """Bring a saved arrangement back whole: its places are the
+        canvas's places again and its picture is the picture drawn.
+        What stood before is remembered in the backup file -- trying a
+        layout on never costs the one that was there."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        name = normalise_layout_name(body.get("name"))
+        if not name:
+            return self.send_error_json("a layout needs a name")
+
+        with STATE.lock:
+            layouts = normalise_layouts(STATE.settings.get("layouts"))
+            layout = layouts.get(name)
+            if layout is None:
+                return self.send_error_json("no layout by that name")
+
+            STATE.before_load = layout_snapshot(
+                STATE.settings.get("positions"),
+                STATE.settings.get("view_mode"))
+            STATE.before_load["replaced_by"] = name
+            STATE.before_load["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
+
+            STATE.settings["positions"] = normalise_positions(
+                layout["positions"])
+            STATE.settings["view_mode"] = layout["view_mode"]
+            STATE.save()
+            STATE.save_now_if_dirty()
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "settings": masked_settings()})
+
+    def handle_layout_delete(self):
+        """Forget one saved arrangement. The file it can be read back
+        from is whatever the page downloaded while it existed."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        name = normalise_layout_name(body.get("name"))
+        if not name:
+            return self.send_error_json("a layout needs a name")
+
+        with STATE.lock:
+            layouts = normalise_layouts(STATE.settings.get("layouts"))
+            if name not in layouts:
+                return self.send_error_json("no layout by that name")
+            del layouts[name]
+            STATE.settings["layouts"] = layouts
+            STATE.save()
+            STATE.save_now_if_dirty()
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "settings": masked_settings()})
+
+    def handle_layout_import(self):
+        """Read layouts back in from a file -- the one the page
+        downloads, or the backup file this server keeps beside the
+        state. Names the file carries win over the same names here;
+        names only here live on: an import adds, it never wipes."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict) \
+                or not isinstance(body.get("layouts"), dict):
+            return self.send_error_json("expected a layouts object")
+
+        incoming = normalise_layouts(body["layouts"])
+
+        with STATE.lock:
+            layouts = normalise_layouts(STATE.settings.get("layouts"))
+            layouts.update(incoming)
+            STATE.settings["layouts"] = layouts
+            STATE.save()
+            STATE.save_now_if_dirty()
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "imported": len(incoming),
+                        "settings": masked_settings()})
 
     def handle_publish(self):
         body = self.read_json_body()
@@ -1136,11 +1565,12 @@ def main():
                         help="start without connecting to the broker")
     args = parser.parse_args()
 
-    global STATE, DATA_DIR, STATE_FILE
+    global STATE, DATA_DIR, STATE_FILE, LAYOUT_FILE
 
     if args.data_dir:
         DATA_DIR = args.data_dir
         STATE_FILE = os.path.join(DATA_DIR, "mqttviz.json")
+        LAYOUT_FILE = os.path.join(DATA_DIR, "layouts.json")
 
     STATE = State()
 
@@ -1166,6 +1596,11 @@ def main():
         STATE.settings["mqtt_enabled"] = False
 
     STATE.save_now_if_dirty()
+
+    # The backup file exists from the first moment on: everything about
+    # the arrangement, readable, before anything has had the chance to
+    # go wrong.
+    write_layout_backup()
 
     if STATE.settings.get("mqtt_enabled"):
         BROKER.restart()

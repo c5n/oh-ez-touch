@@ -18,8 +18,10 @@ const I18N = {
     /* -- the words on the chrome ---------------------------------- */
     "word.broker": "Broker",
     "word.beacons": "Beacons",
+    "word.fx": "FX",
     "word.physics": "Physics",
     "word.config": "Config",
+    "word.layouts": "Layouts",
     "word.console": "Console",
     "word.close": "close",
     "word.save": "save",
@@ -34,11 +36,21 @@ const I18N = {
     "word.on": "ON",
     "word.off": "OFF",
 
+    "view.mesh": "Mesh",
+    "view.topology": "Topology",
+
     "tip.brokerSelect": "the broker to watch",
     "tip.brokerView": "show or hide the broker node",
     "tip.beaconsView": "show or hide the BLE beacons",
+    "tip.fxView": "show or hide the light effects",
+    "tip.modeMesh": "the classic picture: every panel on its line to the broker",
+    "tip.modeTopology": "the network as it is: broker, access points, panels, beacons",
     "tip.physics": "how the boxes move",
     "tip.config": "MQTT configuration",
+    "tip.layouts": "saved arrangements of the canvas",
+    "tip.zoomIn": "zoom in — or the wheel",
+    "tip.zoomOut": "zoom out — or the wheel",
+    "tip.zoomHome": "back to the middle: the whole canvas at 100%",
 
     /* -- the broker ----------------------------------------------- */
     "broker.notConnected": "not connected",
@@ -63,14 +75,18 @@ const I18N = {
 
     /* -- the detail panel ------------------------------------------ */
     "detail.heardBy": "Heard by",
+    "detail.panels": "Panels",
     "detail.controls": "Controls",
     "detail.topics": "Topics",
     "detail.remove": "remove from list",
+    "detail.pin": "pin position",
+    "detail.unpin": "release pin",
     "detail.relay": "relay {n}",
     "detail.devStatus": " · {target} · v{version} · first seen {first}"
                         + " · last message {age} ago",
     "detail.beaconStatus": " · {what} · first seen {first}"
                            + " · last heard {age} ago",
+    "detail.apStatus": " · {bssid} · {n} panels · best signal {best}",
 
     /* -- the settings dialog ---------------------------------------- */
     "set.title": "MQTT brokers",
@@ -92,6 +108,35 @@ const I18N = {
     "toast.settingsSaved": "saved — profiles kept, the connection follows"
                            + " the selector",
 
+    /* -- the layouts dialog ------------------------------------------ */
+    "lay.title": "Layouts",
+    "lay.saveCurrent": "save current",
+    "lay.load": "restore",
+    "lay.delete": "delete",
+    "lay.download": "backup file",
+    "lay.import": "import backup",
+    "lay.empty": "no saved layouts yet — arrange the canvas and give the"
+                 + " arrangement a name",
+    "lay.namePlaceholder": "name of the arrangement",
+    "lay.nameNeeded": "the arrangement needs a name",
+    "lay.meta": "{n} pinned · {mode} · saved {date}",
+    "hint.layouts": "Save the arrangement as it stands under a name and"
+                    + " bring a saved one back whole — the places and the"
+                    + " picture they belong to, which is what a layout is."
+                    + " The server keeps a backup file beside the state"
+                    + " (mqttviz/data/layouts.json, rewritten on every"
+                    + " change and remembering what stood before the last"
+                    + " restore), and the button here writes the same"
+                    + " content to a file of your own. Importing adds, it"
+                    + " never wipes.",
+    "toast.layoutSaved": "layout saved: {name}",
+    "toast.layoutLoaded": "layout restored: {name} — what stood before is"
+                          + " in the backup file",
+    "toast.layoutDeleted": "layout deleted: {name}",
+    "toast.layoutImported": "{n} layouts imported",
+    "toast.layoutImportFail": "not a layout file",
+    "toast.backupWritten": "backup file written",
+
     /* -- the console ------------------------------------------------ */
     "lvl.debug": "debug",
     "lvl.info": "info",
@@ -108,12 +153,13 @@ const I18N = {
 
     /* -- the physics panel -------------------------------------------- */
     "physics.nodes": "Panels",
+    "physics.aps": "Access Points",
     "physics.beacons": "Beacons",
     "hint.physics": "How the boxes move and the lines hang. Every slider"
                     + " acts on the canvas the moment it is touched; save"
                     + " keeps the feel, closing without saving puts it"
-                    + " back. The panels, the beacons and the broker each"
-                    + " have their own physics.",
+                    + " back. The panels, the access points, the beacons"
+                    + " and the broker each have their own physics.",
 
     "phys.drag": "viscosity",
     "phys.tether": "link spring",
@@ -128,6 +174,7 @@ const I18N = {
     "phys.signalPull": "signal pull",
     "phys.minSignal": "min signal",
     "phys.lineTimeout": "line timeout",
+    "phys.metrePx": "px per metre",
 
     "help.drag": "How thick the oil is: how quickly a shoved box stops."
                  + " High = heavy, almost frozen; low = it keeps sliding.",
@@ -161,10 +208,15 @@ const I18N = {
                       + " -- the shipped default -- lets every line stay."
                       + " Beacons only.",
     "help.lineTimeout": "How long a panel's last hearing keeps its line"
-                        + " alive: a line whose panel has not reported the"
-                        + " beacon for this long is gone, and a beacon with"
-                        + " no lines left is gone with it. 30 to 300"
-                        + " seconds. Beacons only.",
+                         + " alive: a line whose panel has not reported the"
+                         + " beacon for this long is gone, and a beacon with"
+                         + " no lines left is gone with it. 30 to 300"
+                         + " seconds. Beacons only.",
+    "help.metrePx": "How many pixels a reported metre is worth, in the"
+                    + " topology view: a beacon's distance estimate becomes"
+                    + " a leash of metres scaled to this. Beacons that report"
+                    + " no distance keep following their signal strength."
+                    + " Beacons only.",
     "help.gravity": "Every object carries a gravity of its own and pulls"
                     + " on every other object: positive attracts, negative"
                     + " repels. Zero -- the shipped default -- leaves the"
@@ -185,8 +237,10 @@ const I18N = {
     /* -- die Worte der Oberfläche ---------------------------------- */
     "word.broker": "Broker",
     "word.beacons": "Beacons",
+    "word.fx": "FX",
     "word.physics": "Physik",
     "word.config": "Einstellungen",
+    "word.layouts": "Layouts",
     "word.console": "Konsole",
     "word.close": "schließen",
     "word.save": "speichern",
@@ -201,11 +255,21 @@ const I18N = {
     "word.on": "AN",
     "word.off": "AUS",
 
+    "view.mesh": "Mesh",
+    "view.topology": "Topologie",
+
     "tip.brokerSelect": "der beobachtete Broker",
     "tip.brokerView": "den Broker-Knoten zeigen oder verbergen",
     "tip.beaconsView": "die BLE-Beacons zeigen oder verbergen",
+    "tip.fxView": "die Lichteffekte ein- oder ausblenden",
+    "tip.modeMesh": "das klassische Bild: jedes Panel an seiner Leine zum Broker",
+    "tip.modeTopology": "das Netz, wie es ist: Broker, Access Points, Panels, Beacons",
     "tip.physics": "wie sich die Boxen bewegen",
     "tip.config": "MQTT-Konfiguration",
+    "tip.layouts": "gespeicherte Anordnungen der Leinwand",
+    "tip.zoomIn": "näher — oder das Rad",
+    "tip.zoomOut": "ferner — oder das Rad",
+    "tip.zoomHome": "zur Mitte: die ganze Leinwand bei 100 %",
 
     /* -- der Broker -------------------------------------------------- */
     "broker.notConnected": "nicht verbunden",
@@ -230,14 +294,18 @@ const I18N = {
 
     /* -- das Detail-Panel ---------------------------------------------- */
     "detail.heardBy": "Gehört von",
+    "detail.panels": "Panels",
     "detail.controls": "Steuerung",
     "detail.topics": "Topics",
     "detail.remove": "aus der Liste entfernen",
+    "detail.pin": "Position fixieren",
+    "detail.unpin": "Fixierung lösen",
     "detail.relay": "Relais {n}",
     "detail.devStatus": " · {target} · v{version} · zuerst gesehen {first}"
                         + " · letzte Nachricht vor {age}",
     "detail.beaconStatus": " · {what} · zuerst gesehen {first}"
-                          + " · zuletzt gehört vor {age}",
+                           + " · zuletzt gehört vor {age}",
+    "detail.apStatus": " · {bssid} · {n} Panels · bestes Signal {best}",
 
     /* -- der Einstellungsdialog ------------------------------------------ */
     "set.title": "MQTT-Broker",
@@ -257,7 +325,37 @@ const I18N = {
                      + " Passwörter liegen in mqttviz/data/mqttviz.json,"
                      + " das git nicht verwahrt.",
     "toast.settingsSaved": "gespeichert — die Profile bleiben, die"
-                           + " Verbindung folgt der Auswahl",
+                          + " Verbindung folgt der Auswahl",
+
+    /* -- der Layout-Dialog -------------------------------------------- */
+    "lay.title": "Layouts",
+    "lay.saveCurrent": "aktuell speichern",
+    "lay.load": "wiederherstellen",
+    "lay.delete": "löschen",
+    "lay.download": "Backup-Datei",
+    "lay.import": "Backup einlesen",
+    "lay.empty": "noch keine Layouts gespeichert — die Leinwand anordnen"
+                 + " und der Anordnung einen Namen geben",
+    "lay.namePlaceholder": "Name der Anordnung",
+    "lay.nameNeeded": "die Anordnung braucht einen Namen",
+    "lay.meta": "{n} fixiert · {mode} · gespeichert {date}",
+    "hint.layouts": "Die Leinwand, wie sie gerade steht, unter einem Namen"
+                    + " speichern und ein gespeichertes Layout als Ganzes"
+                    + " zurückholen — die Plätze und das Bild, zu dem sie"
+                    + " gehören, das ist ein Layout. Der Server hält eine"
+                    + " Backup-Datei neben dem Zustand"
+                    + " (mqttviz/data/layouts.json, bei jeder Änderung neu"
+                    + " geschrieben, sie merkt sich auch, was vor dem"
+                    + " letzten Wiederherstellen stand), und die"
+                    + " Schaltfläche hier schreibt denselben Inhalt in eine"
+                    + " eigene Datei. Einlesen ergänzt, es löscht nichts.",
+    "toast.layoutSaved": "Layout gespeichert: {name}",
+    "toast.layoutLoaded": "Layout wiederhergestellt: {name} — das"
+                          + " vorherige steht in der Backup-Datei",
+    "toast.layoutDeleted": "Layout gelöscht: {name}",
+    "toast.layoutImported": "{n} Layouts eingelesen",
+    "toast.layoutImportFail": "keine Layout-Datei",
+    "toast.backupWritten": "Backup-Datei geschrieben",
 
     /* -- die Konsole -------------------------------------------------- */
     "lvl.debug": "Debug",
@@ -275,13 +373,14 @@ const I18N = {
 
     /* -- das Physik-Panel ------------------------------------------------ */
     "physics.nodes": "Panels",
+    "physics.aps": "WLAN APs",
     "physics.beacons": "Beacons",
     "hint.physics": "Wie die Boxen sich bewegen und die Linien hängen."
                     + " Jeder Regler greift in dem Moment, in dem er"
                     + " berührt wird; speichern behält das Gefühl,"
                     + " Schließen ohne Speichern stellt es zurück."
-                    + " Panels, Beacons und der Broker haben jeweils"
-                    + " ihre eigene Physik.",
+                    + " Panels, Access Points, Beacons und der Broker"
+                    + " haben jeweils ihre eigene Physik.",
 
     "phys.drag": "Zähflüssigkeit",
     "phys.tether": "Leinen-Feder",
@@ -296,6 +395,7 @@ const I18N = {
     "phys.signalPull": "Signal-Zug",
     "phys.minSignal": "Mindestsignal",
     "phys.lineTimeout": "Leinen-Timeout",
+    "phys.metrePx": "Px pro Meter",
 
     "help.drag": "Wie zäh das Öl ist: wie schnell eine geschubste Box"
                  + " stehen bleibt. Hoch = schwer, fast gefroren;"
@@ -349,6 +449,11 @@ const I18N = {
                           + " es nach außen. Der Broker bewegt sich"
                           + " nie; dies ist seine einzige Einstellung,"
                           + " und jede Linie antwortet darauf.",
+    "help.metrePx": "Wie viele Pixel ein gemeldetes Meter wert ist, in der"
+                    + " Topologie-Ansicht: die Distanzschätzung eines Beacons"
+                    + " wird zur Leine aus Metern, mit diesem Maßstab."
+                    + " Beacons ohne Distanzmeldung folgen weiter ihrer"
+                    + " Signalstärke. Nur Beacons.",
 
     "unit.perFrame": "/Bild",
     "unit.ofLength": "% der Länge",
@@ -384,6 +489,9 @@ function applyLang() {
   }
   for (const el of document.querySelectorAll("[data-i18n-title]")) {
     el.title = t(el.dataset.i18nTitle);
+  }
+  for (const el of document.querySelectorAll("[data-i18n-placeholder]")) {
+    el.placeholder = t(el.dataset.i18nPlaceholder);
   }
   document.dispatchEvent(new CustomEvent("langchange"));
 }

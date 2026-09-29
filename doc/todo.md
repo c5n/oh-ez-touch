@@ -74,3 +74,19 @@
 - [ ] ble: The BLE scanner has not been run on hardware either. The NimBLE
       port is checked against the IDF observer examples and the parsers
       against the format specifications, not against a real tag.
+- [x] mqttviz: Add the topology view next to the mesh view -- access
+      points from the panels' BSSID topics, pinnable positions, beacon
+      placement by the distance topic, and an effects layer with an FX
+      switch. See [The MQTT visualizer](mqttviz.md) and
+      [the note](mqttviz-notes.md).
+- [x] mqttviz: Keep whole arrangements as named layouts, restorable in
+      one click, with a backup file beside the state that remembers
+      what a restore replaced. See
+      [Arrangements, named](mqttviz.md#arrangements-named).
+- [x] mqttviz: Give the topology view a workspace of four times the
+      area with a camera of its own -- wheel zoom, pan, home -- and a
+      one-time conversion that keeps every pin where the eye left it.
+      See [The workspace and the zoom](mqttviz.md#the-workspace-and-the-zoom).
+- [ ] doc: Update the visualizer screenshots. `doc/img` has none of the
+      topology view, the physics panel's fourth tab, the FX layer or
+      the layouts dialog.

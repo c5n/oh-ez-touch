@@ -20,8 +20,14 @@
     <span id="broker-label" data-i18n="broker.notConnected">not connected</span>
   </div>
   <div class="spacer"></div>
+  <div id="view-mode" class="segment topbar-segment">
+    <button id="btn-mode-mesh" class="seg-btn active" data-i18n-title="tip.modeMesh" data-i18n="view.mesh">Mesh</button>
+    <button id="btn-mode-topology" class="seg-btn" data-i18n-title="tip.modeTopology" data-i18n="view.topology">Topology</button>
+  </div>
   <button id="btn-view-broker" class="lcars-btn view-toggle" data-i18n-title="tip.brokerView" data-i18n="word.broker">Broker</button>
   <button id="btn-view-beacons" class="lcars-btn view-toggle" data-i18n-title="tip.beaconsView" data-i18n="word.beacons">Beacons</button>
+  <button id="btn-view-fx" class="lcars-btn view-toggle" data-i18n-title="tip.fxView" data-i18n="word.fx">FX</button>
+  <button id="btn-layouts" class="lcars-btn" data-i18n-title="tip.layouts" data-i18n="word.layouts">Layouts</button>
   <button id="btn-physics" class="lcars-btn" data-i18n-title="tip.physics" data-i18n="word.physics">Physics</button>
   <button id="btn-settings" class="lcars-btn" data-i18n-title="tip.config" data-i18n="word.config">Config</button>
   <button id="btn-console" class="lcars-btn"><span data-i18n="word.console">Console</span><span id="console-badge" class="badge hidden">0</span></button>
@@ -29,6 +35,12 @@
 
 <main id="stage">
   <canvas id="canvas"></canvas>
+
+  <div id="zoom-controls" class="zoom-controls hidden">
+    <button id="btn-zoom-in" class="lcars-btn small" data-i18n-title="tip.zoomIn">+</button>
+    <button id="btn-zoom-out" class="lcars-btn small" data-i18n-title="tip.zoomOut">−</button>
+    <button id="btn-zoom-home" class="lcars-btn small" data-i18n-title="tip.zoomHome">⌂</button>
+  </div>
 
   <aside id="detail" class="hidden">
     <div class="panel-head">
@@ -54,6 +66,9 @@
       <div id="detail-topics" class="topic-list"></div>
     </div>
     <div class="detail-section">
+      <button id="detail-pin" class="lcars-btn small hidden" data-i18n="detail.pin">pin position</button>
+    </div>
+    <div class="detail-section">
       <button id="detail-delete" class="lcars-btn small danger" data-i18n="detail.remove">remove from list</button>
     </div>
   </aside>
@@ -65,6 +80,7 @@
     </div>
     <div id="physics-tabs" class="segment">
       <button id="phys-tab-nodes" class="seg-btn active" data-i18n="physics.nodes">Panels</button>
+      <button id="phys-tab-aps" class="seg-btn hidden" data-i18n="physics.aps">Access Points</button>
       <button id="phys-tab-beacons" class="seg-btn" data-i18n="physics.beacons">Beacons</button>
       <button id="phys-tab-broker" class="seg-btn" data-i18n="word.broker">Broker</button>
     </div>
@@ -73,6 +89,7 @@
     closing without saving puts it back.</p>
     <form id="physics-form" onSubmit="return false;">
       <div id="physics-rows-nodes"></div>
+      <div id="physics-rows-aps" class="hidden"></div>
       <div id="physics-rows-beacons" class="hidden"></div>
       <div id="physics-rows-broker" class="hidden"></div>
       <div class="control-row">
@@ -134,6 +151,32 @@
         mqttviz/data/mqttviz.json, which git does not keep.</p>
         <div class="form-actions">
           <button type="submit" id="settings-save" class="lcars-btn" data-i18n="word.save">save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="layouts" class="modal hidden">
+    <div class="modal-card">
+      <div class="panel-head">
+        <span class="panel-title" data-i18n="lay.title">Layouts</span>
+        <button id="layouts-close" class="lcars-btn small" data-i18n="word.close">close</button>
+      </div>
+      <form id="layout-form" onSubmit="return false;">
+        <p class="hint" data-i18n="hint.layouts">Save the arrangement as it stands under a
+        name and bring a saved one back whole. The server keeps a backup file beside
+        the state — mqttviz/data/layouts.json, rewritten on every change — and the
+        button here writes the same content to a file of your own.</p>
+        <div class="control-row">
+          <input type="text" id="layout-name" autocomplete="off"
+                 data-i18n-placeholder="lay.namePlaceholder">
+          <button type="button" id="layout-save" class="lcars-btn small" data-i18n="lay.saveCurrent">save current</button>
+        </div>
+        <div id="layout-list" class="broker-list layout-list"></div>
+        <div class="control-row">
+          <button type="button" id="layout-download" class="lcars-btn small" data-i18n="lay.download">backup file</button>
+          <label class="lcars-btn small" for="layout-import" data-i18n="lay.import">import backup</label>
+          <input type="file" id="layout-import" accept=".json,application/json" hidden>
         </div>
       </form>
     </div>
