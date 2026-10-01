@@ -200,7 +200,10 @@
     #define LV_DRAW_SW_SUPPORT_RGB565 1
     #define LV_DRAW_SW_SUPPORT_RGB565_SWAPPED 0
     #define LV_DRAW_SW_SUPPORT_RGB565A8 0
-    #define LV_DRAW_SW_SUPPORT_RGB888 0
+    /* On, because a horizontal gradient is blended from an RGB888 colour line:
+     * off, every one draws nothing at all. The colour screen's tracks are the
+     * ones that need it -- see main/ui/items/item_color.cpp. */
+    #define LV_DRAW_SW_SUPPORT_RGB888 1
     #define LV_DRAW_SW_SUPPORT_XRGB8888 0
     #define LV_DRAW_SW_SUPPORT_ARGB8888 1
     #define LV_DRAW_SW_SUPPORT_ARGB8888_PREMULTIPLIED 0
@@ -608,8 +611,10 @@
 #define LV_IMAGE_HEADER_CACHE_DEF_CNT 0
 
 /** Number of stops allowed per gradient. Increase this to allow more stops.
- *  This adds (sizeof(lv_color_t) + 1) bytes per additional stop. */
-#define LV_GRADIENT_MAX_STOPS   2
+ *  This adds (sizeof(lv_color_t) + 1) bytes per additional stop.
+ *  7 for the colour screen's hue field: red, yellow, green, cyan, blue, magenta
+ *  and red again -- see main/ui/items/item_color.cpp. */
+#define LV_GRADIENT_MAX_STOPS   7
 
 /** Adjust color mix functions rounding. GPUs might calculate color mix (blending) differently.
  *  - 0:   round down,

@@ -272,8 +272,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
      *
      * The ground is flat rather than a gradient: LVGL issues one fill task per
      * row for a linear one, so a full-screen gradient was 240 of them on every
-     * repaint, and with LV_GRADIENT_MAX_STOPS at 2 it banded visibly across
-     * 240 rows of RGB565 anyway. */
+     * repaint, and with two stops it banded visibly across 240 rows of RGB565
+     * anyway. */
     {
         UI_THEME_NAME_JARVIS " Day", UI_THEME_JARVIS, false,
         /* screen       */ SURF(0x050B12, CK, NON, FULLO, CK, MK, MK, EK, MK, 0x9FE8FF),
