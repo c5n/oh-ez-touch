@@ -44,7 +44,8 @@ of the repository by .gitignore, because it contains your real addresses):
   back" are logged, a device that is simply still there is not.
 * **Configure** (per device, gear button) -- reads the device's own
   `GET /api/config`, which carries every setting with label, kind, current
-  value and range or options, grouped into the same tabs the touch screen
+  value and range or options (a `color` setting gets the browser's colour
+  picker), grouped into the same tabs the touch screen
   uses (Device, Time, Theme, Audio, openHAB, MQTT, Sensors). Only the fields
   you actually change are sent; the Save button stays grey until there is
   something to send. Secret fields (the MQTT password) arrive masked as

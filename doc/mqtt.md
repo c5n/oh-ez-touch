@@ -70,6 +70,12 @@ after **Activity timeout** seconds. `ui/brightness` is the level being driven,
 not a reading off the pin: a fade is walked by the hardware and this is where
 it is going.
 
+With the clock screen on, both directions pass through black. `ui/brightness`
+then reports `0` in the middle of a dim or a wake. `ui/backlight` turns `OFF`
+when the panel is dark and the clock screen goes up, not when the fade
+starts. It turns `ON` again when the clock screen comes down, 0.1 s after the
+touch.
+
 `ui/activity` is a window, not an event. It opens on the first touch and
 closes ten seconds after the last one:
 
@@ -110,6 +116,14 @@ form posts.
 mosquitto_pub -t oheztouch/oheztouch-new/config/theme/set -m LCARS
 mosquitto_pub -t oheztouch/oheztouch-new/config/night_mode/set -m auto
 mosquitto_pub -t oheztouch/oheztouch-new/config/bl_dim/set -m 20
+```
+
+A colour setting (`clock_day_fg`, `clock_day_bg`, `clock_night_fg`,
+`clock_night_bg`) is published and written as `#rrggbb`. Anything else is
+dropped.
+
+```bash
+mosquitto_pub -t oheztouch/oheztouch-new/config/clock_night_fg/set -m '#ffb000'
 ```
 
 The ranges, the character rules and the option names are the ones the

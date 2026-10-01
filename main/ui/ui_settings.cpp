@@ -733,6 +733,53 @@ static void field_value_with_unit(const struct config_field_s *f, char *buffer, 
         snprintf(buffer + strlen(buffer), size - strlen(buffer), " %s", f->unit);
 }
 
+/* What a SETTINGS_COLOR row offers on the panel. A short list of names
+ * rather than a picker: a finger on a 320 px screen chooses between a dozen
+ * colours far better than it drags a hue, and any other value is still one
+ * <input type=color> away in the web form -- the row then says "Custom". */
+static const struct
+{
+    const char *name;
+    uint32_t    rgb;
+} color_palette[] = {
+    {"Black", 0x000000},  {"White", 0xFFFFFF},    {"Warm white", 0xFFE4B5},
+    {"Grey", 0x808080},   {"Dark grey", 0x303030}, {"Red", 0xD03020},
+    {"Orange", 0xFF8000}, {"Amber", 0xFFB000},     {"Yellow", 0xFFE040},
+    {"Green", 0x30C050},  {"Cyan", 0x30C0D0},      {"Blue", 0x3060E0},
+};
+
+#define COLOR_PALETTE_COUNT (sizeof(color_palette) / sizeof(color_palette[0]))
+
+/* Black or white, whichever reads on `rgb`: the usual luma weights, which is
+ * all a label on a swatch needs. */
+static lv_color_t color_contrast(uint32_t rgb)
+{
+    uint32_t luma = ((rgb >> 16) & 0xFF) * 299 + ((rgb >> 8) & 0xFF) * 587 + (rgb & 0xFF) * 114;
+
+    return lv_color_hex(luma > 128000 ? 0x000000 : 0xFFFFFF);
+}
+
+/* The value button of a colour row is the swatch: filled with the colour and
+ * labelled with its palette name, or "Custom" and the hex for anything the
+ * palette does not have. */
+static void color_row_paint(lv_obj_t *row, const struct config_field_s *f, char *buffer,
+                            size_t size)
+{
+    uint32_t  rgb = (uint32_t)config_field_read(f, &draft);
+    lv_obj_t *btn = lv_obj_get_child(row, ROW_CHILD_VALUE);
+
+    snprintf(buffer, size, "Custom %06lX", (unsigned long)rgb);
+
+    for (size_t i = 0; i < COLOR_PALETTE_COUNT; i++)
+        if (color_palette[i].rgb == rgb)
+            snprintf(buffer, size, "%s", color_palette[i].name);
+
+    lv_obj_set_style_bg_color(btn, lv_color_hex(rgb), LV_PART_MAIN);
+    lv_obj_set_style_bg_grad_color(btn, lv_color_hex(rgb), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lv_obj_get_child(btn, 0), color_contrast(rgb), LV_PART_MAIN);
+}
+
 static void row_refresh(lv_obj_t *row, const struct config_field_s *f)
 {
     char buffer[VALUE_BUFFER_LEN];
@@ -762,6 +809,10 @@ static void row_refresh(lv_obj_t *row, const struct config_field_s *f)
 
     default:
         field_value_with_unit(f, buffer, sizeof(buffer));
+
+        if (f->kind == SETTINGS_COLOR)
+            color_row_paint(row, f, buffer, sizeof(buffer));
+
         row_value_set(row, buffer);
         break;
     }
@@ -1100,6 +1151,101 @@ static void keyboard_open(const char *title, const char *value, uint32_t max_len
     BEEPER_EVENT_SCREEN();
 }
 
+static void color_choice_event(lv_event_t *e)
+{
+    size_t index = (size_t)(uintptr_t)lv_event_get_user_data(e);
+
+    if (edit_field == NULL || index >= COLOR_PALETTE_COUNT)
+        return;
+
+    config_field_write(edit_field, &draft, (int32_t)color_palette[index].rgb);
+
+    if (edit_row != NULL)
+        row_refresh(edit_row, edit_field);
+
+    BEEPER_EVENT_CHANGE();
+    overlay_close();
+}
+
+static void color_cancel_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    overlay_close();
+}
+
+/* The palette: the field's name over a grid of swatches, one tap to choose.
+ * Built the way the keyboard is -- an overlay over the rows, closed by the
+ * choice or by the X -- so it backs out the same way. */
+static void color_palette_open(lv_obj_t *row, const struct config_field_s *f)
+{
+    lv_obj_t *root = overlay_create();
+
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(root, 4, 0);
+
+    lv_obj_t *title_row = ui_plain_container(root);
+    lv_obj_set_size(title_row, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *label = lv_label_create(title_row);
+    lv_label_set_text(label, f->label);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    lv_obj_add_style(label, &ui_style_label, LV_PART_MAIN);
+    lv_obj_set_flex_grow(label, 1);
+
+    lv_obj_add_event_cb(ui_themed_button(title_row, LV_SYMBOL_CLOSE), color_cancel_event,
+                        LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t *grid = ui_plain_container(root);
+    lv_obj_set_width(grid, lv_pct(100));
+    lv_obj_set_flex_grow(grid, 1);
+    lv_obj_set_flex_flow(grid, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_flex_align(grid, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_SPACE_EVENLY,
+                          LV_FLEX_ALIGN_SPACE_EVENLY);
+    lv_obj_set_style_pad_row(grid, 4, 0);
+    lv_obj_set_style_pad_column(grid, 4, 0);
+
+    uint32_t current = (uint32_t)config_field_read(f, &draft);
+
+    for (size_t i = 0; i < COLOR_PALETTE_COUNT; i++)
+    {
+        lv_obj_t *swatch = ui_themed_button(grid, color_palette[i].name);
+        lv_color_t color = lv_color_hex(color_palette[i].rgb);
+
+        /* Four to a row, three rows: a quarter of the width less the gaps. */
+        lv_obj_set_size(swatch, lv_pct(23), lv_pct(30));
+        lv_obj_set_style_bg_color(swatch, color, LV_PART_MAIN);
+        lv_obj_set_style_bg_grad_color(swatch, color, LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(swatch, LV_OPA_COVER, LV_PART_MAIN);
+
+        lv_obj_t *text = lv_obj_get_child(swatch, 0);
+
+        lv_label_set_long_mode(text, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(text, lv_pct(100));
+        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(text, color_contrast(color_palette[i].rgb), LV_PART_MAIN);
+
+        /* The colour in effect, outlined so it can be found again. */
+        if (color_palette[i].rgb == current)
+        {
+            lv_obj_set_style_border_width(swatch, 3, LV_PART_MAIN);
+            lv_obj_set_style_border_color(swatch, color_contrast(color_palette[i].rgb),
+                                          LV_PART_MAIN);
+        }
+
+        lv_obj_add_event_cb(swatch, color_choice_event, LV_EVENT_CLICKED, (void *)(uintptr_t)i);
+    }
+
+    BEEPER_EVENT_SCREEN();
+
+    /* After overlay_create(), which clears these. */
+    edit_field = f;
+    edit_row = row;
+}
+
 static void field_edit_open(lv_obj_t *row, const struct config_field_s *f)
 {
     char buffer[VALUE_BUFFER_LEN];
@@ -1204,6 +1350,12 @@ static void field_row_event(lv_event_t *e)
         config_field_write(f, &draft, next);
         row_refresh(row, f);
         BEEPER_EVENT_CHANGE();
+        return;
+    }
+
+    if (f->kind == SETTINGS_COLOR)
+    {
+        color_palette_open(row, f);
         return;
     }
 

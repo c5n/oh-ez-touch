@@ -41,7 +41,10 @@
  * instead of being baked into the screen the simulator opens on.
  *
  * Keep at most ITEM_COUNT_MAX (6) widgets per page, counting the implicit
- * "back" item that a page with a "parent" produces.
+ * "back" item that a page with a "parent" produces. The home page's last
+ * widget is a Frame labelled "Clock", which is not a tile: its three children
+ * are what the clock screen shows (see Sitemap::parse()), so the page still
+ * draws six.
  */
 
 #include "sdkconfig.h"
@@ -248,6 +251,97 @@ static const char page_demo[] = R"json(
       "minValue": 0,
       "maxValue": 100,
       "step": 1
+    },
+    {
+      "widgetId": "0006",
+      "visibility": true,
+      "labelSource": "SITEMAP_WIDGET",
+      "widgets": [
+        {
+          "widgetId": "000600",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "pattern": "%.1f °C",
+          "unit": "°C",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/Weather_Temperature",
+            "state": "3.5 °C",
+            "stateDescription": {
+              "pattern": "%.1f °C",
+              "readOnly": true,
+              "options": []
+            },
+            "unitSymbol": "°C",
+            "type": "Number:Temperature",
+            "name": "Weather_Temperature",
+            "label": "Outside",
+            "category": "temperature",
+            "tags": [],
+            "groupNames": []
+          },
+          "widgets": [],
+          "mappings": [],
+          "type": "Text",
+          "label": "Outside [3.5 °C]",
+          "icon": "temperature",
+          "staticIcon": false
+        },
+        {
+          "widgetId": "000601",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "pattern": "%d %%",
+          "unit": "",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/Bedroom_Humidity",
+            "state": "48",
+            "stateDescription": {
+              "pattern": "%d %%",
+              "readOnly": true,
+              "options": []
+            },
+            "type": "Number",
+            "name": "Bedroom_Humidity",
+            "label": "Humidity",
+            "category": "humidity",
+            "tags": [],
+            "groupNames": []
+          },
+          "widgets": [],
+          "mappings": [],
+          "type": "Text",
+          "label": "Humidity [48 %]",
+          "icon": "humidity",
+          "staticIcon": false
+        },
+        {
+          "widgetId": "000602",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "unit": "",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/gLights",
+            "state": "OFF",
+            "type": "Group",
+            "name": "gLights",
+            "label": "All Lights",
+            "category": "light",
+            "tags": [],
+            "groupNames": [],
+            "groupType": "Switch"
+          },
+          "widgets": [],
+          "mappings": [],
+          "type": "Switch",
+          "label": "Lights",
+          "icon": "light",
+          "staticIcon": false
+        }
+      ],
+      "mappings": [],
+      "type": "Frame",
+      "label": "Clock",
+      "staticIcon": false
     }
   ]
 }

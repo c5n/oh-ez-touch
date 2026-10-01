@@ -75,6 +75,27 @@ struct openhab_ui_tile_s
 size_t openhab_ui_tile_count(void);
 bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out);
 
+/* Go back to the sitemap's home page, which is what the panel does when it is
+ * left alone (main.cpp, on the activity timeout). Closes an open control,
+ * since the reload overwrites the item it points at; does nothing on the
+ * home page already. LVGL task only. */
+void openhab_ui_request_home(void);
+
+/* The clock screen's items: the first CLOCK_ITEM_COUNT children of the home
+ * page's clock frame (see Sitemap::parse()), polled and iconed by this module
+ * like tiles that are not on the page.
+ *
+ * The clock screen lends each one an image, a label and a ui_reading to draw
+ * into, and takes them back before it deletes them. The generation changes
+ * whenever a new page rebinds the items -- the objects lent before it are
+ * forgotten then, and have to be lent again. 0 items until a home page with a
+ * clock frame has been parsed. */
+size_t   openhab_ui_clock_item_count(void);
+uint32_t openhab_ui_clock_generation(void);
+void     openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label,
+                                 lv_obj_t *reading);
+void     openhab_ui_clock_detach(void);
+
 /* Whether the configured night mode says the night variant applies right now.
  * For UI_NIGHT_AUTO this reads the clock, so it can change between calls. */
 bool openhab_ui_night_active(Config *config);

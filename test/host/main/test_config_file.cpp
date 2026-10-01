@@ -441,6 +441,36 @@ static void test_a_quoted_number_is_honoured(void)
     TEST_ASSERT_EQUAL_INT(30, config.item.mqtt.interval);
 }
 
+/* A colour is stored as "#rrggbb" and read back from that or from a plain
+ * number; anything else keeps the default. */
+static void test_colors_round_trip(void)
+{
+    Config &config = config_instance();
+
+    write_file("{\"backlight\":{\"clock_day_fg\":\"#FF8000\",\"clock_day_bg\":4210752,"
+               "\"clock_night_fg\":\"red\",\"clock_frame\":\"Uhr\"}}");
+
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+
+    TEST_ASSERT_EQUAL_HEX32(0xFF8000, config.item.backlight.clock_day_fg);
+    TEST_ASSERT_EQUAL_HEX32(0x404040, config.item.backlight.clock_day_bg);
+    TEST_ASSERT_EQUAL_HEX32(0xFFFFFF, config.item.backlight.clock_night_fg);
+    TEST_ASSERT_EQUAL_HEX32(0x000000, config.item.backlight.clock_night_bg);
+    TEST_ASSERT_EQUAL_STRING("Uhr", config.item.backlight.clock_frame);
+
+    TEST_ASSERT_TRUE(config.saveConfig());
+
+    char buf[CONFIG_FILE_MAX_SIZE];
+
+    read_file(buf, sizeof(buf));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"clock_day_fg\":\"#ff8000\""));
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"clock_day_bg\":\"#404040\""));
+
+    TEST_ASSERT_TRUE(config.loadConfig(TEST_CONFIG_FILE));
+    TEST_ASSERT_EQUAL_HEX32(0xFF8000, config.item.backlight.clock_day_fg);
+    TEST_ASSERT_EQUAL_HEX32(0x404040, config.item.backlight.clock_day_bg);
+}
+
 /* The file an OTA update from the AutoConnect firmware (v0.20) finds on the
  * SPIFFS partition. It has no ui, mqtt or ble section, it nests the BME280
  * under "openhab", and its booleans may be integers -- and the update must
@@ -556,6 +586,7 @@ void test_config_file_run(void)
     RUN_TEST(test_a_pre_0_90_file_is_migrated);
     RUN_TEST(test_the_new_paths_win_over_the_legacy_ones);
     RUN_TEST(test_save_without_a_load_fails);
+    RUN_TEST(test_colors_round_trip);
 
     /* The directory itself is left behind: it is one empty directory under
      * $TMPDIR, and removing it would need the same care as creating it for a

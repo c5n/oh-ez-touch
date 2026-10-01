@@ -11,6 +11,7 @@
 #ifndef TEST_SUITES_HPP
 #define TEST_SUITES_HPP
 
+void test_backlight_control_run(void);
 void test_beeper_mixer_run(void);
 void test_beeper_seq_run(void);
 void test_ble_beacon_run(void);

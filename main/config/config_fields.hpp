@@ -40,7 +40,8 @@ enum config_field_kind_e
     SETTINGS_UINT,        /* unsigned int                                    */
     SETTINGS_ULONG,       /* unsigned long                                   */
     SETTINGS_BOOL,        /* bool, rendered as a checkbox or an ON/OFF row   */
-    SETTINGS_ENUM         /* enum, rendered as a select over ->names         */
+    SETTINGS_ENUM,        /* enum, rendered as a select over ->names         */
+    SETTINGS_COLOR        /* unsigned int 0xRRGGBB, as text "#RRGGBB"        */
 };
 
 /* Which page of the touch settings screen a section belongs to. A field
@@ -191,6 +192,14 @@ uint8_t config_field_tab(size_t index);
 int32_t config_field_read(const struct config_field_s *f, const config_item_t *item);
 void    config_field_write(const struct config_field_s *f, config_item_t *item, int32_t value);
 
+/* "#RRGGBB" in and out, the one spelling a colour has everywhere outside
+ * Config -- the file, the web form's <input type=color>, REST, MQTT and the
+ * test interface. The parse also takes "RRGGBB" and "0xRRGGBB", which is what
+ * a person typing one tends to write; anything else is refused rather than
+ * read as black, so a typo leaves the old colour standing. */
+bool config_color_parse(const char *text, uint32_t *out);
+void config_color_format(uint32_t rgb, char *buffer, size_t size);
+
 /* SETTINGS_TEXT only; returns "" for every other kind, never NULL. */
 const char *config_field_text(const struct config_field_s *f, const config_item_t *item);
 
@@ -209,7 +218,11 @@ void config_field_value_text(const struct config_field_s *f, const config_item_t
  * rather than rejected. Returns false, and stores nothing, when the row is
  * SETTINGS_F_HOSTCHARS and the value contains '/' or ':' -- enforced here and
  * not only by the browser's pattern attribute, because a hand-written POST
- * does not run the browser's. */
+ * does not run the browser's.
+ *
+ * Also the setter for SETTINGS_COLOR, whose value is text everywhere it is
+ * typed: the string goes through config_color_parse(), and one that is not a
+ * colour returns false and stores nothing. */
 bool config_field_set_text(const struct config_field_s *f, config_item_t *item, const char *value);
 
 /* Clamps to [f->min, f->max] rather than rejecting. */

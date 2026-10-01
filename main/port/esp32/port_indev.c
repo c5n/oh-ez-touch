@@ -229,8 +229,12 @@ static void latch_confirmed_raw(void)
 
 /* How long a tap that woke the display keeps the pointer quiet. Long enough
  * that the finger has lifted, short enough not to eat a deliberate second tap.
- * Unchanged from the Arduino code. */
-#define TOUCH_WAKE_SUPPRESS_MS 200
+ *
+ * 200 ms in the Arduino code. Raised to cover the wake through black that
+ * comes with the clock screen -- out, swap, in, about 320 ms in all -- so the
+ * finger that woke the panel cannot land on a tile of the page that is still
+ * fading in under it. */
+#define TOUCH_WAKE_SUPPRESS_MS 350
 
 /* How far apart two readings of the same press may be before they are taken
  * for two different things: a twentieth of the screen on each axis, which is
@@ -295,8 +299,8 @@ static void read_cb(lv_indev_t *indev, lv_indev_data_t *data)
 
     /* Every path below sets data->state. The Arduino version returned early
      * from the two suppression cases without setting it, so LVGL went on
-     * seeing whatever the previous read reported -- a press, for those 200 ms,
-     * which is exactly the press being suppressed. */
+     * seeing whatever the previous read reported -- a press, for the whole
+     * suppression, which is exactly the press being suppressed. */
     data->point.x = last_x;
     data->point.y = last_y;
 

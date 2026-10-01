@@ -101,6 +101,17 @@ public:
              * was up the moment the backlight dims, and the waking tap returns
              * to the page. See ui/ui_clock.cpp. */
             bool clock_dimmed;
+            /* The clock screen's own colours, 0xRRGGBB, one pair for each of
+             * the theme's two variants: whichever is in effect picks the pair,
+             * so the night schedule that darkens the pages darkens this too. */
+            unsigned int clock_day_fg;
+            unsigned int clock_day_bg;
+            unsigned int clock_night_fg;
+            unsigned int clock_night_bg;
+            /* The label of the Frame on the sitemap's root page whose first
+             * three items the clock screen shows under the time, in place of
+             * the weekday and the date. See Sitemap::parse(). */
+            char clock_frame[32];
         } backlight;
         struct
         {

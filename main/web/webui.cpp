@@ -364,6 +364,17 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
             break;
         }
 
+        case SETTINGS_COLOR:
+        {
+            /* The browser's own picker. Its value is "#rrggbb", which is the
+             * spelling config_field_set_text() takes back. */
+            char rgb[8];
+
+            config_field_value_text(f, &config->item, rgb, sizeof(rgb));
+            webui_putf(o, "<input type='color' name='%s' value='%s'>", f->name, rgb);
+            break;
+        }
+
         default:
             webui_putf(o, "<input type='number' name='%s' min='%ld' max='%ld' value='%ld'>",
                        f->name, (long)f->min, (long)f->max,
@@ -495,6 +506,7 @@ static void webui_handle_save(webui_request_t *req)
         switch (f->kind)
         {
         case SETTINGS_TEXT:
+        case SETTINGS_COLOR:
             config_field_set_text(f, &config->item, value);
             break;
 

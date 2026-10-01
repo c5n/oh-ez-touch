@@ -64,6 +64,8 @@ static const char *field_kind_name(const struct config_field_s *f)
         return "bool";
     case SETTINGS_ENUM:
         return "enum";
+    case SETTINGS_COLOR:
+        return "color";
     default:
         return "int";
     }
@@ -117,6 +119,15 @@ size_t webui_api_config_json(const config_item_t *item, char *out, size_t out_si
         case SETTINGS_BOOL:
             row["value"] = config_field_read(f, item) != 0;
             break;
+
+        case SETTINGS_COLOR:
+        {
+            char rgb[8];
+
+            config_field_value_text(f, item, rgb, sizeof(rgb));
+            row["value"] = rgb;
+            break;
+        }
 
         case SETTINGS_ENUM:
         {
@@ -233,6 +244,19 @@ static bool apply_one(config_item_t *item, const struct config_field_s *f,
         }
 
         return config_field_set_text(f, item, value.as<const char *>());
+
+    case SETTINGS_COLOR:
+        /* "#rrggbb" as it is read back, or 0xRRGGBB as a JSON number. */
+        if (value.is<const char *>() == true)
+            return config_field_set_text(f, item, value.as<const char *>());
+
+        if (value.is<long>() == true && value.as<long>() >= 0 && value.as<long>() <= 0xFFFFFF)
+        {
+            config_field_set_number(f, item, value.as<long>());
+            return true;
+        }
+
+        return false;
 
     case SETTINGS_BOOL:
     {

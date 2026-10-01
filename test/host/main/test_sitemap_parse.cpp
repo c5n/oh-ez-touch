@@ -733,8 +733,128 @@ static void test_a_scratch_too_small_falls_back_to_the_heap(void)
     TEST_ASSERT_EQUAL_UINT(6, sitemap.getItemCount());
 }
 
+/* ------------------------------------------------------------------ Frames */
+
+/* A frame of `n` switches named <prefix>0.., as one widget of a page. */
+static int frame_json(char *out, size_t size, const char *label, const char *prefix, int n)
+{
+    int len = snprintf(out, size, "{\"type\":\"Frame\",\"label\":\"%s\",\"widgets\":[", label);
+
+    for (int i = 0; i < n; ++i)
+        len += snprintf(out + len, size - len,
+                        "%s{\"type\":\"Switch\",\"label\":\"%s%d\",\"icon\":\"light\","
+                        "\"item\":{\"type\":\"Switch\",\"state\":\"ON\","
+                        "\"link\":\"http://h/rest/items/%s%d\"}}",
+                        (i == 0) ? "" : ",", prefix, i, prefix, i);
+
+    len += snprintf(out + len, size - len, "%s", "]}");
+    return len;
+}
+
+/* The demo home page ends in a Frame labelled "Clock": with that name set it
+ * is the clock frame and none of it is a tile. */
+static void test_the_clock_frame_is_not_on_the_page(void)
+{
+    Sitemap sitemap;
+
+    sitemap.setClockFrame("Clock");
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("demo")));
+    TEST_ASSERT_EQUAL_UINT(6, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_UINT(CLOCK_ITEM_COUNT, sitemap.getClockItemCount());
+
+    Item *outside = sitemap.getClockItem(0);
+
+    TEST_ASSERT_EQUAL_STRING("Outside", outside->getLabel());
+    TEST_ASSERT_EQUAL_STRING("temperature", outside->getIconName());
+    TEST_ASSERT_EQUAL(ItemType::type_number, outside->getType());
+    TEST_ASSERT_EQUAL_STRING("%.1f °C", outside->getNumberPattern());
+    TEST_ASSERT_NOT_NULL(strstr(outside->getLink(), "/rest/items/Weather_Temperature"));
+
+    TEST_ASSERT_EQUAL_STRING("Humidity", sitemap.getClockItem(1)->getLabel());
+    TEST_ASSERT_EQUAL(ItemType::type_switch, sitemap.getClockItem(2)->getType());
+    TEST_ASSERT_EQUAL_STRING("OFF", sitemap.getClockItem(2)->getStateText());
+}
+
+/* With no clock frame configured -- or a name that matches nothing -- a Frame
+ * is a heading over tiles, and its children join the page. On the demo page
+ * the tiles are already full, so they are dropped there, and the clock
+ * items stay empty. */
+static void test_a_frame_without_the_name_is_flattened(void)
+{
+    Sitemap sitemap;
+    char    page[4096];
+    int     len = snprintf(page, sizeof(page), "%s", "{\"title\":\"Framed\",\"widgets\":[");
+
+    len += frame_json(page + len, sizeof(page) - len, "Upstairs", "U", 2);
+    page[len++] = ',';
+    len += frame_json(page + len, sizeof(page) - len, "Downstairs", "D", 2);
+    len += snprintf(page + len, sizeof(page) - len, "%s", "]}");
+
+    TEST_ASSERT_TRUE_MESSAGE((size_t)len < sizeof(page), "test page truncated");
+
+    sitemap.setClockFrame("Clock");
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, (size_t)len));
+    TEST_ASSERT_EQUAL_UINT(4, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_STRING("U0", sitemap.getItem(0)->getLabel());
+    TEST_ASSERT_EQUAL_STRING("U1", sitemap.getItem(1)->getLabel());
+    TEST_ASSERT_EQUAL_STRING("D0", sitemap.getItem(2)->getLabel());
+    TEST_ASSERT_EQUAL(ItemType::type_switch, sitemap.getItem(3)->getType());
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getClockItemCount());
+
+    Sitemap unnamed;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(unnamed, FIXTURE_URL("demo")));
+    TEST_ASSERT_EQUAL_UINT(6, unnamed.getItemCount());
+    TEST_ASSERT_EQUAL_UINT(0, unnamed.getClockItemCount());
+}
+
+/* Only the first CLOCK_ITEM_COUNT children are kept, the frame is found
+ * after the tiles are full, and a sub page -- one with a parent -- has no
+ * clock frame: the panel never goes back to it. */
+static void test_clock_frame_edges(void)
+{
+    Sitemap sitemap;
+    char    page[6144];
+    int     len = snprintf(page, sizeof(page), "%s", "{\"title\":\"Edges\",\"widgets\":[");
+
+    for (int i = 0; i < ITEM_COUNT_MAX; ++i)
+        len += snprintf(page + len, sizeof(page) - len,
+                        "{\"type\":\"Switch\",\"label\":\"S%d\","
+                        "\"item\":{\"type\":\"Switch\",\"link\":\"http://h/rest/items/S%d\"}},",
+                        i, i);
+
+    len += frame_json(page + len, sizeof(page) - len, "Clock [x]", "C", 5);
+    len += snprintf(page + len, sizeof(page) - len, "%s", "]}");
+
+    TEST_ASSERT_TRUE_MESSAGE((size_t)len < sizeof(page), "test page truncated");
+
+    sitemap.setClockFrame("Clock");
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, (size_t)len));
+    TEST_ASSERT_EQUAL_UINT(ITEM_COUNT_MAX, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_UINT(CLOCK_ITEM_COUNT, sitemap.getClockItemCount());
+    TEST_ASSERT_EQUAL_STRING("C0", sitemap.getClockItem(0)->getLabel());
+    TEST_ASSERT_EQUAL_STRING("C2", sitemap.getClockItem(2)->getLabel());
+
+    /* The same page as somebody's child. */
+    const char *with_parent = "{\"title\":\"Sub\",\"parent\":{\"link\":\"http://h/p\"},"
+                              "\"widgets\":[";
+    char sub[6144];
+    int  sub_len = snprintf(sub, sizeof(sub), "%s%s", with_parent,
+                            strstr(page, "\"widgets\":[") + strlen("\"widgets\":["));
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(sub, (size_t)sub_len));
+    TEST_ASSERT_EQUAL_UINT(0, sitemap.getClockItemCount());
+    TEST_ASSERT_EQUAL(ItemType::type_parent_link, sitemap.getItem(0)->getType());
+}
+
 void test_sitemap_parse_run(void)
 {
+    RUN_TEST(test_the_clock_frame_is_not_on_the_page);
+    RUN_TEST(test_a_frame_without_the_name_is_flattened);
+    RUN_TEST(test_clock_frame_edges);
     RUN_TEST(test_parse_from_a_scratch_arena);
     RUN_TEST(test_a_scratch_too_small_falls_back_to_the_heap);
     RUN_TEST(test_home_page_titles_and_counts);

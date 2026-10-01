@@ -445,6 +445,62 @@ static void test_lookup_by_name(void)
     TEST_ASSERT_NULL(config_field_by_name("MQTT Broker"));
 }
 
+/* ------------------------------------------------------------- colours */
+
+static void test_color_parse_and_format(void)
+{
+    uint32_t rgb = 0x123456;
+    char     buffer[8];
+
+    TEST_ASSERT_TRUE(config_color_parse("#FF8000", &rgb));
+    TEST_ASSERT_EQUAL_HEX32(0xFF8000, rgb);
+    TEST_ASSERT_TRUE(config_color_parse("00ff7f", &rgb));
+    TEST_ASSERT_EQUAL_HEX32(0x00FF7F, rgb);
+    TEST_ASSERT_TRUE(config_color_parse("0x0000Aa", &rgb));
+    TEST_ASSERT_EQUAL_HEX32(0x0000AA, rgb);
+
+    /* Refused, and *out untouched: a short CSS form, a long one, a sign,
+     * white space, a name, nothing. */
+    rgb = 0x123456;
+    TEST_ASSERT_FALSE(config_color_parse("#FFF", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse("#FF80001", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse("-FF800", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse(" FF8000", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse("orange", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse("", &rgb));
+    TEST_ASSERT_FALSE(config_color_parse(NULL, &rgb));
+    TEST_ASSERT_EQUAL_HEX32(0x123456, rgb);
+
+    config_color_format(0xFF8000, buffer, sizeof(buffer));
+    TEST_ASSERT_EQUAL_STRING("#ff8000", buffer);
+    config_color_format(0x000001, buffer, sizeof(buffer));
+    TEST_ASSERT_EQUAL_STRING("#000001", buffer);
+}
+
+/* A colour row reads and writes as text through the same setter a TEXT row
+ * uses, and renders as "#rrggbb". */
+static void test_a_color_row_is_set_as_text(void)
+{
+    char buffer[80];
+    const struct config_field_s *f = row("clock_day_fg");
+
+    TEST_ASSERT_NOT_NULL(f);
+    TEST_ASSERT_EQUAL_UINT8(SETTINGS_COLOR, f->kind);
+
+    config_fields_set_defaults(&item);
+    TEST_ASSERT_EQUAL_HEX32(0xFFFFFF, item.backlight.clock_day_fg);
+    TEST_ASSERT_EQUAL_HEX32(0x000000, item.backlight.clock_day_bg);
+
+    TEST_ASSERT_TRUE(config_field_set_text(f, &item, "#20a0ff"));
+    TEST_ASSERT_EQUAL_HEX32(0x20A0FF, item.backlight.clock_day_fg);
+
+    TEST_ASSERT_FALSE(config_field_set_text(f, &item, "blue"));
+    TEST_ASSERT_EQUAL_HEX32(0x20A0FF, item.backlight.clock_day_fg);
+
+    config_field_value_text(f, &item, buffer, sizeof(buffer));
+    TEST_ASSERT_EQUAL_STRING("#20a0ff", buffer);
+}
+
 void test_config_fields_run(void)
 {
     RUN_TEST(test_every_row_is_well_formed);
@@ -464,4 +520,6 @@ void test_config_fields_run(void)
     RUN_TEST(test_json_paths_are_unique);
     RUN_TEST(test_every_default_is_in_range);
     RUN_TEST(test_lookup_by_name);
+    RUN_TEST(test_color_parse_and_format);
+    RUN_TEST(test_a_color_row_is_set_as_text);
 }

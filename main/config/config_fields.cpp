@@ -43,6 +43,9 @@
     {(nm), (lbl), NULL, NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 1, SETTINGS_BOOL, 0, 0, (fl), 0}
 #define SEL(nm, lbl, fld, jp, jk, dv, tbl, n, fl) \
     {(nm), (lbl), NULL, (tbl), (jp), (jk), (dv), 0, OFF(fld), 0, (n) - 1, SETTINGS_ENUM, 0, (n), (fl), 0}
+/* The default is a number, 0xRRGGBB, like the theme table's colours. */
+#define COLOR(nm, lbl, fld, jp, jk, dv) \
+    {(nm), (lbl), NULL, NULL, (jp), (jk), NULL, (dv), OFF(fld), 0, 0xFFFFFF, SETTINGS_COLOR, 0, 0, 0, 0}
 
 /* The SETTINGS_F_RESTART flags say what the code actually does, which is not
  * what they used to say. settings_apply_live() re-applies the openHAB endpoint,
@@ -133,6 +136,21 @@ const struct config_field_s config_fields[] = {
      * page underneath and that is what an upgrading user expects to see. */
     CHK("bl_clock", "Show time and date when dimmed", backlight.clock_dimmed,
         "backlight", "clock_dimmed", 0, 0),
+    /* The defaults are the white on black this screen has always had, for
+     * both variants: a day/night difference is something to choose, not
+     * something an upgrade should spring on anybody. */
+    COLOR("clock_day_fg", "Clock text (day)", backlight.clock_day_fg,
+          "backlight", "clock_day_fg", 0xFFFFFF),
+    COLOR("clock_day_bg", "Clock background (day)", backlight.clock_day_bg,
+          "backlight", "clock_day_bg", 0x000000),
+    COLOR("clock_night_fg", "Clock text (night)", backlight.clock_night_fg,
+          "backlight", "clock_night_fg", 0xFFFFFF),
+    COLOR("clock_night_bg", "Clock background (night)", backlight.clock_night_bg,
+          "backlight", "clock_night_bg", 0x000000),
+    /* Live: openhab_ui re-reads it at every page parse, and a save
+     * reconnects, which reloads the root page. */
+    TXT("clock_frame", "Clock items frame", backlight.clock_frame, "backlight",
+        "clock_frame", "Clock", 0),
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, "beeper", "enabled", 1, 0),
@@ -236,6 +254,7 @@ int32_t config_field_read(const struct config_field_s *f, const config_item_t *i
         return (int32_t) * (const int *)p;
     case SETTINGS_UINT:
     case SETTINGS_ENUM:
+    case SETTINGS_COLOR:
         return (int32_t) * (const unsigned int *)p;
     case SETTINGS_ULONG:
         return (int32_t) * (const unsigned long *)p;
@@ -257,6 +276,7 @@ void config_field_write(const struct config_field_s *f, config_item_t *item, int
         break;
     case SETTINGS_UINT:
     case SETTINGS_ENUM:
+    case SETTINGS_COLOR:
         *(unsigned int *)p = (unsigned int)value;
         break;
     case SETTINGS_ULONG:
@@ -304,6 +324,10 @@ void config_field_value_text(const struct config_field_s *f, const config_item_t
         break;
     }
 
+    case SETTINGS_COLOR:
+        config_color_format((uint32_t)config_field_read(f, item), buffer, size);
+        break;
+
     case SETTINGS_SECTION:
         snprintf(buffer, size, "%s", "");
         break;
@@ -314,8 +338,65 @@ void config_field_value_text(const struct config_field_s *f, const config_item_t
     }
 }
 
+bool config_color_parse(const char *text, uint32_t *out)
+{
+    if (text == NULL)
+        return false;
+
+    if (text[0] == '#')
+        text += 1;
+    else if (text[0] == '0' && (text[1] == 'x' || text[1] == 'X'))
+        text += 2;
+
+    /* Exactly six digits, checked by hand: strtoul() would take a sign, white
+     * space and a short "#FFF" -- which in CSS means white and here would
+     * read as a dark blue. */
+    uint32_t rgb = 0;
+
+    for (int i = 0; i < 6; i++)
+    {
+        char c = text[i];
+        uint32_t digit;
+
+        if (c >= '0' && c <= '9')
+            digit = (uint32_t)(c - '0');
+        else if (c >= 'a' && c <= 'f')
+            digit = (uint32_t)(c - 'a' + 10);
+        else if (c >= 'A' && c <= 'F')
+            digit = (uint32_t)(c - 'A' + 10);
+        else
+            return false;
+
+        rgb = (rgb << 4) | digit;
+    }
+
+    if (text[6] != '\0')
+        return false;
+
+    *out = rgb;
+    return true;
+}
+
+void config_color_format(uint32_t rgb, char *buffer, size_t size)
+{
+    /* Lower case, because that is what <input type=color> reports and the
+     * form is the place a value is most often seen next to its own echo. */
+    snprintf(buffer, size, "#%06lx", (unsigned long)(rgb & 0xFFFFFFu));
+}
+
 bool config_field_set_text(const struct config_field_s *f, config_item_t *item, const char *value)
 {
+    if (f->kind == SETTINGS_COLOR)
+    {
+        uint32_t rgb;
+
+        if (config_color_parse(value, &rgb) == false)
+            return false;
+
+        config_field_write(f, item, (int32_t)rgb);
+        return true;
+    }
+
     if (f->kind != SETTINGS_TEXT)
         return false;
 

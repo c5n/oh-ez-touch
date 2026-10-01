@@ -3,8 +3,16 @@
 
 #include "config/config.hpp"
 
-/* The screen a dimmed panel can wear: nothing but the time, the weekday and
- * the date -- white on black, in the theme's largest face.
+/* The screen a dimmed panel can wear: the time, and under it either the
+ * weekday and the date or -- when the sitemap's home page has a Frame with the
+ * configured label -- that frame's first three items, icon, reading and name.
+ * Text and background are settings, one pair for the theme's day variant and
+ * one for its night variant; the default is white on black for both.
+ *
+ * It goes up and comes down in the dark: with this screen on, the backlight
+ * fades to black first, the screen is swapped, and the light comes back --
+ * slowly on the way to sleep, in a blink on the way back. See
+ * BacklightControl.
  *
  * Strictly tied to the dim state -- the backlight's activity timeout is the
  * only trigger, so there is no second idle clock of its own to configure. The

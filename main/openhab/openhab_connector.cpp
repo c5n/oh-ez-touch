@@ -372,6 +372,187 @@ int Item::applyState(const char *text, size_t len)
     return 1;
 }
 
+/* One widget of a page into one Item: everything Sitemap::parse() reads off
+ * a tile. A function of its own since Frames, whose children are widgets of
+ * exactly the same shape and land either on the page or on the clock screen.
+ *
+ * `label_buffer` is label_trim()'s scratch, a whole label wide. */
+static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
+                         size_t label_buffer_size)
+{
+    /* Every lookup walks the object, so the two nodes that are read
+     * over and over below are resolved once here. */
+    JsonVariant json_item = widget["item"];
+    const char *item_type = json_str(json_item["type"]);
+
+    // Label
+    if (widget["label"])
+        item->setLabel(label_trim(json_str(widget["label"]), label_buffer,
+                                  label_buffer_size));
+    else
+        item->setLabel("NO LABEL");
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  label=\"%s\"", item->getLabel());
+#endif
+
+    // Icon
+    if (widget["icon"])
+    {
+        item->setIconName(widget["icon"]);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+        printf("  icon=\"%s\"", item->getIconName());
+#endif
+    }
+
+    // Type
+    item->setType(ItemType::type_unknown);
+
+    if (widget["type"] == "Text")
+    {
+        if (widget["linkedPage"]["link"])
+            item->setType(ItemType::type_link);
+        // >= <= needed to distinct from strings
+        else if (   item_type[0] != '\0'
+                 && strcmp(item_type, "Number") >= 0
+                 && strcmp(item_type, "Number:Z") <= 0)
+            item->setType(ItemType::type_number);
+        else
+            item->setType(ItemType::type_string);
+    }
+    else if (widget["type"] == "Group")
+    {
+        item->setType(ItemType::type_group);
+    }
+    else if (widget["type"] == "Switch")
+    {
+        if (strcmp(item_type, "Switch") == 0)
+            item->setType(ItemType::type_switch);
+        else if (strcmp(item_type, "Rollershutter") == 0)
+            item->setType(ItemType::type_rollershutter);
+        else if (strcmp(item_type, "Player") == 0)
+            item->setType(ItemType::type_player);
+        else if (strcmp(item_type, "Group") == 0)
+        {
+            const char *group_type = json_str(json_item["groupType"]);
+
+            if (strcmp(group_type, "Switch") == 0)
+                item->setType(ItemType::type_switch);
+            else if (strcmp(group_type, "Rollershutter") == 0)
+                item->setType(ItemType::type_rollershutter);
+        }
+    }
+    else if (widget["type"] == "Setpoint")
+        item->setType(ItemType::type_setpoint);
+    else if (widget["type"] == "Slider")
+        item->setType(ItemType::type_slider);
+    else if (widget["type"] == "Selection")
+        item->setType(ItemType::type_selection);
+    else if (widget["type"] == "Colorpicker")
+        item->setType(ItemType::type_colorpicker);
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  type=%u", item->getType());
+#endif
+
+    // MinVal
+    if (widget["minValue"])
+        item->setMinVal(widget["minValue"].as<float>());
+    else if (json_item["stateDescription"]["minimum"])
+        item->setMinVal(json_item["stateDescription"]["minimum"].as<float>());
+    else
+        item->setMinVal(0.0f);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  minVal=%.2f", item->getMinVal());
+#endif
+
+    // MaxVal
+    if (widget["maxValue"])
+        item->setMaxVal(widget["maxValue"].as<float>());
+    else if (json_item["stateDescription"]["maximum"])
+        item->setMaxVal(json_item["stateDescription"]["maximum"].as<float>());
+    else
+        item->setMaxVal(100.0f);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  maxVal=%.2f", item->getMaxVal());
+#endif
+
+    // Step
+    if (widget["step"])
+        item->setStep(widget["step"].as<float>());
+    else if (json_item["stateDescription"]["step"])
+        item->setStep(json_item["stateDescription"]["step"].as<float>());
+    else
+        item->setStep(1.0f);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  step=%.2f", item->getStep());
+#endif
+
+    // Number format string
+    if (json_item["stateDescription"]["pattern"])
+        item->setNumberPattern(json_item["stateDescription"]["pattern"]);
+    else
+        item->setNumberPattern("%d");
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  numpat=\"%s\"", item->getNumberPattern());
+#endif
+
+    // State
+    if (json_item["state"])
+    {
+        if (   item->getType() == ItemType::type_number
+            || item->getType() == ItemType::type_setpoint
+            || item->getType() == ItemType::type_slider)
+        {
+            // convert number to get rid of unit
+            item->setStateNumber(strtof(json_str(json_item["state"]), NULL));
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+            printf("  num-statetext=\"%s\"", item->getStateText());
+#endif
+        }
+        else
+        {
+            item->setStateText(json_item["state"]);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+            printf("  statetext=\"%s\"", item->getStateText());
+#endif
+        }
+    }
+
+    // Transformed State
+    if (json_item["transformedState"])
+    {
+        item->setTransformedStateText(json_item["transformedState"]);
+    }
+
+    // Links
+    if (widget["linkedPage"]["link"])
+    {
+        item->setPageLink(widget["linkedPage"]["link"]);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+        printf("  page_link=\"%s\"", item->getPageLink());
+#endif
+    }
+
+    if (json_item["link"])
+    {
+        item->setLink(json_item["link"]);
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+        printf("  link=\"%s\"", item->getLink());
+#endif
+    }
+
+    // Mappings
+    if (widget["mappings"])
+        parse_selection(item, widget["mappings"]);
+    else if (json_item["commandDescription"]["commandOptions"])
+        parse_selection(item, json_item["commandDescription"]["commandOptions"]);
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("\r\n");
+#endif
+}
+
 /* Turn a sitemap page into the title and the item array.
  *
  * `payload` need not be terminated and is not written to. It has to stay alive
@@ -483,6 +664,14 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
 
         option_filter["command"] = true;
         option_filter["label"] = true;
+
+        /* A Frame's children, which are widgets like any other: the same
+         * filter one level down. Copied rather than shared, because a filter
+         * that contained itself could not be built. */
+        JsonDocument child_filter;
+
+        child_filter.set(widget_filter);
+        widget_filter["widgets"].add(child_filter);
     }
 
     /* The document's pool: from the caller's scratch when there is some --
@@ -566,6 +755,11 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
 
         item_count = 0;
 
+        for (size_t i = 0; i < CLOCK_ITEM_COUNT; ++i)
+            clock_items[i].cleanItem();
+
+        clock_item_count = 0;
+
         // Update Items
 
         // if current location is a child of the sitemap then set first item
@@ -586,187 +780,69 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
          * label wide and there is only ever one in flight. */
         char label_buffer[STR_LABEL_LEN];
 
+        /* The clock frame belongs to the root page only: a sub page is
+         * never what the panel returns to, so one there would show on the
+         * clock screen exactly never -- and on its page, where it is
+         * flattened like any other Frame, it is at least seen. */
+        bool clock_page = (doc["parent"]["link"].isNull() == true) && (clock_frame[0] != '\0');
+
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array[widget_index];
-            Item* item = &item_array[item_count];
 
-            /* Every lookup walks the object, so the two nodes that are read
-             * over and over below are resolved once here. */
-            JsonVariant json_item = widget["item"];
-            const char *item_type = json_str(json_item["type"]);
-
-            // Label
-            if (widget["label"])
-                item->setLabel(label_trim(json_str(widget["label"]), label_buffer,
-                                          sizeof(label_buffer)));
-            else
-                item->setLabel("NO LABEL");
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u label=\"%s\"", (unsigned)item_count, item->getLabel());
-#endif
-
-            // Icon
-            if (widget["icon"])
+            /* A Frame is a heading over widgets, not a widget: openHAB nests
+             * the real ones in its own "widgets" array. The panel has no
+             * headings to draw, so its children simply join the page in
+             * order -- except for the one Frame named in the settings, whose
+             * first CLOCK_ITEM_COUNT children are what the clock screen shows
+             * and are therefore not tiles. Only one level: a Frame inside a
+             * Frame is not something the sitemap syntax produces. */
+            if (widget["type"] == "Frame")
             {
-                item->setIconName(widget["icon"]);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                printf("  icon=\"%s\"", item->getIconName());
-#endif
-            }
+                JsonArray children = widget["widgets"].as<JsonArray>();
+                bool      is_clock = false;
 
-            // Type
-            item->setType(ItemType::type_unknown);
-
-            if (widget["type"] == "Text")
-            {
-                if (widget["linkedPage"]["link"])
-                    item->setType(ItemType::type_link);
-                // >= <= needed to distinct from strings
-                else if (   item_type[0] != '\0'
-                         && strcmp(item_type, "Number") >= 0
-                         && strcmp(item_type, "Number:Z") <= 0)
-                    item->setType(ItemType::type_number);
-                else
-                    item->setType(ItemType::type_string);
-            }
-            else if (widget["type"] == "Group")
-            {
-                item->setType(ItemType::type_group);
-            }
-            else if (widget["type"] == "Switch")
-            {
-                if (strcmp(item_type, "Switch") == 0)
-                    item->setType(ItemType::type_switch);
-                else if (strcmp(item_type, "Rollershutter") == 0)
-                    item->setType(ItemType::type_rollershutter);
-                else if (strcmp(item_type, "Player") == 0)
-                    item->setType(ItemType::type_player);
-                else if (strcmp(item_type, "Group") == 0)
+                if (clock_page == true && clock_item_count == 0)
                 {
-                    const char *group_type = json_str(json_item["groupType"]);
-
-                    if (strcmp(group_type, "Switch") == 0)
-                        item->setType(ItemType::type_switch);
-                    else if (strcmp(group_type, "Rollershutter") == 0)
-                        item->setType(ItemType::type_rollershutter);
+                    label_trim(json_str(widget["label"]), label_buffer, sizeof(label_buffer));
+                    is_clock = (strcmp(label_buffer, clock_frame) == 0);
                 }
-            }
-            else if (widget["type"] == "Setpoint")
-                item->setType(ItemType::type_setpoint);
-            else if (widget["type"] == "Slider")
-                item->setType(ItemType::type_slider);
-            else if (widget["type"] == "Selection")
-                item->setType(ItemType::type_selection);
-            else if (widget["type"] == "Colorpicker")
-                item->setType(ItemType::type_colorpicker);
 
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  type=%u", item->getType());
-#endif
-
-            // MinVal
-            if (widget["minValue"])
-                item->setMinVal(widget["minValue"].as<float>());
-            else if (json_item["stateDescription"]["minimum"])
-                item->setMinVal(json_item["stateDescription"]["minimum"].as<float>());
-            else
-                item->setMinVal(0.0f);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  minVal=%.2f", item->getMinVal());
-#endif
-
-            // MaxVal
-            if (widget["maxValue"])
-                item->setMaxVal(widget["maxValue"].as<float>());
-            else if (json_item["stateDescription"]["maximum"])
-                item->setMaxVal(json_item["stateDescription"]["maximum"].as<float>());
-            else
-                item->setMaxVal(100.0f);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  maxVal=%.2f", item->getMaxVal());
-#endif
-
-            // Step
-            if (widget["step"])
-                item->setStep(widget["step"].as<float>());
-            else if (json_item["stateDescription"]["step"])
-                item->setStep(json_item["stateDescription"]["step"].as<float>());
-            else
-                item->setStep(1.0f);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  step=%.2f", item->getStep());
-#endif
-
-            // Number format string
-            if (json_item["stateDescription"]["pattern"])
-                item->setNumberPattern(json_item["stateDescription"]["pattern"]);
-            else
-                item->setNumberPattern("%d");
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  numpat=\"%s\"", item->getNumberPattern());
-#endif
-
-            // State
-            if (json_item["state"])
-            {
-                if (   item->getType() == ItemType::type_number
-                    || item->getType() == ItemType::type_setpoint
-                    || item->getType() == ItemType::type_slider)
+                for (size_t child = 0; child < children.size(); child++)
                 {
-                    // convert number to get rid of unit
-                    item->setStateNumber(strtof(json_str(json_item["state"]), NULL));
+                    if (is_clock == true)
+                    {
+                        if (clock_item_count < CLOCK_ITEM_COUNT)
+                        {
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                    printf("  num-statetext=\"%s\"", item->getStateText());
+                            printf("  clock: %u", (unsigned)clock_item_count);
 #endif
+                            parse_widget(children[child], &clock_items[clock_item_count++],
+                                         label_buffer, sizeof(label_buffer));
+                        }
+                    }
+                    else if (item_count < ITEM_COUNT_MAX)
+                    {
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+                        printf("  idx: %u", (unsigned)item_count);
+#endif
+                        parse_widget(children[child], &item_array[item_count++], label_buffer,
+                                     sizeof(label_buffer));
+                    }
                 }
-                else
-                {
-                    item->setStateText(json_item["state"]);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                    printf("  statetext=\"%s\"", item->getStateText());
-#endif
-                }
+
+                continue;
             }
 
-            // Transformed State
-            if (json_item["transformedState"])
-            {
-                item->setTransformedStateText(json_item["transformedState"]);
-            }
-
-            // Links
-            if (widget["linkedPage"]["link"])
-            {
-                item->setPageLink(widget["linkedPage"]["link"]);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                printf("  page_link=\"%s\"", item->getPageLink());
-#endif
-            }
-
-            if (json_item["link"])
-            {
-                item->setLink(json_item["link"]);
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                printf("  link=\"%s\"", item->getLink());
-#endif
-            }
-
-            // Mappings
-            if (widget["mappings"])
-                parse_selection(item, widget["mappings"]);
-            else if (json_item["commandDescription"]["commandOptions"])
-                parse_selection(item, json_item["commandDescription"]["commandOptions"]);
-
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("\r\n");
-#endif
-
-            item_count++;
-
+            /* Not a break when the tiles are full: the clock frame may still
+             * be further down. */
             if (item_count >= ITEM_COUNT_MAX)
-                break;
+                continue;
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+            printf("  idx: %u", (unsigned)item_count);
+#endif
+            parse_widget(widget, &item_array[item_count++], label_buffer, sizeof(label_buffer));
         }
     }
     else

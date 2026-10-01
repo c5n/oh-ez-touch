@@ -751,9 +751,11 @@ static void config_command(const char *topic, const char *value)
     switch (f->kind)
     {
     case SETTINGS_TEXT:
+    case SETTINGS_COLOR:
         /* False means the value contained '/' or ':' on a row that forbids
-         * them, and the stored value is left alone -- the same silent drop
-         * the web form and the settings screen apply. */
+         * them, or was not a "#RRGGBB" colour, and the stored value is left
+         * alone -- the same silent drop the web form and the settings screen
+         * apply. */
         config_field_set_text(f, &config.item, value);
         break;
 

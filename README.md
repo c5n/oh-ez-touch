@@ -10,6 +10,8 @@ on the server.
 ## Features
 
 - Dynamic user interface from an openHAB sitemap
+- Clock screen when idle: the time and three items of your choice, in your
+  own day and night colours, faded in and out through black
 - Four themes: Material, LCARS, JARVIS, Classic
 - Landscape or portrait mounting, in every theme
 - Touchscreen calibration on the panel, with the correction drawn before it is kept

@@ -8,12 +8,58 @@ sitemap on the server defines the structure.
 Sitemaps for the OhEzTouch can contain these elements:
 
 - Colorpicker
+- Frame
 - Selection
 - Setpoint
 - Slider
 - Switch
 - Text
 - Default
+
+A page shows at most six tiles. A sub page shows five, because the first tile
+is the way back.
+
+## Frames
+
+The panel draws no headings. A `Frame`'s items become tiles of the page, in
+sitemap order, as if the Frame were not there. Only one level is read: a Frame
+inside a Frame is ignored.
+
+### The clock frame
+
+One Frame on the sitemap's **home page** has a job of its own. When its label
+matches the **Clock items frame** setting (`Clock` by default), its first
+three items go to the clock screen instead of to the page. The clock screen is
+what the panel shows when it dims, if **Show time and date when dimmed** is
+on. It shows each item as icon, value and name under the time, where the
+weekday and the date would otherwise be.
+
+```
+sitemap home label="Home"
+{
+    Frame label="Clock"
+    {
+        Text   item=Outside_Temperature label="Outside"  icon="temperature"
+        Text   item=Living_Humidity     label="Humidity" icon="humidity"
+        Switch item=gLights             label="Lights"   icon="light"
+    }
+
+    Group item=gLivingRoom
+    Text  label="Bedroom" icon="bedroom" { ... }
+}
+```
+
+- These items are not tiles. They do not count against the six.
+- They are polled only while the clock screen is up.
+- The label is compared without its `[...]` part, and case matters.
+- A clock frame on a sub page is an ordinary Frame. The panel always goes back
+  to the home page when it dims, so that is the only page the clock reads.
+- Without a matching Frame, the clock screen shows the weekday and the date.
+- The value is formatted the way the tile would show it, with the item's state
+  pattern and the mapping of a Switch or Selection.
+
+See [LCD Backlight Dimming](configuration.md#lcd-backlight-dimming) for the
+colours and the transition.
 
 ## Example
 

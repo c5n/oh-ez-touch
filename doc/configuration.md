@@ -229,7 +229,49 @@ only by fallback.
 | Activity timeout | 60 | Seconds since the last touch before the display dims. |
 | Normal Brightness | 100 | Normal brightness level in percent. |
 | Dim Brightness | 40 | Dim brightness level in percent. |
-| Show time and date when dimmed | Off | Push a screensaver with the time and date when the display dims. The next touch wakes the panel and returns to the page. |
+| Show time and date when dimmed | Off | Show the clock screen when the display dims: the time, and under it the weekday and date or the home page's clock items. The next touch wakes the panel on the home page. |
+| Clock text (day) | `#ffffff` | Text colour of the clock screen while the theme's day variant is in effect. |
+| Clock background (day) | `#000000` | Its background colour, by day. |
+| Clock text (night) | `#ffffff` | Text colour while the night variant is in effect (see Night mode). |
+| Clock background (night) | `#000000` | Its background colour, by night. |
+| Clock items frame | `Clock` | The label of the `Frame` on the sitemap's home page whose items the clock screen shows. Empty for none. |
+
+When the activity timeout fires, the panel goes back to the sitemap's home
+page. This happens whether or not the clock screen is on. An open item window
+is closed. The settings screen is left alone.
+
+With the clock screen on, the dim goes through black. The backlight fades
+out over 1.5 s, the clock screen goes up in the dark, and the backlight fades
+in to the dim level. A touch reverses it quickly: a 0.1 s dip to black, then
+the page, then the normal level. The waking touch never reaches a tile. A
+touch during the slow fade-out turns it straight back. Nothing is swapped then.
+
+**Colours** are `#rrggbb` everywhere: in `config.json`, the web form's colour
+picker, `/api/config` and MQTT. The panel's settings screen offers a palette of
+twelve named colours. A value set elsewhere that is not one of them shows as
+"Custom". The day and night pairs follow the theme variant in effect, so with
+Night mode `auto` the clock screen changes with the schedule.
+
+**Clock items.** Under the time, the clock screen shows the weekday and the
+date. If the home page has a `Frame` with the configured label, the first
+three items of that frame are shown instead: icon, value and name. They are
+not drawn as tiles on the page. Icons from the built-in set take the text
+colour. Icons served by openHAB keep their own colours.
+
+```
+sitemap home label="Home" {
+    Frame label="Clock" {
+        Text item=Outside_Temperature label="Outside" icon="temperature"
+        Text item=Living_Humidity     label="Humidity" icon="humidity"
+        Switch item=gLights           label="Lights"   icon="light"
+    }
+    // ... the tiles
+}
+```
+
+Any other `Frame` is treated as a heading: its items become tiles of the page
+in order.
+See [The clock frame](sitemap.md#the-clock-frame) for the rules.
 
 ### Beeper
 

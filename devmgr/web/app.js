@@ -520,7 +520,10 @@ function renderConfigForm() {
       span.textContent = title;
       label.appendChild(span);
       input = document.createElement("input");
-      input.type = field.secret ? "password" : "text";
+      /* A colour is "#rrggbb" on the wire, which is exactly what the
+       * browser's picker reads and writes. */
+      input.type = field.kind === "color" ? "color"
+                 : field.secret ? "password" : "text";
       input.value = field.value;
       label.appendChild(input);
     }

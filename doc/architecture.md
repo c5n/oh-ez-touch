@@ -227,8 +227,36 @@ than two polls is not a tap -- neither is reachable with a finger.
 The UI is built from three ideas.
 
 **One pushed screen.** `ui_screen` owns a root and at most one thing covering
-it: an item control or the settings screen. It is not a general stack. The
-panel has exactly those two cases.
+it: an item control, the settings screen or the clock screen. It is not a
+general stack. The panel has exactly those three cases.
+
+**The dim is a state machine.** `BacklightControl` (`main/control/`) owns the
+activity timeout and walks the backlight through it on deadlines, because an
+LEDC fade is fire-and-forget. With the clock screen off, a dim is one fade
+down and a wake one fade up, as it always was. With it on, both go through
+black, so the screen swap happens where nobody can see it:
+
+```
+awake -> sleep_out (1.5 s to 0) -> sleep_dark -> sleep_in (0.8 s to dim) -> asleep
+asleep -> wake_out (0.1 s to 0) -> wake_dark -> wake_in (0.18 s to normal) -> awake
+```
+
+Two flags come out of it. `isInactive()` turns true when the timeout fires.
+`main.cpp` reacts to that edge with `openhab_ui_request_home()`, so the home
+page loads while the fade-out runs. `isDimmed()` changes only in the two dark
+phases. `ui_clock_loop()` pushes or pops its screen on it and draws the new
+screen at once with `lv_refr_now()`, so the light comes up on the right screen.
+A touch during `sleep_out` turns straight back without a swap. The pointer
+suppression after a waking tap (350 ms, `port_indev.c`) outlasts the wake, so
+the finger never reaches the page underneath.
+
+The clock screen's three items are the home page's clock frame (see
+[sitemaps](sitemap.md#the-clock-frame)). They live in `widget_context[]`
+slots 6 to 8, past the tiles. That way they are polled, answered and given
+icons by the same code as the tiles, keyed on the same slot and page
+generation. They have no tile. The clock screen lends them its labels and
+image with `openhab_ui_clock_attach()` while it is up, and polling is skipped
+while nothing is attached.
 
 **A frame per theme family.** `main/ui/frames/` is where a theme stops being
 a palette. Each family builds its own chrome and answers `content_area()`

@@ -104,8 +104,15 @@
 # a calibration wrong enough to notice is a calibration that has already taken
 # away the pointer needed to correct it.
 #
+# control/backlight_control.cpp joined them when the dim grew a transition
+# through black: eight phases on deadlines, which the clock screen and the
+# return to the home page both key on. It only ever drove port_backlight, so
+# test_backlight_control.cpp supplies that and port_millis() as doubles -- a
+# clock the test moves by hand.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
+                            "test_backlight_control.cpp"
                             "test_beeper_mixer.cpp"
                             "test_beeper_seq.cpp"
                             "test_ble_beacon.cpp"
@@ -129,6 +136,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_testif_parse.cpp"
                             "test_touch_cal.cpp"
                             "test_webui_api.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/backlight_control.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_common.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_mixer.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/control/beeper_seq.c"

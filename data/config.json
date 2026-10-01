@@ -28,7 +28,12 @@
         "activity_timeout":     60,
         "normal_brightness":    100,
         "dim_brightness":       40,
-        "clock_dimmed":        false
+        "clock_dimmed":        false,
+        "clock_day_fg":        "#ffffff",
+        "clock_day_bg":        "#000000",
+        "clock_night_fg":      "#ffffff",
+        "clock_night_bg":      "#000000",
+        "clock_frame":         "Clock"
     },
     "beeper":
     {

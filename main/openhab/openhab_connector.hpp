@@ -10,6 +10,10 @@
 
 #define ITEM_COUNT_MAX 6
 
+/* The items the clock screen shows under the time: the first this many
+ * children of the root page's clock frame. See Sitemap::parse(). */
+#define CLOCK_ITEM_COUNT 3
+
 #define ITEM_SELECTION_COUNT_MAX 10
 #define ITEM_SELECTION_COMMAND_LEN_MAX 20
 #define ITEM_SELECTION_LABEL_LEN_MAX 20
@@ -273,6 +277,14 @@ private:
     size_t item_count;
     Item item_array[ITEM_COUNT_MAX];
 
+    /* The root page's clock frame, which is not on the page: these are never
+     * tiles. Empty on every sub page and on a root page without the frame. */
+    size_t clock_item_count = 0;
+    Item clock_items[CLOCK_ITEM_COUNT];
+
+    /* The label that names the clock frame, "" for none. */
+    char clock_frame[STR_LABEL_LEN] = "";
+
 public:
     /* Turn a page already in memory into the title and the item array.
      *
@@ -297,6 +309,15 @@ public:
     const char* getPageName() { return title; }
     size_t getItemCount() { return item_count; }
     Item* getItem(size_t index) { return &item_array[index]; }
+
+    /* Which Frame on the root page is the clock frame. Read at the next
+     * parse(), so a change shows with the next page load. Compared with the
+     * Frame's label as the panel draws labels -- with any "[...]" part
+     * trimmed -- and case-sensitively, like everything else a sitemap
+     * names. */
+    void setClockFrame(const char *label) { strlcpy(clock_frame, label, sizeof(clock_frame)); }
+    size_t getClockItemCount() { return clock_item_count; }
+    Item* getClockItem(size_t index) { return &clock_items[index]; }
 };
 
 #endif

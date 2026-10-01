@@ -176,6 +176,7 @@ static void config_apply_env_overrides(config_item_t &item)
         switch (f->kind)
         {
         case SETTINGS_TEXT:
+        case SETTINGS_COLOR:
             config_field_set_text(f, &item, value);
             break;
 
@@ -226,6 +227,16 @@ static void config_field_apply_value(const struct config_field_s *f, config_item
             config_field_set_text(f, &item, text);
         break;
     }
+
+    case SETTINGS_COLOR:
+        /* "#RRGGBB" is what saveConfig() writes; a plain number is what a
+         * hand-edited file is as likely to say. One that is neither leaves
+         * the default standing. */
+        if (value.is<const char *>())
+            config_field_set_text(f, &item, value.as<const char *>());
+        else if (value.is<long>())
+            config_field_set_number(f, &item, value.as<long>());
+        break;
 
     case SETTINGS_BOOL:
         config_field_write(f, &item, value.as<bool>() ? 1 : 0);
@@ -456,6 +467,15 @@ bool Config::saveConfig()
              * readable and hand-editable. */
             obj[f->json_key] = (config_field_read(f, &item) != 0);
             break;
+
+        case SETTINGS_COLOR:
+        {
+            char rgb[8];
+
+            config_color_format((uint32_t)config_field_read(f, &item), rgb, sizeof(rgb));
+            obj[f->json_key] = rgb;
+            break;
+        }
 
         case SETTINGS_ENUM:
         {

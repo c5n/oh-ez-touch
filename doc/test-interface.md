@@ -242,9 +242,17 @@ measures is a model; `OHEZ_TOUCH_SKEW` is what gives it an error to find. See
   "item": { "open": true, "type": "slider", "slot": 5 },
   "settings": { "open": false },
   "theme": { "family": "Material", "night": false },
-  "backlight": { "brightness": 100, "dimmed": false }
+  "backlight": { "brightness": 100, "dimmed": false, "inactive": false,
+                 "phase": "awake" }
 }
 ```
+
+`backlight.inactive` turns true the moment the activity timeout fires, and
+`dimmed` once the dim level is the one in effect. With the clock screen on,
+these two are the start and the dark middle of a fade through black. `phase`
+names the step: `awake`, `sleep_out`, `sleep_dark`, `sleep_in`, `asleep`,
+`wake_out`, `wake_dark` or `wake_in` (see `BacklightControl`). The simulator
+has no backlight, but the phases run on the same clock as on the device.
 
 `screen` is what is on top -- `page`, `item`, `settings` or `clock`. The `page`
 object describes the openHAB tile page underneath any of the other three, so

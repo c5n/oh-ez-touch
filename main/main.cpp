@@ -147,6 +147,8 @@ void settings_apply_live(Config *config)
     tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config->item.backlight.dim_brightness);
+    /* Through black exactly when there is a screen to swap in the dark. */
+    tft_backlight.setBlankTransition(config->item.backlight.clock_dimmed);
 
     beeper_set_volume((uint8_t)config->item.beeper.volume);
     beeper_set_enabled(config->item.beeper.enabled);
@@ -183,7 +185,7 @@ extern "C" bool ohez_touch_wake(void)
      * what a gesture sounds like is the theme's business, and whether the
      * beeper is on at all is beeper_play()'s. This is also the one press in
      * the interface that gets no contact tick -- port_indev suppresses the
-     * pointer for 200 ms after a wake, so the widget under the finger never
+     * pointer for a moment after a wake, so the widget under the finger never
      * sees it, and this chime is the whole of the feedback. */
     BEEPER_EVENT_WAKE();
 
@@ -280,6 +282,7 @@ static void ohez_setup(void)
     tft_backlight.setDimTimeout(config.item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config.item.backlight.normal_brightness);
     tft_backlight.setDimBrightness(config.item.backlight.dim_brightness);
+    tft_backlight.setBlankTransition(config.item.backlight.clock_dimmed);
     tft_backlight.setup();
 
     /* Read once, here: the panel's MADCTL is an init-time decision, which is
@@ -416,6 +419,20 @@ static void ohez_setup(void)
 static void ohez_loop(void)
 {
     tft_backlight.loop();
+
+    /* The moment the panel is left alone, it goes home: whatever page or
+     * window was up, the next person to walk up finds the root page -- and,
+     * with the clock screen on, the root page is where its items come from.
+     * At the start of the fade rather than its end, so that the page has the
+     * whole fade-out to load in. An edge, not a level: once is a request, a
+     * level would be one per loop. */
+    static bool was_inactive = false;
+    bool        inactive = tft_backlight.isInactive();
+
+    if (inactive == true && was_inactive == false)
+        openhab_ui_request_home();
+
+    was_inactive = inactive;
 
     /* Not simply lv_timer_handler(): a screenshot is streamed straight out of
      * LVGL's own frame buffer rather than copied first, so for the few

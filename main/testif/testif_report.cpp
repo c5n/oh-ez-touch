@@ -226,6 +226,8 @@ const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_siz
 
     backlight["brightness"] = tft_backlight.currentBrightness();
     backlight["dimmed"]     = tft_backlight.isDimmed();
+    backlight["inactive"]   = tft_backlight.isInactive();
+    backlight["phase"]      = BacklightControl::phaseName(tft_backlight.currentPhase());
 
     add_banner(doc);
 
@@ -393,11 +395,10 @@ const char *testif_cmd_set(const testif_cmd_t *cmd, char *out, size_t out_size)
 
     config.lock();
 
-    bool stored = (f->kind == SETTINGS_TEXT)
-                      ? config_field_set_text(f, &config.item, cmd->argv[2])
-                      : false;
+    bool as_text = (f->kind == SETTINGS_TEXT || f->kind == SETTINGS_COLOR);
+    bool stored = as_text ? config_field_set_text(f, &config.item, cmd->argv[2]) : false;
 
-    if (f->kind != SETTINGS_TEXT)
+    if (as_text == false)
     {
         if (f->kind == SETTINGS_ENUM)
         {

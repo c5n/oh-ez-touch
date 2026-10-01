@@ -216,6 +216,12 @@ static void test_config_values_are_typed(void)
             TEST_ASSERT_TRUE(f["value"].is<const char *>());
             TEST_ASSERT_EQUAL(r->count, f["options"].size());
             break;
+        case SETTINGS_COLOR:
+            TEST_ASSERT_EQUAL_STRING("color", f["kind"]);
+            TEST_ASSERT_TRUE(f["value"].is<const char *>());
+            TEST_ASSERT_EQUAL_UINT(7, strlen(f["value"].as<const char *>()));
+            TEST_ASSERT_EQUAL_CHAR('#', f["value"].as<const char *>()[0]);
+            break;
         default:
             TEST_ASSERT_TRUE(f["value"].is<long>());
             TEST_ASSERT_EQUAL(r->min, f["min"]);
@@ -383,6 +389,31 @@ static void test_apply_clamps_a_number(void)
     TEST_ASSERT_EQUAL(65535, config_field_read(row("oh_port"), &item));
 }
 
+/* A colour as the form and REST spell it, and as a number; anything else
+ * fails the request and leaves the stored colour alone. */
+static void test_apply_a_color(void)
+{
+    set_defaults();
+
+    const char *body = "{\"clock_night_fg\":\"#ff8000\"}";
+
+    TEST_ASSERT_TRUE(webui_api_config_apply(&item, body, strlen(body),
+                                            response, sizeof(response)));
+    TEST_ASSERT_EQUAL_HEX32(0xFF8000, config_field_read(row("clock_night_fg"), &item));
+
+    body = "{\"clock_night_bg\":1193046}";
+
+    TEST_ASSERT_TRUE(webui_api_config_apply(&item, body, strlen(body),
+                                            response, sizeof(response)));
+    TEST_ASSERT_EQUAL_HEX32(0x123456, config_field_read(row("clock_night_bg"), &item));
+
+    body = "{\"clock_night_fg\":\"orange\"}";
+
+    TEST_ASSERT_FALSE(webui_api_config_apply(&item, body, strlen(body),
+                                             response, sizeof(response)));
+    TEST_ASSERT_EQUAL_HEX32(0xFF8000, config_field_read(row("clock_night_fg"), &item));
+}
+
 static void test_apply_secret_mask_is_a_noop(void)
 {
     set_defaults();
@@ -522,6 +553,7 @@ void test_webui_api_run(void)
     RUN_TEST(test_apply_rejects_a_hostchars_violation);
     RUN_TEST(test_apply_bool_spellings);
     RUN_TEST(test_apply_clamps_a_number);
+    RUN_TEST(test_apply_a_color);
     RUN_TEST(test_apply_secret_mask_is_a_noop);
     RUN_TEST(test_apply_secret_accepts_a_real_value);
     RUN_TEST(test_apply_rejects_a_non_object);

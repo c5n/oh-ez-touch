@@ -151,7 +151,20 @@ struct statistics_s
 
 Sitemap sitemap;
 
-struct widget_context_s widget_context[WIDGET_COUNT_MAX];
+/* The tiles, and behind them the clock screen's items: slots
+ * WIDGET_COUNT_MAX and up have no tile and are never laid out, but they are
+ * polled, answered and iconed by exactly the code the tiles are -- the slot
+ * and the page generation are all a request carries, and both mean the same
+ * thing for them. Their LVGL objects belong to the clock screen, which lends
+ * them with openhab_ui_clock_attach() while it is up. */
+#define WIDGET_SLOT_COUNT (WIDGET_COUNT_MAX + CLOCK_ITEM_COUNT)
+#define CLOCK_SLOT(i)     (WIDGET_COUNT_MAX + (i))
+
+struct widget_context_s widget_context[WIDGET_SLOT_COUNT];
+
+/* Bumped whenever the clock slots are bound to a new page's items, which is
+ * the clock screen's cue to rebuild its rows and attach them again. */
+static uint32_t clock_generation;
 
 struct statistics_s statistics;
 
@@ -241,6 +254,11 @@ static char connect_current_sitemap[32];
 static enum ui_theme_family_e theme_pending_family;
 static bool theme_pending_night;
 static char current_page[STR_PAGE_LEN];
+/* The sitemap's home page, which openhab_ui_request_home() goes back to. */
+static char root_page[STR_PAGE_LEN];
+/* The clock frame label the page on screen was parsed with, so a changed
+ * setting can be told from an unchanged one. */
+static char parsed_clock_frame[sizeof(((config_item_t *)0)->backlight.clock_frame)];
 static char last_page[STR_PAGE_LEN];
 static char current_website[STR_WEBSITE_LEN];
 
@@ -479,7 +497,9 @@ void update_state_widget(struct widget_context_s *ctx)
      * rather than the value. Only JARVIS has one, so this is a direct call
      * rather than another entry in the frame interface -- the linker drops it
      * for a build that never selects that family. */
-    if (ui_style_family() == UI_THEME_JARVIS && ctx->item->getMaxVal() > ctx->item->getMinVal())
+    if (   ui_style_family() == UI_THEME_JARVIS
+        && ctx - widget_context < WIDGET_COUNT_MAX
+        && ctx->item->getMaxVal() > ctx->item->getMinVal())
     {
         float span = ctx->item->getMaxVal() - ctx->item->getMinVal();
         float here = ctx->item->getStateNumber() - ctx->item->getMinVal();
@@ -537,7 +557,7 @@ void free_icon(lv_image_dsc_t *pdsc)
     free((void *)pdsc->data);
 
     // clear all cache references
-    for (size_t ref = 0; ref < WIDGET_COUNT_MAX; ref++)
+    for (size_t ref = 0; ref < WIDGET_SLOT_COUNT; ref++)
     {
         if (widget_context[ref].img_dsc.data == pref)
         {
@@ -1152,6 +1172,34 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
             widget_icon_request(i);
     }
 
+    /* The clock slots, on a new page only: a theme change keeps the page, the
+     * items and the pixels, and the clock screen keeps its rows. Unbound from
+     * whatever the clock screen had lent them -- the item behind them is a
+     * different one now -- and the clock screen is told to lend them again. */
+    if (reload_icons == true)
+    {
+        for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
+        {
+            struct widget_context_s *wctx = &widget_context[CLOCK_SLOT(i)];
+
+            free_icon(&wctx->img_dsc);
+
+            wctx->label = NULL;
+            wctx->img_obj = NULL;
+            wctx->state_widget = NULL;
+            wctx->update_timestamp = 0;
+            wctx->refresh_request = false;
+            wctx->item = (i < sitemap.getClockItemCount()) ? sitemap.getClockItem(i) : NULL;
+
+            /* Fetched now rather than at the attach, so the icon is usually
+             * there before the screen that shows it is. */
+            if (wctx->item != NULL)
+                widget_icon_request(CLOCK_SLOT(i));
+        }
+
+        clock_generation++;
+    }
+
     /* The tiles arrive rather than appearing. Staggered, so at most three are
      * moving at once -- six at a time would be 59,000 px of invalidation per
      * frame, well past what a 40 MHz bus can carry -- and the family decides
@@ -1274,6 +1322,93 @@ void openhab_ui_request_theme(enum ui_theme_family_e family, bool night)
     theme_pending = true;
 }
 
+void openhab_ui_request_home(void)
+{
+    /* Nothing to go back to before the first connect, and nothing to do on
+     * the home page already -- unless the page there was parsed with another
+     * clock frame than the one now configured, which only a reload applies. */
+    if (root_page[0] == '\0' || page_state == PAGE_IDLE)
+        return;
+
+    bool on_root = (strcmp(current_page, root_page) == 0);
+    bool frame_changed =
+        (strcmp(parsed_clock_frame, current_config->item.backlight.clock_frame) != 0);
+
+    if (on_root == true && frame_changed == false)
+        return;
+
+    /* An open control points into the sitemap the reload is about to
+     * overwrite. The settings screen is left alone: it is not about the page,
+     * and on a panel with no network yet it is the only way to get one. */
+    if (item_screen_is_open() == true)
+        item_screen_dismiss();
+
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+    printf("openhab_ui_request_home: back to %s\r\n", root_page);
+#endif
+
+    strlcpy(last_page, current_page, sizeof(last_page));
+    strlcpy(current_page, root_page, sizeof(current_page));
+    page_request(0);
+}
+
+/* ------------------------------------------------------ the clock's items */
+
+size_t openhab_ui_clock_item_count(void)
+{
+    /* Not gated on PAGE_READY: the slots are rebound in the same call that
+     * parses a page into the items they point at, so between two pages they
+     * still name the last one's -- which is what the clock screen should keep
+     * showing while a reload is in flight, rather than flicker to the date. */
+    size_t count = 0;
+
+    while (count < CLOCK_ITEM_COUNT && widget_context[CLOCK_SLOT(count)].item != NULL)
+        count++;
+
+    return count;
+}
+
+uint32_t openhab_ui_clock_generation(void)
+{
+    return clock_generation;
+}
+
+void openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label, lv_obj_t *reading)
+{
+    if (index >= openhab_ui_clock_item_count())
+        return;
+
+    struct widget_context_s *wctx = &widget_context[CLOCK_SLOT(index)];
+
+    wctx->img_obj = icon;
+    wctx->label = label;
+    wctx->state_widget = reading;
+
+    lv_label_set_text(label, wctx->item->getLabel());
+
+    /* The pixels are usually here already -- page_rebuild() asked for them --
+     * and if not, they land on this object when they arrive. */
+    if (wctx->img_dsc.data != NULL)
+        widget_icon_set_bitmap(wctx);
+
+    update_state_widget(wctx);
+
+    /* Poll at once: what was parsed with the page may be minutes old. */
+    wctx->update_timestamp = 0;
+}
+
+void openhab_ui_clock_detach(void)
+{
+    for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
+    {
+        struct widget_context_s *wctx = &widget_context[CLOCK_SLOT(i)];
+
+        wctx->img_obj = NULL;
+        wctx->label = NULL;
+        wctx->state_widget = NULL;
+    }
+}
+
 /* Switch variant without a reboot.
  *
  * The shared styles are refilled in place and reported, which carries every
@@ -1375,6 +1510,8 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
                (unsigned)sizeof(current_page), current_page);
     }
 
+    strlcpy(root_page, current_page, sizeof(root_page));
+
     page_request(0);
 }
 
@@ -1423,7 +1560,7 @@ static void page_submit_if_due(void)
      * ask for its new one and stay blank for good. Here rather than in
      * page_rebuild(), because a rebuild also happens for a theme change, which
      * keeps the generation and must keep the flags with it. */
-    for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
     {
         widget_context[i].icon_pending = false;
         widget_context[i].state_pending = false;
@@ -1538,6 +1675,18 @@ bool openhab_ui_open_item_path(const char *path)
 }
 #endif /* CONFIG_IDF_TARGET_LINUX || CONFIG_OHEZ_TESTIF */
 
+/* The parse, told which Frame is the clock frame first: the setting is read
+ * live, so a change applies from the next page load on. */
+static int page_parse(const char *payload, size_t payload_len, char *scratch,
+                      size_t scratch_size)
+{
+    strlcpy(parsed_clock_frame, current_config->item.backlight.clock_frame,
+            sizeof(parsed_clock_frame));
+    sitemap.setClockFrame(parsed_clock_frame);
+
+    return sitemap.parse(payload, payload_len, scratch, scratch_size);
+}
+
 static void page_result_apply(struct openhab_result_s *res)
 {
     /* The scratch for the parse's document pool. A payload that rode the
@@ -1563,7 +1712,7 @@ static void page_result_apply(struct openhab_result_s *res)
 
     if (   res->ok == true
         && res->payload != NULL
-        && sitemap.parse(res->payload, res->payload_len, scratch, scratch_size) == 0)
+        && page_parse(res->payload, res->payload_len, scratch, scratch_size) == 0)
     {
         /* Let go of the page before building the tiles rather than after. It
          * is up to 12 KB, show() is about to create six widgets and decode six
@@ -1651,7 +1800,7 @@ static void results_apply_one(void)
      * it belongs to one, and the list of exceptions was one such request away
      * from silently dropping it. */
     if ((res.type == OPENHAB_REQ_ICON || res.type == OPENHAB_REQ_STATE)
-        && res.slot >= WIDGET_COUNT_MAX)
+        && res.slot >= WIDGET_SLOT_COUNT)
     {
         openhab_client_result_release(&res);
         return;
@@ -1702,7 +1851,8 @@ static void results_apply_one(void)
             /* And the control looking at it, if one is open. The old windows
              * never followed the server: a dimmer changed from a phone left a
              * stale number on the glass until the window was closed. */
-            item_screen_refresh(res.slot);
+            if (res.slot < WIDGET_COUNT_MAX)
+                item_screen_refresh(res.slot);
 
             widget_icon_request(res.slot);
         }
@@ -1748,9 +1898,16 @@ void openhab_ui_loop(void)
 
     if (page_state == PAGE_READY)
     {
-        for (size_t i = 0; i < WIDGET_COUNT_MAX; ++i)
+        for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
         {
             if (widget_context[i].item == NULL)
+                continue;
+
+            /* A clock item is polled only while the clock screen shows it:
+             * three more requests every five seconds for readings nobody is
+             * looking at would be load on the server for nothing. The attach
+             * zeroes the timestamp, so the first poll goes out at once. */
+            if (i >= WIDGET_COUNT_MAX && widget_context[i].state_widget == NULL)
                 continue;
 
             /* Without an item link there is nothing to poll -- link and group

@@ -32,10 +32,10 @@ sink, so both can be tested on the host.
   No two rows share a name. A name is usable as a POST argument and as an
   MQTT topic segment. Every tab has rows. The restart flags are correct. No
   two rows claim the same storage place. Every default is inside its own
-  range.
+  range. Colours parse from exactly six hex digits and nothing looser.
 - **test_config_file**: `config.json` itself. The shipped defaults, a value
   per section surviving save and load, a corrupt file, a file with missing
-  sections, and the validation. The suite makes its own directory under
+  sections, colours read as `#rrggbb` or as a number, and the validation. The suite makes its own directory under
   `$TMPDIR`. It cannot touch the config of a running simulator.
 - **test_multipart**: the firmware upload's body scanner in `main/web/multipart.c`.
   This is the one path that can leave a panel unbootable. It parses bytes
@@ -63,6 +63,12 @@ sink, so both can be tested on the host.
   widest term the arithmetic can produce. This is the one file here whose bugs
   cannot be found by running the thing, because a calibration wrong enough to
   notice has already taken away the pointer needed to correct it.
+- **test_backlight_control**: the dim state machine in
+  `main/control/backlight_control.cpp`, against a clock the test moves by
+  hand. The plain dim is unchanged. Equal levels do not swallow the waking tap.
+  Each phase of the transition through black arrives on time, with the dim
+  flag changing only in the dark. A tap during the fade-out turns it back
+  without a swap. A brightness setting changed mid-transition does not cut in.
 - **test_beeper_mixer**: the arithmetic in `main/control/beeper_mixer.c`.
   Envelope curves and edges, sweeps in both directions, and how a frame
   divides itself between voices. Two assertions are load-bearing: a frame is

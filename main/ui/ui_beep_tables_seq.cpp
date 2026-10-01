@@ -349,7 +349,7 @@ TUNE(lcars_boot,      T(1568, 40, 10, VOL, STAB),
                       N(2794, 2794, 150, 0, VOL, STAB, PULSE));
 
 /* The tap that woke the display, and the whole of the feedback for it -- the
- * pointer is suppressed for 200 ms afterwards, so nothing else sounds. The
+ * pointer is suppressed for a moment afterwards, so nothing else sounds. The
  * falling two-tone, at the level that is audible in a dark room without being
  * an announcement. */
 TUNE(lcars_wake,      T(2794, 14, 0, MED, STAB),

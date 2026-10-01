@@ -90,7 +90,7 @@ The corners it aims at, each of which found something:
   `ITEM_SELECTION_COUNT_MAX` of ten, a forty-character label against
   `STR_LABEL_LEN` of thirty-two, and `Außentemperatur Süd` for the label
   trimmer, which used to hand bytes above 0x7F to `isspace()`.
-- **Framed** is two `Frame` blocks. See below -- this one is not a corner case
+- **Framed** is two `Frame` blocks. See below -- this one was not a corner case
   at all.
 - `NAV_Unset` is never commanded, so it stays `NULL`.
 - `NAV_Spaced` holds `Hello World`, which is the shape that breaks the icon URL.
@@ -160,12 +160,14 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
 Known, reproduced against this server, and not fixed. Any of these is a real
 bug rather than a fixture artefact.
 
-1. **`Frame` renders an empty page.** openHAB nests the real widgets inside the
-   Frame's own `widgets` array; the connector neither recognises the type nor
-   descends into it, so a page of two Frames holding four controls draws
-   nothing but the back tile. This is the one that matters most: the openHAB
-   documentation's own demo sitemap is built out of Frames, as are most
-   published ones. `oheznav`'s **Framed** page is the reproduction.
+1. **`Frame` rendered an empty page.** Fixed. openHAB nests the real widgets
+   inside the Frame's own `widgets` array. The connector now descends one
+   level: a Frame's children become tiles of the page, in order, and the Frame
+   itself, having no tile of its own, is dropped. The one exception is the
+   home page's clock frame (the `clock_frame` setting, `Clock` by default),
+   whose first three children go to the clock screen instead. `oheznav`'s
+   **Framed** page is still the reproduction, and
+   `test/host/main/test_sitemap_parse.cpp` pins both cases.
 2. **Icon URLs are not percent-encoded.** `Item::iconUrl()` pastes the state
    into the query string as-is, and `esp_http_client_set_url()` then refuses the
    URL outright -- it never reaches the server, and `session_prepare()` turns
