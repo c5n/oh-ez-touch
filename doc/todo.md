@@ -9,6 +9,13 @@
 - [ ] openhab_ui: Prefer widget label text instead of item label text.
 - [ ] openhab_ui: Add secured sections with PIN protection.
 - [x] openhab_ui: Improve selection, setpoint and slider elements.
+- [x] openhab: Take item states pushed over `/rest/events` instead of polling
+      every tile every five seconds. See
+      [The event stream](architecture.md#the-event-stream).
+- [ ] openhab: Send an API token. The panel sends none, so `/rest/events`,
+      the sitemap and the item states have to be open to an anonymous client.
+- [ ] openhab: Follow sitemap changes as well. `/rest/sitemaps/events` pushes
+      formatted labels, colours and visibility, which `/rest/events` does not.
 - [x] ac: Improve OTA firmware update --> batchupdate.py. See
       [Updating devices](update.md).
 - [x] main: Show portal active icon.

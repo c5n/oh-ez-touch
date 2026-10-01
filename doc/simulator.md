@@ -94,7 +94,8 @@ The fixture in `main/sim/sitemap_fixture.cpp` is a small demo sitemap. It has
 a home page with two sub pages and covers every supported widget type. It
 goes through the same parser as a real server response. Edit that file to
 reproduce a particular sitemap. Item states are read from the fixture and are
-not written back. Operating a widget changes the state locally only.
+not written back. Operating a widget changes the state locally only. There is
+no event stream in offline mode: nothing is listening at the other end.
 
 ### Widget icons
 

@@ -196,8 +196,8 @@ bug rather than a fixture artefact.
    updated afterwards -- pushed over `/rest/events`, polled while that stream
    is down -- so a sitemap edited on the server does not reach the panel until
    it navigates or reboots. A server that goes away *after* the first load is
-   invisible: the stream reconnects quietly, every poll fails silently, `page.state` stays
-   `ready`, and no banner appears. `SITEMAP ACCESS FAILED` only fires on a
+   invisible: the stream reconnects quietly, every poll fails silently,
+   `page.state` stays `ready`, and no banner appears. `SITEMAP ACCESS FAILED` only fires on a
    *page* fetch.
 
 ## The panel's fixed limits

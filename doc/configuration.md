@@ -330,8 +330,9 @@ Item states reach the panel without polling. The panel keeps
 as it happens. The panel asks for no token, so that endpoint, like the sitemap
 and the item states, has to be open to an anonymous client. That is openHAB's
 default ("implicit user role"). While the stream is unavailable the panel
-polls every tile every five seconds instead. Nothing has to be configured
-either way.
+polls every tile every five seconds instead. While it is up, the panel still
+checks each tile once a minute, and five seconds after you operate it. Nothing
+has to be configured either way.
 
 On the panel the sitemap list is fetched from the host and port *as they are
 being edited*. The web form fetches from the saved endpoint. There the order
