@@ -25,9 +25,14 @@
  *     last one; its back bar was always the documented way out and the
  *     resistive ArduiTouch panels could never swipe reliably anyway. Nothing
  *     listens, so nothing happens.
- *   - nothing scrolls and nothing ever has to be dragged. Every container in
- *     the firmware is built non-scrollable, and LVGL's own drag detection is
- *     pinned out of reach on top of that (see ui_input_pointer_policy()).
+ *   - nothing scrolls, and nothing but a slider's knob is dragged. Every
+ *     container in the firmware is built non-scrollable, and LVGL's own drag
+ *     detection is pinned out of reach on top of that (see
+ *     ui_input_pointer_policy()) -- except for the length of a press that
+ *     lands on a slider. LVGL's slider measures its own drag against the same
+ *     scroll limit, so with the limit at 255 px its knob never followed the
+ *     finger and only jumped to where it lifted. press_event() lowers the
+ *     limit for that one press and drag_end_event() puts it back.
  *   - a tap acts the moment the press is confirmed, not when the finger lifts.
  *     The click goes to whatever the finger landed on, and where it drifts
  *     afterwards is irrelevant: the resistive panel's reported point wanders
@@ -76,6 +81,16 @@
  * pointer. */
 #define UI_INPUT_INDEV_MAX 4
 
+/* Out of reach: 255 px is more than any of these panels is tall, and it is the
+ * widest the uint8_t LVGL stores it in goes. */
+#define SCROLL_LIMIT_OFF   UINT8_MAX
+
+/* How far a finger on a slider travels before the knob follows it. Small,
+ * because the knob is the one thing here that is meant to move with a finger;
+ * the few pixels a resistive panel's point wanders while a finger flattens
+ * onto it only nudge a knob that is set from the lift-off point anyway. */
+#define SLIDER_DRAG_LIMIT  4
+
 /* What this file remembers about the press an input device is in.
 
  * Per device rather than one global, because the simulator runs two pointers
@@ -116,6 +131,13 @@ static void press_event(lv_event_t *e)
      * no object, no click. */
     lv_obj_t *obj = lv_indev_get_active_obj();
 
+    /* Before the first PRESSING, which is where the slider compares how far
+     * the finger has gone with this limit. Every press sets it, so a press
+     * whose release was never seen cannot leave a slider's limit behind. */
+    lv_indev_set_scroll_limit(indev, (obj != NULL && lv_obj_check_type(obj, &lv_slider_class))
+                                         ? SLIDER_DRAG_LIMIT
+                                         : SCROLL_LIMIT_OFF);
+
     if (obj == NULL)
         return;
 
@@ -145,6 +167,18 @@ static void click_event(lv_event_t *e)
     lv_indev_stop_processing(indev);
 }
 
+/* The press is over, so whatever it was on, nothing can be dragged again
+ * until the next one says otherwise. */
+static void drag_end_event(lv_event_t *e)
+{
+    lv_indev_t *indev = lv_indev_active();
+
+    LV_UNUSED(e);
+
+    if (indev != NULL)
+        lv_indev_set_scroll_limit(indev, SCROLL_LIMIT_OFF);
+}
+
 void ui_input_pointer_policy(lv_indev_t *indev)
 {
     struct press_origin_s *origin;
@@ -152,17 +186,19 @@ void ui_input_pointer_policy(lv_indev_t *indev)
     if (indev == NULL || origin_count >= UI_INPUT_INDEV_MAX)
         return;
 
-    /* Out of reach, not merely out of use: 255 px is more than any of these
-     * panels is tall, and it is the widest the uint8_t LVGL stores these in
-     * goes. A press that moves can no longer be recognised as a drag on a
-     * scrollable widget or accumulate into a swipe, whatever is on screen. */
-    lv_indev_set_scroll_limit(indev, UINT8_MAX);
+    /* Out of reach, not merely out of use. A press that moves can no longer be
+     * recognised as a drag on a scrollable widget or accumulate into a swipe,
+     * whatever is on screen -- the scroll limit only ever comes down for a
+     * press on a slider, see press_event(). */
+    lv_indev_set_scroll_limit(indev, SCROLL_LIMIT_OFF);
     lv_indev_set_gesture_min_distance(indev, UINT8_MAX);
     lv_indev_set_gesture_min_velocity(indev, UINT8_MAX);
 
     origin = &origins[origin_count++];
 
     lv_indev_add_event_cb(indev, press_event, LV_EVENT_PRESSED, origin);
+    lv_indev_add_event_cb(indev, drag_end_event, LV_EVENT_RELEASED, NULL);
+    lv_indev_add_event_cb(indev, drag_end_event, LV_EVENT_PRESS_LOST, NULL);
 
     /* Only the two that mean "a tap happened", and only to take them back:
      * both were delivered already, at press-down. */
