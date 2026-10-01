@@ -247,6 +247,13 @@ the tolerance, and a release is still reported the moment a poll comes back
 empty. The cost is one frame of latency on a press, and that a tap shorter
 than two polls is not a tap -- neither is reachable with a finger.
 
+What a confirmed press may mean is `main/ui/ui_input.c`. A tap is the only
+gesture: the click is delivered at press-down, nothing scrolls, and the
+input device's scroll limit and gesture thresholds sit at 255 px so that a
+moving finger cannot turn into a swipe. The exception is a slider. LVGL's
+slider starts a drag only after the finger has travelled the scroll limit, so
+a press that lands on one lowers the limit to 4 px until the finger lifts.
+
 ## Screens, frames and motion
 
 The UI is built from three ideas.
@@ -287,7 +294,12 @@ attached they are neither polled nor in the event stream's topic list.
 a palette. Each family builds its own chrome and answers `content_area()`
 with the rectangle the tile grid may have. This lets LCARS put a spine down
 the left edge, Material have no chrome at all, and Reticle draw two
-hairlines. The page knows nothing about it. Classic uses the shared frame in
+hairlines. The page knows nothing about it. A family can also decorate each
+tile through `decorate_tile()`. LCARS fills a tile by its kind. Reticle
+replaces the tile's border with corner brackets: a tile that leads to a page
+has brackets whose arms grow and shrink, an operable one has still brackets,
+and a plain reading has short, faint ones. The breathing repaints only the
+four corner squares, and only when an arm changes by a whole pixel. Classic uses the shared frame in
 `ui_frame_common.cpp`. The grid is solved by `ui_geometry.hpp`, which is free
 of `<lvgl.h>` so the host tests can check it.
 
@@ -309,7 +321,12 @@ cannot reach it. A live theme change tears the old family's chrome down
 
 **A screen per item type.** `main/ui/items/` has one file per openHAB item
 type, found through a registry. Each carries a `refresh` hook, so an open
-control follows the server.
+control follows the server. The colour screen's H, S and V fields draw the
+range each one sweeps as a horizontal gradient, and moving one recolours the
+other two. That takes two `lv_conf.h` settings: `LV_GRADIENT_MAX_STOPS` at 7
+for the hue wheel, and `LV_DRAW_SW_SUPPORT_RGB888` on. LVGL blends a
+horizontal gradient from an RGB888 colour line, and with that format off it
+draws nothing.
 
 ### What the panel can afford to animate
 

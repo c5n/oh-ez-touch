@@ -19,6 +19,11 @@ Sitemaps for the OhEzTouch can contain these elements:
 A page shows at most six tiles. A sub page shows five, because the first tile
 is the way back.
 
+A Colorpicker opens a screen with a swatch and three fields: hue, saturation
+and value. Each field shows the colours it reaches with the other two held
+where they are, and the fields recolour as you drag. The new colour is sent
+when the finger lifts.
+
 ## Frames
 
 The panel draws no headings. A `Frame`'s items become tiles of the page, in

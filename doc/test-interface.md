@@ -125,10 +125,13 @@ wrong widget.
 | `swipe <x1> <y1> <x2> <y2> [ms]` | an explicit drag, over 200 ms by default |
 | `press <x> <y>` / `move <x> <y>` / `release` | the primitives, for a drag nothing above describes |
 
-**The panel has no swipe gestures.** `swipe` still sends a real drag, and a
-drag on a scrollable widget still scrolls it -- `swipe up` scrolls a settings
-list, and dragging a slider still moves it -- but a swipe never navigates, and
-it never activates whatever is under it. An item screen is dismissed by its
+**The panel has no swipe gestures.** `swipe` still sends a real drag, but
+nothing scrolls and a swipe never navigates or activates whatever is under it.
+The one thing a drag moves is a slider's knob: a press that lands on a slider
+lowers LVGL's scroll limit from 255 px to 4 px for that press, so the knob
+follows the pointer once it has moved 4 px. Every other press keeps 255.
+`press`, a few `move`s and `release` drag a knob; an item screen sends the
+value to openHAB when the pointer lifts. An item screen is dismissed by its
 back bar (`tap 20 20`) or by `settings`/`nav`, not by a gesture.
 
 That was not always so, and the history is worth knowing because a test written
@@ -382,8 +385,7 @@ These are the ones that will otherwise cost an hour.
   the transport level -- the pointer really moves -- but nothing is navigated
   and nothing is pressed. Use `tap-tile 0` to go up a page, the back bar at
   `tap 20 20` to leave an item screen, and `nav` to jump. The two notes below
-  are still true of the drag itself, and still matter for scrolling and for
-  dragging a slider.
+  are still true of the drag itself.
 - **A slower swipe is *less* likely to register than a fast one.** LVGL only
   counts movement towards a gesture on reads that moved at least 3 px, and
   needs more than 50 px in total. Spreading a short swipe over a long duration

@@ -39,7 +39,9 @@ and no browser are necessary.
 
 ## Settings on the screen
 
-Press the upper bar to open the settings screen. The screen is a menu of
+Press the upper bar to open the settings screen. In LCARS that is the bar
+with the page name and the clock, and the cell with the wifi symbol on the
+left spine opens it too. The screen is a menu of
 large cells. Each cell has a pictogram and a name. Press a cell to open that
 section. The bar across the top of every page is the way back. From the first
 menu, the **X** closes the screen. What a page can do (**Scan** where it
