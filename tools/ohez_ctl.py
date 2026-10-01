@@ -282,6 +282,24 @@ def cmd_calibrate_run(panel, args):
     return panel.send("calibrate", "result")
 
 
+def cmd_pin_enter(panel, args):
+    """Tap each digit's key, then OK, at the rectangles the panel reports."""
+    pin = panel.json("pin")
+
+    if not pin.get("open"):
+        raise ControlError("no PIN pad is open")
+
+    keys = pin["keys"]
+
+    for key in args.digits + ("" if args.no_ok else "k"):
+        if key not in keys:
+            raise ControlError("no key %r on the pad" % key)
+
+        x, y, w, h = keys[key]
+        panel.send("tap", str(x + w // 2), str(y + h // 2))
+        time.sleep(0.15)
+
+
 def cmd_shot(panel, args):
     url = panel.screenshot_url()
 
@@ -339,6 +357,12 @@ def main():
     calrun.add_argument("--timeout", type=float, default=5.0,
                         help="how long to wait for one target (default 5)")
 
+    pinenter = sub.add_parser("pin-enter",
+                              help="type digits into the open PIN pad and press OK")
+    pinenter.add_argument("digits")
+    pinenter.add_argument("--no-ok", action="store_true",
+                          help="leave the digits on the pad without pressing OK")
+
     # Everything else goes through untouched, so a command added to the
     # firmware is usable here without editing this file.
     passthrough = sub.add_parser("send", help="send a raw command line")
@@ -346,7 +370,7 @@ def main():
 
     for name in ("ping", "screen", "status", "config", "set", "tap", "longpress",
                  "swipe", "press", "move", "release", "nav", "settings", "calibrate",
-                 "quit"):
+                 "pin", "quit"):
         direct = sub.add_parser(name)
         direct.add_argument("words", nargs=argparse.REMAINDER)
 
@@ -360,6 +384,8 @@ def main():
             cmd_wait_page(panel, args)
         elif args.command == "tap-label":
             tap_tile(panel, find_tile(panel, args.label))
+        elif args.command == "pin-enter":
+            cmd_pin_enter(panel, args)
         elif args.command == "calibrate-run":
             print(cmd_calibrate_run(panel, args))
         elif args.command == "tap-tile":

@@ -77,6 +77,8 @@ set(OHEZ_APP_SRCS
 
     "config/config.cpp"
     "config/config_fields.cpp"
+    "config/pin_code.c"
+    "config/pin_store.c"
 
     "icons/icon_set.cpp"
 
@@ -104,6 +106,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_beep_tables_seq.cpp"
     "ui/ui_messagebox.cpp"
     "ui/ui_motion.cpp"
+    "ui/ui_pin.cpp"
     "ui/ui_screen.cpp"
     "ui/ui_style.cpp"
     "ui/ui_widgets.cpp"

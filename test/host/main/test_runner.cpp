@@ -43,6 +43,7 @@ extern "C" void app_main(void)
     test_item_state_run();
     test_item_urls_run();
     test_outputs_run();
+    test_pin_code_run();
     test_sitemap_list_run();
     test_sitemap_parse_run();
     test_ui_beep_chimes_run();

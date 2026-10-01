@@ -27,6 +27,7 @@ void test_port_ntp_run(void);
 void test_item_state_run(void);
 void test_item_urls_run(void);
 void test_outputs_run(void);
+void test_pin_code_run(void);
 void test_sitemap_list_run(void);
 void test_sitemap_parse_run(void);
 void test_testif_parse_run(void);

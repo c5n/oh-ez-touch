@@ -35,6 +35,7 @@
 #include "ui/ui_calibration.hpp"
 #include "ui/ui_frame_stats.h"
 #include "ui/ui_messagebox.hpp"
+#include "ui/ui_pin.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
@@ -130,6 +131,46 @@ static const char *emit(const JsonDocument &doc, char *out, size_t out_size)
 
 /* ------------------------------------------------------------------ screen */
 
+/* The pad, and both scopes: whether a PIN is set and whether it is unlocked.
+ * Never the PIN -- there is nothing stored to report it from. */
+static void add_pin(JsonObject pin)
+{
+    pin["open"] = ui_pin_is_open();
+
+    if (ui_pin_is_open() == true)
+    {
+        pin["scope"] = pin_scope_name(ui_pin_open_scope());
+
+        /* Every key's rectangle, so a script types a PIN by tapping what is
+         * on the screen. */
+        JsonObject keys = pin["keys"].to<JsonObject>();
+
+        for (const char *k = "0123456789bkx"; *k != '\0'; k++)
+        {
+            lv_area_t area;
+            char      name[2] = {*k, '\0'};
+
+            if (ui_pin_key_area(*k, &area) == false)
+                continue;
+
+            JsonArray rect = keys[name].to<JsonArray>();
+
+            rect.add(area.x1);
+            rect.add(area.y1);
+            rect.add(lv_area_get_width(&area));
+            rect.add(lv_area_get_height(&area));
+        }
+    }
+
+    for (int i = 0; i < PIN_SCOPE_COUNT; i++)
+    {
+        JsonObject scope = pin[pin_scope_name((enum pin_scope_e)i)].to<JsonObject>();
+
+        scope["set"]      = pin_store_is_set((enum pin_scope_e)i);
+        scope["unlocked"] = ui_pin_is_unlocked((enum pin_scope_e)i);
+    }
+}
+
 static void add_banner(JsonDocument &doc)
 {
     /* Whichever is up. main.cpp's covers the WLAN and the setup access point,
@@ -194,6 +235,7 @@ const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_siz
         tile["label"] = info.label;
         tile["state"] = info.state;
         tile["type"]  = item_type_name(info.type);
+        tile["pin"]   = info.pin;
         tile["x"]     = info.x;
         tile["y"]     = info.y;
         tile["w"]     = info.w;
@@ -216,6 +258,8 @@ const char *testif_cmd_screen(const testif_cmd_t *cmd, char *out, size_t out_siz
 
     if (ui_settings_is_open() == true)
         settings["page"] = ui_settings_page_name();
+
+    add_pin(doc["pin"].to<JsonObject>());
 
     JsonObject theme = doc["theme"].to<JsonObject>();
 
@@ -472,6 +516,54 @@ const char *testif_cmd_settings(const testif_cmd_t *cmd, char *out, size_t out_s
     /* The same lookup OHEZ_SETTINGS uses, so the two cannot drift apart on
      * what a page is called. */
     return ui_settings_open_by_name(cmd->argv[1]) ? NULL : "no such settings page";
+}
+
+/* The PINs, for a script that must get past one or test it.
+ *
+ *   pin                         both scopes, as in `screen`
+ *   pin <system|item> set NNNN  store a PIN, as the settings screen would
+ *   pin <system|item> clear     remove it, as the web interface would
+ *   pin lock                    drop every unlock, as the panel going idle does
+ *
+ * Typing a PIN into the pad is not here: that is what `tap` is for, and a
+ * shortcut past the pad would test nothing about it. */
+const char *testif_cmd_pin(const testif_cmd_t *cmd, char *out, size_t out_size)
+{
+    enum pin_scope_e scope;
+
+    if (cmd->argc < 2)
+    {
+        JsonDocument doc;
+
+        add_pin(doc.to<JsonObject>());
+        return emit(doc, out, out_size);
+    }
+
+    if (strcmp(cmd->argv[1], "lock") == 0)
+    {
+        ui_pin_lock_all();
+        return NULL;
+    }
+
+    if (pin_scope_from_name(cmd->argv[1], &scope) == false || cmd->argc < 3)
+        return "want lock, or system|item set|clear";
+
+    if (strcmp(cmd->argv[2], "clear") == 0)
+    {
+        pin_store_clear(scope);
+        return NULL;
+    }
+
+    if (strcmp(cmd->argv[2], "set") != 0 || cmd->argc < 4)
+        return "want set <digits> or clear";
+
+    switch (pin_store_set(scope, cmd->argv[3]))
+    {
+    case PIN_SET_OK:            return NULL;
+    case PIN_SET_INVALID:       return "want 4 to 8 digits";
+    case PIN_SET_SAME_AS_OTHER: return "same as the other scope's PIN";
+    default:                    return "not stored";
+    }
 }
 
 /* The touchscreen calibration, in the three pieces a script needs: start it,

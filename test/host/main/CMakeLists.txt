@@ -115,6 +115,12 @@
 # came out is the line splitter and the reading of one event -- ArduinoJson and
 # libc. It decides which tile a pushed state lands on, and what state.
 #
+# config/pin_code.c joined them with the PINs: what makes a PIN, the SHA-256
+# it is stored as, and the lockout a run of wrong guesses earns. The store
+# around it is NVS and the pad is LVGL; this is the part that is arithmetic,
+# and a hash that is subtly wrong still opens every PIN it stored -- until it
+# is fixed, and then opens none of them.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_backlight_control.cpp"
@@ -133,6 +139,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
                             "test_outputs.cpp"
+                            "test_pin_code.cpp"
                             "test_sitemap_list.cpp"
                             "test_sitemap_parse.cpp"
                             "test_ui_beep_chimes.cpp"
@@ -165,6 +172,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/testif/testif_parse.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_frame_stats.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/touch_cal.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/pin_code.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/relay.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/sim/sitemap_fixture.cpp"
                        INCLUDE_DIRS "."

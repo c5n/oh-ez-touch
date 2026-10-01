@@ -247,6 +247,20 @@ static void test_all_mapping_slots_hold_their_own_value(void)
     check_canary(probe);
 }
 
+/* cleanItem() is what a reused slot goes through, and the tag is only ever
+ * set, never cleared, by the parse -- so this is the line that stops it
+ * passing to the next item in the slot. */
+static void test_clean_item_forgets_the_pin_tag(void)
+{
+    Item item;
+
+    item.setPinProtected(true);
+    TEST_ASSERT_TRUE(item.isPinProtected());
+
+    item.cleanItem();
+    TEST_ASSERT_FALSE(item.isPinProtected());
+}
+
 void test_item_setters_run(void)
 {
     /* Unity records the file from the UNITY_BEGIN() call site, which is the
@@ -260,4 +274,5 @@ void test_item_setters_run(void)
     RUN_TEST(test_values_of_exactly_capacity_still_terminate);
     RUN_TEST(test_over_long_mapping_does_not_read_into_next_slot);
     RUN_TEST(test_all_mapping_slots_hold_their_own_value);
+    RUN_TEST(test_clean_item_forgets_the_pin_tag);
 }

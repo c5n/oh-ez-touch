@@ -31,11 +31,13 @@
 #include "webui_out.h"
 
 #include "config/config_fields.hpp"
+#include "config/pin_store.h"
 
 #include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_frame_stats.h"
+#include "ui/ui_pin.hpp"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "webui_api.hpp"
@@ -412,6 +414,49 @@ static void webui_send_wlan_form(struct webui_out_s *o)
                  "</fieldset></form>");
 }
 
+/* Only a way to remove a PIN, never to read or set one: the PINs are chosen at
+ * the panel, and this is the recovery for one somebody has forgotten. Shown
+ * only while there is something to remove. */
+static void webui_send_pin_form(struct webui_out_s *o)
+{
+    bool system = pin_store_is_set(PIN_SCOPE_SYSTEM);
+    bool item = pin_store_is_set(PIN_SCOPE_ITEM);
+
+    if (system == false && item == false)
+        return;
+
+    webui_put(o, "<form method='post' action='/pin/clear'>"
+                 "<fieldset><legend>PIN</legend>"
+                 "<p class='n'>Set on the panel under System &rsaquo; Device &rsaquo; PINs.</p>");
+
+    if (system == true)
+        webui_put(o, "<button type='submit' name='scope' value='system'>"
+                     "Remove System PIN</button> ");
+
+    if (item == true)
+        webui_put(o, "<button type='submit' name='scope' value='item'>"
+                     "Remove Item PIN</button>");
+
+    webui_put(o, "</fieldset></form>");
+}
+
+static void webui_handle_pin_clear(webui_request_t *req)
+{
+    char             name[16];
+    enum pin_scope_e scope;
+
+    webui_arg(req, "scope", name, sizeof(name));
+
+    if (pin_scope_from_name(name, &scope) == false)
+    {
+        webui_redirect(req, 303, "/");
+        return;
+    }
+
+    ui_pin_request_clear(scope);
+    webui_redirect(req, 303, "/?pin=1");
+}
+
 static void webui_begin_page(struct webui_out_s *o, webui_request_t *req)
 {
     o->req = req;
@@ -440,6 +485,10 @@ static void webui_handle_root(webui_request_t *req)
         webui_put(&out, "<fieldset><legend>Saved</legend>"
                         "<p class='n'>Settings stored.</p></fieldset>");
 
+    if (webui_has_arg(req, "pin") == true)
+        webui_put(&out, "<fieldset><legend>PIN</legend>"
+                        "<p class='n'>PIN removed.</p></fieldset>");
+
     if (webui_has_arg(req, "wifi") == true)
         webui_put(&out, "<fieldset><legend>WLAN</legend>"
                         "<p class='n'>Credentials stored, connecting.</p></fieldset>");
@@ -454,6 +503,8 @@ static void webui_handle_root(webui_request_t *req)
     webui_send_status(&out);
     webui_send_wlan_form(&out);
     webui_send_form(&out, webui_config);
+
+    webui_send_pin_form(&out);
 
     webui_put(&out, "<form method='get' action='/update'>"
                     "<button type='submit'>Firmware update</button></form>"
@@ -743,6 +794,7 @@ void webui_setup(Config *config)
     webui_transport_route("/", WEBUI_GET, webui_handle_root);
     webui_transport_route("/save", WEBUI_POST, webui_handle_save);
     webui_transport_route("/wifi", WEBUI_POST, webui_handle_wifi);
+    webui_transport_route("/pin/clear", WEBUI_POST, webui_handle_pin_clear);
     webui_transport_route("/sitemaps", WEBUI_GET, webui_handle_sitemaps);
     webui_transport_route("/servers", WEBUI_GET, webui_handle_servers);
     webui_transport_route("/restart", WEBUI_POST, webui_handle_restart);

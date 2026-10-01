@@ -48,6 +48,9 @@ esp_err_t port_kv_get_str(const char *ns, const char *key, char *buf, size_t buf
 /** Writes a string, replacing any previous value, and commits. */
 esp_err_t port_kv_set_str(const char *ns, const char *key, const char *value);
 
+/** Removes a key and commits. A key that was never written is not an error. */
+esp_err_t port_kv_erase(const char *ns, const char *key);
+
 /** Byte length of a blob, or -1 if the namespace or key does not exist. */
 ssize_t port_kv_blob_size(const char *ns, const char *key);
 

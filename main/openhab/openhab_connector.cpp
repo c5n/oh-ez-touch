@@ -1,5 +1,6 @@
 #include "openhab_connector.hpp"
 
+#include "config/pin_store.h"
 #include "debug.h"
 
 #include <ctype.h>
@@ -552,6 +553,17 @@ static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
 #endif
     }
 
+    // The Item PIN's tag. Exact, the way openHAB compares tags: "OHEZ-PIN" is a
+    // different tag and does not protect anything.
+    for (JsonVariant tag : json_item["tags"].as<JsonArray>())
+    {
+        if (strcmp(json_str(tag), PIN_ITEM_TAG) == 0)
+        {
+            item->setPinProtected(true);
+            break;
+        }
+    }
+
     // Mappings
     if (widget["mappings"])
         parse_selection(item, widget["mappings"]);
@@ -596,7 +608,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
      * capacity is gone -- and a document that sizes itself to the page grows
      * with whatever openHAB decides to send. A page carries a good deal this
      * panel has no use for: widgetId, visibility, labelSource, staticIcon and
-     * unit on every widget; name, label, category, tags, groupNames, members,
+     * unit on every widget; name, label, category, groupNames, members,
      * function and two timestamps on every item; a nested empty "widgets"
      * array; and four more fields inside every linkedPage than the one link
      * that is wanted. All of it was parsed and stored so that the loop below
@@ -659,6 +671,10 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         item_filter["type"] = true;
         item_filter["groupType"] = true;
         item_filter["transformedState"] = true;
+        /* For PIN_ITEM_TAG. Usually an empty array, and short when it is
+         * not; the one thing in it this panel looks for decides whether a
+         * tap asks for the Item PIN. */
+        item_filter["tags"] = true;
 
         JsonObject state_filter = item_filter["stateDescription"].to<JsonObject>();
 

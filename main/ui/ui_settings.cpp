@@ -35,6 +35,7 @@
 #include "ui_beep.hpp"
 #include "ui_calibration.hpp"
 #include "ui_motion.hpp"
+#include "ui_pin.hpp"
 #include "ui_geometry.hpp"
 #include "ui_screen.hpp"
 #include "ui_style.hpp"
@@ -929,6 +930,157 @@ void ui_settings_touch_cal_keep(const struct touch_cal_s *cal)
 
     status_set(SETTINGS_TAB_TOUCH, "Calibration saved");
     BEEPER_EVENT_ACCEPT();
+}
+
+/* ------------------------------------------------------------- the PINs */
+
+static void pins_open(void);
+
+static void pins_close_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    BEEPER_EVENT_CANCEL();
+    overlay_close();
+}
+
+static void pin_changed(enum pin_set_result_e result, void *arg)
+{
+    enum pin_scope_e scope = (enum pin_scope_e)(uintptr_t)arg;
+
+    if (screen == NULL)
+        return;
+
+    pins_open();
+
+    if (result == PIN_SET_OK)
+    {
+        status_set(SETTINGS_TAB_DEVICE,
+                   (scope == PIN_SCOPE_ITEM) ? "Item PIN saved" : "System PIN saved");
+        BEEPER_EVENT_ACCEPT();
+    }
+    else
+    {
+        status_set(SETTINGS_TAB_DEVICE, "PIN not saved");
+        BEEPER_EVENT_ERROR();
+    }
+}
+
+static void pin_change_event(lv_event_t *e)
+{
+    void *scope = lv_event_get_user_data(e);
+
+    ui_pin_change((enum pin_scope_e)(uintptr_t)scope, pin_changed, scope);
+}
+
+static void pin_remove_confirm_event(lv_event_t *e)
+{
+    enum pin_scope_e scope = (enum pin_scope_e)(uintptr_t)lv_event_get_user_data(e);
+
+    pin_store_clear(scope);
+    pins_open();
+    status_set(SETTINGS_TAB_DEVICE,
+               (scope == PIN_SCOPE_ITEM) ? "Item PIN removed" : "System PIN removed");
+    BEEPER_EVENT_ACCEPT();
+}
+
+static void pin_remove_keep_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    BEEPER_EVENT_CANCEL();
+    pins_open();
+}
+
+/* Asked, because a removed PIN is a door left open, and the button for it sits
+ * a finger's width from Change. */
+static void pin_remove_event(lv_event_t *e)
+{
+    void     *scope = lv_event_get_user_data(e);
+    lv_obj_t *root = overlay_create();
+
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t *label = lv_label_create(root);
+
+    lv_label_set_text(label, ((enum pin_scope_e)(uintptr_t)scope == PIN_SCOPE_ITEM)
+                                 ? "Remove the Item PIN?"
+                                 : "Remove the System PIN?");
+
+    lv_obj_t *buttons = ui_plain_container(root);
+
+    lv_obj_set_size(buttons, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(buttons, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(buttons, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_add_event_cb(ui_themed_button(buttons, "Remove"), pin_remove_confirm_event,
+                        LV_EVENT_CLICKED, scope);
+    lv_obj_add_event_cb(ui_themed_button(buttons, "Keep"), pin_remove_keep_event,
+                        LV_EVENT_CLICKED, NULL);
+}
+
+/* One block per scope: what it protects, whether it is set, and what can be
+ * done about it. */
+static void pins_scope_create(lv_obj_t *parent, enum pin_scope_e scope)
+{
+    bool      set = pin_store_is_set(scope);
+    lv_obj_t *block = ui_plain_container(parent);
+
+    lv_obj_set_size(block, lv_pct(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(block, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(block, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(block, 6, 0);
+
+    lv_obj_t *label = lv_label_create(block);
+
+    lv_obj_set_flex_grow(label, 1);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_WRAP);
+
+    if (scope == PIN_SCOPE_ITEM)
+    {
+        /* With the count of tagged tiles on the page underneath, which is the
+         * one way to see from the panel whether the tag in openHAB took. */
+        lv_label_set_text_fmt(label, "Item PIN: %s\n%u tagged here", set ? "on" : "off",
+                              openhab_ui_pin_protected_count());
+    }
+    else
+    {
+        lv_label_set_text_fmt(label, "System PIN: %s", set ? "on" : "off");
+    }
+
+    lv_obj_add_event_cb(ui_themed_button(block, set ? "Change" : "Set"), pin_change_event,
+                        LV_EVENT_CLICKED, (void *)(uintptr_t)scope);
+
+    if (set == true)
+        lv_obj_add_event_cb(ui_themed_button(block, "Remove"), pin_remove_event,
+                            LV_EVENT_CLICKED, (void *)(uintptr_t)scope);
+}
+
+static void pins_open(void)
+{
+    lv_obj_t *root = overlay_create();
+
+    lv_obj_set_flex_flow(root, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(root, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER,
+                          LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_hor(root, 10, 0);
+
+    pins_scope_create(root, PIN_SCOPE_SYSTEM);
+    pins_scope_create(root, PIN_SCOPE_ITEM);
+
+    lv_obj_add_event_cb(ui_themed_button(root, "Close"), pins_close_event, LV_EVENT_CLICKED,
+                        NULL);
+}
+
+static void pins_event(lv_event_t *e)
+{
+    LV_UNUSED(e);
+
+    BEEPER_EVENT_LINK();
+    pins_open();
 }
 
 static void calibrate_event(lv_event_t *e)
@@ -3221,10 +3373,8 @@ static void back_bar_create(const char *title)
                 title, BAR_HEIGHT, back_event);
 }
 
-static void index_event(lv_event_t *e)
+static void index_go(uint8_t target)
 {
-    uint8_t target = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
-
     /* Arriving at a section is arriving at its first page -- the openHAB
      * manual page, the Icons catalogue's, the Systeminfo screen's, the Fonts
      * screen's and the paged sections' alike. Not in screen_show_target(),
@@ -3244,6 +3394,62 @@ static void index_event(lv_event_t *e)
      * device lands on the WLAN tab with nobody having touched anything. */
     BEEPER_EVENT_LINK();
     screen_show_target(target);
+}
+
+/* After the System PIN. The pad is on the top layer and a correct entry can
+ * arrive after the screen has gone -- a script's `settings` with no page
+ * closes it -- so the screen is asked for again rather than assumed. */
+static void index_go_unlocked(void *arg)
+{
+    if (screen == NULL)
+        return;
+
+    index_go((uint8_t)(uintptr_t)arg);
+}
+
+/* System is the one entry behind a PIN: everything under it configures the
+ * installation, and everything beside it -- Theme, Audio, Info -- is what
+ * somebody may walk up to the panel to change or look at. Gated here and
+ * only here, because every System section is reachable only through the
+ * System menu -- menus[] lists each section exactly once -- and the paths
+ * that bypass this handler are the programmatic ones that must: a pristine
+ * device landing on its WLAN page, and the simulator's `settings <page>`. */
+static void index_event(lv_event_t *e)
+{
+    uint8_t target = (uint8_t)(uintptr_t)lv_event_get_user_data(e);
+
+    if (target == MENU_SYSTEM)
+        ui_pin_guard(PIN_SCOPE_SYSTEM, index_go_unlocked, (void *)(uintptr_t)target);
+    else
+        index_go(target);
+}
+
+/* Whether a target is one the System PIN stands in front of. */
+static bool target_protected(uint8_t target)
+{
+    if (target == MENU_SYSTEM)
+        return true;
+
+    return (MENU_IS(target) == false) && (menu_of(target) == MENU_SYSTEM);
+}
+
+void ui_settings_leave_protected(void)
+{
+    /* Not under the calibration: it owns the overlay and is driven by taps,
+     * so a panel being calibrated is a panel somebody is using. */
+    if (screen == NULL || target_protected(current_tab) == false
+        || ui_calibration_is_open() == true)
+        return;
+
+    const char *restart_label = NULL;
+
+    /* Leaving commits, here as on every other way out of a page: what was
+     * typed before the panel went idle was typed by somebody who knew the
+     * PIN. */
+    page_leave(&restart_label);
+    openhab_manual = false;
+    screen_show_menu(MENU_ROOT);
+    restart_prompt(restart_label);
 }
 
 /* A menu: its entries, all visible at once, all comfortably bigger than a
@@ -3552,6 +3758,13 @@ static void screen_show_section(uint8_t tab)
         else if (tab == SETTINGS_TAB_WLAN)
         {
             lv_obj_add_event_cb(ui_themed_button(footer, "Scan"), scan_event,
+                                LV_EVENT_CLICKED, NULL);
+        }
+        else if (tab == SETTINGS_TAB_DEVICE)
+        {
+            /* Here because Device is behind the System PIN itself: whoever
+             * reaches this button has entered it, or there is none yet. */
+            lv_obj_add_event_cb(ui_themed_button(footer, "PINs"), pins_event,
                                 LV_EVENT_CLICKED, NULL);
         }
         else if (tab == SETTINGS_TAB_ICONS)

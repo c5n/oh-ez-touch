@@ -63,6 +63,7 @@ struct openhab_ui_tile_s
     const char   *label;
     const char   *state;
     enum ItemType type;
+    bool          pin; /* tagged for the Item PIN */
     int32_t       x;
     int32_t       y;
     int32_t       w;
@@ -74,6 +75,9 @@ struct openhab_ui_tile_s
  * agree with this file about the maximum. */
 size_t openhab_ui_tile_count(void);
 bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out);
+
+/* How many of those tiles carry the Item PIN's tag. */
+unsigned openhab_ui_pin_protected_count(void);
 
 /* Go back to the sitemap's home page, which is what the panel does when it is
  * left alone (main.cpp, on the activity timeout). Closes an open control,

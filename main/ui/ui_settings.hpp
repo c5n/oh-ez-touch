@@ -47,6 +47,11 @@ void ui_settings_rebuild(void);
  * provisioning happens while offline, which is the whole point. */
 void ui_settings_loop(void);
 
+/* Back to the root menu if a page behind the System PIN is showing, committing
+ * it the way any navigation away does. What ui_pin calls when an unlock lapses;
+ * nothing at all when the settings are closed or on an unprotected page. */
+void ui_settings_leave_protected(void);
+
 /* The screen's single overlay slot: full-screen, opaque and click-eating, the
  * one the keyboard and the restart confirmation are built in.
  *

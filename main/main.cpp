@@ -54,12 +54,15 @@
 #include "ui/ui_clock.hpp"
 #include "ui/ui_frame_probe.h"
 #include "ui/ui_messagebox.hpp"
+#include "ui/ui_pin.hpp"
 #include "ui/ui_screen.hpp"
 #include "ui/ui_settings.hpp"
 #include "ui/ui_style.hpp"
 #include "web/webui.hpp"
 
 #include "freertos/FreeRTOS.h"
+
+#include <stdlib.h>
 #include "freertos/task.h"
 
 #include "esp_event.h"
@@ -255,6 +258,12 @@ static void ohez_setup(void)
     if (kv != ESP_OK)
         ESP_LOGE(TAG, "no credential store: %s", esp_err_to_name(kv));
 
+    /* Read the PINs now, on this task and before the web interface starts:
+     * pin_store caches them on first use, and the first use must not be a
+     * web handler racing the LVGL task to fill that cache. */
+    for (int scope = 0; scope < PIN_SCOPE_COUNT; scope++)
+        pin_store_is_set((enum pin_scope_e)scope);
+
     if (config.setup() == false)
     {
         /* Keep going: loadConfig() below fills in the built-in defaults, so the
@@ -386,6 +395,23 @@ static void ohez_setup(void)
     }
 
 #if CONFIG_IDF_TARGET_LINUX
+    /* OHEZ_PIN_SYSTEM / OHEZ_PIN_ITEM: a PIN to start with, so the pad can be
+     * tried without first setting one by hand. Stored like any other -- the
+     * emulated flash keeps it for the next run -- and set System first, so an
+     * Item PIN equal to it is the one refused. */
+    for (int scope = 0; scope < PIN_SCOPE_COUNT; scope++)
+    {
+        char        name[24];
+        const char *pin;
+
+        snprintf(name, sizeof(name), "OHEZ_PIN_%s",
+                 (scope == PIN_SCOPE_SYSTEM) ? "SYSTEM" : "ITEM");
+        pin = getenv(name);
+
+        if (pin != NULL && pin_store_set((enum pin_scope_e)scope, pin) != PIN_SET_OK)
+            printf("main: %s=\"%s\" refused\r\n", name, pin);
+    }
+
     openhab_ui_open_item_from_env();
     ui_settings_open_from_env();
 #endif
@@ -478,6 +504,10 @@ static void ohez_loop(void)
      * it needs from the network -- the time -- is what it shows dashes for
      * until the network provides it. */
     ui_clock_loop();
+
+    /* After the clock, which takes the settings down as the panel dims: by
+     * then there is no System page left to leave, only the unlocks to drop. */
+    ui_pin_loop();
 
     wlan_loop();
     webui_loop();

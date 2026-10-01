@@ -13,6 +13,7 @@
 #include "items/item_screen.hpp"
 #include "ui_screen.hpp"
 #include "ui_motion.hpp"
+#include "ui_pin.hpp"
 #include "ui_style.hpp"
 #include "ui_widgets.hpp"
 
@@ -341,6 +342,7 @@ bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out)
     out->label = ctx->item->getLabel();
     out->state = ctx->item->getStateText();
     out->type  = ctx->item->getType();
+    out->pin   = ctx->item->isPinProtected();
 
     /* Coordinates as laid out, not as the grid solver computed them: a frame
      * is free to place a tile where it likes, and what a script needs is where
@@ -357,6 +359,17 @@ bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out)
     return true;
 }
 
+unsigned openhab_ui_pin_protected_count(void)
+{
+    unsigned count = 0;
+
+    for (size_t i = 0; i < openhab_ui_tile_count(); i++)
+        if (widget_context[i].item != nullptr && widget_context[i].item->isPinProtected())
+            count++;
+
+    return count;
+}
+
 uint8_t openhab_ui_signal_quality(int8_t rssi)
 {
     if (rssi < -100)
@@ -367,16 +380,10 @@ uint8_t openhab_ui_signal_quality(int8_t rssi)
         return 2 * (rssi + 100);
 }
 
-static void event_handler(lv_event_t *e)
+/* What a tap on a tile does, once whatever stands in front of it has let it
+ * through. */
+static void tile_activate(struct widget_context_s *ctx)
 {
-#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
-    printf("event_handler: LV_EVENT_CLICKED\r\n");
-#endif
-    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
-
-    if (ctx == nullptr || ctx->item == nullptr)
-        return;
-
     switch (ctx->item->getType())
     {
     case ItemType::type_string:
@@ -436,6 +443,63 @@ static void event_handler(lv_event_t *e)
             BEEPER_EVENT_ERROR();
         break;
     }
+}
+
+/* A tap held at the Item PIN, remembered by what it was a tap *on*.
+ *
+ * Entering a PIN takes seconds, and in those seconds the page underneath goes
+ * on living: a poll can bring a new page, a link elsewhere can be followed by
+ * a script, and a slot is reused for whatever item lands in it. So the slot
+ * alone is not enough to act on afterwards -- the item's two links are kept
+ * with it, and the tap goes through only if the slot still holds the same
+ * thing. One at a time, because the pad is modal. */
+static struct
+{
+    size_t slot;
+    char   link[STR_LINK_LEN];
+    char   page_link[STR_LINK_LEN];
+} pin_request;
+
+static void tile_activate_unlocked(void *arg)
+{
+    LV_UNUSED(arg);
+
+    struct widget_context_s *ctx = &widget_context[pin_request.slot];
+
+    if (ctx->container == NULL || ctx->item == nullptr
+        || strcmp(ctx->item->getLink(), pin_request.link) != 0
+        || strcmp(ctx->item->getPageLink(), pin_request.page_link) != 0)
+    {
+        BEEPER_EVENT_ERROR();
+        return;
+    }
+
+    tile_activate(ctx);
+}
+
+static void event_handler(lv_event_t *e)
+{
+#if CONFIG_OHEZ_DEBUG_OPENHAB_UI
+    printf("event_handler: LV_EVENT_CLICKED\r\n");
+#endif
+    struct widget_context_s *ctx = (struct widget_context_s *)lv_event_get_user_data(e);
+
+    if (ctx == nullptr || ctx->item == nullptr)
+        return;
+
+    /* Read-outs are left alone even when tagged: there is nothing a tap on
+     * one would do, and a PIN pad for nothing is a riddle. */
+    if (ctx->item->isPinProtected() == false || ctx->item->getType() == ItemType::type_string
+        || ctx->item->getType() == ItemType::type_number)
+    {
+        tile_activate(ctx);
+        return;
+    }
+
+    pin_request.slot = (size_t)(ctx - widget_context);
+    strlcpy(pin_request.link, ctx->item->getLink(), sizeof(pin_request.link));
+    strlcpy(pin_request.page_link, ctx->item->getPageLink(), sizeof(pin_request.page_link));
+    ui_pin_guard(PIN_SCOPE_ITEM, tile_activate_unlocked, NULL);
 }
 
 /* Show the mapping label that matches the item's current command. openHAB

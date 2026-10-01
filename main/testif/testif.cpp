@@ -76,6 +76,7 @@ static const struct testif_route_s routes[] = {
     { "nav",       testif_cmd_nav },
     { "settings",  testif_cmd_settings },
     { "calibrate", testif_cmd_calibrate },
+    { "pin",       testif_cmd_pin },
     { "shot",      testif_cmd_shot },
 };
 

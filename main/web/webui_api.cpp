@@ -20,6 +20,10 @@
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "version.h"
+#include "config/pin_store.h"
+#include "ui/ui_pin.hpp"
+
+#include <ArduinoJson.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,6 +195,48 @@ static void webui_api_handle_sound(webui_request_t *req)
     webui_send(req, (queued == true) ? 200 : 400, "application/json", body);
 }
 
+/* -------------------------------------------------------------------- PINs */
+
+/* Whether each PIN is set, and nothing more: the store holds no digits to
+ * report, and an unlock is a property of whoever is standing at the panel,
+ * not of the network. */
+static void webui_api_handle_pin_get(webui_request_t *req)
+{
+    char body[96];
+
+    snprintf(body, sizeof(body), "{\"system\":{\"set\":%s},\"item\":{\"set\":%s}}",
+             pin_store_is_set(PIN_SCOPE_SYSTEM) ? "true" : "false",
+             pin_store_is_set(PIN_SCOPE_ITEM) ? "true" : "false");
+    webui_send(req, 200, "application/json", body);
+}
+
+/* {"clear":"system"} or {"clear":"item"}: the way back from a forgotten PIN.
+ * There is no "set" -- a PIN chosen over the network is a PIN nobody at the
+ * panel was asked about, and the panel's own Device page is where one is
+ * set. Like everything else on this interface it is unauthenticated: the
+ * PINs keep the people at the panel out, not the network. */
+static void webui_api_handle_pin_post(webui_request_t *req)
+{
+    JsonDocument     doc;
+    enum pin_scope_e scope;
+
+    if (req->args == NULL || req->args_len == 0
+        || deserializeJson(doc, req->args, req->args_len) != DeserializationError::Ok
+        || pin_scope_from_name(doc["clear"].as<const char *>(), &scope) == false)
+    {
+        webui_send(req, 400, "application/json",
+                   "{\"error\":\"expected a JSON object with clear: system or item\"}");
+        return;
+    }
+
+    ui_pin_request_clear(scope);
+
+    char body[48];
+
+    snprintf(body, sizeof(body), "{\"cleared\":\"%s\"}", pin_scope_name(scope));
+    webui_send(req, 200, "application/json", body);
+}
+
 /* ------------------------------------------------------------------ routes */
 
 void webui_api_setup(Config *config)
@@ -202,4 +248,6 @@ void webui_api_setup(Config *config)
     webui_transport_route("/api/config", WEBUI_POST, webui_api_handle_config_post);
     webui_transport_route("/api/sound", WEBUI_POST, webui_api_handle_sound);
     webui_transport_route("/api/sounds", WEBUI_GET, webui_api_handle_sounds);
+    webui_transport_route("/api/pin", WEBUI_GET, webui_api_handle_pin_get);
+    webui_transport_route("/api/pin", WEBUI_POST, webui_api_handle_pin_post);
 }

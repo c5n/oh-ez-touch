@@ -74,6 +74,9 @@ private:
     size_t mapping_count = 0;
     char link[STR_LINK_LEN];
     char page_link[STR_LINK_LEN];
+    /* The item carries PIN_ITEM_TAG in openHAB: a tap on its tile asks for
+     * the Item PIN first. See ui_pin.hpp. */
+    bool pin_protected = false;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -122,6 +125,10 @@ public:
          * when the widget carries some: a Selection that arrives without them
          * offered the options of whatever last held the slot. */
         mapping_count = 0;
+        /* Like page_link: only ever set by a tag that is there, so a slot must
+         * not carry the last occupant's protection onto an untagged item --
+         * nor, worse, lose it the other way round. */
+        pin_protected = false;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -137,6 +144,9 @@ public:
     void setPageLink(const char * newlink) { strlcpy(page_link, newlink, sizeof(page_link)); }
     const char * getPageLink() { return page_link; }
     bool hasPageLink() { return (strlen(page_link) > 0); }
+
+    bool isPinProtected() const { return pin_protected; }
+    void setPinProtected(bool on) { pin_protected = on; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
