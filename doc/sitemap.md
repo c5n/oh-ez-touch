@@ -24,6 +24,9 @@ and value. Each field shows the colours it reaches with the other two held
 where they are, and the fields recolour as you drag. The new colour is sent
 when the finger lifts.
 
+An item with the tag `ohez-pin` asks for the Item PIN before its tile does
+anything. See [PINs](configuration.md#pins).
+
 ## Frames
 
 The panel draws no headings. A `Frame`'s items become tiles of the page, in

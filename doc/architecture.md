@@ -33,7 +33,8 @@ instead.
 ```
 main/                 main.cpp -- the entry point
 main/config/          the settings, and the one field table that both the
-                      panel's settings screen and the web form walk
+                      panel's settings screen and the web form walk; the
+                      PINs' arithmetic and their store
 main/ui/              the LVGL user interface: the openHAB page, the settings
                       screen, the styles, themes and motion
 main/ui/frames/       one per theme family: the chrome it draws around the
@@ -71,6 +72,48 @@ walk that table. Each row carries the name, the label, the kind, the default,
 the range or options, the storage place in `config.json` and a flag for
 "read at boot only". This is why the three front ends cannot drift apart.
 
+## PINs
+
+The two PINs ([configuration](configuration.md#pins)) are three layers, split
+so that the part a test can reach is the part that is arithmetic.
+
+- `main/config/pin_code.c` decides what a PIN is (4 to 8 digits), hashes it
+  with a salt, and counts wrong tries into a lockout on a clock the caller
+  passes in. It includes nothing but libc, and `test_pin_code.cpp` covers it.
+  The SHA-256 is its own: IDF 6.1 ships mbedtls 4, which no longer exports
+  `mbedtls_sha256()`, and the PSA API that replaced it is not in the host
+  build.
+- `main/config/pin_store.c` keeps one salted hash per scope in NVS through
+  `port_kv`, for the same reason the WLAN credentials are there: it survives
+  `idf.py flash` and OTA. It also keeps the PINs out of everything the
+  settings table feeds. It refuses a PIN equal to the other scope's.
+- `main/ui/ui_pin.cpp` is the pad and the gate. `ui_pin_guard(scope, then,
+  arg)` runs `then` at once when the scope has no PIN or is unlocked, and
+  otherwise puts the pad on `lv_layer_top()` and runs it after a correct
+  entry. Callers never ask whether a PIN is needed. A new protected thing is
+  one call.
+
+Two callers use the gate. The settings screen's `index_event()` sends the
+**System** entry through `PIN_SCOPE_SYSTEM`; every System section is reachable
+only from that menu, so this one check covers them all. The tile page's
+`event_handler()` sends any tile whose item carries the tag `ohez-pin` through
+`PIN_SCOPE_ITEM`, and the parser's JSON filter lets `item.tags` through for
+it. A tap held at the pad is remembered by the item's two links as well as by
+its slot. A page that changed underneath during the PIN entry drops the tap
+instead of acting on whatever now fills the slot.
+
+The programmatic entries do not go through the gate. These are the WLAN
+portal's automatic open, `OHEZ_SETTINGS`, `OHEZ_ITEM`, and the control
+interface's `settings` and `nav`.
+
+`ui_pin_loop()` drops every unlock when the backlight dims or after a minute
+without a touch. If the System scope was unlocked, it calls
+`ui_settings_leave_protected()`, which saves the open System page and returns
+to the settings menu. The web interface removes a PIN through
+`ui_pin_request_clear()`: an atomic bit that the next loop iteration acts on,
+because a web handler must not touch LVGL or race the LVGL task's reads of
+the store.
+
 ## The openHAB client task
 
 Generating the UI means asking openHAB for things: a sitemap page per
@@ -93,10 +136,11 @@ that a network exists. That is what lets the host tests cover the parser.
 
 The parser names the keys it wants and the rest is dropped at the parser
 rather than stored and stepped over. A page carries a good deal the panel has
-no use for -- widget ids, visibility flags, item categories, tags, group
-members, timestamps -- and storing it cost more than storing what is read: on
-the six-widget demo page, 5892 bytes of document against 3136 with the filter,
-188 allocations against 103. It also means a future openHAB adding fields
+no use for -- widget ids, visibility flags, item categories, group members,
+timestamps -- and storing it cost more than storing what is read: on the
+six-widget demo page, 5892 bytes of document against 3136 with the filter,
+188 allocations against 103. Item tags were in that list until the Item PIN;
+they are read now, and on most items they are an empty array. It also means a future openHAB adding fields
 costs the panel nothing. The price is that a key the parser reads has to be
 named in the filter too; one that is not reads as null.
 

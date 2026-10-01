@@ -205,6 +205,24 @@ step opens that tile's control. `5` opens the sixth tile of the home page.
 OHEZ_ITEM=0.4 OHEZ_THEME=lcars OHEZ_NIGHT=on ./build/linux/oh-ez-touch.elf
 ```
 
+`OHEZ_SETTINGS` and `OHEZ_ITEM` go straight to their target, past the System
+and Item PINs. They are programmatic entries, like the control interface's
+`settings` and `nav`.
+
+`OHEZ_PIN_SYSTEM` and `OHEZ_PIN_ITEM` set the two PINs at startup, so the
+keypad can be tried without first setting a PIN by hand:
+
+```bash
+OHEZ_OFFLINE=1 OHEZ_PIN_SYSTEM=1234 OHEZ_PIN_ITEM=5678 ./build/linux/oh-ez-touch.elf
+```
+
+Unlike the other overrides, these are not applied to memory alone. A PIN lives
+in NVS, which the simulator keeps in its emulated flash, so a PIN set this way
+is still set in later runs without the variable. Remove it from the Device
+page or with `tools/ohez_ctl.py pin system clear`. The offline fixture tags two
+tiles, **Living Room** and **All Lights**, with `ohez-pin`, so the Item PIN has
+something to protect. See [PINs](configuration.md#pins).
+
 Touching the status bar opens the settings screen in the simulator too. On
 the host there is no radio to configure, so the screen never opens on its own
 as it does on a new device.

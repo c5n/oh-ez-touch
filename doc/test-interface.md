@@ -72,6 +72,7 @@ tools/ohez_ctl.py swipe right                # a drag; the panel ignores it
 tools/ohez_ctl.py shot /tmp/panel.png --scale 2
 tools/ohez_ctl.py set theme lcars
 tools/ohez_ctl.py calibrate-run              # the whole touchscreen calibration
+tools/ohez_ctl.py pin-enter 1234             # type into the open PIN pad, then OK
 tools/ohez_ctl.py quit
 ```
 
@@ -160,6 +161,7 @@ press with no release in between would do nothing at all.
 | `calibrate targets` | `ok <x> <y> <x> <y> ...` -- where the four crosses are |
 | `calibrate step` | `ok <pressed> <total>` -- how many crosses have been counted |
 | `calibrate result` | `ok <was x4> <now x4> <worst_px> <residual_px>` |
+| `pin` | `ok {json}` -- the `pin` object of `screen`, below |
 | `shot` | `ok <url>` -- where the framebuffer is |
 
 ### Writing
@@ -170,6 +172,9 @@ press with no release in between would do nothing at all.
 | `nav <path>` | walk a dot-separated path of tile indices, as `OHEZ_ITEM` does |
 | `settings [<page>]` | open the settings screen on a page, or close it |
 | `calibrate` | start the touchscreen calibration, from the open settings screen |
+| `pin <system\|item> set <digits>` | store a PIN, as the Device page would |
+| `pin <system\|item> clear` | remove a PIN, as the web interface would |
+| `pin lock` | forget every unlock, as the panel does when it goes idle |
 | `quit` | answer, then exit(0) -- on a device there is no process to exit, so it restarts instead, and the answer is the part that never arrives |
 
 `set` takes the same names the web form posts (`config` with no argument lists
@@ -190,6 +195,14 @@ step waits for the page the one before it asked for -- so follow it with
 `mqtt`, `sensors`, `device`, `touch`, `time`, `theme`, `audio`, `info`) or a
 menu (`settings`, also spelled `index`, and `system`). With no argument it
 closes the screen, so a script can bracket a visit.
+
+`settings <page>` goes straight to the page, **past the System PIN**: like
+`OHEZ_SETTINGS` it is a programmatic entry, and a script that wants to test the
+PIN taps **System** instead. `nav` walks past the Item PIN for the same reason.
+Typing a PIN has no shortcut. `pin-enter` taps the keys at the rectangles the
+`pin` object reports, so the pad is exercised the way a finger would use it.
+`pin set` refuses a PIN that is not 4 to 8 digits, or that equals the other
+scope's PIN.
 
 `calibrate` needs the settings screen already open; it is refused otherwise,
 and refused again on a panel that has no calibration. `calibrate targets` is
@@ -236,14 +249,17 @@ measures is a model; `OHEZ_TOUCH_SKEW` is what gives it an error to find. See
     "state": "ready",
     "generation": 2,
     "tiles": [
-      { "i": 0, "label": "Living Room", "state": "", "type": "group",
+      { "i": 0, "label": "Living Room", "state": "", "type": "group", "pin": true,
         "x": 8, "y": 38, "w": 96, "h": 93 },
       { "i": 5, "label": "Hallway Dimmer", "state": "40.000000", "type": "slider",
-        "x": 216, "y": 139, "w": 96, "h": 93 }
+        "pin": false, "x": 216, "y": 139, "w": 96, "h": 93 }
     ]
   },
   "item": { "open": true, "type": "slider", "slot": 5 },
   "settings": { "open": false },
+  "pin": { "open": false,
+           "system": { "set": true, "unlocked": false },
+           "item": { "set": true, "unlocked": true } },
   "theme": { "family": "Material", "night": false },
   "backlight": { "brightness": 100, "dimmed": false, "inactive": false,
                  "phase": "awake" }
@@ -293,6 +309,15 @@ machine and fails on a slow one. `tools/ohez_ctl.py wait-page` is that loop.
 `number`, `string`, `setpoint`, `slider`, `selection`, `colorpicker`, `switch`,
 `rollershutter` or `player`. A `switch` toggles in place when tapped; most of
 the rest open a screen; the link types navigate.
+
+`tiles[].pin` is true when the tile's item has the `ohez-pin` tag, so a tap on
+it asks for the Item PIN first (read-only tiles never ask).
+
+`pin` describes the two PINs: whether each is set and whether it is currently
+unlocked. While the pad is up, `pin.open` is true, `pin.scope` says which PIN it
+wants, and `pin.keys` gives every key's rectangle as `[x, y, w, h]`: `"0"` to
+`"9"`, `"b"` for backspace, `"k"` for OK and `"x"` for the cancel bar. The pad
+is drawn over whatever `screen` names, so `screen` itself does not change.
 
 `config` reports a `SETTINGS_F_SECRET` field -- the MQTT password -- as `***`,
 for the same reason the MQTT client will not publish it.

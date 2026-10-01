@@ -51,12 +51,12 @@ applies, **Test** on the Audio page) is in a bar along the bottom.
 | --- | --- |
 | Theme (eye symbol) | Theme family, the night variant and its schedule, the backlight levels and the dim timeout |
 | Audio (speaker symbol) | The beeper: an on/off switch, a volume slider, and a **Test** button that plays the theme's boot chime at the level being edited |
-| System (gear symbol) | A menu of the seven sections below |
+| System (gear symbol) | A menu of the seven sections below. Behind the System PIN, if one is set: see [PINs](#pins). |
 | &nbsp;&nbsp;WLAN | Network and password, plus a **Scan** button that lists the access points in range with their signal strength. Press one to fill in its name. Leaving the page stores the credentials and reconnects. |
 | &nbsp;&nbsp;openHAB (house symbol) | Two lists: the openHAB servers on the network, and the sitemaps of the selected server. Press one to select it. **Scan** asks again. **Manual** opens a page with host, port and sitemap as fields. |
 | &nbsp;&nbsp;MQTT (upload symbol) | Broker, port, credentials, and what to publish. See [MQTT](mqtt.md). |
 | &nbsp;&nbsp;Sensors (location symbol) | The BME280 rows, and the BLE beacon scanner. |
-| &nbsp;&nbsp;Device (pencil symbol) | The hostname. It is also the name of the setup access point. |
+| &nbsp;&nbsp;Device (pencil symbol) | The hostname. It is also the name of the setup access point. **PINs** in the bottom bar sets, changes and removes the two PINs. |
 | &nbsp;&nbsp;Touch (keyboard symbol) | The four touchscreen calibration numbers, and a **Calibrate** button. See [Calibrating the touchscreen](#calibrating-the-touchscreen). |
 | &nbsp;&nbsp;Time (sync symbol) | The NTP host, the GMT offset and daylight saving. |
 | Info (list symbol) | The system information, one topic per page -- the firmware, the network addresses, the radio link, the sensors and relays -- turned by the arrows in the bottom bar. |
@@ -76,6 +76,63 @@ the back bar, by opening another section, or by closing the screen.
 If a changed setting is one of the few that are only read at boot (the
 hostname, the BME280 and BLE on/off, the orientation), the panel asks
 whether to restart once it has left the page.
+
+## PINs
+
+The panel has two PINs, and both are optional. Neither is set on a new device.
+
+| PIN | What it protects |
+| --- | --- |
+| System PIN | The **System** entry of the settings screen, and so WLAN, openHAB, MQTT, Sensors, Device, Touch and Time. Theme, Audio and Info stay open. |
+| Item PIN | Sitemap tiles whose openHAB item has the tag `ohez-pin` |
+
+The two are separate on purpose. Someone who may switch a protected light
+does not have to be someone who may reconfigure the panel. A PIN is 4 to 8
+digits. The panel will not set one PIN to the other's value, because then
+knowing one would mean knowing both.
+
+**Setting them.** Open System › Device and press **PINs** in the bottom
+bar. Each PIN has **Set**, or **Change** and **Remove** once it exists. A new
+PIN is typed twice. The Item PIN's line also says how many tiles on the page
+under the settings carry the tag, which is a quick way to check that the tag
+in openHAB took effect.
+
+**Using them.** A tap on something protected brings up a keypad. After the
+correct PIN, the tap goes through. The PIN then stays unlocked until the
+panel goes idle: the backlight dims, or a minute passes without a touch,
+whichever comes first. A System page that is open at that moment goes back
+to the settings menu, and its changes are saved, the same as leaving any
+page. The two PINs unlock separately: the Item PIN opens tagged tiles and
+nothing else.
+
+Five wrong entries lock the keypad for 30 seconds. Each further five
+doubles the wait, up to five minutes. The count lives in memory, so a
+restart resets it.
+
+**Protecting an item.** Add the tag in openHAB, for example in a `.items`
+file:
+
+```
+Switch Garage_Door "Garage door" ["ohez-pin"]
+```
+
+The tag is exact and case-sensitive. It protects whatever a tap on the tile
+does: a switch's toggle, a slider's or colour picker's control screen, and,
+on a Group or a Text widget with an item, the sub-page it opens. A plain
+`Text label="..." { ... }` sub-page has no item, so it cannot carry a tag.
+Read-only tiles (numbers and strings) are never gated, because a tap on
+them does nothing.
+
+**Forgot a PIN?** Remove it from the web interface: the `/` page has a
+**Remove System PIN** or **Remove Item PIN** button while a PIN is set, and
+`POST /api/pin` does the same (see [REST API](#rest-api)). The PINs are
+stored in NVS as salted SHA-256 hashes, never as digits. They survive a
+firmware flash and an update, and they never appear in `/api/config`, MQTT
+or the settings file.
+
+> **NOTE:** The PINs keep people at the panel out, not the network. The web
+> interface is unauthenticated (see the warning under
+> [REST API](#rest-api)), and anyone who can reach it can remove a PIN.
 
 ## Calibrating the touchscreen
 
@@ -141,6 +198,7 @@ restart.
 | `/` | Status, the WLAN section and all settings |
 | `/save` | Stores the settings and redirects back to `/` |
 | `/wifi` | Stores WLAN credentials and reconnects |
+| `/pin/clear` | Removes a PIN (`scope=system` or `scope=item`) and redirects back to `/` |
 | `/restart` | Reboots the device |
 | `/update` | Firmware upload, also used by `tools/batchupdate.py` |
 
@@ -156,6 +214,8 @@ Since 0.91 there is also a REST API. It is meant for tooling. The
 | `POST /api/config` | A JSON object of changed settings. Absent fields are untouched. One rejected value rolls the whole request back. |
 | `GET /api/sounds` | The sound vocabulary of the theme in force. |
 | `POST /api/sound` | `{"name":"door_chime","force":true}` plays a sound. `force` plays it past the beeper mute, for locating a panel. |
+| `GET /api/pin` | `{"system":{"set":true},"item":{"set":false}}`: whether each PIN is set. Never the PIN. |
+| `POST /api/pin` | `{"clear":"system"}` or `{"clear":"item"}` removes that PIN. There is no way to set one over the network; that is done at the panel. |
 
 > **WARNING:** None of these routes is authenticated. The setup access point
 > is open. Anyone who can reach the device can reconfigure it or flash it.
