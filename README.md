@@ -10,6 +10,7 @@ on the server.
 ## Features
 
 - Dynamic user interface from an openHAB sitemap
+- Item states pushed by openHAB as they change, with polling as the fallback
 - Clock screen when idle: the time and three items of your choice, in your
   own day and night colours, faded in and out through black
 - Four themes: Material, LCARS, JARVIS, Classic

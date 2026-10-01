@@ -4,6 +4,7 @@
 #include "icons/icon_set.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
+#include "openhab/openhab_events.hpp"
 #include "openhab/openhab_sitemaps.hpp"
 #include "ui_messagebox.hpp"
 #include "ui_beep.hpp"
@@ -38,6 +39,20 @@
 
 #ifndef ITEM_UPDATE_INTERVAL
 #define ITEM_UPDATE_INTERVAL 5000
+#endif
+
+/* The poll while openHAB is pushing state changes. Not off: an event the
+ * stream lost without noticing -- nothing is replayed after a reconnect, and a
+ * reconnect is not always seen as one -- is put right within this long. */
+#ifndef ITEM_UPDATE_INTERVAL_STREAMING
+#define ITEM_UPDATE_INTERVAL_STREAMING 60000
+#endif
+
+/* How often the set of items on screen is offered to the event stream. It only
+ * changes with a page or the clock screen, and an unchanged set costs a
+ * comparison, so this is about not doing it every few milliseconds. */
+#ifndef EVENTS_SUBSCRIBE_INTERVAL
+#define EVENTS_SUBSCRIBE_INTERVAL 500
 #endif
 
 #ifndef GET_SITEMAP_RETRY_INTERVAL
@@ -180,7 +195,8 @@ static void widget_icon_request(size_t slot);
  *
  * Fire and forget, as it always effectively was: publish()'s return value was
  * ignored at all five call sites, and the tile's own state has already been
- * set locally -- the poll that follows is what reconciles it with the server.
+ * set locally -- the state openHAB sends back, pushed or polled, is what
+ * reconciles it with the server.
  */
 static void item_publish(struct widget_context_s *ctx)
 {
@@ -191,7 +207,9 @@ static void item_publish(struct widget_context_s *ctx)
      * tiles with an icon and a state outstanding is exactly the queue's depth.
      * The tile has already been flipped locally, so the tap looks delivered
      * and the next poll quietly puts it back -- a light that did not come on
-     * and nothing anywhere saying why.
+     * and nothing anywhere saying why. No event comes to do it, since nothing
+     * changed on the server, so the tap itself schedules that poll: see
+     * refresh_request in openhab_ui_loop().
      *
      * Counted and said. There is nothing better to do with it from here: a tap
      * is not worth queueing behind a five second socket read, and re-flipping
@@ -205,6 +223,12 @@ static void item_publish(struct widget_context_s *ctx)
 /* show() pairs widget_context[i] with sitemap.getItem(i), so there must not be
  * more widgets than the sitemap holds items. */
 static_assert(WIDGET_COUNT_MAX <= ITEM_COUNT_MAX, "WIDGET_COUNT_MAX exceeds ITEM_COUNT_MAX");
+
+/* Every polled slot is also listened for, and a pushed state is as wide as a
+ * polled one. */
+static_assert(WIDGET_SLOT_COUNT <= OPENHAB_EVENTS_ITEM_MAX, "the event stream cannot listen for every slot");
+static_assert(OPENHAB_EVENTS_VALUE_LEN == STR_STATE_TEXT_LEN, "an event value is not an item state wide");
+static_assert(STR_WEBSITE_LEN <= OPENHAB_EVENTS_WEBSITE_LEN, "the event stream cannot hold the website");
 
 /* Where the tile page is in the cycle of asking for a sitemap and getting one.
  *
@@ -1765,6 +1789,127 @@ static void page_result_apply(struct openhab_result_s *res)
     statistics.sitemap_fail_cnt++;
 }
 
+/* A state from openHAB, polled or pushed, onto slot `slot`. */
+static void apply_item_state(size_t slot, const char *text, size_t len)
+{
+    struct widget_context_s *wctx = &widget_context[slot];
+
+    if (wctx->item->applyState(text, len) > 0)
+    {
+        // item value changed
+        update_state_widget(wctx);
+
+        /* And the control looking at it, if one is open. The old windows
+         * never followed the server: a dimmer changed from a phone left a
+         * stale number on the glass until the window was closed. */
+        if (slot < WIDGET_COUNT_MAX)
+            item_screen_refresh(slot);
+
+        widget_icon_request(slot);
+    }
+}
+
+/* Whether slot `i` is one the loop polls: an item with a state of its own,
+ * and for a clock slot, one the clock screen is showing. */
+static bool slot_is_polled(size_t i)
+{
+    Item *item = widget_context[i].item;
+
+    if (item == NULL)
+        return false;
+
+    /* A clock item is polled only while the clock screen shows it: three more
+     * requests every five seconds for readings nobody is looking at would be
+     * load on the server for nothing. The attach zeroes the timestamp, so the
+     * first poll goes out at once. */
+    if (i >= WIDGET_COUNT_MAX && widget_context[i].state_widget == NULL)
+        return false;
+
+    /* Without an item link there is nothing to poll -- link and group widgets
+     * often carry only a page link. Requesting "/state" then fails every time
+     * and would drive the error statistics below into a reboot. */
+    return (   (item->getType() != ItemType::type_unknown)
+            && (item->getType() != ItemType::type_link)
+            && (item->getType() != ItemType::type_parent_link)
+            && (item->hasLink() == true));
+}
+
+/* Tell the event stream which items are on screen: the polled ones, exactly.
+ * openhab_events_subscribe() ignores a set it already has. */
+static void events_subscribe_if_due(void)
+{
+    static uint64_t next_timestamp;
+
+    if (port_millis() < next_timestamp)
+        return;
+
+    next_timestamp = port_millis() + EVENTS_SUBSCRIBE_INTERVAL;
+
+    /* Mid page fetch the slots still hold the old page; keep listening to it
+     * until the new one is in. */
+    if (page_state != PAGE_READY)
+        return;
+
+    static struct openhab_events_subscription_s sub;
+
+    sub.count = 0;
+    strlcpy(sub.website, current_website, sizeof(sub.website));
+
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT && sub.count < OPENHAB_EVENTS_ITEM_MAX; ++i)
+    {
+        if (slot_is_polled(i) == false)
+            continue;
+
+        if (widget_context[i].item->name(sub.item[sub.count].name,
+                                         sizeof(sub.item[sub.count].name)) == false)
+            continue;
+
+        /* A Switch and a Selection on the same item are one topic. */
+        bool listed = false;
+
+        for (size_t j = 0; j < sub.count && listed == false; ++j)
+            listed = (strcmp(sub.item[j].name, sub.item[sub.count].name) == 0);
+
+        if (listed == true)
+            continue;
+
+        sub.item[sub.count].group = (widget_context[i].item->getType() == ItemType::type_group);
+        sub.count++;
+    }
+
+    openhab_events_subscribe(&sub);
+}
+
+/* Take one pushed state change and apply it to every slot showing that item.
+ *
+ * Matched by name, not by slot or generation: the stream carries neither, and
+ * needs neither -- a state is the item's, whichever page asked for it. A
+ * change for an item no longer on screen simply matches nothing. One per call,
+ * for the reason results_apply_one() gives. */
+static void events_apply_one(void)
+{
+    struct openhab_event_s ev;
+
+    if (openhab_events_poll(&ev) == false)
+        return;
+
+    if (page_state != PAGE_READY)
+        return;
+
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
+    {
+        char name[OPENHAB_EVENT_NAME_LEN];
+
+        if (   slot_is_polled(i) == false
+            || widget_context[i].item->name(name, sizeof(name)) == false
+            || strcmp(name, ev.name) != 0)
+            continue;
+
+        statistics.update_success_cnt++;
+        apply_item_state(i, ev.value, strlen(ev.value));
+    }
+}
+
 /* Take one finished request off the client task's queue and act on it.
  *
  * One, not all of them. This runs every few milliseconds, so a page's worth of
@@ -1843,19 +1988,7 @@ static void results_apply_one(void)
         if (res.payload == NULL || wctx->item == NULL)
             break;
 
-        if (wctx->item->applyState(res.payload, res.payload_len) > 0)
-        {
-            // item value changed
-            update_state_widget(wctx);
-
-            /* And the control looking at it, if one is open. The old windows
-             * never followed the server: a dimmer changed from a phone left a
-             * stale number on the glass until the window was closed. */
-            if (res.slot < WIDGET_COUNT_MAX)
-                item_screen_refresh(res.slot);
-
-            widget_icon_request(res.slot);
-        }
+        apply_item_state(res.slot, res.payload, res.payload_len);
         break;
     }
 
@@ -1888,6 +2021,8 @@ void openhab_ui_loop(void)
     openhab_ui_messagebox.loop();
 
     results_apply_one();
+    events_apply_one();
+    events_subscribe_if_due();
     page_submit_if_due();
     page_timeout_check();
 
@@ -1898,31 +2033,37 @@ void openhab_ui_loop(void)
 
     if (page_state == PAGE_READY)
     {
+        bool resync = openhab_events_take_resync();
+        uint64_t interval = openhab_events_streaming() ? ITEM_UPDATE_INTERVAL_STREAMING
+                                                       : ITEM_UPDATE_INTERVAL;
+
         for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
         {
-            if (widget_context[i].item == NULL)
-                continue;
-
-            /* A clock item is polled only while the clock screen shows it:
-             * three more requests every five seconds for readings nobody is
-             * looking at would be load on the server for nothing. The attach
-             * zeroes the timestamp, so the first poll goes out at once. */
-            if (i >= WIDGET_COUNT_MAX && widget_context[i].state_widget == NULL)
-                continue;
-
-            /* Without an item link there is nothing to poll -- link and group
-             * widgets often carry only a page link. Requesting "/state" then
-             * fails every time and would drive the error statistics below into
-             * a reboot. */
-            if (   (widget_context[i].item->getType() != ItemType::type_unknown)
-                && (widget_context[i].item->getType() != ItemType::type_link)
-                && (widget_context[i].item->getType() != ItemType::type_parent_link)
-                && (widget_context[i].item->hasLink() == true))
+            if (slot_is_polled(i) == true)
             {
+                /* The stream just (re)connected, or dropped an event: whatever
+                 * changed before now went unseen, so every tile asks once.
+                 *
+                 * One interval ago rather than 0, which is only "due" once the
+                 * panel has been up for longer than the interval -- a minute,
+                 * while streaming. Unsigned, so this wraps the same way the
+                 * comparison below does. */
+                if (resync == true)
+                    widget_context[i].update_timestamp = port_millis() - interval;
+
                 if (widget_context[i].refresh_request == true)
                 {
-                    // update widget from local state
-                    widget_context[i].update_timestamp = port_millis();
+                    /* Update the widget from local state, and check it against
+                     * openHAB in ITEM_UPDATE_INTERVAL, whatever the interval is
+                     * now. A command that was delivered comes back as an event
+                     * and makes the check a no-op; one that was dropped from a
+                     * full queue, or that openHAB refused, changes nothing on
+                     * the server, so no event comes to undo the tile -- and
+                     * with the stream up the next regular poll is a minute
+                     * away. Unsigned, so this wraps the way the comparison
+                     * below does. */
+                    widget_context[i].update_timestamp =
+                        port_millis() - (interval - ITEM_UPDATE_INTERVAL);
                     widget_context[i].refresh_request = false;
                     update_state_widget(&widget_context[i]);
                     widget_icon_request(i);
@@ -1930,7 +2071,7 @@ void openhab_ui_loop(void)
                 }
 
                 if (   widget_context[i].state_pending == false
-                    && port_millis() - widget_context[i].update_timestamp >= ITEM_UPDATE_INTERVAL)
+                    && port_millis() - widget_context[i].update_timestamp >= interval)
                 {
                     // ask openhab for the current remote state
                     char url[STR_URL_LEN];

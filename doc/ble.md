@@ -61,7 +61,7 @@ With **Active scan (request scan responses)** on, the panel asks scannable
 advertisers for their response, and the name and whatever else the response
 carries is merged onto the entry the advertise packet built. The ask costs a
 little transmit airtime per scannable advertiser per window, which the
-WiFi/Bluetooth coexistence arbiter takes out of the openHAB polling's share —
+WiFi/Bluetooth coexistence arbiter takes out of the openHAB traffic's share —
 hence off by default. The setting is live: it is read at the start of each
 scan window, so a change takes effect on the next one.
 
@@ -109,7 +109,7 @@ The central role stays compiled: removing it pulls a symbol the link still
 references, and the role costs nothing at runtime.
 
 The radio is shared with WiFi. Software coexistence interleaves them. Neither
-stops working, but a scan takes airtime from the openHAB polling and the web
+stops working, but a scan takes airtime from the openHAB traffic and the web
 interface while it runs. That is why the scan is a window every thirty
 seconds, not a continuous scan. A beacon advertises several times a second.
 Five seconds is many reports from everything in range.

@@ -110,6 +110,11 @@
 # test_backlight_control.cpp supplies that and port_millis() as doubles -- a
 # clock the test moves by hand.
 #
+# openhab/openhab_event_parse.cpp joined them with the event stream, split the
+# way the connector was: the task in openhab_events.cpp owns a socket, and what
+# came out is the line splitter and the reading of one event -- ArduinoJson and
+# libc. It decides which tile a pushed state lands on, and what state.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_backlight_control.cpp"
@@ -118,6 +123,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_ble_beacon.cpp"
                             "test_config_fields.cpp"
                             "test_config_file.cpp"
+                            "test_event_parse.cpp"
                             "test_frame_stats.cpp"
                             "test_icon_set.cpp"
                             "test_item_setters.cpp"
@@ -150,6 +156,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/port_storage_stdio.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_event_parse.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_ntp.c"

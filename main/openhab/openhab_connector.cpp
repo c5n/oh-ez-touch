@@ -251,6 +251,16 @@ bool Item::stateUrl(char *out, size_t out_size) const
     return (len > 0 && (size_t)len < out_size);
 }
 
+bool Item::name(char *out, size_t out_size) const
+{
+    const char *slash = strrchr(link, '/');
+
+    if (slash == NULL || slash[1] == '\0')
+        return false;
+
+    return strlcpy(out, slash + 1, out_size) < out_size;
+}
+
 bool Item::iconUrl(const char *website, char *out, size_t out_size) const
 {
     /* No icon name is not a failure to report anywhere -- plenty of widgets

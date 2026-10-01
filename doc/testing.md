@@ -85,6 +85,15 @@ sink, so both can be tested on the host.
   run even though a panel ships one engine: the unselected engine is the one
   nobody would notice going stale.
 
+- **test_event_parse**: the event stream's reader in
+  `main/openhab/openhab_event_parse.cpp`. The line splitter gets `data:` lines
+  split across reads, CRLF endings and a line too long to keep. The event
+  parser gets what openHAB 5 sends on `/rest/events`: a state change, a
+  group's change (named by the group), a quantity with `°` both raw and
+  `\u`-escaped, `NULL` and `UNDEF`, the openHAB 2 `smarthome/` root, the
+  keepalive, events that are not state changes, malformed input and an
+  over-long value.
+
 ## Testing against a real openHAB
 
 The simulator's compiled-in fixtures draw a screen without a server. They

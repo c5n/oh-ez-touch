@@ -110,8 +110,10 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
   sub-page and the panel's `type_link`.
 - **A `Group` widget carries both**: its group item, with `members`,
   `groupType` and `function`, *and* a `linkedPage` to a member page openHAB
-  generates. The group's state is real and aggregated, so the tile is polled
-  like any other.
+  generates. The group's state is real and aggregated, so the tile is updated
+  like any other. Its changes arrive on the event stream as
+  `GroupItemStateChangedEvent`, on `items/<group>/<member>/statechanged`, which
+  is why the panel subscribes to that topic as well for a group.
 - **A Player arrives with mappings openHAB wrote itself** -- PREVIOUS, PAUSE,
   PLAY, NEXT -- from a bare `Default item=...` line. The item's type has to win
   over the presence of mappings or the tile becomes a selection.
@@ -191,9 +193,10 @@ bug rather than a fixture artefact.
    tile; a twelve-entry Selection lists ten. Nothing on screen says anything was
    dropped.
 6. **The sitemap is fetched once and never re-polled.** Only item states are
-   polled afterwards, so a sitemap edited on the server does not reach the panel
-   until it navigates or reboots -- and a server that goes away *after* the
-   first load is invisible: every poll fails silently, `page.state` stays
+   updated afterwards -- pushed over `/rest/events`, polled while that stream
+   is down -- so a sitemap edited on the server does not reach the panel until
+   it navigates or reboots. A server that goes away *after* the first load is
+   invisible: the stream reconnects quietly, every poll fails silently, `page.state` stays
    `ready`, and no banner appears. `SITEMAP ACCESS FAILED` only fires on a
    *page* fetch.
 

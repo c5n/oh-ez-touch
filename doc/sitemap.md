@@ -50,7 +50,7 @@ sitemap home label="Home"
 ```
 
 - These items are not tiles. They do not count against the six.
-- They are polled only while the clock screen is up.
+- They are listened for, and polled, only while the clock screen is up.
 - The label is compared without its `[...]` part, and case matters.
 - A clock frame on a sub page is an ordinary Frame. The panel always goes back
   to the home page when it dims, so that is the only page the clock reads.

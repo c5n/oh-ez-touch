@@ -174,8 +174,46 @@ static void test_a_state_with_a_space_is_not_encoded(void)
     TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/text?state=Hello World&format=png", url);
 }
 
+/* What the event stream knows an item by. */
+static void test_name(void)
+{
+    Item item;
+    char name[64];
+
+    item.cleanItem();
+    item.setLink(WEBSITE "/rest/items/Light_Hallway");
+
+    TEST_ASSERT_TRUE(item.name(name, sizeof(name)));
+    TEST_ASSERT_EQUAL_STRING("Light_Hallway", name);
+}
+
+static void test_name_without_a_link(void)
+{
+    Item item;
+    char name[64];
+
+    item.cleanItem();
+
+    TEST_ASSERT_FALSE(item.name(name, sizeof(name)));
+}
+
+/* Refused rather than cut short: a truncated name would be somebody else's. */
+static void test_name_that_does_not_fit(void)
+{
+    Item item;
+    char name[8];
+
+    item.cleanItem();
+    item.setLink(WEBSITE "/rest/items/Light_Hallway");
+
+    TEST_ASSERT_FALSE(item.name(name, sizeof(name)));
+}
+
 void test_item_urls_run(void)
 {
+    RUN_TEST(test_name);
+    RUN_TEST(test_name_without_a_link);
+    RUN_TEST(test_name_that_does_not_fit);
     RUN_TEST(test_state_url);
     RUN_TEST(test_state_url_without_a_link);
     RUN_TEST(test_state_url_that_does_not_fit);

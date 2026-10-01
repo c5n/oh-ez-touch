@@ -325,6 +325,14 @@ asks the selected server what it serves (`GET /rest/sitemaps`). The field
 offers the sitemaps as a drop-down list. The panel holds twelve sitemaps and
 says so when there are more.
 
+Item states reach the panel without polling. The panel keeps
+`GET /rest/events` open for the items on screen, and openHAB sends each change
+as it happens. The panel asks for no token, so that endpoint, like the sitemap
+and the item states, has to be open to an anonymous client. That is openHAB's
+default ("implicit user role"). While the stream is unavailable the panel
+polls every tile every five seconds instead. Nothing has to be configured
+either way.
+
 On the panel the sitemap list is fetched from the host and port *as they are
 being edited*. The web form fetches from the saved endpoint. There the order
 is: pick a server, **Save**, then pick a sitemap from the reloaded page.

@@ -110,6 +110,8 @@ set(OHEZ_APP_SRCS
 
     "openhab/openhab_client.cpp"
     "openhab/openhab_discover.cpp"
+    "openhab/openhab_event_parse.cpp"
+    "openhab/openhab_events.cpp"
     "openhab/openhab_connector.cpp"
     "openhab/openhab_http.cpp"
     "openhab/openhab_sitemaps.cpp"

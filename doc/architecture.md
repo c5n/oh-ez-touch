@@ -74,8 +74,8 @@ the range or options, the storage place in `config.json` and a flag for
 ## The openHAB client task
 
 Generating the UI means asking openHAB for things: a sitemap page per
-navigation level, an icon per tile, and an item state per tile every five
-seconds.
+navigation level, an icon per tile, and an item state per tile whenever it
+changes -- see "The event stream" below.
 
 All requests wait on a task of their own
 (`main/openhab/openhab_client.cpp`). The UI submits a URL and carries on
@@ -99,6 +99,31 @@ the six-widget demo page, 5892 bytes of document against 3136 with the filter,
 188 allocations against 103. It also means a future openHAB adding fields
 costs the panel nothing. The price is that a key the parser reads has to be
 named in the filter too; one that is not reads as null.
+
+### The event stream
+
+Item states are pushed, not polled. `main/openhab/openhab_events.cpp` keeps
+`GET /rest/events?topics=*/items/<name>/statechanged,...` open on a task and
+an `esp_http_client` handle of its own: a stream never finishes, so on the
+worker it would hold up every page, icon and command behind it. The topic
+list is the items on screen, tiles and clock items, and the UI offers it every
+half second; an unchanged list costs a comparison, a changed one a reconnect.
+
+Each event's `value` is the raw state `/rest/items/<name>/state` answers, so a
+pushed state takes the same path as a polled one: `Item::applyState()`, the
+tile, the open item control, the icon. The parsing is
+`main/openhab/openhab_event_parse.cpp`, which has no socket in it and is
+covered by the host tests.
+
+Polling stays, as the fallback. While the stream is down -- openHAB
+restarting, the link coming back, a server without the endpoint -- every tile
+is polled every five seconds as before. While it is up, once a minute, and
+five seconds after a tap changed it: a command that was dropped or refused
+changes nothing on the server, so no event would put the tile back. Nothing
+is replayed after a reconnect, so every connect, and every event dropped for
+want of queue room, polls every tile once at once. openHAB 3.4 and later send a
+keepalive every ten seconds; thirty seconds without a byte counts as a dead
+stream.
 
 Two more requests share the worker:
 
@@ -252,11 +277,11 @@ the finger never reaches the page underneath.
 
 The clock screen's three items are the home page's clock frame (see
 [sitemaps](sitemap.md#the-clock-frame)). They live in `widget_context[]`
-slots 6 to 8, past the tiles. That way they are polled, answered and given
-icons by the same code as the tiles, keyed on the same slot and page
+slots 6 to 8, past the tiles. That way they are subscribed to, polled, answered
+and given icons by the same code as the tiles, keyed on the same slot and page
 generation. They have no tile. The clock screen lends them its labels and
-image with `openhab_ui_clock_attach()` while it is up, and polling is skipped
-while nothing is attached.
+image with `openhab_ui_clock_attach()` while it is up. While nothing is
+attached they are neither polled nor in the event stream's topic list.
 
 **A frame per theme family.** `main/ui/frames/` is where a theme stops being
 a palette. Each family builds its own chrome and answers `content_area()`

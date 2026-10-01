@@ -9,6 +9,8 @@
 #include <atomic>
 #include <string.h>
 
+#include "port/port_sys.h"
+
 #include "esp_http_client.h"
 #include "esp_log.h"
 
@@ -36,6 +38,17 @@ static esp_http_client_handle_t session;
  * needs one: a request that fails on a connection it did not just open is the
  * one kind of failure a retry fixes. */
 static bool session_connected;
+
+/* When the open connection was last used, and how long it is trusted for.
+ *
+ * openHAB's Jetty closes a keep-alive connection that has been idle for thirty
+ * seconds. While every tile was polled every five, none ever got that old; with
+ * the event stream carrying the changes, the safety poll comes once a minute
+ * and found the connection closed every time -- one error in the log and one
+ * retry per minute, for a hang-up that was known in advance. */
+#define SESSION_IDLE_MAX_MS 20000
+
+static uint64_t session_last_used;
 
 /* The "scheme://host:port" the open connection goes to. */
 static char session_origin[STR_AUTHORITY_LEN];
@@ -144,6 +157,8 @@ static bool session_prepare(const char *url, esp_http_client_method_t method)
         ESP_LOGD(TAG, "dropping the connection: the link changed under it");
         session_disconnect();
     }
+
+    session_last_used = port_millis();
 
     if (url_origin(url, origin, sizeof(origin)) == false)
     {
@@ -362,6 +377,9 @@ ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool trunc
      * a connection opened for it has failed for a reason that trying again
      * immediately will not change -- and doubling a five second timeout for an
      * unreachable server is exactly what the panel does not need. */
+    if (session_connected == true && port_millis() - session_last_used > SESSION_IDLE_MAX_MS)
+        session_disconnect();
+
     bool reused = session_connected;
     ssize_t read = http_get_attempt(url, buf, buf_size, truncate);
 

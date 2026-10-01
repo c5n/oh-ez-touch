@@ -54,7 +54,8 @@ void item_screen_publish_quiet(struct item_view_s *v)
         return;
 
     /* Fire and forget, as it has always effectively been: the tile's own state
-     * is already set locally and the five-second poll is what reconciles it.
+     * is already set locally, and the state openHAB sends back -- pushed, or the
+ * poll the tile schedules for five seconds later -- is what reconciles it.
      *
      * Forgotten, but not unsaid. A full request queue is reachable on a slow
      * link -- six tiles with an icon and a state outstanding is exactly its

@@ -39,6 +39,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
+#include "openhab/openhab_events.hpp"
 #include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_http.hpp"
 #include "openhab/openhab_sitemaps.hpp"
@@ -346,6 +347,11 @@ static void ohez_setup(void)
     if (openhab_client_setup() == false)
         ESP_LOGE(TAG, "no openHAB client task; the panel will not reach openHAB");
 
+    /* Idle until the UI has a page to listen for. Without it the panel polls,
+     * as it always did. */
+    if (openhab_events_setup() == false)
+        ESP_LOGE(TAG, "no openHAB event task; item states are polled only");
+
     sensor_main_setup(config);
 
     /* Before the MQTT client, because that is what they talk through and the
@@ -509,6 +515,7 @@ static void ohez_loop(void)
          * episode, and the request paying it is the page load the user is
          * waiting for. */
         openhab_http_reset();
+        openhab_events_reset();
 
         if (reported == WLAN_ONLINE)
         {

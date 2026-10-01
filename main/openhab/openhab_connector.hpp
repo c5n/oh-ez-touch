@@ -86,6 +86,11 @@ public:
     bool stateUrl(char *out, size_t out_size) const;
     bool iconUrl(const char *website, char *out, size_t out_size) const;
 
+    /* The item's name, which is what openHAB's event stream knows it by: the
+     * last segment of its link, ".../rest/items/<name>". false when there is
+     * no link, or when the name does not fit. */
+    bool name(char *out, size_t out_size) const;
+
     /* Fold the body of a "<link>/state" GET into state_text.
      *
      * The second half of update(), split out so that the half that waits on a
