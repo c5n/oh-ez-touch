@@ -259,7 +259,10 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
     /* --------------------------------------------------- JARVIS -- "Reticle"
      * Hairlines on a flat, deep ground. The tile's own border is removed by
      * frames/frame_jarvis.cpp, which draws four corner brackets in its place
-     * and a ring around any reading that has a range behind it.
+     * and a ring around any reading that has a range behind it. The brackets
+     * take over the link and active markers below, all in the link colour:
+     * breathing on a tile that navigates, still on one that operates, short
+     * and faint on a bare reading.
      *
      * Arc reticles were said here to be unachievable for the same reason as
      * the LCARS elbows. They are drawn with lv_draw_arc() from a draw event,

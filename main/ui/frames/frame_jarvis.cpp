@@ -26,9 +26,17 @@
  * software arc renderer is already linked in either way: lv_draw_sw.c
  * references it unconditionally, so LV_USE_ARC can stay off.
  *
+ * The brackets also say what a tile is, which the style's border used to say
+ * before the brackets replaced it: a tile that leads somewhere has brackets in
+ * arms that breathe, a tile that operates something has still ones, and a
+ * bare reading has short, faint ones -- all in the link colour.
+ *
  * The scan dot on the bottom rail advances one cell a second. Sixteen pixels
  * of invalidation per second is the cheapest "this thing is alive" signal
- * there is, and it is the only thing on the screen that moves at rest.
+ * there is. The breathing arms are the only other thing that moves at rest,
+ * and they repaint only the four corner squares, only when the arm length
+ * crosses a whole pixel: about eight times a second at most 1.6 k px a tile,
+ * far inside ui_motion.hpp's sustained budget.
  *
  * Portrait is the same drawing between the same strip and rail: both are
  * LV_HOR_RES wide, the 160 px scan path still fits a 240 px screen, and the
@@ -38,6 +46,7 @@
  */
 #include "ui_frame.hpp"
 
+#include "ui/ui_motion.hpp"
 #include "ui/ui_style.hpp"
 
 #include "lvgl.h"
@@ -51,6 +60,13 @@
 
 #define BRACKET_ARM 14
 #define BRACKET_W   2
+
+/* A navigation tile's arms breathe between these, a reading's are short. */
+#define BRACKET_ARM_MIN     10
+#define BRACKET_ARM_MAX     20
+#define BRACKET_ARM_READOUT 8
+#define BREATH_MS           1200 /* each way */
+#define BREATH_SUB          16   /* animated in 1/16 px, rounded to a pixel */
 
 #define RING_R    28
 #define RING_W    4
@@ -77,10 +93,19 @@ static struct
 
 /* What a tile needs to draw itself. Squeezed into the object's user data
  * rather than allocated: one pointer per tile, and it dies with the tile. */
+enum tile_kind_e
+{
+    TILE_OPERABLE = 0,
+    TILE_NAV,     /* leads to another page */
+    TILE_READOUT, /* nothing to press */
+};
+
 struct tile_gauge_s
 {
     uint8_t  has_ring;
     uint8_t  fraction; /* 0..100, the value's place in its range */
+    uint8_t  kind;     /* enum tile_kind_e */
+    uint8_t  arm;      /* bracket arm length in px; animated on a TILE_NAV */
 };
 
 static struct tile_gauge_s gauges[6];
@@ -312,20 +337,27 @@ static void tile_draw_event(lv_event_t *e)
     lv_draw_rect_dsc_t dsc;
 
     lv_draw_rect_dsc_init(&dsc);
+
+    /* The kind of tile is the bracket's motion, opacity and reach -- the type
+     * marker the removed border used to carry. One colour for all of them:
+     * the active colour on the brackets read as a second palette fighting
+     * the first. */
+    int32_t arm = gauges[slot].arm;
+
     dsc.bg_color = lv_color_hex(t->link.color);
-    dsc.bg_opa   = LV_OPA_80;
+    dsc.bg_opa   = (gauges[slot].kind == TILE_READOUT) ? LV_OPA_40 : LV_OPA_80;
 
     int32_t x1 = c.x1, y1 = c.y1, x2 = c.x2, y2 = c.y2;
 
     /* Four corners, two rects each: the arms of an L. */
-    bracket(layer, &dsc, x1, y1, BRACKET_ARM, BRACKET_W);
-    bracket(layer, &dsc, x1, y1, BRACKET_W, BRACKET_ARM);
-    bracket(layer, &dsc, x2 - BRACKET_ARM + 1, y1, BRACKET_ARM, BRACKET_W);
-    bracket(layer, &dsc, x2 - BRACKET_W + 1, y1, BRACKET_W, BRACKET_ARM);
-    bracket(layer, &dsc, x1, y2 - BRACKET_W + 1, BRACKET_ARM, BRACKET_W);
-    bracket(layer, &dsc, x1, y2 - BRACKET_ARM + 1, BRACKET_W, BRACKET_ARM);
-    bracket(layer, &dsc, x2 - BRACKET_ARM + 1, y2 - BRACKET_W + 1, BRACKET_ARM, BRACKET_W);
-    bracket(layer, &dsc, x2 - BRACKET_W + 1, y2 - BRACKET_ARM + 1, BRACKET_W, BRACKET_ARM);
+    bracket(layer, &dsc, x1, y1, arm, BRACKET_W);
+    bracket(layer, &dsc, x1, y1, BRACKET_W, arm);
+    bracket(layer, &dsc, x2 - arm + 1, y1, arm, BRACKET_W);
+    bracket(layer, &dsc, x2 - BRACKET_W + 1, y1, BRACKET_W, arm);
+    bracket(layer, &dsc, x1, y2 - BRACKET_W + 1, arm, BRACKET_W);
+    bracket(layer, &dsc, x1, y2 - arm + 1, BRACKET_W, arm);
+    bracket(layer, &dsc, x2 - arm + 1, y2 - BRACKET_W + 1, arm, BRACKET_W);
+    bracket(layer, &dsc, x2 - BRACKET_W + 1, y2 - arm + 1, BRACKET_W, arm);
 
     if (gauges[slot].has_ring == 0)
         return;
@@ -374,6 +406,77 @@ static bool type_has_ring(enum ItemType type)
     return type == ItemType::type_slider || type == ItemType::type_setpoint;
 }
 
+/* The same grouping widget_create() uses to pick a tile's marker style. */
+static enum tile_kind_e type_kind(enum ItemType type)
+{
+    switch (type)
+    {
+    case ItemType::type_link:
+    case ItemType::type_parent_link:
+    case ItemType::type_group:
+        return TILE_NAV;
+
+    case ItemType::type_number:
+    case ItemType::type_string:
+        return TILE_READOUT;
+
+    default:
+        return TILE_OPERABLE;
+    }
+}
+
+/* One breath step. Repaints the four corner squares the arms can reach, and
+ * only when the length has crossed a whole pixel -- the curve spends most of a
+ * frame period between two integers near either end.
+ *
+ * Sub-pixel values, rounded here: lv_anim truncates each step, so animated in
+ * whole pixels the arm sits at MIN for a long stretch but reaches MAX on the
+ * last frame of the way out only, and drops back on the next -- a one-frame
+ * blip at the top of every breath. Rounding holds both ends equally long. */
+static void breathe_exec(void *var, int32_t value)
+{
+    lv_obj_t *tile = (lv_obj_t *)var;
+    uintptr_t slot = (uintptr_t)lv_obj_get_user_data(tile);
+    uint8_t   arm  = (uint8_t)((value + BREATH_SUB / 2) / BREATH_SUB);
+
+    if (slot >= 6 || gauges[slot].arm == arm)
+        return;
+
+    gauges[slot].arm = arm;
+
+    lv_area_t c;
+
+    lv_obj_get_coords(tile, &c);
+
+    const int32_t r = BRACKET_ARM_MAX - 1;
+    lv_area_t     corner[4] = {
+        {c.x1, c.y1, c.x1 + r, c.y1 + r},
+        {c.x2 - r, c.y1, c.x2, c.y1 + r},
+        {c.x1, c.y2 - r, c.x1 + r, c.y2},
+        {c.x2 - r, c.y2 - r, c.x2, c.y2},
+    };
+
+    for (int i = 0; i < 4; i++)
+        lv_obj_invalidate_area(tile, &corner[i]);
+}
+
+/* Keyed on the tile, per ui_motion.hpp: deleting the tile deletes the breath,
+ * so a page change or a theme change needs no cleanup here. */
+static void breathe_start(lv_obj_t *tile)
+{
+    lv_anim_t a;
+
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, tile);
+    lv_anim_set_exec_cb(&a, breathe_exec);
+    lv_anim_set_values(&a, BRACKET_ARM_MIN * BREATH_SUB, BRACKET_ARM_MAX * BREATH_SUB);
+    lv_anim_set_duration(&a, BREATH_MS);
+    lv_anim_set_reverse_duration(&a, BREATH_MS);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_set_path_cb(&a, ui_motion_path(UI_EASE_IN_OUT_CUBIC));
+    lv_anim_start(&a);
+}
+
 static void jarvis_decorate_tile(lv_obj_t *tile, enum ItemType type, uint8_t slot)
 {
     if (tile == NULL || slot >= 6)
@@ -381,14 +484,24 @@ static void jarvis_decorate_tile(lv_obj_t *tile, enum ItemType type, uint8_t slo
 
     gauges[slot].has_ring = type_has_ring(type) ? 1 : 0;
     gauges[slot].fraction = 0;
+    gauges[slot].kind     = (uint8_t)type_kind(type);
+    gauges[slot].arm      = (gauges[slot].kind == TILE_READOUT) ? BRACKET_ARM_READOUT
+                                                                : BRACKET_ARM;
 
     lv_obj_set_user_data(tile, (void *)(uintptr_t)slot);
     lv_obj_add_event_cb(tile, tile_draw_event, LV_EVENT_DRAW_MAIN_END, NULL);
 
+    /* With motion off a navigation tile keeps still brackets, the same as an
+     * operable one's -- the breath is the only thing that tells them apart. */
+    if (gauges[slot].kind == TILE_NAV && ui_motion_enabled() == true)
+        breathe_start(tile);
+
     /* The brackets are the tile's outline, so the style's own border would be
      * a second one drawn underneath them. Removed locally rather than from the
      * theme table, because the same border is what the item screens and the
-     * settings rows use. */
+     * settings rows use. That also removes the link and active markers
+     * widget_create() put on the tile, which is why the brackets carry the
+     * tile's kind instead -- see tile_draw_event(). */
     lv_obj_set_style_border_width(tile, 0, 0);
 }
 
