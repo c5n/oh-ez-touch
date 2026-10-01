@@ -171,8 +171,19 @@ static void lcars_build(lv_obj_t *parent)
     lv_obj_set_pos(lcars.clock, clock_x,
                    (BAR_H - lv_font_get_line_height(t->font_normal)) / 2);
 
-    /* The spine's cells. The status one is where the settings screen is
-     * reached from, which is what the whole status bar used to be. */
+    /* The bar is the way into the settings, as the whole status bar is in the
+     * other families. One unstyled sheet laid over the run, rather than the
+     * handler on each block: the bar is the elbow's top, two plates and a
+     * patch, and the clock's label is a sibling on top of them, so a touch on
+     * the digits would land on none of the blocks. Created after them, so it
+     * is the top-most thing across the bar and draws nothing. */
+    lv_obj_t *bar_target = ui_frame_container(lcars.root);
+    lv_obj_set_pos(bar_target, 0, 0);
+    lv_obj_set_size(bar_target, LV_HOR_RES, BAR_H);
+    ui_frame_settings_target(bar_target);
+
+    /* The spine's cells. The status one reaches the settings too, which is
+     * what the whole status bar used to be. */
     lv_obj_t *status =
         ui_frame_block(lcars.root, 0, STATUS_Y, SPINE_W, STATUS_H, second, 0);
     lv_obj_set_flex_flow(status, LV_FLEX_FLOW_COLUMN);
