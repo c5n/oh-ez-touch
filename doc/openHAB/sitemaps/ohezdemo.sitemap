@@ -23,11 +23,18 @@ sitemap ohezdemo label="OhEzTouch Demo"
 
         Text label="Media" icon="blinds"
         {
-            Default item=OHEZ_DEMO_Shutter_Living
-            Switch  item=OHEZ_DEMO_gShutters
-            Default item=OHEZ_DEMO_Player
-            Slider  item=OHEZ_DEMO_Volume
-            Switch  item=OHEZ_DEMO_Away mappings=[OFF="Home", ON="Away"]
+            Frame label="Blinds"
+            {
+                Default item=OHEZ_DEMO_Shutter_Living
+            }
+            // The player's screen shows the Text items and the Slider of its own Frame.
+            Frame label="Music"
+            {
+                Default item=OHEZ_DEMO_Player
+                Text    item=OHEZ_DEMO_Title
+                Text    item=OHEZ_DEMO_Artist
+                Slider  item=OHEZ_DEMO_Volume
+            }
         }
 
         Group item=OHEZ_DEMO_gLights
@@ -64,9 +71,11 @@ sitemap ohezdemo label="OhEzTouch Demo"
 
         Text label="Secure" icon="lock"
         {
-            Switch    item=OHEZ_DEMO_DoorOpener
-            Selection item=OHEZ_DEMO_Alarm mappings=["DISARMED"="Disarmed", "HOME"="Home", "AWAY"="Away"]
-            Text      item=OHEZ_DEMO_FrontDoor
+            Switch item=OHEZ_DEMO_DoorOpener
+            Switch item=OHEZ_DEMO_Alarm mappings=["DISARMED"="Disarmed", "HOME"="Home", "AWAY"="Away"]
+            Text   item=OHEZ_DEMO_FrontDoor
+            Switch item=OHEZ_DEMO_Away mappings=[OFF="Home", ON="Away"]
+            Switch item=OHEZ_DEMO_gShutters
         }
     }
 }

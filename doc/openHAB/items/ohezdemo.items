@@ -24,6 +24,8 @@ Group:Rollershutter:AVG OHEZ_DEMO_gShutters        "All Blinds [%d %%]"        <
 Rollershutter           OHEZ_DEMO_Shutter_Living   "Living Blinds [%d %%]"     <rollershutter> (OHEZ_DEMO_gShutters)
 Rollershutter           OHEZ_DEMO_Shutter_Kitchen  "Kitchen Blinds [%d %%]"    <rollershutter> (OHEZ_DEMO_gShutters)
 Player                  OHEZ_DEMO_Player           "Music"                     <player>
+String                  OHEZ_DEMO_Title            "Title [%s]"                <text>
+String                  OHEZ_DEMO_Artist           "Artist [%s]"               <text>
 Dimmer                  OHEZ_DEMO_Volume           "Volume [%d %%]"            <soundvolume>
 Switch                  OHEZ_DEMO_Away             "Presence"                  <presence>
 

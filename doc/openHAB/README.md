@@ -148,30 +148,37 @@ once.
 The tile shows the value with the unit a size smaller. The unit comes from the
 state pattern, here `"Heating [%.1f °C]"` and `"Dimmer [%d %%]"`.
 
-## Media: blinds, player and groups of controls
+## Media: blinds and a player
 
 <img src="img/media.png" width="320">
 
 ```
 Text label="Media" icon="blinds"
 {
-    Default item=OHEZ_DEMO_Shutter_Living
-    Switch  item=OHEZ_DEMO_gShutters
-    Default item=OHEZ_DEMO_Player
-    Slider  item=OHEZ_DEMO_Volume
-    Switch  item=OHEZ_DEMO_Away mappings=[OFF="Home", ON="Away"]
+    Frame label="Blinds"
+    {
+        Default item=OHEZ_DEMO_Shutter_Living
+    }
+    Frame label="Music"
+    {
+        Default item=OHEZ_DEMO_Player
+        Text    item=OHEZ_DEMO_Title
+        Text    item=OHEZ_DEMO_Artist
+        Slider  item=OHEZ_DEMO_Volume
+    }
 }
 ```
 
 | Rollershutter | Player |
 | --- | --- |
 | <img src="img/rollershutter.png" width="320"> | <img src="img/player.png" width="320"> |
-| `Default` on a Rollershutter item is a Switch widget. The screen sends UP, STOP and DOWN. | `Default` on a Player item. Play/pause, previous and next. |
+| `Default` on a Rollershutter item is a Switch widget. The screen shows the position and sends one from the field, or UP, STOP and DOWN. | `Default` on a Player item. Play/pause, previous and next, and what is playing. |
 
-- **All Blinds** is a Switch over `Group:Rollershutter:AVG`. The tile shows the
-  average position, and the screen moves every member at once.
-- **Presence** is a Switch with `mappings`. The tile shows the mapping's label
-  ("Home") instead of the raw state (`OFF`).
+A Player item has no title. Bindings put it, the artist and the volume on items
+of their own, and the player's screen takes them from its own Frame: the first
+Text is the title, the next one goes on the line under it, and the Slider is
+the volume. Change `OHEZ_DEMO_Title` over REST while the screen is open and the
+new title shows at once. See [Players](../sitemap.md#players).
 
 ## Lights: a group
 
@@ -213,7 +220,7 @@ Frame label="House"
 A tile shows the label openHAB gives a state where there is one. The labels
 come from the first of these that has any:
 
-1. the widget's `mappings=[...]` (Scene, Presence)
+1. the widget's `mappings=[...]` (Scene, Alarm, Presence)
 2. the item's command options (Ventilation)
 3. the item's state options (Heating Mode)
 
@@ -319,6 +326,17 @@ Switch OHEZ_DEMO_Motion "Motion" <motion> { stateDescription=""[readOnly=true] }
 | <img src="img/secure.png" width="320"> | <img src="img/pin-pad.png" width="320"> |
 
 ```
+Text label="Secure" icon="lock"
+{
+    Switch item=OHEZ_DEMO_DoorOpener
+    Switch item=OHEZ_DEMO_Alarm mappings=["DISARMED"="Disarmed", "HOME"="Home", "AWAY"="Away"]
+    Text   item=OHEZ_DEMO_FrontDoor
+    Switch item=OHEZ_DEMO_Away mappings=[OFF="Home", ON="Away"]
+    Switch item=OHEZ_DEMO_gShutters
+}
+```
+
+```
 Switch OHEZ_DEMO_DoorOpener "Door Opener" <lock>   ["ohez-pin"]
 String OHEZ_DEMO_Alarm      "Alarm"       <shield> ["ohez-pin"]
 ```
@@ -327,6 +345,16 @@ Items with the tag `ohez-pin` ask for the Item PIN before their tile does
 anything, once an Item PIN is set under **Settings → System → Device → PINs**.
 **Front Door** on the same page has no tag and is a read-out, so it never asks.
 See [PINs](../configuration.md#pins).
+
+The other tiles on the page:
+
+- **Alarm** is a Switch with `mappings` over a String item. openHAB draws it
+  as a row of buttons, and the panel opens the Selection screen for it.
+- **Presence** is a Switch with `mappings` over a Switch item. It still
+  toggles on the tile, and the tile shows the mapping's label ("Home")
+  instead of the raw state (`OFF`).
+- **All Blinds** is a Switch over `Group:Rollershutter:AVG`. The tile shows the
+  average position, and the screen moves every member at once.
 
 ## Themes
 
@@ -347,7 +375,10 @@ The same home page in the four theme families, under **Settings → Theme**:
   without a message. `test/openhab/oheznav.sitemap` has pages that go past each
   limit.
 - **Widgets the panel cannot draw.** Chart, Image, Video, Webview, Mapview,
-  Input, and a Switch over a Dimmer or a Number, are left out and take no place.
+  Input, and a Switch without mappings over a Dimmer or a Number, are left out
+  and take no place.
+- **Cover art.** A binding's album art is an Image item, and the panel draws
+  no Image widgets.
 - **Older servers.** Live colours and visibility need openHAB's sitemap events.
   On a server without them the panel follows item states only. See
   [Live updates](../sitemap.md#live-updates).

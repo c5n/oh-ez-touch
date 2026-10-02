@@ -404,7 +404,13 @@ cannot reach it. A live theme change tears the old family's chrome down
 
 **A screen per item type.** `main/ui/items/` has one file per openHAB item
 type, found through a registry. Each carries a `refresh` hook, so an open
-control follows the server. The colour screen's H, S and V fields draw the
+control follows the server. The player's screen also shows other tiles of its
+page: the title, artist and volume in its Frame, which `Item::getFrame()`
+remembers after the parse flattens the Frames. Its descriptor sets
+`follows_page`, so a change to any tile refreshes it, and it reads the tiles
+through `item_screen_page_item()`. There is no fetch of its own and no second
+subscription: the tiles are on the page, so the event stream already follows
+them. The colour screen's H, S and V fields draw the
 range each one sweeps as a horizontal gradient, and moving one recolours the
 other two. That takes two `lv_conf.h` settings: `LV_GRADIENT_MAX_STOPS` at 7
 for the hue wheel, and `LV_DRAW_SW_SUPPORT_RGB888` on. LVGL blends a

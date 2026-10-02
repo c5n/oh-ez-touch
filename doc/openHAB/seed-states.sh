@@ -40,6 +40,8 @@ upd Fan             1
 upd Shutter_Living  40
 upd Shutter_Kitchen 0
 upd Player          PAUSE
+upd Title           "So What"
+upd Artist          "Miles Davis"
 upd Volume          35
 upd Away            OFF
 

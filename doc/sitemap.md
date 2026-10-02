@@ -25,11 +25,27 @@ is the way back.
 A Colorpicker opens a screen with a swatch and three fields: hue, saturation
 and value. Each field shows the colours it reaches with the other two held
 where they are, and the fields recolour as you drag. The new colour is sent
-when the finger lifts.
+when the finger lifts. **Off** sends `OFF`, and **Full** sends the colour at
+full brightness.
+
+A Slider moves in its `step` and sends the value in the step's precision:
+`50` for a step of 1, `21.5` for a step of 0.5. A Setpoint does the same, and
+a value that something else set off the step goes back onto it with the next
+tap.
+
+A Rollershutter (or a group of them) opens a screen with its position, a
+field that sends a position from 0 (open) to 100 (closed) when the finger
+lifts, and UP, STOP and DOWN.
+
+A Switch with `mappings` over an item that is not a Switch (a scene, a mode, a
+fan level) opens the same screen as a Selection: one button per mapping. So
+does `Default` on a Number or String with up to four command options, which
+openHAB sends as a Switch.
 
 Widgets of other types (Chart, Image, Webview, Mapview, Input and so on) are
-left out. So is a Switch over an item that is neither a Switch, a
-Rollershutter, a Player nor a group of Switches or Rollershutters. A widget
+left out. So is a Switch without mappings over an item that is neither a
+Switch, a Rollershutter, a Player nor a group of Switches or Rollershutters,
+for example a Switch over a Dimmer. A widget
 that a `visibility=[...]` rule hides is left out too, and so is everything in
 a hidden Frame. None of them takes one of the six places. When a rule shows or
 hides a widget, the panel loads the page again.
@@ -37,6 +53,35 @@ hides a widget, the panel loads the page again.
 An item whose state description is read-only, for example
 `{ stateDescription=""[readOnly=true] }`, gets a tile that only shows its
 state. A tap on it does nothing, even inside a Switch or a Slider.
+
+## Players
+
+openHAB's Player item carries only the transport: PLAY, PAUSE, NEXT,
+PREVIOUS. A binding puts what is playing and the volume on items of their own,
+for example Sonos `currenttitle`, `currentartist` and `volume`, or Spotify
+`trackName` and `artistName`. Put them in one Frame with the player:
+
+```
+Frame label="Music"
+{
+    Default item=Sonos_Control
+    Text    item=Sonos_Title
+    Text    item=Sonos_Artist
+    Slider  item=Sonos_Volume
+}
+```
+
+The player's screen then shows the first Text item of its Frame as the title,
+up to two more on the line under it, and the first Slider as a volume field
+under the transport keys. They follow the server while the screen is open. A
+player outside a Frame, or alone in one, gets the transport keys only. The
+Frame's items are tiles of the page as well, so they count against the six.
+
+A child block on the player itself (`Default item=... { ... }`) would be the
+obvious way to say this, but openHAB's sitemap syntax allows one only on
+Text, Group, Image, Frame and Buttongrid.
+
+The player's tile reads "Playing" or "Paused".
 
 ## Value labels
 
