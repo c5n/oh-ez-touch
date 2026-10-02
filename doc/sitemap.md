@@ -52,6 +52,23 @@ the panel, so it stays right when the state changes. A `MAP(...)`
 transformation in the label is applied by openHAB and only arrives with the
 page.
 
+## Colours
+
+`labelcolor`, `valuecolor` and `iconcolor` work as they do in Basic UI:
+
+```
+Text item=Outside_Temperature valuecolor=[<5="#4fc3f7", >25="orange"] iconcolor=[>25="red"]
+```
+
+openHAB evaluates the rule and sends the resulting colour. The panel draws the
+name, the value or the icon in that colour on top of the theme. The names
+openHAB lists (`maroon`, `red`, `orange`, `olive`, `yellow`, `purple`,
+`fuchsia`, `pink`, `white`, `lime`, `green`, `navy`, `blue`, `teal`, `aqua`,
+`black`, `silver`, `gray`, `gold`) and `#rrggbb` are understood. Anything else
+keeps the theme's colour. The colours arrive with the page.
+
+`staticIcon=true` makes the panel fetch the icon once, without the state.
+
 An item with the tag `ohez-pin` asks for the Item PIN before its tile does
 anything. See [PINs](configuration.md#pins).
 
