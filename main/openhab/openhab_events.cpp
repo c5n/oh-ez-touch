@@ -8,6 +8,7 @@
 
 #include "openhab_events.hpp"
 
+#include "json_squeeze.h"
 #include "openhab_http.hpp"
 #include "port/port_sys.h"
 #include "sim/sim_offline.hpp"
@@ -611,6 +612,10 @@ static enum stream_end_e stream(bool *answered)
     esp_http_client_set_timeout_ms(client, OPENHAB_EVENTS_READ_TIMEOUT_MS);
     sse_reader_reset(&reader);
 
+    struct json_squeeze_s squeeze;
+
+    json_squeeze_reset(&squeeze);
+
     /* Whatever changed while there was no stream went unseen. A state comes
      * back with a poll; what the sitemap's rules made of it -- a colour, a
      * widget shown or hidden -- only with the page, so a sitemap stream that
@@ -642,7 +647,14 @@ static enum stream_end_e stream(bool *answered)
 
         if (read > 0)
         {
-            sse_reader_feed(&reader, buf, (size_t)read, sitemap ? on_sitemap_data : on_data,
+            /* An Image item's new snapshot arrives as an event carrying the
+             * whole picture, far over SSE_LINE_LEN; cut down to its first few
+             * hundred bytes it is an ordinary widget event again, which is
+             * what tells an open picture to fetch the new one -- instead of a
+             * dropped line and the page loaded again for every ring. */
+            size_t kept = json_squeeze(&squeeze, buf, (size_t)read);
+
+            sse_reader_feed(&reader, buf, kept, sitemap ? on_sitemap_data : on_data,
                             &last_data);
 
             if (sse_reader_take_overflow(&reader) == true)

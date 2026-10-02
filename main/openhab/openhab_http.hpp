@@ -58,6 +58,26 @@
 ssize_t openhab_http_get(const char *url, void *buf, size_t buf_size, bool truncate);
 
 /**
+ * GET `url` and hand the body over in pieces, for the two bodies that are too
+ * large to hold: a sitemap page carrying an Image item's state, and the
+ * picture itself.
+ *
+ * open, then read until it returns 0 or -1, then close -- always close, it is
+ * what hands the connection back. Same handle, same task, same rules as
+ * openhab_http_get().
+ *
+ * @param accept the Accept header, or NULL for none. openHAB answers an Image
+ *   item's /state with the raw picture when any image type is accepted, and
+ *   with a base64 data: URI otherwise.
+ * @return open: false on a transport error or a status other than 200, both
+ *   logged. read: bytes read, 0 at the end of a body that arrived whole, -1 on
+ *   a timeout or a body cut short.
+ */
+bool openhab_http_stream_open(const char *url, const char *accept);
+int openhab_http_stream_read(void *buf, size_t len);
+void openhab_http_stream_close(void);
+
+/**
  * POST `body` to `url` as text/plain, which is how openHAB's REST API takes a
  * command or a state update.
  *

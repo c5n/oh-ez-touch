@@ -159,5 +159,6 @@ extern const struct item_screen_dsc_s item_screen_selection;
 extern const struct item_screen_dsc_s item_screen_rollershutter;
 extern const struct item_screen_dsc_s item_screen_player;
 extern const struct item_screen_dsc_s item_screen_color;
+extern const struct item_screen_dsc_s item_screen_image;
 
 #endif /* ITEM_SCREEN_HPP */

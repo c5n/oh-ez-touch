@@ -173,6 +173,17 @@ const struct config_field_s config_fields[] = {
     TXT(SETTINGS_FIELD_SITEMAP, "Sitemap", openhab.sitemap, "openhab", "sitemap",
         "setme_sitemap", SETTINGS_F_HOSTCHARS),
 
+    SEC("Doorbell", SETTINGS_TAB_OPENHAB),
+    /* Live: the event stream is told about the ring item on its next
+     * subscription, and the names are read again on every ring. Empty by
+     * default, which is off. */
+    TXT("bell_ring", "Ring item (empty: off)", openhab.doorbell_ring, "openhab",
+        "doorbell_ring", "", SETTINGS_F_HOSTCHARS),
+    TXT("bell_image", "Picture item", openhab.doorbell_image, "openhab",
+        "doorbell_image", "", SETTINGS_F_HOSTCHARS),
+    UINT("bell_show", "Show picture for", "s", openhab.doorbell_show, "openhab",
+         "doorbell_show", 30, 0, 600),
+
     SEC("MQTT Broker", SETTINGS_TAB_MQTT),
     /* Off by default: a device that has never been told about a broker must
      * not spend every boot resolving "mosquitto" and logging the failure. */

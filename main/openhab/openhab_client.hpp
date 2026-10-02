@@ -93,6 +93,7 @@ enum openhab_request_e
     OPENHAB_REQ_STATE,    /* GET one item's state, as text */
     OPENHAB_REQ_COMMAND,  /* POST text/plain, nothing wanted back */
     OPENHAB_REQ_SITEMAPS, /* GET the list of sitemaps, as JSON */
+    OPENHAB_REQ_IMAGE,    /* GET an Image item's picture, decoded to RGB565 */
 };
 
 /**
@@ -151,6 +152,9 @@ struct openhab_result_s
      * the same memory while the UI is still parsing. */
     bool     payload_static;
     char     body[OPENHAB_CLIENT_BODY_LEN];
+    /* An image's size; its pixels are the payload, payload_len bytes. */
+    uint16_t width;
+    uint16_t height;
 };
 
 /**
@@ -209,6 +213,16 @@ bool openhab_client_command(const char *url, const char *body);
  * front ends read.
  */
 bool openhab_client_request_sitemaps(const char *url);
+
+/**
+ * GET the picture an Image item holds, from its "<link>/state", and decode it
+ * on the client task to at most `max_w` x `max_h` (see image_decode.h).
+ *
+ * Never goes stale with the page: the doorbell's picture is opened from
+ * whatever page is on screen. `tag` comes back as the result's slot, so the
+ * screen that asked can tell its own answer from an older one's.
+ */
+bool openhab_client_request_image(const char *url, uint16_t max_w, uint16_t max_h, uint8_t tag);
 
 /**
  * Take at most one finished request.

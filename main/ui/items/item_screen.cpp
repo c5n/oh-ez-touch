@@ -29,6 +29,7 @@ static item_screen_page_cb_t    page_cb;
 static const struct item_screen_dsc_s *const registry[] = {
     &item_screen_slider,   &item_screen_setpoint, &item_screen_selection,
     &item_screen_rollershutter, &item_screen_player, &item_screen_color,
+    &item_screen_image,
 };
 
 #define REGISTRY_COUNT (sizeof(registry) / sizeof(registry[0]))

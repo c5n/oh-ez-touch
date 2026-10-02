@@ -19,7 +19,8 @@ cmake_minimum_required(VERSION 3.22.1)
 # ArduinoJson, which openhab_connector.hpp includes. The rest of the firmware's
 # components are deliberately not reachable: a test that needed LVGL would be a
 # different kind of test.
-set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../components/ArduinoJson")
+set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../components/ArduinoJson"
+                         "${CMAKE_CURRENT_LIST_DIR}/../../components/tjpgd")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 

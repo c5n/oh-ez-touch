@@ -34,6 +34,7 @@ extern "C" void app_main(void)
     test_event_parse_run();
     test_frame_stats_run();
     test_icon_set_run();
+    test_image_decode_run();
     test_item_setters_run();
     test_mdns_query_run();
     test_multipart_run();
@@ -43,6 +44,7 @@ extern "C" void app_main(void)
     test_touch_cal_run();
     test_item_state_run();
     test_item_urls_run();
+    test_json_squeeze_run();
     test_outputs_run();
     test_pin_code_run();
     test_sitemap_list_run();

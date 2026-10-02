@@ -9,13 +9,17 @@
 #include "openhab_client.hpp"
 
 #include "icons/icon_set.hpp"
+#include "image_decode.h"
+#include "json_squeeze.h"
 #include "openhab_connector.hpp"
 #include "openhab_http.hpp"
 #include "sim/icon_fixture.hpp"
+#include "sim/image_fixture.hpp"
 #include "sim/sim_offline.hpp"
 #include "sim/sitemap_fixture.hpp"
 
 #include <atomic>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -313,6 +317,15 @@ bool openhab_client_request_sitemaps(const char *url)
                   OPENHAB_CLIENT_GENERATION_ALWAYS);
 }
 
+bool openhab_client_request_image(const char *url, uint16_t max_w, uint16_t max_h, uint8_t tag)
+{
+    char box[OPENHAB_CLIENT_BODY_LEN];
+
+    snprintf(box, sizeof(box), "%ux%u", (unsigned)max_w, (unsigned)max_h);
+
+    return submit(OPENHAB_REQ_IMAGE, url, box, tag, OPENHAB_CLIENT_GENERATION_ALWAYS);
+}
+
 bool openhab_client_poll(struct openhab_result_s *out)
 {
     if (results == NULL)
@@ -382,6 +395,86 @@ static size_t body_capacity(enum openhab_request_e type, bool *truncate)
     }
 }
 
+/* The box an image request was asked to fit, out of its body. */
+static void image_box(const struct request_s *req, uint16_t *max_w, uint16_t *max_h)
+{
+    unsigned w = 0, h = 0;
+
+    if (sscanf(req->body, "%ux%u", &w, &h) != 2 || w == 0 || h == 0 || w > 1024 || h > 1024)
+    {
+        w = 160;
+        h = 120;
+    }
+
+    *max_w = (uint16_t)w;
+    *max_h = (uint16_t)h;
+}
+
+static void image_result(const struct image_decode_s *img, struct openhab_result_s *res)
+{
+    res->payload = (char *)img->pixels;
+    res->payload_len = (size_t)img->width * img->height * sizeof(uint16_t);
+    res->width = img->width;
+    res->height = img->height;
+    res->ok = true;
+}
+
+static const char *image_decode_name(enum image_decode_e rc)
+{
+    switch (rc)
+    {
+    case IMAGE_DECODE_OK:          return "ok";
+    case IMAGE_DECODE_UNSUPPORTED: return "not a baseline JPEG";
+    case IMAGE_DECODE_NO_MEMORY:   return "out of memory";
+    case IMAGE_DECODE_BROKEN:
+    default:                       return "not a JPEG, or cut short";
+    }
+}
+
+struct fixture_stream_s
+{
+    const unsigned char *data;
+    size_t len;
+    size_t at;
+};
+
+static size_t fixture_read(void *ctx, uint8_t *buf, size_t len)
+{
+    struct fixture_stream_s *f = (struct fixture_stream_s *)ctx;
+    size_t left = f->len - f->at;
+
+    if (len > left)
+        len = left;
+
+    if (buf != NULL)
+        memcpy(buf, f->data + f->at, len);
+
+    f->at += len;
+
+    return len;
+}
+
+/* Offline, every Image item shows the one picture compiled in. */
+static void perform_image_offline(const struct request_s *req, struct openhab_result_s *res)
+{
+    struct fixture_stream_s f = {};
+    struct image_decode_s img;
+    uint16_t max_w, max_h;
+
+    f.data = sim_image_fixture_get(&f.len);
+    image_box(req, &max_w, &max_h);
+
+    enum image_decode_e rc = image_decode_jpeg(fixture_read, &f, max_w, max_h, &img);
+
+    if (rc != IMAGE_DECODE_OK)
+    {
+        ESP_LOGE(TAG, "fixture image: %s", image_decode_name(rc));
+        return;
+    }
+
+    image_result(&img, res);
+}
+
 /* Answer from the compiled-in fixtures instead of the network.
  *
  * Here rather than at the four call sites it used to be at, so that offline
@@ -434,6 +527,10 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
 
         len = strlen(page);
         break;
+
+    case OPENHAB_REQ_IMAGE:
+        perform_image_offline(req, res);
+        return;
 
     case OPENHAB_REQ_STATE:
     case OPENHAB_REQ_COMMAND:
@@ -500,6 +597,158 @@ static bool perform_builtin_icon(const struct request_s *req, struct openhab_res
     return true;
 }
 
+static size_t http_read(void *ctx, uint8_t *buf, size_t len)
+{
+    (void)ctx;
+
+    /* TJpgDec skips a segment it has no use for -- a camera's EXIF block
+     * with its embedded thumbnail is the usual one -- by asking for the bytes
+     * without a buffer. They still have to come off the socket. */
+    uint8_t sink[64];
+    size_t done = 0;
+
+    while (done < len)
+    {
+        size_t want = len - done;
+        uint8_t *to = buf;
+
+        if (to == NULL)
+        {
+            to = sink;
+
+            if (want > sizeof(sink))
+                want = sizeof(sink);
+        }
+        else
+        {
+            to += done;
+        }
+
+        int n = openhab_http_stream_read(to, want);
+
+        if (n <= 0)
+            break;
+
+        done += (size_t)n;
+
+        /* One read is enough for TJpgDec, which loops itself; for a skip,
+         * keep going until it is done. */
+        if (buf != NULL)
+            break;
+    }
+
+    return done;
+}
+
+/* Read the rest of a body nobody wants, so the connection can be kept. A
+ * picture has nothing after its last MCU but the end-of-image marker; a
+ * server that sends more than this is not worth the wait. */
+static void http_drain(void)
+{
+    char sink[64];
+
+    for (int i = 0; i < 16; ++i)
+        if (openhab_http_stream_read(sink, sizeof(sink)) <= 0)
+            return;
+}
+
+/* The picture, decoded while it arrives. Accepting any image type is what
+ * makes openHAB send the bytes rather than the data: URI the item's state is
+ * stored as -- which is four thirds the size and would need a base64 decoder
+ * in front. Checked against openHAB 5.2.1. */
+static void perform_image(const struct request_s *req, struct openhab_result_s *res)
+{
+    struct image_decode_s img;
+    uint16_t max_w, max_h;
+
+    image_box(req, &max_w, &max_h);
+
+    if (openhab_http_stream_open(req->url, "image/*") == false)
+        return;
+
+    enum image_decode_e rc = image_decode_jpeg(http_read, NULL, max_w, max_h, &img);
+
+    if (rc == IMAGE_DECODE_OK)
+        http_drain();
+
+    openhab_http_stream_close();
+
+    if (rc != IMAGE_DECODE_OK)
+    {
+        ESP_LOGE(TAG, "GET %s: %s", req->url, image_decode_name(rc));
+        return;
+    }
+
+    ESP_LOGI(TAG, "picture %ux%u shown at %ux%u", (unsigned)img.source_width,
+             (unsigned)img.source_height, (unsigned)img.width, (unsigned)img.height);
+
+    image_result(&img, res);
+}
+
+/* A sitemap page, with every overlong string cut short as it arrives.
+ *
+ * An Image item's state is the picture -- base64, twice over, "state" and
+ * "lastState" -- and nothing else on a page comes near JSON_SQUEEZE_STRING_MAX.
+ * Without this, a page with a doorbell on it is 100 KB and more, over the
+ * 12 KB buffer, and fails to load at all. See json_squeeze.h. */
+static ssize_t page_get(const char *url, char *buf, size_t capacity)
+{
+    struct json_squeeze_s squeeze;
+    size_t len = 0;
+
+    if (openhab_http_stream_open(url, NULL) == false)
+        return -1;
+
+    json_squeeze_reset(&squeeze);
+
+    /* Read straight into the buffer and squeezed where it landed: the filter
+     * only ever shortens, so it works in place, and the client task's stack
+     * has no room for a chunk of its own. Once the buffer is full, a few
+     * bytes more go into `probe`, and anything that survives the filter there
+     * is a page that does not fit. */
+    for (;;)
+    {
+        char probe[16];
+        bool full = (len == capacity);
+        char *to = full ? probe : buf + len;
+        size_t room = full ? sizeof(probe) : capacity - len;
+        int n = openhab_http_stream_read(to, (room > 1024) ? 1024 : room);
+
+        if (n == 0)
+            break;
+
+        if (n < 0)
+        {
+            len = (size_t)-1;
+            break;
+        }
+
+        size_t kept = json_squeeze(&squeeze, to, (size_t)n);
+
+        if (full == true && kept > 0)
+        {
+            ESP_LOGE(TAG, "GET %s: page larger than the %u byte buffer",
+                     url, (unsigned)capacity);
+            len = (size_t)-1;
+            break;
+        }
+
+        if (full == false)
+            len += kept;
+    }
+
+    openhab_http_stream_close();
+
+    if (len == (size_t)-1)
+        return -1;
+
+    if (squeeze.dropped > 0)
+        ESP_LOGD(TAG, "GET %s: %u bytes of long strings dropped",
+                 url, (unsigned)squeeze.dropped);
+
+    return (ssize_t)len;
+}
+
 static void perform(const struct request_s *req, struct openhab_result_s *res)
 {
     /* The icons the firmware has beat the ones the server would serve, and they
@@ -530,6 +779,12 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
         return;
     }
 
+    if (req->type == OPENHAB_REQ_IMAGE)
+    {
+        perform_image(req, res);
+        return;
+    }
+
     bool truncate = false;
     size_t capacity = body_capacity(req->type, &truncate);
 
@@ -554,7 +809,9 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
 
     /* Everything else into the one buffer. It is a ceiling, not a size: the
      * body that arrives is usually a fraction of it. */
-    ssize_t read = openhab_http_get(req->url, rx_buf, capacity, truncate);
+    ssize_t read = (req->type == OPENHAB_REQ_PAGE)
+                     ? page_get(req->url, rx_buf, capacity)
+                     : openhab_http_get(req->url, rx_buf, capacity, truncate);
 
     if (read < 0)
     {
@@ -639,7 +896,8 @@ static void openhab_client_task(void *parameter)
          * releases every result it takes, on every path, so this cannot wedge
          * -- it can only pace an icon behind a page parse, which is the order
          * they are wanted in anyway. */
-        if (req.type != OPENHAB_REQ_COMMAND && req.type != OPENHAB_REQ_STATE)
+        if (req.type != OPENHAB_REQ_COMMAND && req.type != OPENHAB_REQ_STATE
+            && req.type != OPENHAB_REQ_IMAGE)
             while (page_result_live.load(std::memory_order_acquire) == true)
                 vTaskDelay(1);
 

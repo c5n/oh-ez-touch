@@ -396,6 +396,117 @@ void openhab_http_reset(void)
     reset_requested.store(true, std::memory_order_relaxed);
 }
 
+/* Whether the stream that is open has failed, so that close() knows not to
+ * leave the connection for the next request. */
+static bool stream_failed;
+
+static bool http_stream_open_attempt(const char *url, const char *accept)
+{
+    if (session_prepare(url, HTTP_METHOD_GET) == false)
+        return false;
+
+    esp_http_client_set_post_field(session, NULL, 0);
+
+    if (accept != NULL)
+        esp_http_client_set_header(session, "Accept", accept);
+
+    esp_err_t err = esp_http_client_open(session, 0);
+
+    if (err != ESP_OK)
+    {
+        ESP_LOGE(TAG, "GET %s: %s", url, esp_err_to_name(err));
+        return false;
+    }
+
+    if (esp_http_client_fetch_headers(session) < 0)
+    {
+        ESP_LOGE(TAG, "GET %s: no response headers", url);
+        return false;
+    }
+
+    int status = esp_http_client_get_status_code(session);
+
+    if (status != 200)
+    {
+        ESP_LOGE(TAG, "GET %s: HTTP %d", url, status);
+        return false;
+    }
+
+    return true;
+}
+
+bool openhab_http_stream_open(const char *url, const char *accept)
+{
+    /* The same one retry openhab_http_get() has, for the same reason: a kept
+     * connection the server has since hung up only says so on the read. It
+     * can only be made here, before the caller has been handed a byte. */
+    if (session_connected == true && port_millis() - session_last_used > SESSION_IDLE_MAX_MS)
+        session_disconnect();
+
+    bool reused = session_connected;
+
+    stream_failed = false;
+
+    if (http_stream_open_attempt(url, accept) == true)
+        return true;
+
+    session_disconnect();
+
+    if (reused == true)
+    {
+        ESP_LOGD(TAG, "GET %s: retrying on a new connection", url);
+
+        if (http_stream_open_attempt(url, accept) == true)
+            return true;
+
+        session_disconnect();
+    }
+
+    /* The header lives on the handle, and the handle outlives the request. */
+    if (accept != NULL && session != NULL)
+        esp_http_client_delete_header(session, "Accept");
+
+    return false;
+}
+
+int openhab_http_stream_read(void *buf, size_t len)
+{
+    if (stream_failed == true)
+        return -1;
+
+    int read = esp_http_client_read(session, (char *)buf, (int)len);
+
+    if (read > 0)
+        return read;
+
+    /* 0 is the end of the body, or a server that hung up early; only the
+     * client knows which. Below 0 is a socket error, or -ESP_ERR_HTTP_EAGAIN
+     * for OPENHAB_HTTP_TIMEOUT_MS of silence -- see http_get_attempt() for
+     * why a timeout must not pass for the end. */
+    if (read == 0 && esp_http_client_is_complete_data_received(session) == true)
+        return 0;
+
+    ESP_LOGE(TAG, "GET: body cut short (%d)", read);
+    stream_failed = true;
+
+    return -1;
+}
+
+void openhab_http_stream_close(void)
+{
+    if (session == NULL)
+        return;
+
+    /* Unread bytes, or a failure, and the connection is no use to anybody. */
+    if (stream_failed == true || session_may_persist() == false)
+        session_disconnect();
+    else
+        session_connected = true;
+
+    esp_http_client_delete_header(session, "Accept");
+    stream_failed = false;
+}
+
 /* How a POST attempt ended, which is not the same question as whether it
  * succeeded: only a transport failure is worth another go, and the two used
  * to be the same -1. */

@@ -65,7 +65,11 @@ enum ItemType
     type_colorpicker,
     type_switch,
     type_rollershutter,
-    type_player
+    type_player,
+    /* An Image widget on an Image item: a doorbell's or a camera's snapshot.
+     * Its state is the picture itself, which the tile never shows; a tap
+     * fetches it from stateUrl(). See item_image.cpp. */
+    type_image
 };
 
 /* The setters of Item and Sitemap copy strings of unknown length straight out
@@ -112,6 +116,9 @@ private:
      * it is what lets a player find the title and volume tiles that belong to
      * it. See item_player.cpp. */
     uint8_t frame = 0;
+    /* The Image widget's refresh=, in milliseconds: how often an open
+     * picture is fetched again. 0 for never. */
+    uint32_t refresh_ms = 0;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -171,6 +178,7 @@ public:
         static_icon = false;
         widget_hash = 0;
         frame = 0;
+        refresh_ms = 0;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -210,6 +218,9 @@ public:
     void setFrame(uint8_t index) { frame = index; }
 
     enum ItemType getType() { return type; }
+
+    void setRefreshMs(uint32_t ms) { refresh_ms = ms; }
+    uint32_t getRefreshMs() const { return refresh_ms; }
     void setType(enum ItemType newtype) { type = newtype; }
 
     const char* getStateText() { return state_text; }

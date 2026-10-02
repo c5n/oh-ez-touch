@@ -57,7 +57,7 @@ extern BacklightControl tft_backlight;
 static const char *const item_type_names[] = {
     "unknown", "parent_link", "link",   "group",       "number",
     "string",  "setpoint",    "slider", "selection",   "colorpicker",
-    "switch",  "rollershutter", "player",
+    "switch",  "rollershutter", "player", "image",
 };
 
 static const char *item_type_name(enum ItemType type)

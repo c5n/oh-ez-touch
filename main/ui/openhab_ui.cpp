@@ -2,6 +2,7 @@
 
 #include "openhab_ui.hpp"
 #include "icons/icon_set.hpp"
+#include "openhab/openhab_bell.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_connector.hpp"
 #include "openhab/openhab_events.hpp"
@@ -10,12 +11,14 @@
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
 #include "frames/ui_frame.hpp"
+#include "items/item_image.hpp"
 #include "items/item_screen.hpp"
 #include "ui_screen.hpp"
 #include "ui_motion.hpp"
 #include "ui_pin.hpp"
 #include "ui_style.hpp"
 #include "ui_widgets.hpp"
+#include "ui_activity.h"
 
 #include "lodepng/lodepng.h"
 #include "time.h"
@@ -408,6 +411,11 @@ static bool tile_is_readout(Item *item)
     case ItemType::type_group:
         return false;
 
+    /* Read-only is what a binding's snapshot channel usually is, and a tap
+     * on its tile only looks: it opens the picture and sends nothing. */
+    case ItemType::type_image:
+        return false;
+
     default:
         return item->isReadOnly();
     }
@@ -615,6 +623,13 @@ void update_state_widget(struct widget_context_s *ctx)
         else
             ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
         break;
+
+    case ItemType::type_image:
+        /* The state is the picture, and a tile is no place for it: decoding
+         * one costs a request and 30 KB, six tiles of it far more than the
+         * heap has. The picture is behind the tap. */
+        ui_reading_set_text(ctx->state_widget, "View");
+        return;
 
     case ItemType::type_colorpicker:
     {
@@ -1289,7 +1304,8 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
              || wctx->item->getType() == ItemType::type_slider
              || wctx->item->getType() == ItemType::type_selection
              || wctx->item->getType() == ItemType::type_rollershutter
-             || wctx->item->getType() == ItemType::type_player)
+             || wctx->item->getType() == ItemType::type_player
+             || wctx->item->getType() == ItemType::type_image)
     {
         lv_obj_add_style(wctx->container, &ui_style_tile_active, LV_PART_MAIN);
         wctx->state_widget = state_label_create(wctx);
@@ -2021,9 +2037,13 @@ static bool slot_is_polled(size_t i)
     /* Without an item link there is nothing to poll -- link and group widgets
      * often carry only a page link. Requesting "/state" then fails every time
      * and would drive the error statistics below into a reboot. */
+    /* An Image item's state is the picture. A poll would read the first 31
+     * bytes of its base64, which are the same for every JPEG, and the picture
+     * screen fetches the picture itself when it is open. */
     return (   (item->getType() != ItemType::type_unknown)
             && (item->getType() != ItemType::type_link)
             && (item->getType() != ItemType::type_parent_link)
+            && (item->getType() != ItemType::type_image)
             && (item->hasLink() == true));
 }
 
@@ -2279,6 +2299,12 @@ static void results_apply_one(void)
         break;
     }
 
+    case OPENHAB_REQ_IMAGE:
+        /* The picture screen's, and only while it is up; nothing on the
+         * page holds a picture. */
+        item_image_apply_result(&res);
+        break;
+
     case OPENHAB_REQ_SITEMAPS:
         /* Straight on to the module that owns the list. It is not the tile
          * page's business: nothing here changes, and the answer is for
@@ -2297,6 +2323,48 @@ static void results_apply_one(void)
     openhab_client_result_release(&res);
 }
 
+/* The doorbell: follow the ring item, and when it rings show the picture item
+ * from whatever is on screen.
+ *
+ * Not opened in the same turn as the ring when the clock screen is up. Waking
+ * the backlight is what takes the clock down -- ui_clock_loop() does it on its
+ * next turn, and takes down whatever is on top of the page with it -- so the
+ * picture waits for that, for a moment at most. */
+#define DOORBELL_CLOCK_WAIT_MS 2000
+
+static void doorbell_loop(void)
+{
+    static bool pending;
+    static uint64_t pending_since;
+
+    const char *ring = current_config->item.openhab.doorbell_ring;
+    const char *image = current_config->item.openhab.doorbell_image;
+    bool enabled = (ring[0] != '\0' && image[0] != '\0');
+
+    openhab_bell_follow(enabled ? current_website : "", enabled ? ring : "");
+
+    if (openhab_bell_take_ring() == true && enabled == true)
+    {
+        pending = true;
+        pending_since = port_millis();
+
+        ohez_touch_activity();
+        BEEPER_EVENT_NOTIFY();
+    }
+
+    if (pending == false)
+        return;
+
+    if (   ui_screen_top() == UI_SCREEN_CLOCK
+        && port_millis() - pending_since < DOORBELL_CLOCK_WAIT_MS)
+        return;
+
+    pending = false;
+
+    item_image_popup(current_website, image, "Doorbell",
+                     current_config->item.openhab.doorbell_show * 1000u);
+}
+
 void openhab_ui_loop(void)
 {
     static uint64_t night_check_next_timestamp;
@@ -2310,6 +2378,7 @@ void openhab_ui_loop(void)
     results_apply_one();
     events_apply_one();
     events_subscribe_if_due();
+    doorbell_loop();
     page_submit_if_due();
     page_timeout_check();
 

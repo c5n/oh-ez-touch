@@ -199,7 +199,11 @@
      */
     #define LV_DRAW_SW_SUPPORT_RGB565 1
     #define LV_DRAW_SW_SUPPORT_RGB565_SWAPPED 0
-    #define LV_DRAW_SW_SUPPORT_RGB565A8 0
+    /* On, because LVGL 9.6 scales an RGB565 image through its RGB565A8
+     * transform: off, the doorbell's picture -- decoded at half size and drawn
+     * at twice -- is an unwritten buffer of streaks. See
+     * main/ui/items/item_image.cpp. */
+    #define LV_DRAW_SW_SUPPORT_RGB565A8 1
     /* On, because a horizontal gradient is blended from an RGB888 colour line:
      * off, every one draws nothing at all. The colour screen's tracks are the
      * ones that need it -- see main/ui/items/item_color.cpp. */

@@ -176,6 +176,13 @@ public:
             char hostname[32];
             int port;
             char sitemap[32];
+            /* The doorbell: when the ring item turns ON or OPEN, the image
+             * item's picture is shown from whatever page is up, for
+             * doorbell_show seconds. Either name empty turns it off. Item
+             * names, so letters, digits and '_' -- see ui/items/item_image.cpp. */
+            char doorbell_ring[48];
+            char doorbell_image[48];
+            unsigned int doorbell_show;
         } openhab;
         /* Not under openhab: a reading is published to the MQTT broker and
          * nowhere else, so the sensors owe openHAB nothing. An installation

@@ -96,6 +96,7 @@ set(OHEZ_APP_SRCS
     "ui/items/item_rollershutter.cpp"
     "ui/items/item_player.cpp"
     "ui/items/item_color.cpp"
+    "ui/items/item_image.cpp"
     "ui/ui_activity.c"
     "ui/ui_beep.cpp"
     "ui/ui_clock.cpp"
@@ -111,7 +112,10 @@ set(OHEZ_APP_SRCS
     "ui/ui_style.cpp"
     "ui/ui_widgets.cpp"
 
+    "openhab/openhab_bell.cpp"
     "openhab/openhab_client.cpp"
+    "openhab/image_decode.c"
+    "openhab/json_squeeze.c"
     "openhab/openhab_color.c"
     "openhab/openhab_discover.cpp"
     "openhab/openhab_event_parse.cpp"
@@ -144,6 +148,7 @@ set(OHEZ_APP_SRCS
     "net/wlan_radio.cpp"
 
     "sim/icon_fixture.cpp"
+    "sim/image_fixture.cpp"
     "sim/sim_offline.cpp"
     "sim/sitemap_fixture.cpp"
 
@@ -222,7 +227,7 @@ endif()
 # from the tree, so esp-mqtt now arrives through main/idf_component.yml like the
 # panel drivers do, and a managed component is registered under
 # <namespace>__<name>. Same code and same API as the in-tree component was.
-set(OHEZ_REQUIRES lvgl lodepng ArduinoJson nvs_flash esp_partition esp_http_client
+set(OHEZ_REQUIRES lvgl lodepng tjpgd ArduinoJson nvs_flash esp_partition esp_http_client
                   esp_event espressif__mqtt esp_timer)
 if(NOT OHEZ_LINUX)
     # esp_timer is in the shared list for its *header*: it registers

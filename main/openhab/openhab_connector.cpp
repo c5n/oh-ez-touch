@@ -560,6 +560,11 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
         item->setType(ItemType::type_selection);
     else if (widget["type"] == "Colorpicker")
         item->setType(ItemType::type_colorpicker);
+    /* Only on an Image item. An Image widget with url= and no item points at
+     * an arbitrary web server through openHAB's /proxy, and nothing tells
+     * the panel when that picture changes. */
+    else if (widget["type"] == "Image" && strcmp(item_type, "Image") == 0)
+        item->setType(ItemType::type_image);
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("  type=%u", item->getType());
@@ -569,6 +574,7 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
         return false;
 
     item->setReadOnly(json_item["stateDescription"]["readOnly"].as<bool>());
+    item->setRefreshMs(widget["refresh"].as<uint32_t>());
 
     // MinVal
     if (widget["minValue"])
@@ -821,6 +827,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         widget_filter["labelcolor"] = true;
         widget_filter["valuecolor"] = true;
         widget_filter["iconcolor"] = true;
+        widget_filter["refresh"] = true;
 
         JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
 

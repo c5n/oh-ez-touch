@@ -1254,6 +1254,47 @@ static void test_clock_frame_edges(void)
     TEST_ASSERT_EQUAL(ItemType::type_parent_link, sitemap.getItem(0)->getType());
 }
 
+/* An Image widget, as openHAB 5.2.1 sent it on 2026-10-02 for a UI sitemap
+ * with `Image item=... refresh=5000` and a `url=` one. The state is the
+ * picture, base64; it is cut to a stub here, which is also what json_squeeze()
+ * leaves of a real one. The url= form has no item and is not a tile. */
+static const char page_image[] = R"json(
+{"id":"door","title":"Door","link":"http://fixture/rest/sitemaps/door/door","leaf":true,"timeout":false,
+ "widgets":[
+  {"widgetId":"1_0","visibility":true,"labelSource":"SITEMAP_WIDGET","unit":"",
+   "item":{"link":"http://fixture/rest/items/Doorbell_Snapshot",
+           "state":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgK",
+           "lastState":"data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ",
+           "type":"Image","name":"Doorbell_Snapshot","label":"probe","tags":[],"groupNames":[]},
+   "widgets":[],"mappings":[],"type":"Image","label":"Front door","icon":"image","staticIcon":false,
+   "refresh":5000,"url":"http://fixture/proxy?sitemap=door&widgetId=1_0"},
+  {"widgetId":"1_1","visibility":true,"labelSource":"SITEMAP_WIDGET","unit":"",
+   "widgets":[],"mappings":[],"type":"Image","label":"Url","icon":"image","staticIcon":false,
+   "url":"http://fixture/proxy?sitemap=door&widgetId=1_1"}
+ ]}
+)json";
+
+static void test_an_image_widget_is_a_tile(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page_image, strlen(page_image)));
+    TEST_ASSERT_EQUAL_UINT(1, sitemap.getItemCount());
+
+    Item *image = sitemap.getItem(0);
+
+    TEST_ASSERT_EQUAL(ItemType::type_image, image->getType());
+    TEST_ASSERT_EQUAL_STRING("Front door", image->getLabel());
+    TEST_ASSERT_EQUAL_UINT32(5000, image->getRefreshMs());
+
+    /* Where the picture comes from: the item's own state, not the /proxy
+     * URL, which openHAB 5.2.1 answers with a 500 for an item-backed one. */
+    char url[STR_URL_LEN];
+
+    TEST_ASSERT_TRUE(image->stateUrl(url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING("http://fixture/rest/items/Doorbell_Snapshot/state", url);
+}
+
 void test_sitemap_parse_run(void)
 {
     RUN_TEST(test_the_clock_frame_is_not_on_the_page);
@@ -1295,6 +1336,7 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_a_dimensioned_number_arrives_with_its_unit);
     RUN_TEST(test_widget_count_is_clamped);
     RUN_TEST(test_selection_count_is_clamped);
+    RUN_TEST(test_an_image_widget_is_a_tile);
     RUN_TEST(test_error_object_is_a_failure);
     RUN_TEST(test_a_body_that_is_not_a_page_yields_an_empty_page);
     RUN_TEST(test_malformed_json_is_a_failure);

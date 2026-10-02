@@ -125,6 +125,14 @@
 # and a hash that is subtly wrong still opens every PIN it stored -- until it
 # is fixed, and then opens none of them.
 #
+# openhab/json_squeeze.c and openhab/image_decode.c came with the doorbell's
+# picture, and both sit between a socket and a parser that cannot afford what
+# the socket brings: an Image item's state is a picture, and it arrives inside
+# every page and every event that mentions the item. One cuts JSON strings
+# short in a stream; the other decodes a JPEG while it streams in, through
+# components/tjpgd. libc and TJpgDec, nothing else -- the socket is a read
+# callback the tests supply from memory, in reads of any size.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_backlight_control.cpp"
@@ -136,6 +144,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_event_parse.cpp"
                             "test_frame_stats.cpp"
                             "test_icon_set.cpp"
+                            "test_image_decode.cpp"
                             "test_item_setters.cpp"
                             "test_mdns_query.cpp"
                             "test_multipart.cpp"
@@ -143,6 +152,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_port_ntp.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
+                            "test_json_squeeze.cpp"
                             "test_outputs.cpp"
                             "test_pin_code.cpp"
                             "test_sitemap_list.cpp"
@@ -170,6 +180,8 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_event_parse.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_color.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/json_squeeze.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/image_decode.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_ntp.c"
@@ -184,7 +196,13 @@ idf_component_register(SRCS "test_runner.cpp"
                        INCLUDE_DIRS "."
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main"
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main/port"
-                       REQUIRES unity ArduinoJson freertos)
+                       REQUIRES unity ArduinoJson freertos tjpgd)
+
+# test_image_decode.cpp reads its JPEGs from here at run time rather than out
+# of a C array: a full-HD snapshot is 40 KB, which as hex is a quarter of a
+# megabyte of source for nobody to read.
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    TEST_FIXTURE_DIR="${CMAKE_CURRENT_LIST_DIR}/../fixtures")
 
 # icon_set.cpp reads ICON_SET_DATA_HEADER instead of looking for the generated
 # table; see the note above and icon_set_fixture.h. Quoted so the preprocessor
