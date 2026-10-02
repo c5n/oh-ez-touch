@@ -80,8 +80,8 @@ headless run is driven over the control interface, or not at all.
 
 ## Offline mode
 
-`OHEZ_OFFLINE=1` serves the sitemap and the widget icons from compiled-in
-fixtures instead of the network:
+`OHEZ_OFFLINE=1` serves the sitemap, the widget icons and the pictures of
+Image items from compiled-in fixtures instead of the network:
 
 ```bash
 OHEZ_OFFLINE=1 ./build/linux/oh-ez-touch.elf
@@ -91,11 +91,18 @@ This gives a stable, reproducible screen. It lets you work on the UI without
 an openHAB server.
 
 The fixture in `main/sim/sitemap_fixture.cpp` is a small demo sitemap. It has
-a home page with two sub pages and covers every supported widget type. It
+a home page with two sub pages and covers every supported widget type but
+Image. It
 goes through the same parser as a real server response. Edit that file to
 reproduce a particular sitemap. Item states are read from the fixture and are
 not written back. Operating a widget changes the state locally only. There is
-no event stream in offline mode: nothing is listening at the other end.
+no event stream in offline mode: nothing is listening at the other end, so
+the doorbell never rings either.
+
+Every Image item shows the same picture offline: `doc/openHAB/doorbell.jpg`,
+compiled in by `main/sim/image_fixture.cpp` on the linux target only. To see
+it, point a fixture page's widget at an Image item; to change it, regenerate
+the array in that file from the JPEG with `xxd -i`.
 
 ### Widget icons
 

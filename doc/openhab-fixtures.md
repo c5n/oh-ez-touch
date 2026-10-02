@@ -207,6 +207,25 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
   drops the rest -- `test/host/main/test_sitemap_list.cpp`, against a capture
   from 2026-09-18.
 
+- **An Image item's state is the picture**, as measured on 2026-10-02 against
+  openHAB 5.2.1 with a UI-managed sitemap:
+  - In a sitemap page, the widget carries the item with the whole
+    `data:image/jpeg;base64,...` state, and the previous one again as
+    `lastState`. A 14 KB JPEG made a one-widget page 23.8 KB. The panel cuts
+    every JSON string over 512 bytes short while it reads
+    (`main/openhab/json_squeeze.c`), and the same on the event streams, where
+    a new snapshot is a widget event of the same size.
+  - The widget's `url` is `/proxy?sitemap=...&widgetId=...` whether it has an
+    item or not. For an item-backed one openHAB answers it with **HTTP 500**
+    ("URL 'null' is not a valid URL"). The panel never uses it.
+  - `GET /rest/items/<name>/state` answers `text/plain` with the data URI by
+    default, and the **raw JPEG** with `Content-Type: image/jpeg` for
+    `Accept: image/*` or `image/jpeg`. That is what the panel asks for.
+  - An Image widget with `url=` and no item has no `item` at all. The panel
+    leaves it out.
+  - `test_sitemap_parse.cpp` pins the widget, `test_json_squeeze.cpp` the
+    page.
+
 ## Where the panel and openHAB disagree
 
 Known, reproduced against this server, and not fixed. Any of these is a real
@@ -259,7 +278,8 @@ Worth having beside you when writing a page that is meant to fit.
 | entries in a Selection | 10 | `ITEM_SELECTION_COUNT_MAX` |
 | label | 32 bytes | `STR_LABEL_LEN` |
 | state text | 32 bytes | `STR_STATE_TEXT_LEN` |
-| sitemap page body | 12288 bytes | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE` |
+| sitemap page body | 12288 bytes, after strings over 512 bytes are cut | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE`, `JSON_SQUEEZE_STRING_MAX` |
+| a picture, as decoded | half the screen each way, or less | `main/ui/items/item_image.cpp` |
 | icon body | 5000 bytes | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
 | `/rest/sitemaps` body | 8192 bytes | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |
 | sitemaps offered | 12 | `SITEMAP_LIST_COUNT_MAX` |

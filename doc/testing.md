@@ -93,6 +93,21 @@ sink, so both can be tested on the host.
   `\u`-escaped, `NULL` and `UNDEF`, the openHAB 2 `smarthome/` root, the
   keepalive, events that are not state changes, malformed input and an
   over-long value.
+- **test_json_squeeze**: the filter in `main/openhab/json_squeeze.c` that cuts
+  every JSON string longer than 512 bytes short. An Image item's state is a
+  picture in base64, and openHAB puts it into the sitemap page and into every
+  event for the widget. The suite feeds a page carrying a 60 KB state in reads
+  of 1 byte to 100 KB and parses what comes out. It also cuts at every
+  position around an escape sequence and a UTF-8 character, and checks that a
+  newline starts a fresh line of an event stream.
+- **test_image_decode**: the JPEG decoder in `main/openhab/image_decode.c`,
+  over TJpgDec. The fixtures in `test/host/fixtures/` are four flat quadrants
+  (red, green, blue, white) at 640x480, 800x600 and 1920x1080, and a
+  progressive copy. Each one has to come out inside the box it was asked to
+  fit, with each quadrant's colour in its place, from reads of any size. The
+  progressive file, a stream cut in half, `UNDEF` and an empty body have to
+  fail without leaving anything allocated. The suite also checks the choice
+  of descale and pixel step for every size up to 4000x3000.
 
 ## Testing against a real openHAB
 

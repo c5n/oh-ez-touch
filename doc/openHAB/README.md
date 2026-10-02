@@ -3,7 +3,7 @@
 A ready-to-install openHAB configuration that shows everything the panel does
 with a sitemap: every control and its screen, groups, Frames and the clock
 frame, value labels, formatted values, colours, visibility rules, read-only
-items, the Item PIN and the four themes.
+items, the Item PIN, a doorbell's picture and the four themes.
 
 ```
 doc/openHAB/
@@ -11,6 +11,7 @@ doc/openHAB/
   sitemaps/ohezdemo.sitemap     the sitemap "ohezdemo"
   transform/ohezdemo.map        the MAP the washing machine's status goes through
   seed-states.sh                gives every item a state
+  doorbell.jpg                  the picture seed-states.sh puts into the doorbell
   make-screenshots.sh           takes the pictures below from the simulator
   img/                          the pictures
 ```
@@ -79,7 +80,7 @@ sitemap ohezdemo label="OhEzTouch Demo"
     {
         Text label="Basics" icon="settings" { ... }
         Text label="Media"  icon="blinds"   { ... }
-        Group item=OHEZ_DEMO_gLights
+        Text label="Door"   icon="frontdoor" { ... }
         Text label="Values" icon="chart"    { ... }
         Text label="Rules"  icon="party"    { ... }
         Text label="Secure" icon="lock"     { ... }
@@ -122,7 +123,7 @@ and **Show time and date when dimmed** is on. See
 ```
 Text label="Basics" icon="settings"
 {
-    Switch      item=OHEZ_DEMO_Light_Living
+    Group       item=OHEZ_DEMO_gLights
     Slider      item=OHEZ_DEMO_Dimmer_Living
     Setpoint    item=OHEZ_DEMO_Heating_Set minValue=15 maxValue=26 step=0.5
     Selection   item=OHEZ_DEMO_Scene mappings=["MOVIE"="Movie", "DINNER"="Dinner", "READING"="Reading", "OFF"="Off"]
@@ -130,7 +131,9 @@ Text label="Basics" icon="settings"
 }
 ```
 
-A **Switch** toggles on the tile itself. Every other control opens a screen of
+**Lights** is a group; see [Lights: a group](#lights-a-group). A **Switch**
+toggles on the tile itself, like the lights behind it and the doorbell on the
+[Door](#door-a-doorbells-picture) page. Every other control opens a screen of
 its own, laid out for a finger. The back bar at the top closes it. A control
 screen follows the server while it is open: a change made elsewhere shows at
 once.
@@ -182,9 +185,9 @@ new title shows at once. See [Players](../sitemap.md#players).
 
 ## Lights: a group
 
-| Home page tile | The page openHAB generates |
+| The tile, on Basics | The page openHAB generates |
 | --- | --- |
-| <img src="img/home.png" width="320"> | <img src="img/lights.png" width="320"> |
+| <img src="img/basics.png" width="320"> | <img src="img/lights.png" width="320"> |
 
 ```
 Group:Switch:OR(ON,OFF) OHEZ_DEMO_gLights "Lights" <light>
@@ -196,6 +199,62 @@ Group item=OHEZ_DEMO_gLights
 A `Group` widget is both: its tile shows the group's aggregated state (`ON`
 while any light is on) and a tap opens the member page openHAB builds by
 itself, one Switch per member.
+
+## Door: a doorbell's picture
+
+| The page | A tap on Camera |
+| --- | --- |
+| <img src="img/door.png" width="320"> | <img src="img/doorbell.png" width="320"> |
+
+```
+Text label="Door" icon="frontdoor"
+{
+    Image  item=OHEZ_DEMO_Doorbell_Snapshot refresh=10000
+    Switch item=OHEZ_DEMO_Doorbell_Ring
+}
+```
+
+```
+Image  OHEZ_DEMO_Doorbell_Snapshot "Camera"   <camera>
+Switch OHEZ_DEMO_Doorbell_Ring     "Doorbell" <frontdoor>
+```
+
+This is what a doorbell or camera binding provides: the snapshot as an
+**Image** item, and the button as a Switch that goes ON when it is pressed.
+`seed-states.sh` puts `doorbell.jpg` into the Image item, the way a binding
+would. The state of an Image item is the whole picture, so the tile does not
+show it. A tap opens it as large as the screen allows, a tap on the picture
+fetches it again, and so does `refresh=`, here every ten seconds. A new
+snapshot, sent while the picture is open, shows at once.
+
+| The bell rings, on any page |
+| --- |
+| <img src="img/doorbell-ring.png" width="320"> |
+
+Name both items in the web interface's **openHAB → Doorbell** section, or on
+the panel under **Settings → openHAB → Manual**, as **Ring item**
+`OHEZ_DEMO_Doorbell_Ring` and **Picture item** `OHEZ_DEMO_Doorbell_Snapshot`.
+On the simulator:
+
+```bash
+tools/ohez_ctl.py set bell_ring  OHEZ_DEMO_Doorbell_Ring
+tools/ohez_ctl.py set bell_image OHEZ_DEMO_Doorbell_Snapshot
+```
+
+When the ring item changes to ON, the panel wakes up, chimes and shows the
+picture over whatever is on screen, the clock included. It goes away after
+**Show picture for** seconds (30 by default) unless somebody touches it. Ring
+the demo's bell from the Doorbell tile on this page (OFF, then ON again), or
+over REST:
+
+```bash
+curl -X PUT -H 'Content-Type: text/plain' -d ON \
+     http://localhost:8080/rest/items/OHEZ_DEMO_Doorbell_Ring/state
+```
+
+The picture is decoded at half the screen's size and drawn at twice that, so
+it is soft. A full-size picture does not fit the memory of a panel without
+PSRAM. See [Image](../sitemap.md#image-a-doorbell-or-a-camera).
 
 ## Values: labels, formatted values, colours
 
@@ -374,11 +433,11 @@ The same home page in the four theme families, under **Settings → Theme**:
   Selection offers ten entries, and a label holds 32 bytes. More is cut off
   without a message. `test/openhab/oheznav.sitemap` has pages that go past each
   limit.
-- **Widgets the panel cannot draw.** Chart, Image, Video, Webview, Mapview,
-  Input, and a Switch without mappings over a Dimmer or a Number, are left out
-  and take no place.
-- **Cover art.** A binding's album art is an Image item, and the panel draws
-  no Image widgets.
+- **Widgets the panel cannot draw.** Chart, Video, Webview, Mapview, Input,
+  an Image with `url=` instead of an item, and a Switch without mappings over a
+  Dimmer or a Number, are left out and take no place.
+- **Cover art.** A binding's album art is an Image item. It works as one, on a
+  tile of its own, but the player's screen does not show it.
 - **Older servers.** Live colours and visibility need openHAB's sitemap events.
   On a server without them the panel follows item states only. See
   [Live updates](../sitemap.md#live-updates).

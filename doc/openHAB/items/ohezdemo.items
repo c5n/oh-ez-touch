@@ -37,6 +37,13 @@ Switch                  OHEZ_DEMO_Motion           "Motion"                    <
 Number:Power            OHEZ_DEMO_Power            "Power [%.0f W]"            <energy>
 Switch                  OHEZ_DEMO_ShowDetails      "Show Details"              <switch>
 
+// ---- Doorbell ---------------------------------------------------------------
+// What a doorbell binding provides: a snapshot as an Image item, and a Switch
+// that goes ON when the bell is pressed (a trigger channel turned into one by
+// a rule or a profile). seed-states.sh puts a picture into the first.
+Image                   OHEZ_DEMO_Doorbell_Snapshot "Camera"                   <camera>
+Switch                  OHEZ_DEMO_Doorbell_Ring    "Doorbell"                  <frontdoor>
+
 // ---- Protected by the Item PIN ----------------------------------------------
 Switch                  OHEZ_DEMO_DoorOpener       "Door Opener"               <lock>      ["ohez-pin"]
 String                  OHEZ_DEMO_Alarm            "Alarm"                     <shield>    ["ohez-pin"]

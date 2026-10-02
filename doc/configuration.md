@@ -400,6 +400,33 @@ On the panel the sitemap list is fetched from the host and port *as they are
 being edited*. The web form fetches from the saved endpoint. There the order
 is: pick a server, **Save**, then pick a sitemap from the reloaded page.
 
+### Doorbell
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Ring item | | The item that turns ON (a Switch) or OPEN (a Contact) when the bell is pressed. Empty turns the doorbell off. |
+| Picture item | | The Image item with the doorbell's snapshot. |
+| Show picture for | 30 | Seconds until the picture goes away again. A touch keeps it up. 0 keeps it up until the back bar. |
+
+On the panel these three are behind **Manual** on the openHAB page, after the
+server's fields.
+
+When the ring item changes to ON or OPEN, the panel wakes up, chimes and shows
+the picture item's picture over whatever is on screen. A second ring while it
+is up fetches the picture again. The ring item does not have to be on any
+sitemap page: the panel keeps a second `GET /rest/events` open for that one
+item, as long as both names are set. It costs about 8 KB of RAM.
+
+Many doorbell bindings report a press on a trigger channel, not on an item.
+Turn it into a Switch with a rule, or link the channel to a Switch item with
+a profile that sets it ON, and switch it OFF again after a few seconds (for
+example with `expire="5s,command=OFF"` in the item's metadata). Only a change
+rings, so an item that stays ON rings once.
+
+How the picture is fetched and drawn is in
+[Image](sitemap.md#image-a-doorbell-or-a-camera). The demo has a doorbell to
+try it on: see [the Door page](openHAB/README.md#door-a-doorbells-picture).
+
 ### MQTT Broker
 
 | Setting | Default | Description |

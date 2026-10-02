@@ -60,7 +60,8 @@ main/testif/          the simulator's control interface: the UDP command
                       socket, the synthetic pointer, and the screen dumps
 main/port/            the platform boundary: one implementation directory per
                       target
-components/           LVGL and ArduinoJson as submodules, lodepng vendored
+components/           LVGL and ArduinoJson as submodules, lodepng and TJpgDec
+                      vendored
 test/host/            the unit tests, as an IDF project of their own
 ```
 
@@ -196,7 +197,14 @@ icon. Colours and visibility are as the page was loaded.
 The parsing of both is `main/openhab/openhab_event_parse.cpp`, which has no
 socket in it and is covered by the host tests. A sitemap event carries the
 whole item with it and runs to 900 bytes, so the line buffer is 2 KB. A
-longer line is dropped and reported.
+longer line is dropped and reported. The one item whose events are always
+longer is an Image item, whose state is the picture: every JSON string longer
+than 512 bytes is cut short before the line is split
+(`main/openhab/json_squeeze.c`), so a new snapshot is an ordinary event.
+
+**The doorbell** has a stream of its own (`main/openhab/openhab_bell.cpp`),
+because the bell is on no page: `GET /rest/events?topics=*/items/<ring>/statechanged`,
+opened only while a ring item is configured.
 
 Polling stays, as the fallback. While the stream is down -- openHAB
 restarting, the link coming back, a server without the endpoint -- every tile
@@ -213,6 +221,14 @@ Two more requests share the worker:
 - **The sitemap list.** `main/openhab/openhab_sitemaps.cpp` fetches the list
   of sitemaps a server offers. Both settings front ends show it beside the
   Sitemap field. One cache serves both.
+- **Pictures.** An Image item's picture, for the picture screen
+  (`main/ui/items/item_image.cpp`). It does not touch the 12 KB buffer and is
+  never held whole: `GET <item>/state` with `Accept: image/*` brings the JPEG
+  itself, TJpgDec (`main/openhab/image_decode.c`) pulls it off the socket
+  through a 512 byte buffer and a 3.6 KB work area, descales by 1/2 to 1/8
+  while decoding and skips pixels for the rest, and the one allocation that
+  grows is the result -- at most half the screen each way, 29 KB in landscape.
+  The screen asks for less when the largest free block is short of that.
 - **Server discovery.** `main/openhab/openhab_discover.cpp` sends one mDNS
   query (`main/net/mdns_query.c`) from its own UDP socket and reads the
   answers without blocking. One 44-byte datagram, sent twice, and a
@@ -241,7 +257,9 @@ Without that, the first request of every episode writes into the dead socket,
 which succeeds, and then waits the full timeout for an answer that cannot come.
 
 Bodies are read into one buffer, allocated once and sized for the largest
-class: a 12 KB sitemap page. A buffer allocated per page load needed 12 KB of
+class: a 12 KB sitemap page. A page is filtered on its way in, so that an
+Image item's state -- the picture, base64, in `state` and again in
+`lastState` -- does not make the page 100 KB; see `json_squeeze.h`. A buffer allocated per page load needed 12 KB of
 heap in one piece, and on a weak link the WiFi driver holds its transmit
 buffers for as long as a frame is being retried -- so a page fetch asked for
 the largest block the heap had at the moment it had least to give. The symptom

@@ -182,7 +182,10 @@ them all) and goes through the same save path, so **it writes a real
 `config.json`**. Point a test at one of its own with `OHEZ_CONFIG_DIR`, the way
 `test_config_file.cpp` does. An unknown value for an enumerated setting is
 refused rather than falling back to the first option -- a misspelt theme name
-would otherwise silently select another one.
+would otherwise silently select another one. A text setting is emptied with a
+quoted empty value, `set bell_ring ""`; from the shell that is
+`tools/ohez_ctl.py send 'set bell_ring ""'`, because `ohez_ctl.py set` wants
+a value it can see.
 
 `nav` takes the `OHEZ_ITEM` syntax: every step but the last follows that tile's
 linked page, and the last opens that tile's control. So `nav 5` opens the sixth
@@ -307,8 +310,10 @@ machine and fails on a slow one. `tools/ohez_ctl.py wait-page` is that loop.
 
 `tiles[].type` is the openHAB item type: `group`, `link`, `parent_link`,
 `number`, `string`, `setpoint`, `slider`, `selection`, `colorpicker`, `switch`,
-`rollershutter` or `player`. A `switch` toggles in place when tapped; most of
-the rest open a screen; the link types navigate.
+`rollershutter`, `player` or `image`. A `switch` toggles in place when tapped;
+most of the rest open a screen; the link types navigate. An `image` tile's
+`state` is the start of the base64 picture openHAB stores, and says nothing;
+the picture screen it opens reports as `item` with `"type": "image"`.
 
 `tiles[].pin` is true when the tile's item has the `ohez-pin` tag, so a tap on
 it asks for the Item PIN first (read-only tiles never ask).

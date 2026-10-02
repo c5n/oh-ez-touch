@@ -12,6 +12,7 @@ Sitemaps for the OhEzTouch can contain these elements:
 
 - Colorpicker
 - Frame
+- Image, on an Image item
 - Selection
 - Setpoint
 - Slider
@@ -42,8 +43,11 @@ fan level) opens the same screen as a Selection: one button per mapping. So
 does `Default` on a Number or String with up to four command options, which
 openHAB sends as a Switch.
 
-Widgets of other types (Chart, Image, Webview, Mapview, Input and so on) are
-left out. So is a Switch without mappings over an item that is neither a
+An Image on an Image item shows the item's picture; see
+[Image](#image-a-doorbell-or-a-camera).
+
+Widgets of other types (Chart, Webview, Mapview, Input and so on) are left
+out, and so is an Image with `url=` and no item. So is a Switch without mappings over an item that is neither a
 Switch, a Rollershutter, a Player nor a group of Switches or Rollershutters,
 for example a Switch over a Dimmer. A widget
 that a `visibility=[...]` rule hides is left out too, and so is everything in
@@ -53,6 +57,31 @@ hides a widget, the panel loads the page again.
 An item whose state description is read-only, for example
 `{ stateDescription=""[readOnly=true] }`, gets a tile that only shows its
 state. A tap on it does nothing, even inside a Switch or a Slider.
+
+## Image: a doorbell or a camera
+
+```
+Image item=FrontDoor_Snapshot refresh=10000
+```
+
+A doorbell or camera binding puts its snapshot into an Image item. The item's
+state is the picture itself, so the tile shows the name and the icon and no
+picture. A tap opens the picture as large as the screen allows. A tap on the
+picture fetches it again, so does `refresh=` (in milliseconds, at most every
+two seconds), and so does a new snapshot arriving while it is open.
+
+The panel asks for the picture at `/rest/items/<item>/state` with
+`Accept: image/*`, which makes openHAB send the JPEG itself instead of the
+base64 text it stores. The panel decodes it while it arrives and shrinks it
+while decoding, to half the screen's size or less, and draws it at twice that.
+A 640x480 snapshot ends up 107x80 in landscape. The picture is soft, but a
+full-size one does not fit the memory of a panel without PSRAM. Only baseline
+JPEG is supported; a progressive JPEG or a PNG shows "No picture". If the
+binding can deliver a smaller snapshot, ask it for one: it loads faster and
+looks no worse.
+
+The picture can also open by itself, from any page, when the doorbell rings.
+See [Doorbell](configuration.md#doorbell).
 
 ## Players
 

@@ -14,7 +14,7 @@ sitemap ohezdemo label="OhEzTouch Demo"
     {
         Text label="Basics" icon="settings"
         {
-            Switch      item=OHEZ_DEMO_Light_Living
+            Group       item=OHEZ_DEMO_gLights
             Slider      item=OHEZ_DEMO_Dimmer_Living
             Setpoint    item=OHEZ_DEMO_Heating_Set minValue=15 maxValue=26 step=0.5
             Selection   item=OHEZ_DEMO_Scene mappings=["MOVIE"="Movie", "DINNER"="Dinner", "READING"="Reading", "OFF"="Off"]
@@ -37,7 +37,13 @@ sitemap ohezdemo label="OhEzTouch Demo"
             }
         }
 
-        Group item=OHEZ_DEMO_gLights
+        // The picture opens on a tap; the panel opens it by itself when the
+        // ring item goes ON, if Settings -> openHAB -> Doorbell names both.
+        Text label="Door" icon="frontdoor"
+        {
+            Image  item=OHEZ_DEMO_Doorbell_Snapshot refresh=10000
+            Switch item=OHEZ_DEMO_Doorbell_Ring
+        }
 
         Text label="Values" icon="chart"
         {

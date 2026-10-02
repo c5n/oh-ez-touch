@@ -11,6 +11,8 @@ on the server.
 
 - Dynamic user interface from an openHAB sitemap
 - Item states pushed by openHAB as they change, with polling as the fallback
+- Doorbell and camera snapshots: an Image item's picture on a tap, and on its
+  own from any page when the bell rings
 - Clock screen when idle: the time and three items of your choice, in your
   own day and night colours, faded in and out through black
 - Four themes: Material, LCARS, JARVIS, Classic
@@ -127,6 +129,7 @@ of them:
 - [LVGL](https://lvgl.io/)
 - [ArduinoJson](https://arduinojson.org/)
 - [LodePNG](https://lodev.org/lodepng/)
+- [TJpgDec](https://elm-chan.org/fsw/tjpgd/) by ChaN
 - Embedded fonts: [Barlow, Rajdhani and Antonio](https://fonts.google.com/)
   (SIL OFL 1.1)
 

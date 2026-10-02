@@ -138,8 +138,29 @@ item_shot "Living Blinds" rollershutter
 item_shot Music           player
 
 echo "groups"
-open_page Lights
+open_page Basics
+ctl tap-label Lights >/dev/null
+ctl wait-page >/dev/null
 shot lights
+
+echo "door"
+open_page Door
+shot door
+item_shot Camera doorbell
+# The ring, from another page: the panel follows the ring item wherever it is.
+ctl set bell_ring OHEZ_DEMO_Doorbell_Ring >/dev/null
+ctl set bell_image OHEZ_DEMO_Doorbell_Snapshot >/dev/null
+home
+sleep 2
+upd Doorbell_Ring ON
+wait_screen item 10
+shot doorbell-ring
+ctl tap 20 20 >/dev/null
+wait_screen page
+upd Doorbell_Ring OFF
+# Quoted for the panel's tokeniser: `set` wants a value, and "" is an empty one.
+ctl send 'set bell_ring ""' >/dev/null
+ctl send 'set bell_image ""' >/dev/null
 
 echo "values"
 open_page Values

@@ -52,6 +52,10 @@ upd Motion          ON
 upd Power           1240
 upd ShowDetails     OFF
 
+upd Doorbell_Ring   OFF
+# The picture a camera would put there: a JPEG, base64, as a data: URI.
+upd Doorbell_Snapshot "data:image/jpeg;base64,$(base64 < "$(dirname "$0")/doorbell.jpg" | tr -d '\n')"
+
 upd DoorOpener      OFF
 upd Alarm           HOME
 

@@ -12,6 +12,15 @@
 - [x] openhab: Take item states pushed over `/rest/events` instead of polling
       every tile every five seconds. See
       [The event stream](architecture.md#the-event-stream).
+- [x] openhab_ui: Show an Image item's picture, a doorbell's or a camera's,
+      and open it from any page when the bell rings. See
+      [Image](sitemap.md#image-a-doorbell-or-a-camera) and
+      [Doorbell](configuration.md#doorbell).
+- [ ] openhab: The picture has not been fetched on hardware. Measure the
+      client task's stack (4 KB, with TJpgDec on it) and the heap during a
+      ring, and whether an Image item's page loads on a fragmented heap.
+- [ ] openhab_ui: Show a progressive JPEG or a PNG. TJpgDec reads baseline
+      JPEG only, and a PNG would have to be decoded whole.
 - [ ] openhab: Send an API token. The panel sends none, so `/rest/events`,
       `/rest/sitemaps/events`, the sitemap and the item states have to be open
       to an anonymous client.
