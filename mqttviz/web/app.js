@@ -2344,7 +2344,8 @@ function drawBox(box, time) {
   drawPinGlyph(box, x, y);
 
   const hasRow = (row) => box.rows.includes(row);
-  const t = (suffix) => dev.topics[suffix];
+  // not t: that name is the translator the chips' labels need
+  const topic = (suffix) => dev.topics[suffix];
   const flashFill = (suffix) => {
     const f = box.flash[suffix] || 0;
     return f > 0.02 ? "rgba(255, 170, 40, " + (f * 0.18).toFixed(3) + ")"
@@ -2499,7 +2500,7 @@ function drawBox(box, time) {
 
     for (let relay = 1; relay <= 3; relay++) {
       const suffix = "relay/" + relay;
-      if (!t(suffix)) continue;
+      if (!topic(suffix)) continue;
       const on = isOn(topicValue(dev, suffix));
       chip(cx0, cursorY, 20, 20, on ? "rgba(255,156,0,0.25)" : "#171c27",
            on ? PALETTE.orange : PALETTE.edge);
@@ -2513,7 +2514,7 @@ function drawBox(box, time) {
     cx0 += 6;
     for (const channel of ["red", "green", "blue"]) {
       const suffix = "led/" + channel;
-      if (!t(suffix)) continue;
+      if (!topic(suffix)) continue;
 
       const local = box.ledLocal[suffix];
       const value = local != null ? local
@@ -3593,8 +3594,10 @@ function renderLayouts() {
 
     const meta = document.createElement("span");
     meta.className = "l-meta";
-    meta.textContent = tf("lay.meta",
-                          { n: pins, mode, date: layout.saved_at || "" });
+    const placed = Object.keys(layout.positions3d || {}).length;
+    meta.textContent = tf(placed ? "lay.meta3d" : "lay.meta",
+                          { n: pins, n3d: placed, mode,
+                            date: layout.saved_at || "" });
 
     const load = document.createElement("button");
     load.className = "lcars-btn small";

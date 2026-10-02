@@ -136,6 +136,7 @@ const I18N = {
     "lay.namePlaceholder": "name of the arrangement",
     "lay.nameNeeded": "the arrangement needs a name",
     "lay.meta": "{n} pinned · {mode} · saved {date}",
+    "lay.meta3d": "{n} pinned · {n3d} in the house · {mode} · saved {date}",
     "hint.layouts": "Save the arrangement as it stands under a name and"
                     + " bring a saved one back whole — the places and the"
                     + " picture they belong to, which is what a layout is."
@@ -371,6 +372,7 @@ const I18N = {
     "lay.namePlaceholder": "Name der Anordnung",
     "lay.nameNeeded": "die Anordnung braucht einen Namen",
     "lay.meta": "{n} fixiert · {mode} · gespeichert {date}",
+    "lay.meta3d": "{n} fixiert · {n3d} im Haus · {mode} · gespeichert {date}",
     "hint.layouts": "Die Leinwand, wie sie gerade steht, unter einem Namen"
                     + " speichern und ein gespeichertes Layout als Ganzes"
                     + " zurückholen — die Plätze und das Bild, zu dem sie"

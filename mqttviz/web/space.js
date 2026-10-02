@@ -736,6 +736,7 @@ function updateLinks(time) {
   for (const obj of objs.values()) {
     if (obj.kind !== "beacon" || !obj.group.visible) continue;
     for (const h of obj.hearers || []) {
+      if (!h.panel.group.visible) continue;    // up on a hidden level
       const fade = Math.max(0.15, 1 - h.seen.age / 60);
       bpos.push(obj.pos.x, obj.pos.y, obj.pos.z,
                 h.panel.pos.x, h.panel.pos.y, h.panel.pos.z);
@@ -828,10 +829,12 @@ function frame(time) {
 /* Where the camera starts: where the last session left it, or high at
  * a corner of the house looking at its middle. */
 function frameHouse() {
+  // the dock row in front of the house is part of the picture
+  const front = bounds.max[1] + 1.2;
   const cx = (bounds.min[0] + bounds.max[0]) / 2;
-  const cz = (bounds.min[1] + bounds.max[1]) / 2;
+  const cz = (bounds.min[1] + front) / 2;
   const span = Math.max(4, bounds.max[0] - bounds.min[0],
-                        bounds.max[1] - bounds.min[1]);
+                        front - bounds.min[1]);
   controls.target.set(cx, 0.8, cz);
   camera.position.set(cx + span * 0.55, span * 0.85, cz + span * 1.0);
   controls.update();
@@ -1127,6 +1130,7 @@ function renderToolbar() {
   ui.homeBtn.title = t("space.home");
   ui.opacity.title = t("space.opacity");
   ui.removeBtn.classList.toggle("hidden", !house);
+  ui.opacity.classList.toggle("hidden", !house);
   if (document.activeElement !== ui.opacity)
     ui.opacity.value = settings().holo_opacity || 50;
   ui.name.textContent = house ? house.name : "";
