@@ -1,0 +1,39 @@
+// OhEzTouch demo items. See ../README.md.
+//
+// Every item carries the prefix OHEZ_DEMO_, so the demo can sit next to a real
+// configuration and be removed again with one glob.
+
+// ---- Lights -----------------------------------------------------------------
+Group:Switch:OR(ON,OFF) OHEZ_DEMO_gLights          "Lights"                    <light>
+Switch                  OHEZ_DEMO_Light_Living     "Living Room"               <light>         (OHEZ_DEMO_gLights)
+Switch                  OHEZ_DEMO_Light_Kitchen    "Kitchen"                   <light>         (OHEZ_DEMO_gLights)
+Switch                  OHEZ_DEMO_Light_Garden     "Garden"                    <outdoorlight>  (OHEZ_DEMO_gLights)
+Dimmer                  OHEZ_DEMO_Dimmer_Living    "Dimmer [%d %%]"            <slider>
+Color                   OHEZ_DEMO_Color_Living     "Ambient Colour"            <colorlight>
+String                  OHEZ_DEMO_Scene            "Scene"                     <party>
+
+// ---- Climate ----------------------------------------------------------------
+Number:Temperature      OHEZ_DEMO_Heating_Set      "Heating [%.1f °C]"         <heating>
+Number:Temperature      OHEZ_DEMO_Temp_Outside     "Outside [%.1f °C]"         <temperature>
+Number                  OHEZ_DEMO_Humidity         "Humidity [%.0f %%]"        <humidity>
+Number                  OHEZ_DEMO_Mode             "Heating Mode"              <radiator>  { stateDescription=""[options="1=Comfort,2=Eco,3=Away"] }
+Number                  OHEZ_DEMO_Fan              "Ventilation"               <fan>       { commandDescription=""[options="0=Off,1=Low,2=High"] }
+
+// ---- Blinds and media -------------------------------------------------------
+Group:Rollershutter:AVG OHEZ_DEMO_gShutters        "All Blinds [%d %%]"        <blinds>
+Rollershutter           OHEZ_DEMO_Shutter_Living   "Living Blinds [%d %%]"     <rollershutter> (OHEZ_DEMO_gShutters)
+Rollershutter           OHEZ_DEMO_Shutter_Kitchen  "Kitchen Blinds [%d %%]"    <rollershutter> (OHEZ_DEMO_gShutters)
+Player                  OHEZ_DEMO_Player           "Music"                     <player>
+Dimmer                  OHEZ_DEMO_Volume           "Volume [%d %%]"            <soundvolume>
+Switch                  OHEZ_DEMO_Away             "Presence"                  <presence>
+
+// ---- House ------------------------------------------------------------------
+DateTime                OHEZ_DEMO_LastMotion       "Last Motion [%1$tH:%1$tM]" <time>
+Contact                 OHEZ_DEMO_FrontDoor        "Front Door"                <frontdoor> { stateDescription=""[options="OPEN=Open,CLOSED=Closed"] }
+Switch                  OHEZ_DEMO_Motion           "Motion"                    <motion>    { stateDescription=""[readOnly=true] }
+Number:Power            OHEZ_DEMO_Power            "Power [%.0f W]"            <energy>
+Switch                  OHEZ_DEMO_ShowDetails      "Show Details"              <switch>
+
+// ---- Protected by the Item PIN ----------------------------------------------
+Switch                  OHEZ_DEMO_DoorOpener       "Door Opener"               <lock>      ["ohez-pin"]
+String                  OHEZ_DEMO_Alarm            "Alarm"                     <shield>    ["ohez-pin"]

@@ -89,6 +89,7 @@ See [doc/configuration.md](doc/configuration.md).
 | [doc/building.md](doc/building.md) | Toolchain, build and flash instructions |
 | [doc/configuration.md](doc/configuration.md) | WLAN setup, settings, web interface, REST API |
 | [doc/sitemap.md](doc/sitemap.md) | Supported sitemap elements and examples |
+| [doc/openHAB/](doc/openHAB/README.md) | A demo openHAB setup that shows every feature, with pictures |
 | [doc/mqtt.md](doc/mqtt.md) | MQTT topics, remote configuration, sounds, relays and LEDs |
 | [doc/ble.md](doc/ble.md) | Bluetooth LE beacon scanner |
 | [doc/update.md](doc/update.md) | Over-the-air updates, fleet rollout, recovery firmware |

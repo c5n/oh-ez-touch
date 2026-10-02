@@ -3,6 +3,9 @@
 The panel builds its touch buttons and graphics dynamically. An openHAB
 sitemap on the server defines the structure.
 
+[The openHAB demo](openHAB/README.md) is a sitemap and items to install, with
+a picture of every feature described here.
+
 ## Supported elements
 
 Sitemaps for the OhEzTouch can contain these elements:

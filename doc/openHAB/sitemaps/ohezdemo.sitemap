@@ -1,0 +1,72 @@
+// OhEzTouch demo sitemap. See ../README.md for what each line shows.
+sitemap ohezdemo label="OhEzTouch Demo"
+{
+    // The clock frame: shown under the time when the panel dims, not as tiles.
+    Frame label="Clock"
+    {
+        Text   item=OHEZ_DEMO_Temp_Outside label="Outside"  icon="temperature"
+        Text   item=OHEZ_DEMO_Humidity     label="Humidity" icon="humidity"
+        Switch item=OHEZ_DEMO_gLights      label="Lights"   icon="light"
+    }
+
+    // openHAB wants a page to be all Frames or none; the panel flattens them.
+    Frame label="Menu"
+    {
+        Text label="Basics" icon="settings"
+        {
+            Switch      item=OHEZ_DEMO_Light_Living
+            Slider      item=OHEZ_DEMO_Dimmer_Living
+            Setpoint    item=OHEZ_DEMO_Heating_Set minValue=15 maxValue=26 step=0.5
+            Selection   item=OHEZ_DEMO_Scene mappings=["MOVIE"="Movie", "DINNER"="Dinner", "READING"="Reading", "OFF"="Off"]
+            Colorpicker item=OHEZ_DEMO_Color_Living
+        }
+
+        Text label="Media" icon="blinds"
+        {
+            Default item=OHEZ_DEMO_Shutter_Living
+            Switch  item=OHEZ_DEMO_gShutters
+            Default item=OHEZ_DEMO_Player
+            Slider  item=OHEZ_DEMO_Volume
+            Switch  item=OHEZ_DEMO_Away mappings=[OFF="Home", ON="Away"]
+        }
+
+        Group item=OHEZ_DEMO_gLights
+
+        Text label="Values" icon="chart"
+        {
+            Frame label="Climate"
+            {
+                Text      item=OHEZ_DEMO_Temp_Outside valuecolor=[<5="#4fc3f7", >25="orange"] iconcolor=[>25="red"]
+                Text      item=OHEZ_DEMO_Mode
+                Selection item=OHEZ_DEMO_Fan
+            }
+            Frame label="House"
+            {
+                Text item=OHEZ_DEMO_LastMotion
+                Text item=OHEZ_DEMO_FrontDoor staticIcon=frontdoor
+            }
+        }
+
+        Text label="Rules" icon="party"
+        {
+            Frame label="Always"
+            {
+                Switch   item=OHEZ_DEMO_ShowDetails
+                Setpoint item=OHEZ_DEMO_Heating_Set minValue=15 maxValue=26 step=0.5 labelcolor=[>23="red"] valuecolor=[>23="red", <18="#4fc3f7"]
+                Switch   item=OHEZ_DEMO_Motion
+                Text     item=OHEZ_DEMO_Power visibility=[OHEZ_DEMO_ShowDetails==ON]
+            }
+            Frame label="Details" visibility=[OHEZ_DEMO_ShowDetails==ON]
+            {
+                Text item=OHEZ_DEMO_Humidity
+            }
+        }
+
+        Text label="Secure" icon="lock"
+        {
+            Switch    item=OHEZ_DEMO_DoorOpener
+            Selection item=OHEZ_DEMO_Alarm mappings=["DISARMED"="Disarmed", "HOME"="Home", "AWAY"="Away"]
+            Text      item=OHEZ_DEMO_FrontDoor
+        }
+    }
+}
