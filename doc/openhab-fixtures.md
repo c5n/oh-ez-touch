@@ -102,9 +102,9 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
 
 - **Every widget carries `mappings`**, an empty array when the sitemap declares
   none. An empty JSON array is *truthy* to ArduinoJson, so
-  `if (widget["mappings"])` is true for every widget a real server sends, and
-  the parser's fallback to the item's `commandDescription.commandOptions` can
-  never run against openHAB 5 at all.
+  `if (widget["mappings"])` was true for every widget a real server sends, and
+  the parser's fallback to the item's `commandDescription.commandOptions`
+  never ran against openHAB 5. The parser tests the size now.
 - **`Text label="..." { ... }` has no `item` key whatsoever** -- a Text widget
   with a `linkedPage` and nothing else. It is the commonest way to make a
   sub-page and the panel's `type_link`.

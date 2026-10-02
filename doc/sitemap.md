@@ -24,6 +24,22 @@ and value. Each field shows the colours it reaches with the other two held
 where they are, and the fields recolour as you drag. The new colour is sent
 when the finger lifts.
 
+## Value labels
+
+A tile shows the label openHAB gives a state where there is one, and the raw
+state where there is none. The labels come from the first of these that has
+any:
+
+1. the widget's `mappings=[...]` in the sitemap
+2. the item's command options
+3. the item's state options, for example `Number Mode "Mode" { stateDescription=""[options="1=Comfort,2=Eco"] }`
+
+A Selection offers the same list as its choices. A Number is matched as a
+number, so the option `2` matches the state `2.0`. The label is looked up on
+the panel, so it stays right when the state changes. A `MAP(...)`
+transformation in the label is applied by openHAB and only arrives with the
+page.
+
 An item with the tag `ohez-pin` asks for the Item PIN before its tile does
 anything. See [PINs](configuration.md#pins).
 
