@@ -77,6 +77,9 @@ private:
     /* The item carries PIN_ITEM_TAG in openHAB: a tap on its tile asks for
      * the Item PIN first. See ui_pin.hpp. */
     bool pin_protected = false;
+    /* openHAB's stateDescription.readOnly: a sensor. Its tile shows the
+     * state and a tap does nothing, whatever widget the sitemap put it in. */
+    bool read_only = false;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -129,6 +132,7 @@ public:
          * not carry the last occupant's protection onto an untagged item --
          * nor, worse, lose it the other way round. */
         pin_protected = false;
+        read_only = false;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -147,6 +151,9 @@ public:
 
     bool isPinProtected() const { return pin_protected; }
     void setPinProtected(bool on) { pin_protected = on; }
+
+    bool isReadOnly() const { return read_only; }
+    void setReadOnly(bool on) { read_only = on; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }

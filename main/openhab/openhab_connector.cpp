@@ -424,10 +424,20 @@ int Item::applyState(const char *text, size_t len)
  * a tile. A function of its own since Frames, whose children are widgets of
  * exactly the same shape and land either on the page or on the clock screen.
  *
- * `label_buffer` is label_trim()'s scratch, a whole label wide. */
-static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
+ * `label_buffer` is label_trim()'s scratch, a whole label wide.
+ *
+ * @return false for a widget that is no tile: one openHAB hides by a
+ *   visibility rule, or one of a type this panel cannot draw (a Chart, a
+ *   Webview, a Switch over a Dimmer). The caller cleans the slot and reuses
+ *   it, so neither leaves a gap on the page nor takes one of its six places. */
+static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
                          size_t label_buffer_size)
 {
+    /* Only an explicit false hides: a server that does not send the key
+     * shows everything, as it always did. */
+    if (widget["visibility"].is<bool>() && widget["visibility"].as<bool>() == false)
+        return false;
+
     /* Every lookup walks the object, so the two nodes that are read
      * over and over below are resolved once here. */
     JsonVariant json_item = widget["item"];
@@ -502,6 +512,11 @@ static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("  type=%u", item->getType());
 #endif
+
+    if (item->getType() == ItemType::type_unknown)
+        return false;
+
+    item->setReadOnly(json_item["stateDescription"]["readOnly"].as<bool>());
 
     // MinVal
     if (widget["minValue"])
@@ -617,6 +632,23 @@ static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("\r\n");
 #endif
+
+    return true;
+}
+
+/* Parse a widget into the next free slot of `items`, and claim the slot only
+ * if it became a tile. A widget that did not is wiped back out of it, so the
+ * next one finds it clean. */
+static void parse_widget_into(JsonVariant widget, Item *items, size_t *count,
+                              char *label_buffer, size_t label_buffer_size)
+{
+#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
+    printf("  idx: %u", (unsigned)*count);
+#endif
+    if (parse_widget(widget, &items[*count], label_buffer, label_buffer_size) == true)
+        (*count)++;
+    else
+        items[*count].cleanItem();
 }
 
 /* Turn a sitemap page into the title and the item array.
@@ -651,9 +683,9 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
      * ArduinoJson 7 documents size themselves -- the old fixed 12000 byte
      * capacity is gone -- and a document that sizes itself to the page grows
      * with whatever openHAB decides to send. A page carries a good deal this
-     * panel has no use for: widgetId, visibility, labelSource, staticIcon and
-     * unit on every widget; name, label, category, groupNames, members,
-     * function and two timestamps on every item; a nested empty "widgets"
+     * panel has no use for: widgetId, labelSource and unit on every widget;
+     * name, label, category, groupNames, members, function and two
+     * timestamps on every item; a nested empty "widgets"
      * array; and four more fields inside every linkedPage than the one link
      * that is wanted. All of it was parsed and stored so that the loop below
      * could walk past it.
@@ -702,6 +734,8 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         widget_filter["maxValue"] = true;
         widget_filter["step"] = true;
         widget_filter["linkedPage"]["link"] = true;
+        /* false for a widget a visibility rule hides; parse_widget() skips it. */
+        widget_filter["visibility"] = true;
 
         JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
 
@@ -726,6 +760,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         state_filter["maximum"] = true;
         state_filter["step"] = true;
         state_filter["pattern"] = true;
+        state_filter["readOnly"] = true;
 
         /* The labels openHAB shows for a raw state. The last of the three
          * sources of a selection, see parse_widget(). */
@@ -879,6 +914,10 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
                 JsonArray children = widget["widgets"].as<JsonArray>();
                 bool      is_clock = false;
 
+                /* A hidden Frame hides what is in it. */
+                if (widget["visibility"].is<bool>() && widget["visibility"].as<bool>() == false)
+                    continue;
+
                 if (clock_page == true && clock_item_count == 0)
                 {
                     label_trim(json_str(widget["label"]), label_buffer, sizeof(label_buffer));
@@ -890,21 +929,13 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
                     if (is_clock == true)
                     {
                         if (clock_item_count < CLOCK_ITEM_COUNT)
-                        {
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                            printf("  clock: %u", (unsigned)clock_item_count);
-#endif
-                            parse_widget(children[child], &clock_items[clock_item_count++],
-                                         label_buffer, sizeof(label_buffer));
-                        }
+                            parse_widget_into(children[child], clock_items, &clock_item_count,
+                                              label_buffer, sizeof(label_buffer));
                     }
                     else if (item_count < ITEM_COUNT_MAX)
                     {
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-                        printf("  idx: %u", (unsigned)item_count);
-#endif
-                        parse_widget(children[child], &item_array[item_count++], label_buffer,
-                                     sizeof(label_buffer));
+                        parse_widget_into(children[child], item_array, &item_count,
+                                          label_buffer, sizeof(label_buffer));
                     }
                 }
 
@@ -916,10 +947,8 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
             if (item_count >= ITEM_COUNT_MAX)
                 continue;
 
-#if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
-            printf("  idx: %u", (unsigned)item_count);
-#endif
-            parse_widget(widget, &item_array[item_count++], label_buffer, sizeof(label_buffer));
+            parse_widget_into(widget, item_array, &item_count, label_buffer,
+                              sizeof(label_buffer));
         }
     }
     else

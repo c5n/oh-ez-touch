@@ -380,10 +380,35 @@ uint8_t openhab_ui_signal_quality(int8_t rssi)
         return 2 * (rssi + 100);
 }
 
+/* A tile a tap does nothing on: a Text widget, or a control over an item
+ * openHAB says is read-only -- a sensor put in a Switch or a Slider. A link
+ * or a group still navigates, read-only or not: the page is not the item. */
+static bool tile_is_readout(Item *item)
+{
+    switch (item->getType())
+    {
+    case ItemType::type_string:
+    case ItemType::type_number:
+        return true;
+
+    case ItemType::type_parent_link:
+    case ItemType::type_link:
+    case ItemType::type_group:
+        return false;
+
+    default:
+        return item->isReadOnly();
+    }
+}
+
 /* What a tap on a tile does, once whatever stands in front of it has let it
  * through. */
 static void tile_activate(struct widget_context_s *ctx)
 {
+    /* Nothing to open or to send: the state is already on the tile. */
+    if (tile_is_readout(ctx->item) == true)
+        return;
+
     switch (ctx->item->getType())
     {
     case ItemType::type_string:
@@ -489,8 +514,7 @@ static void event_handler(lv_event_t *e)
 
     /* Read-outs are left alone even when tagged: there is nothing a tap on
      * one would do, and a PIN pad for nothing is a riddle. */
-    if (ctx->item->isPinProtected() == false || ctx->item->getType() == ItemType::type_string
-        || ctx->item->getType() == ItemType::type_number)
+    if (ctx->item->isPinProtected() == false || tile_is_readout(ctx->item) == true)
     {
         tile_activate(ctx);
         return;
@@ -1185,8 +1209,13 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
         lv_obj_align(wctx->label, LV_ALIGN_CENTER, 0, 0);
     }
     else if (   wctx->item->getType() == ItemType::type_string
-             || wctx->item->getType() == ItemType::type_number)
+             || wctx->item->getType() == ItemType::type_number
+             /* Not the colour picker: its state is a swatch, not a label. */
+             || (   tile_is_readout(wctx->item) == true
+                 && wctx->item->getType() != ItemType::type_colorpicker))
     {
+        /* Drawn like any read-out, so nothing promises a tap that does
+         * nothing. */
         wctx->state_widget = state_label_create(wctx);
     }
     else if (wctx->item->getType() == ItemType::type_group)
@@ -1206,7 +1235,8 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
     }
     else if (wctx->item->getType() == ItemType::type_colorpicker)
     {
-        lv_obj_add_style(wctx->container, &ui_style_tile_active, LV_PART_MAIN);
+        if (wctx->item->isReadOnly() == false)
+            lv_obj_add_style(wctx->container, &ui_style_tile_active, LV_PART_MAIN);
 
         /* A swatch rather than a label: update_state_widget() paints it with
          * the item's current colour. */

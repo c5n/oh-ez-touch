@@ -322,6 +322,82 @@ static void test_state_options_label_a_read_out(void)
     TEST_ASSERT_NULL(door->mappedLabel());
 }
 
+/* A widget openHAB hides by a visibility rule, and one of a type the panel
+ * cannot draw, take no slot: the next widget moves up, and nothing of the
+ * skipped one is left in the slot it was parsed into. A hidden Frame hides
+ * its children. */
+static void test_hidden_and_unsupported_widgets_take_no_slot(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Switch\",\"label\":\"Hidden\",\"visibility\":false,\"icon\":\"light\","
+        "\"item\":{\"type\":\"Switch\",\"state\":\"ON\",\"link\":\"http://h/rest/items/H\","
+        "\"tags\":[\"ohez-pin\"]}},"
+        "{\"type\":\"Chart\",\"label\":\"Chart\",\"visibility\":true,"
+        "\"item\":{\"type\":\"Number\",\"state\":\"1\",\"link\":\"http://h/rest/items/C\"}},"
+        "{\"type\":\"Switch\",\"label\":\"Dimmer\","
+        "\"item\":{\"type\":\"Dimmer\",\"state\":\"50\",\"link\":\"http://h/rest/items/D\"}},"
+        "{\"type\":\"Switch\",\"label\":\"Shown\",\"visibility\":true,"
+        "\"item\":{\"type\":\"Switch\",\"state\":\"OFF\",\"link\":\"http://h/rest/items/S\"}},"
+        "{\"type\":\"Frame\",\"label\":\"Off\",\"visibility\":false,\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"InHiddenFrame\","
+        "\"item\":{\"type\":\"String\",\"state\":\"x\",\"link\":\"http://h/rest/items/X\"}}]},"
+        "{\"type\":\"Frame\",\"label\":\"On\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"HiddenChild\",\"visibility\":false,"
+        "\"item\":{\"type\":\"String\",\"state\":\"y\",\"link\":\"http://h/rest/items/Y\"}},"
+        "{\"type\":\"Text\",\"label\":\"Child\","
+        "\"item\":{\"type\":\"String\",\"state\":\"z\",\"link\":\"http://h/rest/items/Z\"}}]}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(2, sitemap.getItemCount());
+
+    Item *shown = sitemap.getItem(0);
+    Item *child = sitemap.getItem(1);
+
+    TEST_ASSERT_EQUAL_STRING("Shown", shown->getLabel());
+    TEST_ASSERT_EQUAL(ItemType::type_switch, shown->getType());
+    TEST_ASSERT_EQUAL_STRING("OFF", shown->getStateText());
+    /* The hidden one was parsed into this slot first, and tagged. */
+    TEST_ASSERT_FALSE(shown->isPinProtected());
+    TEST_ASSERT_EQUAL_STRING("", shown->getIconName());
+
+    TEST_ASSERT_EQUAL_STRING("Child", child->getLabel());
+
+    /* The slot after the last tile is clean, not the hidden child's. */
+    TEST_ASSERT_EQUAL(ItemType::type_unknown, sitemap.getItem(2)->getType());
+    TEST_ASSERT_EQUAL_STRING("", sitemap.getItem(2)->getLabel());
+}
+
+/* stateDescription.readOnly, on the item and only there. */
+static void test_read_only_is_read(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Switch\",\"label\":\"Sensor\",\"item\":{\"type\":\"Switch\","
+        "\"state\":\"ON\",\"link\":\"http://h/rest/items/A\","
+        "\"stateDescription\":{\"readOnly\":true,\"options\":[]}}},"
+        "{\"type\":\"Switch\",\"label\":\"Lamp\",\"item\":{\"type\":\"Switch\","
+        "\"state\":\"ON\",\"link\":\"http://h/rest/items/B\","
+        "\"stateDescription\":{\"readOnly\":false,\"options\":[]}}},"
+        "{\"type\":\"Switch\",\"label\":\"Plain\",\"item\":{\"type\":\"Switch\","
+        "\"state\":\"ON\",\"link\":\"http://h/rest/items/C\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_TRUE(sitemap.getItem(0)->isReadOnly());
+    TEST_ASSERT_FALSE(sitemap.getItem(1)->isReadOnly());
+    TEST_ASSERT_FALSE(sitemap.getItem(2)->isReadOnly());
+
+    /* And a slot does not keep it for the next page. */
+    static const char next[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Switch\",\"label\":\"X\","
+        "\"item\":{\"type\":\"Switch\",\"state\":\"ON\",\"link\":\"http://h/rest/items/X\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(next, sizeof(next) - 1));
+    TEST_ASSERT_FALSE(sitemap.getItem(0)->isReadOnly());
+}
+
 /* The fallback is still reachable for a server that omits the key, which is
  * the only shape that reaches it, so it is pinned where it can be reached. */
 static void test_command_options_are_used_when_mappings_are_absent(void)
@@ -1009,6 +1085,8 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_command_options_are_used_when_mappings_are_empty);
     RUN_TEST(test_mappings_win_over_command_options);
     RUN_TEST(test_state_options_label_a_read_out);
+    RUN_TEST(test_hidden_and_unsupported_widgets_take_no_slot);
+    RUN_TEST(test_read_only_is_read);
     RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
     RUN_TEST(test_the_pin_tag_marks_its_items);
     RUN_TEST(test_only_the_exact_tag_counts);
