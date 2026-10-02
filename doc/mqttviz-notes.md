@@ -237,3 +237,25 @@ on the intended floor, places survived a reload, a tap opened the
 detail panel with *take out of the house*, objects and lines of a
 hidden level disappeared with it, beacons triangulated between the
 panels; mesh and topology still draw as before.
+
+## Follow-up: the pictures (same day)
+
+Request: update the docs. The open item was the guide's pictures --
+it had none.
+
+- `mqttviz/demo/` makes them reproducible, the way
+  `doc/openHAB/make-screenshots.sh` does for the panel: `demo.py` runs
+  the real mqttviz with `--no-mqtt` and feeds a made-up fleet (four
+  panels, two access points, two beacons) into `note_message`, the
+  same entry the broker thread uses; `demo_house.py` writes a
+  two-storey `Home.xml`; `screenshots.mjs` drives a headless Chromium
+  over the DevTools protocol with Node 22's built-in fetch and
+  WebSocket -- no npm packages -- and arranges the page through the
+  API (pins, layout, house import, places) before each picture.
+- The pictures found three bugs, fixed with them: the panel box's UI
+  chips were labelled "undefined" -- a local `t` for the topic lookup
+  in `drawBox` shadowed the translator; a beacon's lines still reached
+  a panel on a hidden level; and with no house loaded the camera
+  framed the house's bounds but not the dock in front of it. The
+  layouts list now says how many places a layout keeps in the house,
+  and the wall slider is hidden while there is no house to dim.

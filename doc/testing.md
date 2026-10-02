@@ -109,6 +109,19 @@ sink, so both can be tested on the host.
   fail without leaving anything allocated. The suite also checks the choice
   of descale and pixel step for every size up to 4000x3000.
 
+## The visualizer's converter
+
+The MQTT visualizer's SweetHome3D converter (`mqttviz/sh3d.py`) has
+tests of its own, standard library only:
+
+    python3 mqttviz/test_sh3d.py
+
+They build `.sh3d` files in memory and check levels, units and axes,
+sloped and round walls, rooms and openings, and the refusals: not a
+zip, an old file without `Home.xml`, broken XML, an empty home. The page
+itself is checked by eye: `mqttviz/demo/` runs it with a made-up fleet
+(see [Trying it without panels](mqttviz.md#trying-it-without-panels)).
+
 ## Testing against a real openHAB
 
 The simulator's compiled-in fixtures draw a screen without a server. They

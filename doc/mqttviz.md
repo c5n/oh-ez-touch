@@ -33,6 +33,24 @@ Command line arguments are written into the settings -- into the profile
 the tool is connected to, that is -- so what was typed once is what the
 next start remembers.
 
+## Trying it without panels
+
+`mqttviz/demo/` runs the real visualizer with a fleet of its own: four
+made-up panels on two access points and two beacons wandering between
+them, fed into the registry the way the broker would, in a data
+directory of its own so the live configuration is never touched. It is
+how the pictures in this guide were taken.
+
+    python3 mqttviz/demo/demo.py                     # http://localhost:8089
+    python3 mqttviz/demo/demo_house.py demo.sh3d     # a two-storey house
+    mqttviz/demo/make-screenshots.sh                 # every picture below
+
+`demo_house.py` writes a small SweetHome3D file for the
+[space view](#the-space-view) -- import it with the view's toolbar.
+`make-screenshots.sh` starts the demo on a port of its own, arranges
+it, and takes the pictures into `doc/img/mqttviz_*.png` with a headless
+Chromium (it needs Node 22 and a Chromium besides Python 3).
+
 ## What it knows, and where it keeps it
 
 Everything the visualizer persists lives in `mqttviz/data/mqttviz.json`
@@ -96,6 +114,8 @@ paint the new world at once, exactly as they do at startup.
 
 ## The page
 
+![The mesh: four panels around the broker, two beacons on their leashes](img/mqttviz_mesh.png)
+
 * **Boxes on a canvas, held by their own network** -- one per panel.
   The layout is not a plan the boxes obey, it is the links: every line
   drawn on the canvas is a spring, the broker is the hub, and the mesh
@@ -135,6 +155,8 @@ paint the new world at once, exactly as they do at startup.
   a beacon left with no lines at all leaves the canvas -- the mesh says
   what the radio says, and a radio nobody reports is no radio. Click it
   for every field it advertised and which panel hears it how well.
+![The topology view: the panels pinned above their two access points, the broker below, the beacons between](img/mqttviz_topology.png)
+
 * **Two pictures of the same facts** -- the *Mesh*/*Topology* switch in
   the top bar. The mesh is the classic view: every panel on its line to
   the broker, the beacons on their leashes. The topology view is the
@@ -146,7 +168,8 @@ paint the new world at once, exactly as they do at startup.
   estimates, metres scaled to pixels. A panel that reports no access
   point hangs on the broker directly. The switch is kept with the
   settings, and switching is a morph: the boxes keep their places and
-  the springs move them to the other picture's layout.
+  the springs move them to the other picture's layout. The third
+  picture, the house in 3D, has [a section of its own](#the-space-view).
  * **Places, kept** -- the stationary objects of the topology view (the
    broker, the access points, the panels) can be pinned: drag one where
    it belongs and let go, and the place is kept -- saved as a fraction of
@@ -187,6 +210,8 @@ paint the new world at once, exactly as they do at startup.
   the cursor and overshoot into place when they are born. The physics is
   the same either way; off is for the machine that has to, on is the
   shipped default.
+![The Layouts dialog with one saved arrangement](img/mqttviz_layouts.png)
+
 * **Controls that publish back** -- the relay badges answer a click with
   `relay/<n>/set` (a toggle, so a push-button that does not know the
   state works too), the LED sliders publish `led/<name>/set`, and the
@@ -199,6 +224,8 @@ paint the new world at once, exactly as they do at startup.
   an access point is listened to, not talked to. A panel's or an access
   point's detail carries the pin button of the topology view, saying
   what the box is and doing the other thing.
+![A panel's detail: its relays, a sound to play, and every topic it publishes](img/mqttviz_detail.png)
+
 * **Config** -- the broker profile list in a dialog of its own: add a
   broker, remove one, edit any of them (name, host, port, credentials,
   base topic), and one save makes it all true. Saving does not switch
@@ -256,6 +283,8 @@ paint the new world at once, exactly as they do at startup.
   four; closing without saving puts it back; *defaults* returns to
   the thick oil the canvas ships with. The sliders are the whole truth:
   nothing hidden blends underneath them.
+![The physics panel, its four tabs and the panels' sliders](img/mqttviz_physics.png)
+
 * **Language** -- the page speaks English and German, chosen in the
   config dialog and kept with the settings, so every browser that opens
   the tool starts in the right one; the browser remembers its own last
@@ -272,6 +301,8 @@ matter, brighter where they are seen edge-on, swept by a band of light
 rising from the floor -- with the rooms' floors and names, and the
 doors and windows as frames of orange light.
 
+![The space view: the demo house in both levels, the panels on its walls, the access points on the floors, the broker upstairs, the beacons between](img/mqttviz_space.png)
+
 * **The house comes from SweetHome3D.** *import SweetHome3D…* in the
   view's toolbar takes a `.sh3d` file; the server reads its `Home.xml`
   entry (walls, rooms, levels, doors and windows; nothing of the
@@ -283,6 +314,8 @@ doors and windows as frames of orange light.
   it stay, so a new import of the same home finds them where they were.
   The converter also runs on its own: `python3 mqttviz/sh3d.py
   home.sh3d > house.json`.
+
+  ![Before the first import: the dock, the projector's ring and the way in](img/mqttviz_space_empty.png)
 * **Units and axes.** Everything is metres. SweetHome3D's plan x is x,
   its plan y (down the screen) is the depth, and up is up. A round wall
   is drawn as straight pieces of ten degrees.
@@ -301,6 +334,8 @@ doors and windows as frames of orange light.
   not at all -- the roof lifted off, and with it everything placed up
   there. With *all* shown a drag lands on the highest floor under the
   pointer; pick a level to reach the ones below.
+
+  ![The ground floor alone: the upper floor, the broker and the bedroom's panel lifted off with the roof](img/mqttviz_space_ground.png)
 * **Beacons find their own places.** A beacon heard by two or more
   placed panels sits where its distances to them come closest to the
   ones they report (multilateration, in the plane of the floor, at
@@ -364,7 +399,8 @@ can be written, and only to a device that is in the list.
   fresh start replays every panel's state at once; a panel that never
   came back stays in the list, greyed out, until you remove it.
 * **The visualizer never writes settings on its own.** Everything it
-  publishes comes from a click on the page -- and the one setting the
-  page writes without a save button is the pin: dropping a stationary
-  box in the topology view keeps the place it was given, which is the
-  button.
+  publishes comes from a click on the page -- and the settings the page
+  writes without a save button are the ones the hand makes: dropping a
+  stationary box in the topology view or placing it in the house keeps
+  the place it was given, and a camera that has settled is kept where
+  it looks. The drop is the button.

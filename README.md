@@ -97,7 +97,7 @@ See [doc/configuration.md](doc/configuration.md).
 | [doc/update.md](doc/update.md) | Over-the-air updates, fleet rollout, recovery firmware |
 | [doc/simulator.md](doc/simulator.md) | The desktop simulator |
 | [doc/devmgr.md](doc/devmgr.md) | The web-based fleet manager |
-| [doc/mqttviz.md](doc/mqttviz.md) | The MQTT visualizer |
+| [doc/mqttviz.md](doc/mqttviz.md) | The MQTT visualizer: mesh, topology, and the house in 3D from SweetHome3D |
 | [doc/architecture.md](doc/architecture.md) | System architecture and performance analysis |
 | [doc/testing.md](doc/testing.md) | Unit tests and test fixtures |
 | [doc/test-interface.md](doc/test-interface.md) | The simulator's script control interface |

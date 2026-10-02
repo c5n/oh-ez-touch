@@ -113,6 +113,7 @@
       it was checked against generated `Home.xml` files only. Round
       walls' bending direction and levels with `elevationIndex` ties
       are the likely surprises.
-- [ ] doc: Update the visualizer screenshots. `doc/img` has none of the
-      topology view, the physics panel's fourth tab, the FX layer, the
-      layouts dialog or the space view.
+- [x] doc: The visualizer's pictures -- mesh, topology, detail,
+      physics, layouts and the space view -- taken from a demo fleet by
+      `mqttviz/demo/make-screenshots.sh`. See
+      [Trying it without panels](mqttviz.md#trying-it-without-panels).
