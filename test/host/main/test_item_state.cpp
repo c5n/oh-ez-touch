@@ -366,6 +366,46 @@ static void test_an_out_of_range_hsv_state_is_clamped(void)
     TEST_ASSERT_EQUAL_UINT8(0, v);
 }
 
+/* What the item screens send: as many decimals as the step has, so openHAB
+ * gets "50" and "21.5" rather than the "%f" form a state is kept in. */
+static void test_a_number_is_sent_in_the_steps_precision(void)
+{
+    char text[24];
+
+    openhab_format_number(text, sizeof(text), 50.0f, 1.0f);
+    TEST_ASSERT_EQUAL_STRING("50", text);
+
+    openhab_format_number(text, sizeof(text), 21.5f, 0.5f);
+    TEST_ASSERT_EQUAL_STRING("21.5", text);
+
+    /* Ten additions of 0.1 as a float are not 21.0 exactly. */
+    float drifted = 20.0f;
+
+    for (int i = 0; i < 10; i++)
+        drifted += 0.1f;
+
+    openhab_format_number(text, sizeof(text), drifted, 0.1f);
+    TEST_ASSERT_EQUAL_STRING("21.0", text);
+
+    openhab_format_number(text, sizeof(text), 0.75f, 0.25f);
+    TEST_ASSERT_EQUAL_STRING("0.75", text);
+
+    /* No "-0" for a value that rounds to nothing from below. */
+    openhab_format_number(text, sizeof(text), -0.2f, 1.0f);
+    TEST_ASSERT_EQUAL_STRING("0", text);
+
+    openhab_format_number(text, sizeof(text), -5.0f, 1.0f);
+    TEST_ASSERT_EQUAL_STRING("-5", text);
+
+    /* A step that is no short decimal stops at three places. */
+    openhab_format_number(text, sizeof(text), 1.0f / 3.0f, 1.0f / 3.0f);
+    TEST_ASSERT_EQUAL_STRING("0.333", text);
+
+    /* A step of zero, which no range would have, is whole numbers. */
+    openhab_format_number(text, sizeof(text), 7.0f, 0.0f);
+    TEST_ASSERT_EQUAL_STRING("7", text);
+}
+
 void test_item_state_run(void)
 {
     RUN_TEST(test_string_state_change_is_reported_once);
@@ -385,4 +425,5 @@ void test_item_state_run(void)
     RUN_TEST(test_a_short_hsv_state_is_refused);
     RUN_TEST(test_an_out_of_range_hsv_state_is_clamped);
     RUN_TEST(test_a_short_hsv_state_does_not_see_the_previous_one);
+    RUN_TEST(test_a_number_is_sent_in_the_steps_precision);
 }

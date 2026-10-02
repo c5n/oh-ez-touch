@@ -8,6 +8,8 @@
 #include "ui/ui_beep.hpp"
 #include "ui/ui_style.hpp"
 
+#include <math.h>
+
 /* Half the screen each, near enough. The button matrix this replaces was 100%
  * wide and 40% tall with two cells in it, which was already usable -- what it
  * was not was reachable without looking, because the cells had no separation
@@ -32,6 +34,14 @@ static bool step_by(struct item_view_s *v, float delta, bool quiet)
 {
     float current = v->item->getStateNumber();
     float next    = current + delta;
+    float step    = v->item->getStep();
+
+    /* Onto the step grid from the minimum: a state of 21.3 that something
+     * else set goes up to 22 and down to 21, rather than to 21.8 and 20.8
+     * and every value after them off the grid too. It also takes away the
+     * drift of adding 0.1 as a float, step after step. */
+    if (step > 0.0f)
+        next = v->item->getMinVal() + roundf((next - v->item->getMinVal()) / step) * step;
 
     if (next > v->item->getMaxVal())
         next = v->item->getMaxVal();
@@ -45,10 +55,17 @@ static bool step_by(struct item_view_s *v, float delta, bool quiet)
     v->item->setStateNumber(next);
     item_screen_set_pattern(v->value, v->item, next);
 
+    /* In the step's precision: "21.5", where the state is kept as
+     * "21.500000" -- and where ten steps of 0.1 would have been sent as
+     * "21.499998". */
+    char text[24];
+
+    openhab_format_number(text, sizeof(text), next, v->item->getStep());
+
     if (quiet == true)
-        item_screen_publish_quiet(v);
+        item_screen_send_quiet(v, text);
     else
-        item_screen_publish(v);
+        item_screen_send(v, text);
 
     return true;
 }
@@ -166,4 +183,4 @@ static void refresh(struct item_view_s *v)
 }
 
 const struct item_screen_dsc_s item_screen_setpoint = {
-    ItemType::type_setpoint, build, refresh, NULL};
+    ItemType::type_setpoint, build, refresh, NULL, false};

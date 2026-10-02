@@ -535,7 +535,10 @@ static const char page_living[] = R"json(
 )json";
 
 /*
- * Bedroom: rollershutter and player, and a number with a percent pattern.
+ * Bedroom: a rollershutter, and a player in a Frame with its title and volume
+ * -- the shape item_player.cpp takes "now playing" from. The Frame is
+ * shaped like openHAB 5.2.1's answer for one: no item, children in
+ * "widgets".
  */
 static const char page_bedroom[] = R"json(
 {
@@ -581,74 +584,116 @@ static const char page_bedroom[] = R"json(
     {
       "widgetId": "2001",
       "visibility": true,
-      "labelSource": "ITEM_LABEL",
+      "labelSource": "SITEMAP_WIDGET",
       "unit": "",
-      "item": {
-        "link": ")json" FIXTURE_BASE R"json(/rest/items/Radio_Control",
-        "state": "PAUSE",
-        "lastState": "PAUSE",
-        "lastStateUpdate": 1789466761867,
-        "lastStateChange": 1789466761867,
-        "type": "Player",
-        "name": "Radio_Control",
-        "label": "Radio",
-        "category": "receiver",
-        "tags": [],
-        "groupNames": []
-      },
-      "widgets": [],
-      "mappings": [
+      "widgets": [
         {
-          "command": "PREVIOUS",
-          "label": "<<"
+          "widgetId": "20010",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "unit": "",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/Radio_Control",
+            "state": "PAUSE",
+            "lastState": "PAUSE",
+            "lastStateUpdate": 1789466761867,
+            "lastStateChange": 1789466761867,
+            "type": "Player",
+            "name": "Radio_Control",
+            "label": "Radio",
+            "category": "receiver",
+            "tags": [],
+            "groupNames": []
+          },
+          "widgets": [],
+          "mappings": [
+            {
+              "command": "PREVIOUS",
+              "label": "<<"
+            },
+            {
+              "command": "PAUSE",
+              "label": "||"
+            },
+            {
+              "command": "PLAY",
+              "label": ">"
+            },
+            {
+              "command": "NEXT",
+              "label": ">>"
+            }
+          ],
+          "type": "Switch",
+          "label": "Radio",
+          "icon": "receiver",
+          "staticIcon": false
         },
         {
-          "command": "PAUSE",
-          "label": "||"
+          "widgetId": "20011",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "unit": "",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/Radio_Title",
+            "state": "So What",
+            "lastState": "Blue in Green",
+            "lastStateUpdate": 1789466761867,
+            "lastStateChange": 1789466761867,
+            "type": "String",
+            "name": "Radio_Title",
+            "label": "Title",
+            "category": "",
+            "tags": [],
+            "groupNames": []
+          },
+          "widgets": [],
+          "mappings": [],
+          "type": "Text",
+          "label": "Title [So What]",
+          "icon": "text",
+          "staticIcon": false
         },
         {
-          "command": "PLAY",
-          "label": ">"
-        },
-        {
-          "command": "NEXT",
-          "label": ">>"
+          "widgetId": "20012",
+          "visibility": true,
+          "labelSource": "ITEM_LABEL",
+          "pattern": "%d %%",
+          "unit": "%",
+          "item": {
+            "link": ")json" FIXTURE_BASE R"json(/rest/items/Radio_Volume",
+            "state": "35",
+            "stateDescription": {
+              "minimum": 0,
+              "maximum": 100,
+              "step": 1,
+              "pattern": "%d %%",
+              "readOnly": false,
+              "options": []
+            },
+            "lastState": "35",
+            "lastStateUpdate": 1789466761867,
+            "lastStateChange": 1789466761867,
+            "type": "Dimmer",
+            "name": "Radio_Volume",
+            "label": "Volume",
+            "category": "soundvolume",
+            "tags": [],
+            "groupNames": []
+          },
+          "widgets": [],
+          "mappings": [],
+          "type": "Slider",
+          "label": "Volume [35 %]",
+          "icon": "soundvolume",
+          "staticIcon": false,
+          "switchSupport": false,
+          "releaseOnly": false
         }
       ],
-      "type": "Switch",
-      "label": "Radio",
-      "icon": "receiver",
-      "staticIcon": false
-    },
-    {
-      "widgetId": "2002",
-      "visibility": true,
-      "labelSource": "ITEM_LABEL",
-      "pattern": "%d %%",
-      "unit": "",
-      "item": {
-        "link": ")json" FIXTURE_BASE R"json(/rest/items/Bedroom_Humidity",
-        "state": "48",
-        "stateDescription": {
-          "pattern": "%d %%",
-          "readOnly": true,
-          "options": []
-        },
-        "lastState": "48",
-        "lastStateUpdate": 1789466761867,
-        "lastStateChange": 1789466761867,
-        "type": "Number",
-        "name": "Bedroom_Humidity",
-        "label": "Humidity",
-        "category": "humidity",
-        "tags": [],
-        "groupNames": []
-      },
-      "widgets": [],
       "mappings": [],
-      "type": "Text",
-      "label": "Humidity [48 %]",
-      "icon": "humidity",
+      "type": "Frame",
+      "label": "Radio",
       "staticIcon": false
     },
     {

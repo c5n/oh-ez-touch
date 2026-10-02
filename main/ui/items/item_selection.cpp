@@ -155,4 +155,4 @@ static void refresh(struct item_view_s *v)
 }
 
 const struct item_screen_dsc_s item_screen_selection = {
-    ItemType::type_selection, build, refresh, NULL};
+    ItemType::type_selection, build, refresh, NULL, false};

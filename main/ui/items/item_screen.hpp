@@ -52,6 +52,10 @@ struct item_screen_dsc_s
     void (*build)(struct item_view_s *v);
     void (*refresh)(struct item_view_s *v);
     void (*destroy)(struct item_view_s *v); /* may be NULL */
+    /* Refresh on a change to any tile of the page, not only its own: for a
+     * screen that also shows other items, which is the player and its
+     * title. */
+    bool follows_page;
 };
 
 /* NULL for a type that has no screen -- which is the dispatcher's "nothing to
@@ -75,6 +79,12 @@ uint8_t       item_screen_open_slot(void);
 typedef void (*item_screen_changed_cb_t)(uint8_t slot);
 void item_screen_set_changed_cb(item_screen_changed_cb_t cb);
 
+/* And how to look at the rest of the page: the item on tile `slot`, or NULL
+ * past the last one. Same reason as the callback above -- the page stays the
+ * page's -- for the one screen that shows more than its own item. */
+typedef Item *(*item_screen_page_cb_t)(uint8_t slot);
+void item_screen_set_page_cb(item_screen_page_cb_t cb);
+
 /* ---------------------------------------------------------- for the builders */
 
 /* Send the item's current local state to openHAB and mark the tile. Every
@@ -89,6 +99,27 @@ void item_screen_publish(struct item_view_s *v);
  * still ends on a proper item_screen_publish(), so a hold reads as a run of
  * ticks and then a commit. */
 void item_screen_publish_quiet(struct item_view_s *v);
+
+/* Send `command` rather than the item's state, and leave the state alone.
+ *
+ * For a command that is not a state: NEXT is not what a player will report
+ * back, and OFF is not what a colour will. Setting the state to either showed
+ * it on the tile until the server corrected it. Also for a number sent in its
+ * own precision -- "21.5" rather than the "21.500000" the state is kept as. */
+void item_screen_send(struct item_view_s *v, const char *command);
+void item_screen_send_quiet(struct item_view_s *v, const char *command);
+
+/* The same for another tile of the page than the screen's own -- the
+ * player's volume. */
+void item_screen_send_to(Item *item, uint8_t slot, const char *command);
+
+/* The item on tile `slot` of the page under the screen, or NULL. */
+Item *item_screen_page_item(uint8_t slot);
+
+/* The full-width drag field the slider, the rollershutter, the player's
+ * volume and the colour fields all are: an lv_slider whose knob is a thin
+ * marker, `height` tall and as wide as its parent lets it be. */
+lv_obj_t *item_screen_field(lv_obj_t *parent, int32_t height);
 
 /* An unstyled, unpadded, non-scrolling container. */
 lv_obj_t *item_screen_container(lv_obj_t *parent);

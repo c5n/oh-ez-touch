@@ -535,6 +535,101 @@ static void test_a_player_keeps_its_type_despite_its_mappings(void)
     TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(1)->getSelectionCount());
 }
 
+/* Each tile remembers its Frame, numbered from 1 in page order, and a tile
+ * outside any Frame is 0. That is all that is left of the Frames once they are
+ * flattened into the page, and it is what tells the player which title and
+ * volume are its own. The bedroom fixture puts its player in one. */
+static void test_tiles_remember_their_frame(void)
+{
+    Sitemap sitemap;
+
+    TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("bedroom")));
+    TEST_ASSERT_EQUAL_UINT(6, sitemap.getItemCount());
+
+    TEST_ASSERT_EQUAL_UINT8(0, sitemap.getItem(0)->getFrame()); /* back link */
+    TEST_ASSERT_EQUAL_UINT8(0, sitemap.getItem(1)->getFrame()); /* blinds */
+
+    TEST_ASSERT_EQUAL(ItemType::type_player, sitemap.getItem(2)->getType());
+    TEST_ASSERT_EQUAL(ItemType::type_string, sitemap.getItem(3)->getType());
+    TEST_ASSERT_EQUAL(ItemType::type_slider, sitemap.getItem(4)->getType());
+
+    for (size_t i = 2; i <= 4; i++)
+        TEST_ASSERT_EQUAL_UINT8(1, sitemap.getItem(i)->getFrame());
+
+    TEST_ASSERT_EQUAL_UINT8(0, sitemap.getItem(5)->getFrame()); /* night light */
+    TEST_ASSERT_EQUAL_STRING("So What", sitemap.getItem(3)->getTransformedStateText());
+
+    /* Two Frames are two numbers, and a hidden one still counts: the numbers
+     * only have to tell Frames apart, not count the ones on screen. */
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Frame\",\"label\":\"Gone\",\"visibility\":false,\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"G\",\"item\":{\"type\":\"String\",\"state\":\"g\"}}]},"
+        "{\"type\":\"Frame\",\"label\":\"A\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"A1\",\"item\":{\"type\":\"String\",\"state\":\"a\"}}]},"
+        "{\"type\":\"Text\",\"label\":\"Loose\",\"item\":{\"type\":\"String\",\"state\":\"l\"}},"
+        "{\"type\":\"Frame\",\"label\":\"B\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"B1\",\"item\":{\"type\":\"String\",\"state\":\"b\"}}]}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(3, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_UINT8(2, sitemap.getItem(0)->getFrame());
+    TEST_ASSERT_EQUAL_UINT8(0, sitemap.getItem(1)->getFrame());
+    TEST_ASSERT_EQUAL_UINT8(3, sitemap.getItem(2)->getFrame());
+
+    /* And a slot forgets it: the page before had a Frame in slot 0. */
+    static const char flat[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"F\",\"item\":{\"type\":\"String\",\"state\":\"f\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(flat, sizeof(flat) - 1));
+    TEST_ASSERT_EQUAL_UINT8(0, sitemap.getItem(0)->getFrame());
+}
+
+/* A Switch with mappings over anything but a Switch, a Rollershutter or a
+ * Player is a row of buttons -- a scene, a fan level -- and the Selection
+ * screen is one. The three shapes are what openHAB 5.2.1 sent for
+ *
+ *     Switch  item=Fan mappings=[0="Off",1="Low",2="High"]   (a Number)
+ *     Default item=Fan                                        (the same Number)
+ *     Switch  item=Scene mappings=["MOVIE"="Movie","OFF"="Off"]  (a String)
+ *
+ * the second with an empty "mappings" and the options on the item. A Switch
+ * over a Dimmer with neither stays the widget the panel cannot draw. */
+static void test_a_switch_with_mappings_is_a_selection(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Switch\",\"label\":\"Ventilation [1]\","
+        "\"mappings\":[{\"command\":\"0\",\"label\":\"Off\"},{\"command\":\"1\",\"label\":\"Low\"},"
+        "{\"command\":\"2\",\"label\":\"High\"}],"
+        "\"item\":{\"type\":\"Number\",\"state\":\"1\",\"link\":\"http://h/rest/items/Fan\","
+        "\"commandDescription\":{\"commandOptions\":[{\"command\":\"0\",\"label\":\"Off\"},"
+        "{\"command\":\"1\",\"label\":\"Low\"},{\"command\":\"2\",\"label\":\"High\"}]}}},"
+        "{\"type\":\"Switch\",\"label\":\"Ventilation [1]\",\"mappings\":[],"
+        "\"item\":{\"type\":\"Number\",\"state\":\"1\",\"link\":\"http://h/rest/items/Fan\","
+        "\"commandDescription\":{\"commandOptions\":[{\"command\":\"0\",\"label\":\"Off\"},"
+        "{\"command\":\"1\",\"label\":\"Low\"},{\"command\":\"2\",\"label\":\"High\"}]}}},"
+        "{\"type\":\"Switch\",\"label\":\"Scene [MOVIE]\","
+        "\"mappings\":[{\"command\":\"MOVIE\",\"label\":\"Movie\"},{\"command\":\"OFF\",\"label\":\"Off\"}],"
+        "\"item\":{\"type\":\"String\",\"state\":\"MOVIE\",\"link\":\"http://h/rest/items/Scene\"}},"
+        "{\"type\":\"Switch\",\"label\":\"Dimmer\",\"mappings\":[],"
+        "\"item\":{\"type\":\"Dimmer\",\"state\":\"50\",\"link\":\"http://h/rest/items/D\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(3, sitemap.getItemCount());
+
+    for (size_t i = 0; i < 3; i++)
+        TEST_ASSERT_EQUAL(ItemType::type_selection, sitemap.getItem(i)->getType());
+
+    TEST_ASSERT_EQUAL_UINT(3, sitemap.getItem(0)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("Low", sitemap.getItem(0)->mappedLabel());
+    TEST_ASSERT_EQUAL_UINT(3, sitemap.getItem(1)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("Low", sitemap.getItem(1)->mappedLabel());
+    TEST_ASSERT_EQUAL_STRING("Movie", sitemap.getItem(2)->mappedLabel());
+}
+
 /* openHAB reports an item it has no value for as the four characters "NULL" --
  * not a JSON null, not an empty string. It reaches the tile verbatim for a
  * type whose state is text.
@@ -632,7 +727,7 @@ static void test_a_null_state_arrives_as_text(void)
 
     TEST_ASSERT_EQUAL_INT(0, parse_fixture(sitemap, FIXTURE_URL("bedroom")));
 
-    Item *night = sitemap.getItem(4);
+    Item *night = sitemap.getItem(5);
 
     TEST_ASSERT_EQUAL(ItemType::type_switch, night->getType());
     TEST_ASSERT_EQUAL_STRING("NULL", night->getStateText());
@@ -1186,6 +1281,8 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_read_only_is_read);
     RUN_TEST(test_colours_and_static_icon_are_read);
     RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
+    RUN_TEST(test_tiles_remember_their_frame);
+    RUN_TEST(test_a_switch_with_mappings_is_a_selection);
     RUN_TEST(test_the_pin_tag_marks_its_items);
     RUN_TEST(test_only_the_exact_tag_counts);
     RUN_TEST(test_a_slot_does_not_inherit_the_tag);

@@ -21,6 +21,7 @@
 static struct item_view_s view;
 
 static item_screen_changed_cb_t changed_cb;
+static item_screen_page_cb_t    page_cb;
 
 /* The table that used to be a switch in openhab_ui.cpp's event_handler().
  * Function pointers to statics are link-time constants, so this is .rodata --
@@ -46,12 +47,21 @@ void item_screen_set_changed_cb(item_screen_changed_cb_t cb)
     changed_cb = cb;
 }
 
+void item_screen_set_page_cb(item_screen_page_cb_t cb)
+{
+    page_cb = cb;
+}
+
+Item *item_screen_page_item(uint8_t slot)
+{
+    return (page_cb != NULL) ? page_cb(slot) : NULL;
+}
+
 /* ------------------------------------------------------- builder utilities */
 
-void item_screen_publish_quiet(struct item_view_s *v)
+/* `text` to `item`'s link, and its tile marked for a poll. */
+static void send(Item *item, uint8_t slot, const char *text)
 {
-    if (v == NULL || v->item == NULL)
-        return;
 
     /* Fire and forget, as it has always effectively been: the tile's own state
      * is already set locally, and the state openHAB sends back -- pushed, or the
@@ -62,12 +72,20 @@ void item_screen_publish_quiet(struct item_view_s *v)
      * depth -- and a command dropped there looks from the glass like one that
      * was sent: the control has already moved, and the next poll quietly puts
      * it back. The same line item_publish() prints for a tap on a tile. */
-    if (openhab_client_command(v->item->getLink(), v->item->getStateText()) == false)
+    if (openhab_client_command(item->getLink(), text) == false)
         printf("item_screen: command queue full; \"%s\" not sent to %s\r\n",
-               v->item->getStateText(), v->item->getLink());
+               text, item->getLink());
 
     if (changed_cb != NULL)
-        changed_cb(v->slot);
+        changed_cb(slot);
+}
+
+void item_screen_publish_quiet(struct item_view_s *v)
+{
+    if (v == NULL || v->item == NULL)
+        return;
+
+    send(v->item, v->slot, v->item->getStateText());
 }
 
 void item_screen_publish(struct item_view_s *v)
@@ -76,6 +94,32 @@ void item_screen_publish(struct item_view_s *v)
 
     if (v != NULL && v->item != NULL)
         BEEPER_EVENT_CHANGE();
+}
+
+void item_screen_send_quiet(struct item_view_s *v, const char *command)
+{
+    if (v == NULL || v->item == NULL || command == NULL)
+        return;
+
+    send(v->item, v->slot, command);
+}
+
+void item_screen_send(struct item_view_s *v, const char *command)
+{
+    if (v == NULL || v->item == NULL || command == NULL)
+        return;
+
+    send(v->item, v->slot, command);
+    BEEPER_EVENT_CHANGE();
+}
+
+void item_screen_send_to(Item *item, uint8_t slot, const char *command)
+{
+    if (item == NULL || command == NULL)
+        return;
+
+    send(item, slot, command);
+    BEEPER_EVENT_CHANGE();
 }
 
 lv_obj_t *item_screen_container(lv_obj_t *parent)
@@ -102,6 +146,40 @@ void item_screen_glyph(lv_obj_t *btn)
 
     if (label != NULL)
         lv_obj_set_style_text_font(label, ui_style_theme()->font_large, 0);
+}
+
+/* Tall enough to hit without looking, and with nothing to aim at: the knob is
+ * the full height of the track, so pressing anywhere in the bar takes the
+ * value there and dragging moves it.
+ *
+ * A thin marker at the fill edge rather than a grab handle, because there is
+ * nothing to grab. It has to be done with negative padding. lv_slider takes
+ * the knob's size from the track -- knob_size = lv_obj_get_height(obj) for a
+ * horizontal one -- and then adds the four pads; LV_STYLE_WIDTH on
+ * LV_PART_KNOB is never read. So a 56 px track gives a 56 px square block
+ * unless 25 px is taken off each side. */
+#define FIELD_KNOB_W 6
+
+lv_obj_t *item_screen_field(lv_obj_t *parent, int32_t height)
+{
+    lv_obj_t *field = lv_slider_create(parent);
+
+    lv_obj_add_style(field, &ui_style_slider, LV_PART_MAIN);
+    lv_obj_add_style(field, &ui_style_slider_indicator, LV_PART_INDICATOR);
+    lv_obj_add_style(field, &ui_style_slider_knob, LV_PART_KNOB);
+    lv_obj_set_width(field, lv_pct(100));
+    lv_obj_set_height(field, height);
+    lv_obj_set_style_pad_all(field, 0, LV_PART_KNOB);
+    lv_obj_set_style_pad_hor(field, -(height - FIELD_KNOB_W) / 2, LV_PART_KNOB);
+    lv_obj_set_style_radius(field, 6, LV_PART_MAIN);
+    lv_obj_set_style_radius(field, 6, LV_PART_INDICATOR);
+
+    /* The contact tick without the plate deformation: a field is dragged
+     * rather than pressed, so ui_motion_pressable()'s visual half would be
+     * wrong on it while the acknowledgement is still right. */
+    ui_beep_attach_press(field);
+
+    return field;
 }
 
 void item_screen_set_pattern(lv_obj_t *label, Item *item, float value)
@@ -204,7 +282,10 @@ void item_screen_dismiss(void)
 
 void item_screen_refresh(uint8_t slot)
 {
-    if (view.screen == NULL || view.dsc == NULL || view.slot != slot)
+    if (view.screen == NULL || view.dsc == NULL)
+        return;
+
+    if (view.slot != slot && view.dsc->follows_page == false)
         return;
 
     if (view.dsc->refresh != NULL)

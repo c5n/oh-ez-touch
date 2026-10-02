@@ -606,7 +606,14 @@ void update_state_widget(struct widget_context_s *ctx)
         break;
 
     case ItemType::type_player:
-        ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
+        /* Not the raw state, which is a command word, nor the "||" and ">"
+         * of the mappings openHAB puts on every Player. */
+        if (strcmp(ctx->item->getStateText(), "PLAY") == 0)
+            ui_reading_set_text(ctx->state_widget, "Playing");
+        else if (strcmp(ctx->item->getStateText(), "PAUSE") == 0)
+            ui_reading_set_text(ctx->state_widget, "Paused");
+        else
+            ui_reading_set_text(ctx->state_widget, ctx->item->getStateText());
         break;
 
     case ItemType::type_colorpicker:
@@ -1413,11 +1420,23 @@ static void item_changed(uint8_t slot)
         widget_context[slot].refresh_request = true;
 }
 
+/* A tile of the page on screen, for the player that shows its title. Only
+ * while the page is the one that was parsed: mid fetch the slots still hold
+ * the old one. */
+static Item *page_item(uint8_t slot)
+{
+    if (slot >= WIDGET_COUNT_MAX || page_state != PAGE_READY)
+        return NULL;
+
+    return widget_context[slot].item;
+}
+
 void openhab_ui_setup(Config *config)
 {
     current_config = config;
 
     item_screen_set_changed_cb(item_changed);
+    item_screen_set_page_cb(page_item);
 
     /* ui_style_select() and ui_style_init() used to be called here. They now run
      * in main.cpp, before the first widget of any kind: the info label is
@@ -2127,6 +2146,12 @@ static void events_apply_widget(const struct openhab_widget_event_s *ev)
 
         update_state_widget(wctx);
         widget_apply_colors(wctx);
+
+        /* Again, after the formatted text: a screen that shows this item's
+         * value -- the player its title -- wants the text openHAB formatted,
+         * which arrives after the state that refreshed it above. */
+        if (i < WIDGET_COUNT_MAX)
+            item_screen_refresh((uint8_t)i);
     }
 
     /* Not on the page, and not one the page had and left off: openHAB hid it

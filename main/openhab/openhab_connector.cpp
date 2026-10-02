@@ -5,6 +5,7 @@
 #include "debug.h"
 
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -300,6 +301,29 @@ const char *Item::mappedLabel() const
     return NULL;
 }
 
+void openhab_format_number(char *out, size_t out_size, float value, float step)
+{
+    int decimals = 0;
+
+    /* As many as the step needs to be exact, which is what openHAB's own
+     * UIs send: a step of 0.5 is one decimal, 0.25 two. A step that is not
+     * a short decimal at all -- 1/3 -- stops at three. */
+    for (float scaled = fabsf(step); decimals < 3; decimals++, scaled *= 10.0f)
+        if (fabsf(scaled - roundf(scaled)) < 0.001f)
+            break;
+
+    /* Rounded first, so that a value that drifted through a run of float
+     * additions prints as the step it is on and not as "-0". */
+    float scale = powf(10.0f, (float)decimals);
+
+    value = roundf(value * scale) / scale;
+
+    if (value == 0.0f)
+        value = 0.0f;
+
+    snprintf(out, out_size, "%.*f", decimals, (double)value);
+}
+
 bool Item::iconUrl(const char *website, char *out, size_t out_size) const
 {
     /* No icon name is not a failure to report anywhere -- plenty of widgets
@@ -515,6 +539,18 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
             else if (strcmp(group_type, "Rollershutter") == 0)
                 item->setType(ItemType::type_rollershutter);
         }
+
+        /* A row of buttons over anything else: a scene, a mode, a fan level.
+         * openHAB draws a Switch with mappings that way, and makes one by
+         * itself from `Default` on an item with up to four command options --
+         * a Switch with an empty "mappings" and the options on the item. The
+         * Selection screen is that row of buttons, so it is one. Without
+         * either it stays what it was, a Switch over a Dimmer or a Number,
+         * which the panel cannot draw. */
+        if (   item->getType() == ItemType::type_unknown
+            && (   widget["mappings"].size() > 0
+                || json_item["commandDescription"]["commandOptions"].size() > 0))
+            item->setType(ItemType::type_selection);
     }
     else if (widget["type"] == "Setpoint")
         item->setType(ItemType::type_setpoint);
@@ -676,15 +712,21 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
  * if it became a tile. A widget that did not is wiped back out of it, so the
  * next one finds it clean. */
 static void parse_widget_into(JsonVariant widget, Item *items, size_t *count,
-                              char *label_buffer, size_t label_buffer_size)
+                              char *label_buffer, size_t label_buffer_size,
+                              uint8_t frame)
 {
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("  idx: %u", (unsigned)*count);
 #endif
     if (parse_widget(widget, &items[*count], label_buffer, label_buffer_size) == true)
+    {
+        items[*count].setFrame(frame);
         (*count)++;
+    }
     else
+    {
         items[*count].cleanItem();
+    }
 }
 
 /* Turn a sitemap page into the title and the item array.
@@ -945,6 +987,9 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
          * flattened like any other Frame, it is at least seen. */
         bool clock_page = (doc["parent"]["link"].isNull() == true) && (clock_frame[0] != '\0');
 
+        /* The Frame being read, numbered from 1; see Item::frame. */
+        uint8_t frame = 0;
+
         for (size_t widget_index = 0; widget_index < widget_array.size(); widget_index++)
         {
             JsonVariant widget = widget_array[widget_index];
@@ -962,6 +1007,9 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
             {
                 JsonArray children = widget["widgets"].as<JsonArray>();
                 bool      is_clock = false;
+
+                if (frame < UINT8_MAX)
+                    frame++;
 
                 /* A hidden Frame hides what is in it. */
                 if (widget["visibility"].is<bool>() && widget["visibility"].as<bool>() == false)
@@ -981,12 +1029,12 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
                     {
                         if (clock_item_count < CLOCK_ITEM_COUNT)
                             parse_widget_into(children[child], clock_items, &clock_item_count,
-                                              label_buffer, sizeof(label_buffer));
+                                              label_buffer, sizeof(label_buffer), frame);
                     }
                     else if (item_count < ITEM_COUNT_MAX)
                     {
                         parse_widget_into(children[child], item_array, &item_count,
-                                          label_buffer, sizeof(label_buffer));
+                                          label_buffer, sizeof(label_buffer), frame);
                     }
                 }
 
@@ -999,7 +1047,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
                 continue;
 
             parse_widget_into(widget, item_array, &item_count, label_buffer,
-                              sizeof(label_buffer));
+                              sizeof(label_buffer), 0);
         }
     }
     else

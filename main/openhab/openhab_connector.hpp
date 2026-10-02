@@ -46,6 +46,11 @@
 #define STR_URL_LEN 256
 
 
+/* `value` printed as a command, in as many decimals as `step` has: "50" for
+ * a step of 1, "21.5" for 0.5, never the "50.000000" an Item keeps a number's
+ * state as. Three decimals at most. */
+void openhab_format_number(char *out, size_t out_size, float value, float step);
+
 enum ItemType
 {
     type_unknown,
@@ -101,6 +106,12 @@ private:
     /* openhab_id_hash() of the widget's "widgetId", which is what a sitemap
      * event names it by. 0 for none. */
     uint32_t widget_hash = 0;
+    /* Which Frame of the page the widget sat in: 1 for the page's first
+     * Frame, 2 for its second, and 0 for a widget outside any Frame. Frames
+     * are flattened into the page, so this is all that is left of them, and
+     * it is what lets a player find the title and volume tiles that belong to
+     * it. See item_player.cpp. */
+    uint8_t frame = 0;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -159,6 +170,7 @@ public:
         icon_color = OPENHAB_COLOR_NONE;
         static_icon = false;
         widget_hash = 0;
+        frame = 0;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -193,6 +205,9 @@ public:
 
     uint32_t getWidgetHash() const { return widget_hash; }
     void setWidgetHash(uint32_t hash) { widget_hash = hash; }
+
+    uint8_t getFrame() const { return frame; }
+    void setFrame(uint8_t index) { frame = index; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
