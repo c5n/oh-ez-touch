@@ -145,11 +145,11 @@ echo "values"
 open_page Values
 shot values-cold
 upd Temp_Outside "28.5 °C"
-upd FrontDoor OPEN
+upd Washer DONE
 shot values-warm 3
 item_shot Ventilation command-options
 upd Temp_Outside "3.5 °C"
-upd FrontDoor CLOSED
+upd Washer WASH
 
 echo "rules"
 open_page Rules

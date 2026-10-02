@@ -29,6 +29,7 @@ Switch                  OHEZ_DEMO_Away             "Presence"                  <
 
 // ---- House ------------------------------------------------------------------
 DateTime                OHEZ_DEMO_LastMotion       "Last Motion [%1$tH:%1$tM]" <time>
+String                  OHEZ_DEMO_Washer           "Washer [MAP(ohezdemo.map):%s]" <washingmachine>
 Contact                 OHEZ_DEMO_FrontDoor        "Front Door"                <frontdoor> { stateDescription=""[options="OPEN=Open,CLOSED=Closed"] }
 Switch                  OHEZ_DEMO_Motion           "Motion"                    <motion>    { stateDescription=""[readOnly=true] }
 Number:Power            OHEZ_DEMO_Power            "Power [%.0f W]"            <energy>

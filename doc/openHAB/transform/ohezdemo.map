@@ -1,0 +1,9 @@
+# OhEzTouch demo: the washing machine's status codes as text.
+# Used by OHEZ_DEMO_Washer, "Washer [MAP(ohezdemo.map):%s]".
+OFF=Off
+WASH=Washing
+RINSE=Rinsing
+SPIN=Spinning
+DONE=Finished
+NULL=unknown
+-=?

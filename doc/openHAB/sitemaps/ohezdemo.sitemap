@@ -43,7 +43,7 @@ sitemap ohezdemo label="OhEzTouch Demo"
             Frame label="House"
             {
                 Text item=OHEZ_DEMO_LastMotion
-                Text item=OHEZ_DEMO_FrontDoor staticIcon=frontdoor
+                Text item=OHEZ_DEMO_Washer staticIcon=washingmachine
             }
         }
 

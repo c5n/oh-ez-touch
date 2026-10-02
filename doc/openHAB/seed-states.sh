@@ -44,6 +44,7 @@ upd Volume          35
 upd Away            OFF
 
 upd LastMotion      "$(date +%Y-%m-%dT%H:%M:%S)"
+upd Washer          WASH
 upd FrontDoor       CLOSED
 upd Motion          ON
 upd Power           1240

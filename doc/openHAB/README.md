@@ -9,6 +9,7 @@ items, the Item PIN and the four themes.
 doc/openHAB/
   items/ohezdemo.items          the items, every one named OHEZ_DEMO_...
   sitemaps/ohezdemo.sitemap     the sitemap "ohezdemo"
+  transform/ohezdemo.map        the MAP the washing machine's status goes through
   seed-states.sh                gives every item a state
   make-screenshots.sh           takes the pictures below from the simulator
   img/                          the pictures
@@ -22,14 +23,19 @@ Material theme unless the section says otherwise.
 
 ## Installing it
 
-Copy the two files into openHAB's configuration directory. openHAB loads them
-within a few seconds. On a snap install:
+Copy the three files into openHAB's configuration directory. openHAB loads
+them within a few seconds. On a snap install:
 
 ```bash
 OH=/var/snap/openhab/current/conf        # /etc/openhab on a package install
 cp doc/openHAB/items/ohezdemo.items       $OH/items/
 cp doc/openHAB/sitemaps/ohezdemo.sitemap  $OH/sitemaps/
+cp doc/openHAB/transform/ohezdemo.map     $OH/transform/
 ```
+
+The washing machine needs the **MAP Transformation** add-on (Settings →
+Add-on Store → Other Add-ons). Without it, its tile shows the raw code
+(`WASH`) and everything else works.
 
 Then give the items states. An item openHAB has never been told about reads
 `NULL`, and a demo full of `NULL` shows nothing:
@@ -58,7 +64,7 @@ It runs the simulator headless with a configuration of its own and writes
 `img/*.png`. See [Testing](../testing.md) and
 [The test interface](../test-interface.md).
 
-To remove the demo, delete the two files from `$OH`.
+To remove the demo, delete the three files from `$OH`.
 
 ## The home page and navigation
 
@@ -198,7 +204,7 @@ Frame label="Climate"
 Frame label="House"
 {
     Text item=OHEZ_DEMO_LastMotion
-    Text item=OHEZ_DEMO_FrontDoor staticIcon=frontdoor
+    Text item=OHEZ_DEMO_Washer staticIcon=washingmachine
 }
 ```
 
@@ -217,41 +223,58 @@ Number OHEZ_DEMO_Fan  "Ventilation"  { commandDescription=""[options="0=Off,1=Lo
 Contact OHEZ_DEMO_FrontDoor "Front Door" { stateDescription=""[options="OPEN=Open,CLOSED=Closed"] }
 ```
 
-**Heating Mode** holds `2` and reads "Eco". **Front Door** holds `CLOSED` and
-reads "Closed". **Ventilation** is a Selection without mappings: its choices
-are the item's command options.
+**Heating Mode** holds `2` and reads "Eco". **Front Door** on the
+[Secure](#secure-the-item-pin) page holds `CLOSED` and reads "Closed".
+**Ventilation** is a Selection without mappings: its choices are the item's
+command options.
 
 <img src="img/command-options.png" width="320">
 
-A `MAP(...)` transformation in the item's label works the same way from the
-panel's side. openHAB applies it, and the panel shows the value openHAB
-formatted. The demo uses state options, because a MAP needs the MAP
-transformation add-on on the server.
-
-### Formatted values
+### Formatted values: MAP and patterns
 
 ```
-DateTime OHEZ_DEMO_LastMotion "Last Motion [%1$tH:%1$tM]" <time>
+String   OHEZ_DEMO_Washer     "Washer [MAP(ohezdemo.map):%s]" <washingmachine>
+DateTime OHEZ_DEMO_LastMotion "Last Motion [%1$tH:%1$tM]"     <time>
 ```
 
-**Last Motion** holds an ISO timestamp. The tile shows `13:22`, which is what
-openHAB formats with the label's pattern.
+```
+# transform/ohezdemo.map
+OFF=Off
+WASH=Washing
+RINSE=Rinsing
+SPIN=Spinning
+DONE=Finished
+NULL=unknown
+-=?
+```
+
+openHAB applies what is in the label's `[...]` and sends the result. The panel
+shows that on a text tile:
+- **Washer** holds `WASH` and reads "Washing", through the MAP.
+- **Last Motion** holds an ISO timestamp and reads `13:40`, through the date
+  pattern.
+
+Both follow the state live: the sitemap events carry the newly formatted
+value. A state options list does the same job without a transformation file.
+The panel looks up those labels itself.
 
 ### Colours
 
-| Outside below 5 °C | Outside above 25 °C, door open |
+| Outside below 5 °C, washer washing | Outside above 25 °C, washer done |
 | --- | --- |
 | <img src="img/values-cold.png" width="320"> | <img src="img/values-warm.png" width="320"> |
 
 `valuecolor`, `labelcolor` and `iconcolor` are evaluated by openHAB and drawn by
 the panel on top of the theme. The second picture was taken after only the
-two item states were changed over REST: the panel follows the sitemap events
-and recolours the tile without loading the page again.
+two item states were changed over REST. The panel follows the sitemap events:
+it recolours the temperature and maps `DONE` to "Finished" without loading the
+page again.
 
 ### Static icons
 
-`staticIcon=frontdoor` in place of `icon=frontdoor` tells openHAB, and the panel,
-that the icon does not depend on the state. The panel fetches it once.
+`staticIcon=washingmachine` in place of `icon=washingmachine` tells openHAB, and
+the panel, that the icon does not depend on the state. The panel fetches it
+once.
 
 ## Rules: visibility, colour rules, read-only items
 
