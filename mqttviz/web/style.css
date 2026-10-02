@@ -193,6 +193,104 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 #canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #canvas.grabbing { cursor: grabbing; }
 
+/* ------------------------------------------------------------ space view */
+
+/* The 3D picture: its own WebGL canvas where the 2D one was, the
+ * labels laid over it, and a quiet toolbar in the corner. Everything
+ * else on the stage -- detail, physics, console -- floats above. */
+#space-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+#space-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.space-label {
+  font: 600 11px/1.2 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(11, 13, 18, 0.55);
+  border: 1px solid rgba(95, 224, 255, 0.25);
+  white-space: nowrap;
+  text-shadow: 0 0 6px rgba(95, 224, 255, 0.6);
+}
+.space-label.space-panel { color: var(--lcars-orange); }
+.space-label.space-ap { color: var(--lcars-peri); }
+.space-label.space-broker { color: #ffd38a; }
+.space-label.space-beacon { color: var(--lcars-teal); font-weight: 500; }
+.space-label.offline { color: var(--dim); opacity: 0.7; }
+
+.space-room {
+  font: 500 10px/1 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(95, 224, 255, 0.55);
+  white-space: nowrap;
+}
+
+.space-bar {
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 5;
+  flex-wrap: wrap;
+  max-width: calc(100% - 420px);
+}
+.space-bar .segment { gap: 0; }
+.space-bar .seg-btn { flex: none; padding: 4px 10px; font-size: 11px; }
+.space-name {
+  color: #5fe0ff;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 8px rgba(95, 224, 255, 0.7);
+}
+.space-opacity { width: 110px; accent-color: #5fe0ff; }
+
+.space-help {
+  position: absolute;
+  left: 14px;
+  bottom: 12px;
+  z-index: 5;
+  font-size: 11px;
+  color: var(--dim);
+  pointer-events: none;
+}
+
+.space-empty {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  z-index: 5;
+  max-width: 420px;
+  padding: 22px 26px;
+  text-align: center;
+  border: 1px solid rgba(95, 224, 255, 0.35);
+  border-radius: 14px;
+  background: rgba(11, 13, 18, 0.7);
+  box-shadow: 0 0 40px rgba(95, 224, 255, 0.12) inset;
+}
+.space-empty-title {
+  color: #5fe0ff;
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
 /* The zoom of the topology view: three quiet buttons in the canvas's
  * own corner, only there while the picture can be moved at all. */
 .zoom-controls {
@@ -358,6 +456,10 @@ input[type="range"] { flex: 1; accent-color: var(--lcars-orange); }
 }
 .topbar-segment .seg-btn:last-child {
   border-radius: 0 10px 10px 0;
+}
+.topbar-segment .seg-btn:not(:first-child):not(:last-child) {
+  border-radius: 0;
+  border-right: none;
 }
 
 /* The physics sliders: label and the live readout of the effective

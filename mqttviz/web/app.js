@@ -151,6 +151,7 @@ async function pollState() {
   }
 
   syncBoxes();
+  if (window.MqttvizSpace) window.MqttvizSpace.update();
   renderBrokerChip();
   renderBrokerSelect();
   renderViewToggles();
@@ -197,6 +198,13 @@ let hovered = null;        // the box under the cursor, for the lift
 
 function isTopology() {
   return state.settings.view_mode === "topology";
+}
+
+/* The space view: the house in 3D, drawn by space.js on a canvas of its
+ * own. While it is up, this canvas rests -- the boxes still follow the
+ * facts, so a switch back finds them current. */
+function isSpace() {
+  return state.settings.view_mode === "space";
 }
 
 function fxOn() {
@@ -611,7 +619,9 @@ function syncBoxes() {
 
   /* -- the access points: one box per BSSID any panel reports -------- */
 
-  if (topo) {
+  /* The space view draws access points too; their boxes here are what
+   * its detail panel reads. */
+  if (topo || isSpace()) {
     const groups = new Map();
     for (const dev of state.devices) {
       const bssid = deviceBssid(dev);
@@ -1697,6 +1707,11 @@ function bssidText(bssid) {
 /* ------------------------------------------------------------------ draw */
 
 function draw(time) {
+  if (isSpace()) {
+    frameTime = time;
+    requestAnimationFrame(draw);
+    return;
+  }
   const topo = isTopology();
   const showBroker = state.settings.show_broker !== false;
 
@@ -2759,11 +2774,14 @@ function renderViewToggles() {
                                          state.settings.show_beacons === false);
   $("btn-view-fx").classList.toggle("off",
                                     state.settings.show_fx === false);
-  $("btn-mode-mesh").classList.toggle("active", !isTopology());
+  $("btn-mode-mesh").classList.toggle("active",
+                                      !isTopology() && !isSpace());
   $("btn-mode-topology").classList.toggle("active", isTopology());
+  $("btn-mode-space").classList.toggle("active", isSpace());
+  $("canvas").classList.toggle("hidden", isSpace());
 
   /* The zoom belongs to the topology view alone -- the mesh is its own
-   * fixed picture. */
+   * fixed picture, and the space view moves its own camera. */
   $("zoom-controls").classList.toggle("hidden", !isTopology());
 }
 
@@ -2793,6 +2811,7 @@ async function switchViewMode(mode) {
   renderViewToggles();
   renderPhysicsTabs();
   syncBoxes();
+  if (window.MqttvizSpace) window.MqttvizSpace.update();
 
   try {
     await api("/api/settings", { view_mode: mode });
@@ -2801,6 +2820,7 @@ async function switchViewMode(mode) {
     renderViewToggles();
     renderPhysicsTabs();
     syncBoxes();
+    if (window.MqttvizSpace) window.MqttvizSpace.update();
     toast(error.message, "err");
   }
 }
@@ -2815,6 +2835,8 @@ $("btn-mode-mesh").addEventListener("click", () =>
   switchViewMode("mesh"));
 $("btn-mode-topology").addEventListener("click", () =>
   switchViewMode("topology"));
+$("btn-mode-space").addEventListener("click", () =>
+  switchViewMode("space"));
 
 /* ---------------------------------------------------------------- physics */
 
@@ -2989,6 +3011,16 @@ let detailTarget = null;        // {kind} | {kind: "device", host}
  * or floating -- and does the other thing. */
 function renderDetailPin(box) {
   const button = $("detail-pin");
+  /* In the space view the button takes an object out of the house and
+   * back into the dock; there is nothing to do for one never placed. */
+  if (isSpace()) {
+    const key = spaceKeyOfDetail();
+    const inHouse = key && window.MqttvizSpace
+                    && window.MqttvizSpace.isPlaced(key);
+    button.classList.toggle("hidden", !inHouse);
+    button.textContent = t("space.unplace");
+    return;
+  }
   if (isTopology() && box && box.kind !== "beacon") {
     button.classList.remove("hidden");
     button.textContent = box.pinned ? t("detail.unpin") : t("detail.pin");
@@ -3005,9 +3037,25 @@ function detailBox() {
   return null;
 }
 
+/* The space view keys its places like the topology view, but needs no
+ * box of this canvas to know which one the panel shows -- the access
+ * points have none outside the topology view. */
+function spaceKeyOfDetail() {
+  if (!detailTarget) return null;
+  if (detailTarget.kind === "device") return "panel:" + detailTarget.host;
+  if (detailTarget.kind === "ap") return "ap:" + detailTarget.bssid;
+  return null;
+}
+
 $("detail-pin").addEventListener("click", () => {
   const box = detailBox();
-  if (!box) return;
+  if (!box && !isSpace()) return;
+  if (isSpace()) {
+    const key = spaceKeyOfDetail();
+    if (key && window.MqttvizSpace)
+      window.MqttvizSpace.unplace(key).then(() => renderDetailPin(box));
+    return;
+  }
   if (box.pinned) unpinBox(box);
   else savePin(box);
   renderDetailPin(box);
@@ -3224,6 +3272,7 @@ function renderApDetail() {
   $("detail-seenby").classList.remove("hidden");
   $("detail-controls").classList.add("hidden");
   $("detail-delete").classList.add("hidden");
+  renderDetailPin(box);
 
   $("detail-title").textContent = box.ssid
     || (box.bssid.slice(0, 4) + "…" + box.bssid.slice(-4));
@@ -3531,8 +3580,9 @@ function renderLayouts() {
   for (const name of names) {
     const layout = layouts[name];
     const pins = Object.keys(layout.positions || {}).length;
-    const mode = t(layout.view_mode === "topology"
-                   ? "view.topology" : "view.mesh");
+    const mode = t(layout.view_mode === "topology" ? "view.topology"
+                   : layout.view_mode === "space" ? "view.space"
+                   : "view.mesh");
 
     const row = document.createElement("div");
     row.className = "layout-row";
@@ -3805,6 +3855,14 @@ if (location.hash === "#debug") {
     });
   }, 500);
 }
+
+/* What the space view (space.js, an ES module loaded after this script)
+ * needs of the page: the polled facts, the API, the words and the
+ * colours, and the detail panel to open on a tap. */
+window.mqttvizHost = {
+  state, api, toast, t, tf, PALETTE, fxOn, deviceBssid, deviceSsid,
+  openDetail, openApDetail, openBeaconDetail,
+};
 
 requestAnimationFrame(function tick(time) {
   frameTime = time;

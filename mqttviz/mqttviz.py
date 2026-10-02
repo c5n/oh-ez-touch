@@ -20,6 +20,7 @@ dark is greyed out with its last-seen time, not forgotten.
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -30,11 +31,13 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import mqtt_client
+import sh3d
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA_DIR, "mqttviz.json")
 LAYOUT_FILE = os.path.join(DATA_DIR, "layouts.json")
+HOUSE_FILE = os.path.join(DATA_DIR, "house.json")
 WEB_DIR = os.path.join(HERE, "web")
 
 DEFAULT_PORT = 8089
@@ -101,7 +104,24 @@ PHYS_KINDS = ("phys_nodes", "phys_aps", "phys_beacons", "phys_broker")
 # end only bounds them.
 POSITION_KEY_MAX = 80
 
-VIEW_MODES = ("mesh", "topology")
+VIEW_MODES = ("mesh", "topology", "space")
+
+# The space view's places are metres in the house, not fractions of a
+# picture: far enough out for any home, and a little beyond it for the
+# dock where the unplaced wait.
+SPACE_EXTENT = 1000.0
+
+# What the page may upload as a SweetHome3D file, and which files of
+# the page's own the server hands out: a fixed list, never a path.
+HOUSE_UPLOAD_MAX = 64 * 1024 * 1024
+STATIC_FILES = {
+    "/app.js": ("app.js", "text/javascript"),
+    "/lang.js": ("lang.js", "text/javascript"),
+    "/space.js": ("space.js", "text/javascript"),
+    "/style.css": ("style.css", "text/css"),
+    "/vendor/three.bundle.js": ("vendor/three.bundle.js",
+                                "text/javascript"),
+}
 
 # One saved layout, whatever the page named it: short enough to be a
 # name, never empty, never a filename nobody asked for.
@@ -136,6 +156,64 @@ def normalise_position(raw):
     return {"x": round(x, 4), "y": round(y, 4)}
 
 
+def finite(value):
+    """A number the page sent, as a float -- never NaN or infinite."""
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError("not a finite number")
+    return value
+
+
+def normalise_position3d(raw):
+    """One place in the space view, whatever the page said: x, y and z
+    in metres (y is up), the direction the surface it sits on faces --
+    a wall's normal, or straight up for a floor -- the way it is turned
+    there, and the level it belongs to."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        pos = {axis: round(max(-SPACE_EXTENT, min(SPACE_EXTENT,
+                                                  finite(raw.get(axis)))), 3)
+               for axis in ("x", "y", "z")}
+        for axis in ("nx", "ny", "nz"):
+            value = finite(raw.get(axis, 1.0 if axis == "ny" else 0.0))
+            pos[axis] = round(max(-1.0, min(1.0, value)), 3)
+        # which way an object on a floor faces, about the vertical
+        pos["yaw"] = round(max(-7.0, min(7.0, finite(raw.get("yaw", 0.0)))),
+                           3)
+    except (TypeError, ValueError):
+        return None
+    pos["level"] = str(raw.get("level") or "")[:40]
+    return pos
+
+
+def normalise_positions3d(raw):
+    """The space view's whole table of places, checked like the
+    topology view's."""
+    positions = {}
+    if isinstance(raw, dict):
+        for key, value in raw.items():
+            key = normalise_position_key(key)
+            pos = normalise_position3d(value)
+            if key and pos:
+                positions[key] = pos
+    return positions
+
+
+def normalise_cam3d(raw):
+    """The space view's camera: where it stands and what it looks at,
+    in metres -- or nothing, and the page frames the house itself."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        cam = {key: round(max(-SPACE_EXTENT, min(SPACE_EXTENT,
+                                                 finite(raw[key]))), 3)
+               for key in ("px", "py", "pz", "tx", "ty", "tz")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    return cam
+
+
 def normalise_positions(raw):
     """The whole stored-position table: every key a valid key, every
     entry a valid position, everything else dropped."""
@@ -147,6 +225,14 @@ def normalise_positions(raw):
             if key and pos:
                 positions[key] = pos
     return positions
+
+
+def normalise_holo_opacity(raw):
+    """How solid the house's walls are drawn: a percentage."""
+    try:
+        return max(5, min(100, int(raw)))
+    except (TypeError, ValueError):
+        return 50
 
 
 def normalise_layout_name(name):
@@ -166,6 +252,7 @@ def normalise_layout(raw):
     view_mode = raw.get("view_mode")
     return {
         "positions": normalise_positions(raw.get("positions")),
+        "positions3d": normalise_positions3d(raw.get("positions3d")),
         "view_mode": view_mode if view_mode in VIEW_MODES else "topology",
         "saved_at": str(raw.get("saved_at") or ""),
     }
@@ -348,6 +435,9 @@ class State:
         "pos_space": "world",
         "layouts": {},
         "cam": {"zoom": 1.0, "x": 0.5, "y": 0.5},
+        "positions3d": {},
+        "cam3d": None,
+        "holo_opacity": 50,
         "phys_nodes": dict(PHYS_DEFAULTS),
         "phys_aps": dict(PHYS_DEFAULTS),
         "phys_beacons": dict(PHYS_DEFAULTS),
@@ -465,6 +555,7 @@ class State:
             self.settings["layouts"] = {
                 name: {"positions": positions_into_workspace(
                            layout["positions"]),
+                       "positions3d": layout["positions3d"],
                        "view_mode": layout["view_mode"],
                        "saved_at": layout["saved_at"]}
                 for name, layout in self.settings["layouts"].items()}
@@ -475,6 +566,14 @@ class State:
         # range now -- the workspace is as big as it is, and the camera
         # looks somewhere inside it.
         self.settings["cam"] = normalise_cam(self.settings.get("cam"))
+
+        # The space view: places in metres, its own camera, and how
+        # bright the house is drawn.
+        self.settings["positions3d"] = normalise_positions3d(
+            self.settings.get("positions3d"))
+        self.settings["cam3d"] = normalise_cam3d(self.settings.get("cam3d"))
+        self.settings["holo_opacity"] = normalise_holo_opacity(
+            self.settings.get("holo_opacity"))
 
         # The language of the page: English or German, kept with the rest
         # so every browser that opens the tool starts right.
@@ -554,15 +653,25 @@ STATE = None
 
 # ------------------------------------------------------- layout backup file
 
-def layout_snapshot(positions, view_mode):
+def layout_snapshot(positions, view_mode, positions3d=None):
     """A copy of one arrangement the way the backup file tells it: no
     reference into the live table, so a later change cannot reach into
-    the past."""
+    the past. Both pictures' places belong to it -- the topology view's
+    fractions and the space view's metres."""
     return {
         "view_mode": view_mode if view_mode in VIEW_MODES else "mesh",
         "positions": {key: dict(pos)
                       for key, pos in (positions or {}).items()},
+        "positions3d": {key: dict(pos)
+                        for key, pos in (positions3d or {}).items()},
     }
+
+
+def current_snapshot():
+    """The arrangement as it stands, both pictures of it."""
+    return layout_snapshot(STATE.settings.get("positions"),
+                           STATE.settings.get("view_mode"),
+                           STATE.settings.get("positions3d"))
 
 
 def write_layout_backup():
@@ -578,9 +687,10 @@ def write_layout_backup():
     with STATE.lock:
         doc = {
             "written": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "current": layout_snapshot(STATE.settings.get("positions"),
-                                       STATE.settings.get("view_mode")),
+            "current": current_snapshot(),
             "layouts": {name: {"positions": dict(layout["positions"]),
+                               "positions3d": dict(
+                                   layout.get("positions3d") or {}),
                                "view_mode": layout["view_mode"],
                                "saved_at": layout["saved_at"]}
                         for name, layout
@@ -993,14 +1103,15 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/":
             return self.serve_static("index.html", "text/html")
-        if path in ("/app.js", "/lang.js", "/style.css"):
-            mime = "text/javascript" if path.endswith(".js") else "text/css"
-            return self.serve_static(path[1:], mime)
+        if path in STATIC_FILES:
+            return self.serve_static(*STATIC_FILES[path])
 
         if path == "/api/state":
             return self.handle_state()
         if path == "/api/log":
             return self.handle_log()
+        if path == "/api/house":
+            return self.handle_house()
 
         self.send_error_json("not found", 404)
 
@@ -1013,6 +1124,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.handle_position()
         if path == "/api/position/delete":
             return self.handle_position_delete()
+        if path == "/api/position3d":
+            return self.handle_position3d()
+        if path == "/api/position3d/delete":
+            return self.handle_position3d_delete()
+        if path == "/api/house/import":
+            return self.handle_house_import()
+        if path == "/api/house/delete":
+            return self.handle_house_delete()
         if path == "/api/layout/save":
             return self.handle_layout_save()
         if path == "/api/layout/load":
@@ -1240,6 +1359,13 @@ class Handler(BaseHTTPRequestHandler):
             if "cam" in body:
                 STATE.settings["cam"] = normalise_cam(body.get("cam"))
 
+            # The space view's camera, and how solid the house is drawn.
+            if "cam3d" in body:
+                STATE.settings["cam3d"] = normalise_cam3d(body.get("cam3d"))
+            if "holo_opacity" in body:
+                STATE.settings["holo_opacity"] = normalise_holo_opacity(
+                    body["holo_opacity"])
+
             # The physics sliders: whole numbers in their ranges, whatever
             # the page meant by them, clamped here -- and set apart for
             # the two kinds of things that float, the panels and the
@@ -1339,6 +1465,115 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_json({"ok": True, "positions": positions})
 
+    def handle_position3d(self):
+        """Place one object in the space view: the key says which, x, y
+        and z where in the house, the normal which way the surface it
+        sits on faces."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        key = normalise_position_key(body.get("key"))
+        pos = normalise_position3d(body)
+        if not key or not pos:
+            return self.send_error_json("a place needs a key, x, y and z")
+
+        with STATE.lock:
+            STATE.settings.setdefault("positions3d", {})[key] = pos
+            STATE.save()
+            STATE.save_now_if_dirty()
+            positions = dict(STATE.settings["positions3d"])
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "positions3d": positions})
+
+    def handle_position3d_delete(self):
+        """Take one object out of the house: it waits in the dock."""
+        body = self.read_json_body()
+
+        if not isinstance(body, dict):
+            return self.send_error_json("expected a JSON object")
+
+        key = normalise_position_key(body.get("key"))
+        if not key:
+            return self.send_error_json("a place needs a key")
+
+        with STATE.lock:
+            STATE.settings.setdefault("positions3d", {}).pop(key, None)
+            STATE.save()
+            STATE.save_now_if_dirty()
+            positions = dict(STATE.settings["positions3d"])
+
+        write_layout_backup()
+
+        self.send_json({"ok": True, "positions3d": positions})
+
+    def handle_house(self):
+        """The house the space view draws, as the converter left it --
+        or an empty object when none was imported."""
+        try:
+            with open(HOUSE_FILE) as handle:
+                house = json.load(handle)
+        except (OSError, ValueError):
+            house = {}
+        self.send_json(house if isinstance(house, dict) else {})
+
+    def handle_house_import(self):
+        """A SweetHome3D file, uploaded raw, becomes the house: its
+        walls, rooms, levels and openings in metres, kept beside the
+        state. The previous house is kept one generation back."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0:
+            return self.send_error_json("expected a .sh3d file")
+        if length > HOUSE_UPLOAD_MAX:
+            # the body is not read; the connection cannot be reused
+            self.close_connection = True
+            return self.send_error_json("the file is too large", 413)
+
+        data = self.rfile.read(length)
+        name = urllib.parse.unquote(self.headers.get("X-Filename") or "")
+        name = os.path.basename(name).rsplit(".", 1)[0] or None
+
+        try:
+            house = sh3d.convert(data, name=name)
+        except sh3d.HouseError as error:
+            STATE.log("warn", "house", "import refused: %s" % error)
+            return self.send_error_json(str(error))
+
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            tmp = HOUSE_FILE + ".tmp"
+            with open(tmp, "w") as handle:
+                json.dump(house, handle, separators=(",", ":"))
+                handle.write("\n")
+            if os.path.exists(HOUSE_FILE):
+                os.replace(HOUSE_FILE, HOUSE_FILE + ".bak")
+            os.replace(tmp, HOUSE_FILE)
+        except OSError as error:
+            return self.send_error_json("house not written: %s" % error, 500)
+
+        STATE.log("info", "house", "imported %s: %d levels, %d walls, "
+                  "%d rooms" % (house["name"], len(house["levels"]),
+                                len(house["walls"]), len(house["rooms"])))
+        self.send_json(house)
+
+    def handle_house_delete(self):
+        """Forget the house. The places in the space view stay -- a new
+        import of the same home finds them where they were."""
+        self.read_body()
+        try:
+            if os.path.exists(HOUSE_FILE):
+                os.replace(HOUSE_FILE, HOUSE_FILE + ".bak")
+        except OSError as error:
+            return self.send_error_json("house not removed: %s" % error, 500)
+        STATE.log("info", "house", "house removed")
+        self.send_json({"ok": True})
+
     def handle_layout_save(self):
         """Keep the arrangement as it stands under a name: the pinned
         places and the picture they belong to, to be brought back whole.
@@ -1355,8 +1590,7 @@ class Handler(BaseHTTPRequestHandler):
 
         with STATE.lock:
             layouts = normalise_layouts(STATE.settings.get("layouts"))
-            layouts[name] = layout_snapshot(STATE.settings.get("positions"),
-                                            STATE.settings.get("view_mode"))
+            layouts[name] = current_snapshot()
             layouts[name]["saved_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
             STATE.settings["layouts"] = layouts
             STATE.save()
@@ -1386,14 +1620,17 @@ class Handler(BaseHTTPRequestHandler):
             if layout is None:
                 return self.send_error_json("no layout by that name")
 
-            STATE.before_load = layout_snapshot(
-                STATE.settings.get("positions"),
-                STATE.settings.get("view_mode"))
+            STATE.before_load = current_snapshot()
             STATE.before_load["replaced_by"] = name
             STATE.before_load["ts"] = time.strftime("%Y-%m-%d %H:%M:%S")
 
             STATE.settings["positions"] = normalise_positions(
                 layout["positions"])
+            # A layout from before the space view knew no metres; it
+            # leaves the space view's places as they are.
+            if layout["positions3d"]:
+                STATE.settings["positions3d"] = normalise_positions3d(
+                    layout["positions3d"])
             STATE.settings["view_mode"] = layout["view_mode"]
             STATE.save()
             STATE.save_now_if_dirty()
@@ -1565,12 +1802,13 @@ def main():
                         help="start without connecting to the broker")
     args = parser.parse_args()
 
-    global STATE, DATA_DIR, STATE_FILE, LAYOUT_FILE
+    global STATE, DATA_DIR, STATE_FILE, LAYOUT_FILE, HOUSE_FILE
 
     if args.data_dir:
         DATA_DIR = args.data_dir
         STATE_FILE = os.path.join(DATA_DIR, "mqttviz.json")
         LAYOUT_FILE = os.path.join(DATA_DIR, "layouts.json")
+        HOUSE_FILE = os.path.join(DATA_DIR, "house.json")
 
     STATE = State()
 

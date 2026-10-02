@@ -38,6 +38,7 @@ const I18N = {
 
     "view.mesh": "Mesh",
     "view.topology": "Topology",
+    "view.space": "3D",
 
     "tip.brokerSelect": "the broker to watch",
     "tip.brokerView": "show or hide the broker node",
@@ -45,6 +46,21 @@ const I18N = {
     "tip.fxView": "show or hide the light effects",
     "tip.modeMesh": "the classic picture: every panel on its line to the broker",
     "tip.modeTopology": "the network as it is: broker, access points, panels, beacons",
+    "tip.modeSpace": "the network in the house: a SweetHome3D plan in 3D",
+
+    /* -- the space view -------------------------------------------- */
+    "space.import": "import SweetHome3D…",
+    "space.replace": "replace house…",
+    "space.remove": "remove house",
+    "space.home": "look at the whole house",
+    "space.opacity": "how solid the walls are drawn",
+    "space.allLevels": "all",
+    "space.unplace": "take out of the house",
+    "space.emptyTitle": "No house yet",
+    "space.emptyText": "Import a SweetHome3D file (.sh3d) and its walls, rooms, doors and windows become the stage. Saved with SweetHome3D 5.3 or newer.",
+    "space.help": "drag a panel, access point or the broker over the plan: near a wall it sticks to it · shift+drag or shift+wheel: height · pick a level to reach the floors below · right drag: pan",
+    "space.imported": "house {name}: {walls} walls, {rooms} rooms",
+    "space.importFailed": "import failed: ",
     "tip.physics": "how the boxes move",
     "tip.config": "MQTT configuration",
     "tip.layouts": "saved arrangements of the canvas",
@@ -257,6 +273,7 @@ const I18N = {
 
     "view.mesh": "Mesh",
     "view.topology": "Topologie",
+    "view.space": "3D",
 
     "tip.brokerSelect": "der beobachtete Broker",
     "tip.brokerView": "den Broker-Knoten zeigen oder verbergen",
@@ -264,6 +281,21 @@ const I18N = {
     "tip.fxView": "die Lichteffekte ein- oder ausblenden",
     "tip.modeMesh": "das klassische Bild: jedes Panel an seiner Leine zum Broker",
     "tip.modeTopology": "das Netz, wie es ist: Broker, Access Points, Panels, Beacons",
+    "tip.modeSpace": "das Netz im Haus: ein SweetHome3D-Plan in 3D",
+
+    /* -- die Raumansicht ------------------------------------------- */
+    "space.import": "SweetHome3D einlesen…",
+    "space.replace": "Haus ersetzen…",
+    "space.remove": "Haus entfernen",
+    "space.home": "das ganze Haus zeigen",
+    "space.opacity": "wie dicht die Wände gezeichnet werden",
+    "space.allLevels": "alle",
+    "space.unplace": "aus dem Haus nehmen",
+    "space.emptyTitle": "Noch kein Haus",
+    "space.emptyText": "Eine SweetHome3D-Datei (.sh3d) einlesen: ihre Wände, Räume, Türen und Fenster werden zur Bühne. Gespeichert mit SweetHome3D 5.3 oder neuer.",
+    "space.help": "Panel, Access Point oder Broker über den Plan ziehen: nahe einer Wand haftet es an ihr · Shift+Ziehen oder Shift+Rad: Höhe · eine Ebene wählen, um die unteren zu erreichen · rechts ziehen: verschieben",
+    "space.imported": "Haus {name}: {walls} Wände, {rooms} Räume",
+    "space.importFailed": "Einlesen fehlgeschlagen: ",
     "tip.physics": "wie sich die Boxen bewegen",
     "tip.config": "MQTT-Konfiguration",
     "tip.layouts": "gespeicherte Anordnungen der Leinwand",
