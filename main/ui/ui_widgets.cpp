@@ -178,6 +178,19 @@ lv_obj_t *ui_reading_create(lv_obj_t *parent, lv_style_t *value_style,
     return reading;
 }
 
+void ui_reading_set_color(lv_obj_t *reading, lv_color_t color, bool set)
+{
+    for (uint32_t i = 0; i < lv_obj_get_child_count(reading); i++)
+    {
+        lv_obj_t *label = lv_obj_get_child(reading, (int32_t)i);
+
+        if (set == true)
+            lv_obj_set_style_text_color(label, color, 0);
+        else
+            lv_obj_remove_local_style_prop(label, LV_STYLE_TEXT_COLOR, 0);
+    }
+}
+
 void ui_reading_set_text(lv_obj_t *reading, const char *text)
 {
     lv_obj_t *value = lv_obj_get_child(reading, READING_VALUE);

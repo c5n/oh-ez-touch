@@ -307,8 +307,13 @@ bool Item::iconUrl(const char *website, char *out, size_t out_size) const
     if (icon_name[0] == '\0')
         return false;
 
-    int len = snprintf(out, out_size, "%s/icon/%s?state=%s&format=png",
-                       website, icon_name, state_text);
+    /* A static icon is the same picture whatever the state, so the state
+     * stays out of the URL -- which also keeps a state with a space in it
+     * from making the URL one the HTTP client refuses. */
+    int len = static_icon
+                  ? snprintf(out, out_size, "%s/icon/%s?format=png", website, icon_name)
+                  : snprintf(out, out_size, "%s/icon/%s?state=%s&format=png",
+                             website, icon_name, state_text);
 
     return (len > 0 && (size_t)len < out_size);
 }
@@ -462,6 +467,15 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
         printf("  icon=\"%s\"", item->getIconName());
 #endif
     }
+
+    item->setStaticIcon(widget["staticIcon"].as<bool>());
+
+    /* The colours the sitemap's rules chose for this state. A string, or
+     * absent when the sitemap has no rule; anything unreadable is the
+     * theme's colour. */
+    item->setLabelColor(openhab_color_parse(json_str(widget["labelcolor"])));
+    item->setValueColor(openhab_color_parse(json_str(widget["valuecolor"])));
+    item->setIconColor(openhab_color_parse(json_str(widget["iconcolor"])));
 
     // Type
     item->setType(ItemType::type_unknown);
@@ -683,7 +697,8 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
      * ArduinoJson 7 documents size themselves -- the old fixed 12000 byte
      * capacity is gone -- and a document that sizes itself to the page grows
      * with whatever openHAB decides to send. A page carries a good deal this
-     * panel has no use for: widgetId, labelSource and unit on every widget;
+     * panel has no use for: widgetId, labelSource, unit and switchSupport on
+     * every widget;
      * name, label, category, groupNames, members, function and two
      * timestamps on every item; a nested empty "widgets"
      * array; and four more fields inside every linkedPage than the one link
@@ -736,6 +751,10 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         widget_filter["linkedPage"]["link"] = true;
         /* false for a widget a visibility rule hides; parse_widget() skips it. */
         widget_filter["visibility"] = true;
+        widget_filter["staticIcon"] = true;
+        widget_filter["labelcolor"] = true;
+        widget_filter["valuecolor"] = true;
+        widget_filter["iconcolor"] = true;
 
         JsonObject mapping_filter = widget_filter["mappings"].add<JsonObject>();
 

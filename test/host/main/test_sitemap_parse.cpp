@@ -398,6 +398,44 @@ static void test_read_only_is_read(void)
     TEST_ASSERT_FALSE(sitemap.getItem(0)->isReadOnly());
 }
 
+/* The colours openHAB evaluated from the sitemap's rules, and staticIcon. A
+ * widget without a rule sends no key; one with an unreadable colour gets the
+ * theme's. */
+static void test_colours_and_static_icon_are_read(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"Temp\",\"staticIcon\":true,"
+        "\"labelcolor\":\"gold\",\"valuecolor\":\"#ff0000\",\"iconcolor\":\"nonsense\","
+        "\"item\":{\"type\":\"Number\",\"state\":\"30\",\"link\":\"http://h/rest/items/T\"}},"
+        "{\"type\":\"Text\",\"label\":\"Plain\",\"staticIcon\":false,"
+        "\"item\":{\"type\":\"String\",\"state\":\"x\",\"link\":\"http://h/rest/items/P\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+
+    Item *temp  = sitemap.getItem(0);
+    Item *plain = sitemap.getItem(1);
+
+    TEST_ASSERT_TRUE(temp->isStaticIcon());
+    TEST_ASSERT_EQUAL_HEX32(0xFFD700, temp->getLabelColor());
+    TEST_ASSERT_EQUAL_HEX32(0xFF0000, temp->getValueColor());
+    TEST_ASSERT_EQUAL_HEX32(OPENHAB_COLOR_NONE, temp->getIconColor());
+
+    TEST_ASSERT_FALSE(plain->isStaticIcon());
+    TEST_ASSERT_EQUAL_HEX32(OPENHAB_COLOR_NONE, plain->getLabelColor());
+    TEST_ASSERT_EQUAL_HEX32(OPENHAB_COLOR_NONE, plain->getValueColor());
+
+    /* Gone with the next page, like everything else of the slot's. */
+    static const char next[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Text\",\"label\":\"X\","
+        "\"item\":{\"type\":\"String\",\"state\":\"x\",\"link\":\"http://h/rest/items/X\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(next, sizeof(next) - 1));
+    TEST_ASSERT_FALSE(sitemap.getItem(0)->isStaticIcon());
+    TEST_ASSERT_EQUAL_HEX32(OPENHAB_COLOR_NONE, sitemap.getItem(0)->getValueColor());
+}
+
 /* The fallback is still reachable for a server that omits the key, which is
  * the only shape that reaches it, so it is pinned where it can be reached. */
 static void test_command_options_are_used_when_mappings_are_absent(void)
@@ -1087,6 +1125,7 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_state_options_label_a_read_out);
     RUN_TEST(test_hidden_and_unsupported_widgets_take_no_slot);
     RUN_TEST(test_read_only_is_read);
+    RUN_TEST(test_colours_and_static_icon_are_read);
     RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
     RUN_TEST(test_the_pin_tag_marks_its_items);
     RUN_TEST(test_only_the_exact_tag_counts);

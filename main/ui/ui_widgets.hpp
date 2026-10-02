@@ -84,4 +84,9 @@ void ui_reading_set_text(lv_obj_t *reading, const char *text);
  * including the conversion is the value; the rest is the unit. */
 void ui_reading_set_pattern(lv_obj_t *reading, const char *pattern, float value);
 
+/* Colour the value and the unit with `color`, or give both back to their
+ * styles when `set` is false. A local style, so it sits on top of the
+ * theme's and a theme change -- which recreates the reading -- drops it. */
+void ui_reading_set_color(lv_obj_t *reading, lv_color_t color, bool set);
+
 #endif /* UI_WIDGETS_HPP */

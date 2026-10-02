@@ -70,6 +70,22 @@ static void test_icon_url(void)
 /* Plenty of widgets have no icon, and that is not a failure to report -- it
  * just means there is nothing to fetch. Building the URL anyway would ask
  * openHAB for "/icon/?state=..." once per poll. */
+/* A static icon is asked for without the state: the picture does not depend
+ * on it, and a state with a space in it would make a URL the client refuses. */
+static void test_icon_url_of_a_static_icon(void)
+{
+    Item item;
+    char url[STR_URL_LEN];
+
+    item.cleanItem();
+    item.setIconName("temperature");
+    item.setStateText("Hello World");
+    item.setStaticIcon(true);
+
+    TEST_ASSERT_TRUE(item.iconUrl(WEBSITE, url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/temperature?format=png", url);
+}
+
 static void test_icon_url_without_a_name(void)
 {
     Item item;
@@ -213,6 +229,7 @@ void test_item_urls_run(void)
 {
     RUN_TEST(test_name);
     RUN_TEST(test_name_without_a_link);
+    RUN_TEST(test_icon_url_of_a_static_icon);
     RUN_TEST(test_name_that_does_not_fit);
     RUN_TEST(test_state_url);
     RUN_TEST(test_state_url_without_a_link);

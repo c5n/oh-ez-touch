@@ -37,6 +37,10 @@
  *     ("21.5 °C"), on the widget as "unit", and on the item as "unitSymbol".
  *     Weather_Temperature and Thermostat_Setpoint carry all three.
  *
+ * Outside Temperature carries a "valuecolor", which is what openHAB sends for
+ * a sitemap line with `valuecolor=[<5="#4fc3f7"]` at 3.5 degrees: the rule's
+ * result, as a string, and no key at all on a widget without a rule.
+ *
  * Bedroom_Humidity is a plain Number and not the Number:Dimensionless it
  * looks like it should be, deliberately. openHAB normalises "48 %" on such an
  * item to the ratio 0.48 and formats a bare 48 as "4800 %", so neither
@@ -165,6 +169,7 @@ static const char page_demo[] = R"json(
       "mappings": [],
       "type": "Text",
       "label": "Outside Temperature [3.5 °C]",
+      "valuecolor": "#4fc3f7",
       "icon": "temperature",
       "staticIcon": false
     },

@@ -3,6 +3,8 @@
 
 #include <ArduinoJson.h>
 
+#include "openhab_color.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -80,6 +82,15 @@ private:
     /* openHAB's stateDescription.readOnly: a sensor. Its tile shows the
      * state and a tap does nothing, whatever widget the sitemap put it in. */
     bool read_only = false;
+    /* The sitemap's labelcolor, valuecolor and iconcolor, as openHAB
+     * evaluated them for the state the page was sent with: 0xRRGGBB, or
+     * OPENHAB_COLOR_NONE for the theme's own. */
+    uint32_t label_color = OPENHAB_COLOR_NONE;
+    uint32_t value_color = OPENHAB_COLOR_NONE;
+    uint32_t icon_color = OPENHAB_COLOR_NONE;
+    /* The widget's staticIcon: the icon does not follow the state, so it is
+     * asked for without one, and once. */
+    bool static_icon = false;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -133,6 +144,10 @@ public:
          * nor, worse, lose it the other way round. */
         pin_protected = false;
         read_only = false;
+        label_color = OPENHAB_COLOR_NONE;
+        value_color = OPENHAB_COLOR_NONE;
+        icon_color = OPENHAB_COLOR_NONE;
+        static_icon = false;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -154,6 +169,16 @@ public:
 
     bool isReadOnly() const { return read_only; }
     void setReadOnly(bool on) { read_only = on; }
+
+    uint32_t getLabelColor() const { return label_color; }
+    void setLabelColor(uint32_t rgb) { label_color = rgb; }
+    uint32_t getValueColor() const { return value_color; }
+    void setValueColor(uint32_t rgb) { value_color = rgb; }
+    uint32_t getIconColor() const { return icon_color; }
+    void setIconColor(uint32_t rgb) { icon_color = rgb; }
+
+    bool isStaticIcon() const { return static_icon; }
+    void setStaticIcon(bool on) { static_icon = on; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }

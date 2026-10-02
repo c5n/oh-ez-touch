@@ -112,6 +112,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_widgets.cpp"
 
     "openhab/openhab_client.cpp"
+    "openhab/openhab_color.c"
     "openhab/openhab_discover.cpp"
     "openhab/openhab_event_parse.cpp"
     "openhab/openhab_events.cpp"

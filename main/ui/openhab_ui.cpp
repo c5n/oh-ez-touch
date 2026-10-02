@@ -733,6 +733,48 @@ static void widget_icon_set_bitmap(struct widget_context_s *wctx)
     lv_image_set_src(wctx->img_obj, &wctx->img_dsc);
 }
 
+/* The sitemap's labelcolor, valuecolor and iconcolor on whatever objects the
+ * slot has -- a tile's, or the row the clock screen lent it. Local styles on
+ * top of the theme's, and taken off again where the item has none: the clock
+ * screen's objects outlive the item they are lent to. The icon is tinted
+ * whole, which is what line art wants; the placeholder symbol is text, so it
+ * takes the same colour as text. */
+static void widget_apply_colors(struct widget_context_s *wctx)
+{
+    uint32_t label_rgb = wctx->item->getLabelColor();
+    uint32_t value_rgb = wctx->item->getValueColor();
+    uint32_t icon_rgb  = wctx->item->getIconColor();
+
+    if (wctx->label != NULL)
+    {
+        if (label_rgb != OPENHAB_COLOR_NONE)
+            lv_obj_set_style_text_color(wctx->label, lv_color_hex(label_rgb), 0);
+        else
+            lv_obj_remove_local_style_prop(wctx->label, LV_STYLE_TEXT_COLOR, 0);
+    }
+
+    /* Not the colour picker's swatch, which is the value's colour already. */
+    if (wctx->state_widget != NULL && wctx->item->getType() != ItemType::type_colorpicker)
+        ui_reading_set_color(wctx->state_widget, lv_color_hex(value_rgb),
+                             value_rgb != OPENHAB_COLOR_NONE);
+
+    if (wctx->img_obj != NULL)
+    {
+        if (icon_rgb != OPENHAB_COLOR_NONE)
+        {
+            lv_obj_set_style_image_recolor(wctx->img_obj, lv_color_hex(icon_rgb), 0);
+            lv_obj_set_style_image_recolor_opa(wctx->img_obj, LV_OPA_COVER, 0);
+            lv_obj_set_style_text_color(wctx->img_obj, lv_color_hex(icon_rgb), 0);
+        }
+        else
+        {
+            lv_obj_remove_local_style_prop(wctx->img_obj, LV_STYLE_IMAGE_RECOLOR, 0);
+            lv_obj_remove_local_style_prop(wctx->img_obj, LV_STYLE_IMAGE_RECOLOR_OPA, 0);
+            lv_obj_remove_local_style_prop(wctx->img_obj, LV_STYLE_TEXT_COLOR, 0);
+        }
+    }
+}
+
 /* Ask the client task for this tile's icon.
  *
  * Submitting, not fetching: the answer arrives at results_apply_one() some
@@ -1296,6 +1338,7 @@ static void page_rebuild(lv_obj_t *parent, bool reload_icons)
                                                    (uint8_t)i);
 
         update_state_widget(&widget_context[i]);
+        widget_apply_colors(&widget_context[i]);
 
         if (reload_icons == true)
             widget_icon_request(i);
@@ -1521,6 +1564,7 @@ void openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label, lv_o
         widget_icon_set_bitmap(wctx);
 
     update_state_widget(wctx);
+    widget_apply_colors(wctx);
 
     /* Poll at once: what was parsed with the page may be minutes old. */
     wctx->update_timestamp = 0;
@@ -1910,7 +1954,9 @@ static void apply_item_state(size_t slot, const char *text, size_t len)
         if (slot < WIDGET_COUNT_MAX)
             item_screen_refresh(slot);
 
-        widget_icon_request(slot);
+        /* A static icon is the same picture whatever the state. */
+        if (wctx->item->isStaticIcon() == false)
+            widget_icon_request(slot);
     }
 }
 
@@ -2171,7 +2217,8 @@ void openhab_ui_loop(void)
                         port_millis() - (interval - ITEM_UPDATE_INTERVAL);
                     widget_context[i].refresh_request = false;
                     update_state_widget(&widget_context[i]);
-                    widget_icon_request(i);
+                    if (widget_context[i].item->isStaticIcon() == false)
+                        widget_icon_request(i);
                     statistics.update_success_cnt++;
                 }
 

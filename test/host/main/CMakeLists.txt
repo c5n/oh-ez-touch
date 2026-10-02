@@ -115,6 +115,10 @@
 # came out is the line splitter and the reading of one event -- ArduinoJson and
 # libc. It decides which tile a pushed state lands on, and what state.
 #
+# openhab/openhab_color.c came with the sitemap's colour rules: it reads the
+# string openHAB sends for a labelcolor, valuecolor or iconcolor, which is
+# whatever somebody typed into a sitemap, and openhab_connector.cpp needs it.
+#
 # config/pin_code.c joined them with the PINs: what makes a PIN, the SHA-256
 # it is stored as, and the lockout a run of wrong guesses earns. The store
 # around it is NVS and the pad is LVGL; this is the part that is arithmetic,
@@ -135,6 +139,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_item_setters.cpp"
                             "test_mdns_query.cpp"
                             "test_multipart.cpp"
+                            "test_openhab_color.cpp"
                             "test_port_ntp.cpp"
                             "test_item_state.cpp"
                             "test_item_urls.cpp"
@@ -164,6 +169,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_event_parse.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_color.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/peripherals/led.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/net/mdns_query.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_ntp.c"
