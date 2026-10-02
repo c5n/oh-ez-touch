@@ -191,7 +191,8 @@ bug rather than a fixture artefact.
    says `4800 %`. Closing it needs the unit the panel drops.
 5. **Both clamps are silent.** A ten-widget page draws five widgets and a back
    tile; a twelve-entry Selection lists ten. Nothing on screen says anything was
-   dropped.
+   dropped. Hidden widgets and widget types the panel cannot draw are skipped
+   before the count, so they no longer use up a place.
 6. **The sitemap is fetched once and never re-polled.** Only item states are
    updated afterwards -- pushed over `/rest/events`, polled while that stream
    is down -- so a sitemap edited on the server does not reach the panel until

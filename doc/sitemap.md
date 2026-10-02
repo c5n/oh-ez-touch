@@ -24,6 +24,18 @@ and value. Each field shows the colours it reaches with the other two held
 where they are, and the fields recolour as you drag. The new colour is sent
 when the finger lifts.
 
+Widgets of other types (Chart, Image, Webview, Mapview, Input and so on) are
+left out. So is a Switch over an item that is neither a Switch, a
+Rollershutter, a Player nor a group of Switches or Rollershutters. A widget
+that a `visibility=[...]` rule hides is left out too, and so is everything in
+a hidden Frame. None of them takes one of the six places. The page shows what
+openHAB said when it was loaded. A visibility change appears with the next
+page load.
+
+An item whose state description is read-only, for example
+`{ stateDescription=""[readOnly=true] }`, gets a tile that only shows its
+state. A tap on it does nothing, even inside a Switch or a Slider.
+
 ## Value labels
 
 A tile shows the label openHAB gives a state where there is one, and the raw
