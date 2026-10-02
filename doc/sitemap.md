@@ -28,9 +28,8 @@ Widgets of other types (Chart, Image, Webview, Mapview, Input and so on) are
 left out. So is a Switch over an item that is neither a Switch, a
 Rollershutter, a Player nor a group of Switches or Rollershutters. A widget
 that a `visibility=[...]` rule hides is left out too, and so is everything in
-a hidden Frame. None of them takes one of the six places. The page shows what
-openHAB said when it was loaded. A visibility change appears with the next
-page load.
+a hidden Frame. None of them takes one of the six places. When a rule shows or
+hides a widget, the panel loads the page again.
 
 An item whose state description is read-only, for example
 `{ stateDescription=""[readOnly=true] }`, gets a tile that only shows its
@@ -48,9 +47,8 @@ any:
 
 A Selection offers the same list as its choices. A Number is matched as a
 number, so the option `2` matches the state `2.0`. The label is looked up on
-the panel, so it stays right when the state changes. A `MAP(...)`
-transformation in the label is applied by openHAB and only arrives with the
-page.
+the panel. A `MAP(...)` transformation or a date pattern in the label is
+applied by openHAB, and a text tile shows the value openHAB formatted.
 
 ## Colours
 
@@ -65,10 +63,19 @@ name, the value or the icon in that colour on top of the theme. The names
 openHAB lists (`maroon`, `red`, `orange`, `olive`, `yellow`, `purple`,
 `fuchsia`, `pink`, `white`, `lime`, `green`, `navy`, `blue`, `teal`, `aqua`,
 `black`, `silver`, `gray`, `gold`) and `#rrggbb` are understood. Anything else
-keeps the theme's colour. The colours arrive with the page.
+keeps the theme's colour. The colours change with the state.
 
 A widget with `staticIcon=<name>` in place of `icon=<name>` has the same icon
 whatever its state. The panel fetches it once, without the state.
+
+## Live updates
+
+The panel follows the page on screen through openHAB's sitemap events. A
+changed state, formatted value, colour or visibility reaches the panel
+without a page load. If the sitemap file is edited, the page is loaded again.
+A server that does not offer sitemap events (older than openHAB 3, or one
+that requires a login for them) gets per-item state events instead. Then
+colours and visibility change with the next page load.
 
 An item with the tag `ohez-pin` asks for the Item PIN before its tile does
 anything. See [PINs](configuration.md#pins).

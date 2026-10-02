@@ -11,7 +11,7 @@ not a demo of the panel; they are shaped to reach the corners -- a navigation
 tree deeper than anything a screenshot shows, one item of every type openHAB
 has, and pages built specifically to overflow the panel's fixed arrays.
 
-Everything below was measured against **openHAB 5.2.1** on 2026-09-15. Where it
+Everything below was measured against **openHAB 5.2.1** on 2026-09-15, and the sitemap stream on 2026-10-02. Where it
 says openHAB does something, that is what that server did, not what the
 documentation claims.
 
@@ -63,9 +63,27 @@ pointing somewhere disposable.
 | `demo` | `demo.sitemap` | six widget *types* on one page. The quickest way to compare themes or check a control end to end. |
 | `oheztest` | `oheztest.sitemap` | the shapes `demo` has no example of: a Group with an aggregate function, a dimensioned `Number:Temperature`, a `Number:Dimensionless`, a Dimmer, a String holding a space. |
 | `oheznav` | `oheznav.sitemap` | a five-level navigation tree, one item of every openHAB type, and four pages that deliberately exceed a panel limit. |
+| `ohezevents` | `ohezevents.sitemap` | everything about a widget that is not its state: colour rules, a visibility rule on a widget and on a Frame, a read-only item, state options, command options, a MAP and a static icon. Watched over `/rest/sitemaps/events`. |
 
-`demo.*` came with the test server. The other two were written to answer
+`demo.*` came with the test server. The other three were written to answer
 questions the fixture could not.
+
+### `ohezevents` in particular
+
+`EV_Show` drives both visibility rules. `EV_Temp` drives the three colour
+rules: below 5 °C the value is light blue, above 25 °C it is orange and the
+icon red, above 30 °C the label is red too. Set them over REST and watch the
+tiles follow without a page load:
+
+```bash
+curl -X PUT -H 'Content-Type: text/plain' --data-binary '30 °C' \
+     http://localhost:8080/rest/items/EV_Temp/state
+curl -X PUT -H 'Content-Type: text/plain' --data-binary ON \
+     http://localhost:8080/rest/items/EV_Show/state
+```
+
+The MAP on `EV_Window` uses the stock `de.map`. Without the MAP
+transformation add-on installed, openHAB shows the raw state.
 
 ### `oheznav` in particular
 
@@ -147,6 +165,38 @@ The shapes that were guessed wrong, and are now in the fixture and pinned by
   question, so a parser that does not follow pointers finds nothing. That
   packet is in `test/host/main/test_mdns_query.cpp` byte for byte, captured on
   2026-09-18, and is what the settings screen's list of servers is built from.
+- **There is no `transformedState` any more.** What openHAB formatted -- a
+  `MAP(...)`, a date pattern, a decimal comma -- is only in the label's
+  `[...]`. The parser takes that as the transformed state.
+- **A widget a visibility rule hides is not on the page at all.** It is left
+  out of `widgets`, not sent with `"visibility": false`. Its events still come
+  on the sitemap stream, as `"visibility": false` while it is hidden.
+- **The children of a hidden Frame report themselves visible.** The Frame's
+  own event says it is hidden; the child's says `"visibility": true`,
+  whatever the Frame is.
+- **Command options mirror state options.** An item with only
+  `stateDescription` options arrives with the same list as
+  `commandDescription.commandOptions`.
+- **The sitemap stream** (`/rest/sitemaps/events`):
+  - `POST .../subscribe` answers 200 with the id at the end of
+    `context.headers.Location`, with the host the request named.
+  - A GET on an id openHAB does not know is never answered: no status line,
+    no error.
+  - A GET on a good id is not answered either until there is a first event.
+    Even the status line waits, and on a quiet page that is the keepalive,
+    50 s in one measurement.
+  - The keepalive is `{"TYPE":"ALIVE",...}`, about once a minute. An edited
+    sitemap file sends `{"TYPE":"SITEMAP_CHANGED",...}`.
+  - A widget event is 500 to 900 bytes and carries:
+    - `widgetId`
+    - the formatted label
+    - `labelcolor`, `valuecolor` and `iconcolor`, when a rule applies
+    - `visibility`, `reloadIcon` and `descriptionChanged`
+    - the whole item, with its raw state
+    - `sitemapName` and `pageId`
+  - Widget ids are `1_0`, `1_5`, `1_50`, … on ordinary pages. On a group's
+    generated page they are the members' item names. The root page's id is
+    the sitemap name.
 - **`GET /rest/sitemaps` is a flat array**, one object per sitemap with `link`,
   `name`, `label` and a `homepage` object -- and that homepage's `widgets` is
   **empty** here, however many the page really has; the widgets only come with
@@ -179,12 +229,11 @@ bug rather than a fixture artefact.
    re-prints them through `%f` first. Fixing it means encoding *and* widening
    `STR_URL_LEN`: a worst-case 32-byte state triples to 93 and pushes the widest
    legal URL to 276, past the 256 that `test_item_urls.cpp` guarantees fits.
-3. **openHAB's formatted value is discarded for every non-numeric type.** The
-   panel strips `[...]` from the label and re-formats only numbers, so a
-   DateTime shows a raw ISO timestamp where openHAB says `2026-09-15 13:45`, a
-   Location shows `52.5200,13.4050`, and an AVG group shows `20.15` where
-   openHAB says `20,2 °C`. The pattern is already parsed and stored; it is just
-   never applied outside the numeric path.
+3. **openHAB's formatted value is used only by text tiles.** A String,
+   DateTime, Location or Contact tile shows the label's `[...]`, kept up to
+   date by the sitemap stream. On the item stream it falls back to the raw
+   state at the first change. A number tile still formats the number itself, so
+   an AVG group shows `20.15` where openHAB says `20,2 °C`.
 4. **`Number:Dimensionless` is wrong in both directions.** Commanded `"48 %"`,
    openHAB stores the ratio `"0.48"` and the tile reads `0 %`; commanded a bare
    `48` it stores `"48"` and the tile reads `48 %` while openHAB's own label
@@ -193,10 +242,9 @@ bug rather than a fixture artefact.
    tile; a twelve-entry Selection lists ten. Nothing on screen says anything was
    dropped. Hidden widgets and widget types the panel cannot draw are skipped
    before the count, so they no longer use up a place.
-6. **The sitemap is fetched once and never re-polled.** Only item states are
-   updated afterwards -- pushed over `/rest/events`, polled while that stream
-   is down -- so a sitemap edited on the server does not reach the panel until
-   it navigates or reboots. A server that goes away *after* the first load is
+6. **A server that goes away after the first load is not reported.** An
+   edited sitemap reaches the panel over the sitemap stream now, but a server
+   that goes away *after* the first load is
    invisible: the stream reconnects quietly, every poll fails silently,
    `page.state` stays `ready`, and no banner appears. `SITEMAP ACCESS FAILED` only fires on a
    *page* fetch.

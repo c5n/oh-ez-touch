@@ -136,7 +136,7 @@ that a network exists. That is what lets the host tests cover the parser.
 
 The parser names the keys it wants and the rest is dropped at the parser
 rather than stored and stepped over. A page carries a good deal the panel has
-no use for -- widget ids, visibility flags, item categories, group members,
+no use for -- label sources, units, item categories, group members,
 timestamps -- and storing it cost more than storing what is read: on the
 six-widget demo page, 5892 bytes of document against 3136 with the filter,
 188 allocations against 103. Item tags were in that list until the Item PIN;
@@ -146,18 +146,57 @@ named in the filter too; one that is not reads as null.
 
 ### The event stream
 
-Item states are pushed, not polled. `main/openhab/openhab_events.cpp` keeps
-`GET /rest/events?topics=*/items/<name>/statechanged,...` open on a task and
-an `esp_http_client` handle of its own: a stream never finishes, so on the
-worker it would hold up every page, icon and command behind it. The topic
-list is the items on screen, tiles and clock items, and the UI offers it every
-half second; an unchanged list costs a comparison, a changed one a reconnect.
+Item states are pushed, not polled. `main/openhab/openhab_events.cpp` keeps a
+server-sent event stream open on a task and an `esp_http_client` handle of its
+own: a stream never finishes, so on the worker it would hold up every page,
+icon and command behind it. The UI offers what is on screen every half
+second, the page and its items. An unchanged offer costs a comparison.
 
-Each event's `value` is the raw state `/rest/items/<name>/state` answers, so a
-pushed state takes the same path as a polled one: `Item::applyState()`, the
-tile, the open item control, the icon. The parsing is
-`main/openhab/openhab_event_parse.cpp`, which has no socket in it and is
-covered by the host tests.
+**The sitemap stream** comes first. Every connect POSTs
+`/rest/sitemaps/events/subscribe` for a fresh subscription id. A kept id is
+no good: once openHAB has let go of it, a GET on it is never answered. Then
+the task opens `GET /rest/sitemaps/events/<id>?sitemap=<sm>&pageid=<page>`.
+Each event is one widget of that page as openHAB would draw it now:
+- the item's raw state
+- the label with the formatted value in its `[...]`
+- the label, value and icon colour the sitemap's rules chose
+- the widget's visibility
+
+Events are matched to tiles and clock rows by a hash of the `widgetId`. The
+page JSON carries the same ids. A colour is absent, not empty, when no rule
+applies, so absent means the theme's colour. What changes the layout
+reloads the page:
+- a tile's widget hidden
+- a widget the page did not carry reporting itself visible
+- `SITEMAP_CHANGED`
+- a changed state description
+- the stream coming back after having been up, so a missed change cannot stay
+- a dropped event
+
+A widget that still has no place after such a reload, such as a child of a
+hidden Frame (it reports itself visible), is remembered until the next page,
+so it reloads only once. A reload waits while an item control is open. A
+change of page opens a new stream. A change of the items only, such as the
+clock screen coming up, keeps the stream.
+
+openHAB sends nothing on this stream, not even the status line, until it has
+a first event. On a quiet page that is the keepalive, about once a minute. So
+the task waits on the socket with `select()` in quarter-second slices, so a
+page change is still noticed. The watchdog is 130 s.
+
+**The item stream** is the fallback, for a server that refuses the subscribe
+(404, 401). It is asked once per server. The task keeps
+`GET /rest/events?topics=*/items/<name>/statechanged,...` open, with the items
+on screen, tiles and clock items, as the topic list. A changed list costs a
+reconnect. Each event's `value` is the raw state that
+`/rest/items/<name>/state` answers, so a pushed state takes the same path as
+a polled one: `Item::applyState()`, the tile, the open item control, the
+icon. Colours and visibility are as the page was loaded.
+
+The parsing of both is `main/openhab/openhab_event_parse.cpp`, which has no
+socket in it and is covered by the host tests. A sitemap event carries the
+whole item with it and runs to 900 bytes, so the line buffer is 2 KB. A
+longer line is dropped and reported.
 
 Polling stays, as the fallback. While the stream is down -- openHAB
 restarting, the link coming back, a server without the endpoint -- every tile
@@ -165,9 +204,9 @@ is polled every five seconds as before. While it is up, once a minute, and
 five seconds after a tap changed it: a command that was dropped or refused
 changes nothing on the server, so no event would put the tile back. Nothing
 is replayed after a reconnect, so every connect, and every event dropped for
-want of queue room, polls every tile once at once. openHAB 3.4 and later send a
-keepalive every ten seconds; thirty seconds without a byte counts as a dead
-stream.
+want of queue room, polls every tile once at once. On the item stream,
+openHAB 3.4 and later send a keepalive every ten seconds, and thirty seconds
+without a byte counts as a dead stream.
 
 Two more requests share the worker:
 
