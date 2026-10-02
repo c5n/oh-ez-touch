@@ -105,6 +105,14 @@
       area with a camera of its own -- wheel zoom, pan, home -- and a
       one-time conversion that keeps every pin where the eye left it.
       See [The workspace and the zoom](mqttviz.md#the-workspace-and-the-zoom).
+- [x] mqttviz: A 3D space view: a SweetHome3D house imported as a
+      laser-projection hologram, broker, access points and panels
+      placed on its walls and floors, beacons multilaterated in metres.
+      See [The space view](mqttviz.md#the-space-view).
+- [ ] mqttviz: Try the space view against real SweetHome3D homes --
+      it was checked against generated `Home.xml` files only. Round
+      walls' bending direction and levels with `elevationIndex` ties
+      are the likely surprises.
 - [ ] doc: Update the visualizer screenshots. `doc/img` has none of the
-      topology view, the physics panel's fourth tab, the FX layer or
-      the layouts dialog.
+      topology view, the physics panel's fourth tab, the FX layer, the
+      layouts dialog or the space view.

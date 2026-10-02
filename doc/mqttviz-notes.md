@@ -98,7 +98,8 @@ Client (`mqttviz/web/`):
 ## Open points
 
 - Screenshots in the docs are not updated yet (see todo list).
-- No unit test harness for mqttviz so far; the checks were manual.
+- No unit test harness for the server and the page; the checks were
+  manual. The SweetHome3D converter has one (`mqttviz/test_sh3d.py`).
 
 ## Follow-up: layouts (same day)
 
@@ -170,3 +171,69 @@ from settings, mesh forces home, zoom buttons only in topology). The
 same live-instance note applies: the migration runs on its data at
 the next restart, once, and the eye sees no difference.
 
+## Follow-up: the space view (2026-10-02)
+
+Request: the topology view in 3D, the static objects placeable in the
+space, and the walls of a SweetHome3D house visible to place them on,
+half transparent -- a futuristic laser projection.
+
+Decisions:
+
+- A **third view mode**, `space`, next to mesh and topology. Topology
+  keeps its 2D pins; the space view has its own, in metres
+  (`positions3d`, same keys), and layouts carry both.
+- **three.js, vendored** as one minified ES-module bundle (0.186.1 with
+  OrbitControls, CSS2DRenderer and the bloom chain), built by
+  `web/vendor/build.sh` with esbuild. One file to serve from a fixed
+  whitelist, no import map, nothing fetched from the internet: the page
+  keeps working on a LAN, and the machine running mqttviz still needs
+  nothing but Python 3.
+- **The house is converted on upload**, server-side, with the standard
+  library: a `.sh3d` is a zip whose `Home.xml` (SweetHome3D 5.3+) holds
+  the walls, rooms, levels and doors/windows in centimetres.
+  `mqttviz/sh3d.py` reads only those, converts to metres (plan x -> x,
+  plan y -> z, y up), cuts round walls (`arcExtent`) into 10-degree
+  pieces that are capped only at the arc's ends, and caps the counts so
+  a strange file costs a refusal, not the server. The serialized Java
+  `Home` entry of older files is not read; they are refused with the
+  cure in the message.
+- **The look**: walls as one merged prism geometry per level with a
+  small shader -- additive, no depth write, a fresnel rim, scanlines
+  and a rising scan band on the upright faces only, a slight flicker --
+  plus bright edge lines, faint room floors with outlines and names,
+  orange frames for doors and windows, a projector ring and grid under
+  the house. Bloom when FX is on. The page's dark is the *scene's*
+  background, not the renderer's clear colour: the composer's render
+  targets take a clear colour unconverted, and it came out grey.
+- **Placement is plan-based, not a raycast onto the walls.** The first
+  version raycast onto the wall meshes; with the camera outside the
+  house every drag landed on the nearest outer wall -- the walls look
+  like light but stopped the pointer like matter. Now the pointer
+  moves over the invisible floor plane of the level in view, and within
+  35 cm of a wall's face the object sticks to that wall on the
+  pointer's side at the height it carries (per-kind defaults, Shift to
+  change). The dock gives every object a fixed slot, so taking one in
+  never shuffles the others under the hand.
+- **Beacons in metres**: a few steps of gradient descent on the
+  distance residuals to the placed panels that hear them, warm-started
+  from the last solution; one hearer only -> an orbit at that
+  distance. The `line_timeout` of the beacon physics still decides
+  which hearings count.
+- `app.js` stays a classic script and the page; it hands the module
+  what it needs as `window.mqttvizHost` and calls
+  `MqttvizSpace.update()` after every poll and view switch. The 2D
+  draw loop idles while the space view is up; the boxes still follow
+  the facts (the access point boxes are kept in the space view too,
+  because the detail panel reads them).
+
+Verified: `test_sh3d.py` (levels, units, axes, slopes, round walls and
+their caps, the refusals); the routes by curl (import, junk refused,
+`/vendor/../` not served, NaN/inf positions refused, a layout saving,
+losing and restoring a 3D place, the backup file's `before_load`);
+headless Chromium driven over CDP with `#debug` (which also writes the
+space view's objects and their screen positions into the page): every
+panel dragged in from the dock landed on the intended wall at 1.4 m or
+on the intended floor, places survived a reload, a tap opened the
+detail panel with *take out of the house*, objects and lines of a
+hidden level disappeared with it, beacons triangulated between the
+panels; mesh and topology still draw as before.

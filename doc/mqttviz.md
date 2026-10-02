@@ -12,9 +12,11 @@ The record of how the topology view came to be is in
 
 Each panel found under `<base topic>/<hostname>/` becomes one box on a
 canvas: a live picture of its MQTT data, and -- where the panel has
-relays, LEDs or sounds -- a remote control for them. The canvas draws
-two pictures of the same facts, the classic mesh and the topology of
-broker, access points and panels; the switch in the top bar says which.
+relays, LEDs or sounds -- a remote control for them. The page draws
+three pictures of the same facts, the classic mesh, the topology of
+broker, access points and panels, and the [space view](#the-space-view):
+the house in 3D, imported from SweetHome3D, with the network placed in
+it; the switch in the top bar says which.
 
 | Option          | Default | Meaning                                            |
 | --------------- | ------- | -------------------------------------------------- |
@@ -54,8 +56,16 @@ every change:
 * **Positions** -- the places the topology view has been told to keep
   (see below), keyed by `broker`, `ap:<bssid>` or `panel:<hostname>`, as
   fractions of the workspace so they survive a different window size.
-* **Layouts** -- whole arrangements kept under a name: the places and
-  the picture they belong to, to be brought back whole (see below).
+* **Places in the house** -- where the space view has been told the
+  broker, the access points and the panels are: metres in the house,
+  the direction of the wall or floor they sit on, and the level, under
+  the same keys as the positions (`positions3d`).
+* **The house** -- `mqttviz/data/house.json`, what the space view drew
+  from the last SweetHome3D import: walls, rooms, levels, doors and
+  windows, in metres. The previous one is kept as `house.json.bak`.
+* **Layouts** -- whole arrangements kept under a name: the places of
+  both the topology and the space view, and the picture they belong to,
+  to be brought back whole (see below).
 * **The layout backup file** -- `mqttviz/data/layouts.json` holds the
   live arrangement as it stands, every layout the page has saved, and
   what the canvas looked like right before the last layout was
@@ -254,6 +264,61 @@ paint the new world at once, exactly as they do at startup.
   panels, the toasts and the help texts. The console's log entries stay
   as the server wrote them.
 
+## The space view
+
+The *3D* switch in the top bar shows the network inside the house: the
+walls drawn as a half-transparent laser projection -- light, not
+matter, brighter where they are seen edge-on, swept by a band of light
+rising from the floor -- with the rooms' floors and names, and the
+doors and windows as frames of orange light.
+
+* **The house comes from SweetHome3D.** *import SweetHome3D…* in the
+  view's toolbar takes a `.sh3d` file; the server reads its `Home.xml`
+  entry (walls, rooms, levels, doors and windows; nothing of the
+  furniture, the textures or the models) and keeps the result in
+  `mqttviz/data/house.json`. SweetHome3D has written `Home.xml` since
+  version 5.3: an older file is refused with that word, and opening it
+  in a newer SweetHome3D and saving it again is the cure. *replace
+  house…* imports another, *remove house* forgets it -- the places in
+  it stay, so a new import of the same home finds them where they were.
+  The converter also runs on its own: `python3 mqttviz/sh3d.py
+  home.sh3d > house.json`.
+* **Units and axes.** Everything is metres. SweetHome3D's plan x is x,
+  its plan y (down the screen) is the depth, and up is up. A round wall
+  is drawn as straight pieces of ten degrees.
+* **Placing things.** Everything that does not move -- the broker, the
+  access points, the panels -- waits in a row in front of the house
+  until it is dragged in. A drag moves over the plan of the floor in
+  view, *through* the walls, and near a wall the object sticks to it on
+  the side the pointer is on: a panel flat against the wall at 1.4 m,
+  an access point at 2.1 m, the broker at 1.6 m. Away from the walls it
+  stands on the floor. *Shift+drag* or *Shift+wheel* over a placed
+  object changes its height. Let go and the place is kept; a click
+  without a drag opens the detail panel, whose *take out of the house*
+  puts the object back in the row.
+* **Levels.** With more than one level, the toolbar picks which one is
+  looked at: that one whole, the ones below it dimmed, the ones above
+  not at all -- the roof lifted off, and with it everything placed up
+  there. With *all* shown a drag lands on the highest floor under the
+  pointer; pick a level to reach the ones below.
+* **Beacons find their own places.** A beacon heard by two or more
+  placed panels sits where its distances to them come closest to the
+  ones they report (multilateration, in the plane of the floor, at
+  1.2 m), with a fading trail and a line to every panel that hears it.
+  Heard by one placed panel only, it circles that panel at the reported
+  distance; heard by none, it is not drawn. The distance estimates read
+  short (see [ble.md](ble.md)), and it shows.
+* **The rest is the canvas's.** The lines run panel → access point →
+  broker, and a message is a spark running up them; *Broker*, *Beacons*
+  and *FX* switch the same things as in the other views (*FX* is the
+  bloom). The camera -- left drag turns, right drag pans, the wheel
+  zooms, *⌂* frames the whole house -- is kept with the settings, and
+  the slider in the toolbar sets how solid the walls are drawn.
+
+The 3D drawing is [three.js](https://threejs.org), vendored as one
+bundle in `mqttviz/web/vendor/` (see its README): nothing to install,
+nothing fetched from the internet, and `vendor/build.sh` rebuilds it.
+
 ## The visualizer's own API
 
 The page is a client of a small JSON API, which scripts may use too:
@@ -261,9 +326,14 @@ The page is a client of a small JSON API, which scripts may use too:
 | Route | Purpose |
 | ----- | ------- |
 | `GET /api/state` | Settings, broker profiles, broker status, devices, beacons |
-| `POST /api/settings` | View switches, logging, language (`en`/`de`), the view mode (`view_mode`, `mesh`/`topology`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the profile list (`brokers`), and the active profile (`broker_index`) |
+| `POST /api/settings` | View switches, logging, language (`en`/`de`), the view mode (`view_mode`, `mesh`/`topology`/`space`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the space view's camera (`cam3d`, `{px, py, pz, tx, ty, tz}` in metres) and wall opacity (`holo_opacity`, 5..100), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the profile list (`brokers`), and the active profile (`broker_index`) |
 | `POST /api/position` | `{"key": "panel:<host>", "x": 0..1, "y": 0..1}` -- pin one object of the topology view (`broker`, `ap:<bssid>`, `panel:<host>`) |
 | `POST /api/position/delete` | `{"key": ...}` -- unpin it again |
+| `POST /api/position3d` | `{"key": ..., "x", "y", "z": metres, "nx", "ny", "nz": the surface's normal, "yaw": radians, "level": id}` -- place one object in the space view |
+| `POST /api/position3d/delete` | `{"key": ...}` -- take it out of the house again |
+| `GET /api/house` | The house the space view draws, or `{}` |
+| `POST /api/house/import` | The raw bytes of a `.sh3d` file (`application/octet-stream`, at most 64 MB; `X-Filename` names it) -- becomes the house |
+| `POST /api/house/delete` | Forget the house (kept as `house.json.bak`) |
 | `POST /api/layout/save` | `{"name": ...}` -- keep the arrangement as it stands under a name |
 | `POST /api/layout/load` | `{"name": ...}` -- bring a saved arrangement back whole (places and picture); what stood before is remembered in the layout backup file |
 | `POST /api/layout/delete` | `{"name": ...}` -- forget one saved arrangement |
