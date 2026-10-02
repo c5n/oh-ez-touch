@@ -21,6 +21,7 @@
 #include <unity.h>
 
 #include "openhab/openhab_connector.hpp"
+#include "openhab/openhab_event_parse.hpp"
 #include "sim/sitemap_fixture.hpp"
 #include "test_suites.hpp"
 
@@ -565,6 +566,64 @@ static void test_the_transformed_state_is_kept(void)
     TEST_ASSERT_EQUAL(ItemType::type_string, mode->getType());
     TEST_ASSERT_EQUAL_STRING("eco", mode->getStateText());
     TEST_ASSERT_EQUAL_STRING("Economy", mode->getTransformedStateText());
+}
+
+/* openHAB 5 sends no "transformedState": what it formatted is inside the
+ * label's brackets, which a MAP or a date pattern makes different from the
+ * raw state. Captured from 5.2.1 on 2026-10-02 (ohezevents.sitemap). */
+static void test_the_label_value_is_the_transformed_state(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"id\":\"ohezevents\",\"title\":\"Events\",\"widgets\":["
+        "{\"widgetId\":\"1_5\",\"type\":\"Text\",\"label\":\"Window [offen]\","
+        "\"item\":{\"type\":\"Contact\",\"state\":\"OPEN\","
+        "\"link\":\"http://h/rest/items/EV_Window\"}},"
+        "{\"widgetId\":\"1_6\",\"type\":\"Text\",\"label\":\"Plain\","
+        "\"item\":{\"type\":\"String\",\"state\":\"x\","
+        "\"link\":\"http://h/rest/items/P\"}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_STRING("Window", sitemap.getItem(0)->getLabel());
+    TEST_ASSERT_EQUAL_STRING("OPEN", sitemap.getItem(0)->getStateText());
+    TEST_ASSERT_EQUAL_STRING("offen", sitemap.getItem(0)->getTransformedStateText());
+    TEST_ASSERT_EQUAL_STRING("", sitemap.getItem(1)->getTransformedStateText());
+}
+
+/* What a sitemap event is matched by: the page's id, and each widget's id,
+ * kept as a hash. Every widget id on the page is known, tile or not -- a
+ * Frame, a Chart, the children of a Frame -- so that an event for one of
+ * those is not taken for a hidden widget appearing. */
+static void test_page_and_widget_ids(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"id\":\"1_5\",\"title\":\"T\",\"widgets\":["
+        "{\"widgetId\":\"1_50\",\"type\":\"Switch\",\"label\":\"A\","
+        "\"item\":{\"type\":\"Switch\",\"state\":\"ON\",\"link\":\"http://h/rest/items/A\"}},"
+        "{\"widgetId\":\"1_51\",\"type\":\"Chart\",\"label\":\"C\"},"
+        "{\"widgetId\":\"1_52\",\"type\":\"Frame\",\"label\":\"F\",\"widgets\":["
+        "{\"widgetId\":\"1_520\",\"type\":\"Switch\",\"label\":\"B\","
+        "\"item\":{\"type\":\"Switch\",\"state\":\"ON\",\"link\":\"http://h/rest/items/B\"}}]}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_STRING("1_5", sitemap.getPageId());
+    TEST_ASSERT_EQUAL_UINT(2, sitemap.getItemCount());
+    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("1_50"), sitemap.getItem(0)->getWidgetHash());
+    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("1_520"), sitemap.getItem(1)->getWidgetHash());
+
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_50")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_51")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_52")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_520")));
+    TEST_ASSERT_FALSE(sitemap.knowsWidget(openhab_id_hash("1_53")));
+
+    sitemap.ignoreWidget(openhab_id_hash("1_53"));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_53")));
+
+    /* Until the next page. */
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_FALSE(sitemap.knowsWidget(openhab_id_hash("1_53")));
 }
 
 static void test_a_null_state_arrives_as_text(void)
@@ -1131,6 +1190,8 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_only_the_exact_tag_counts);
     RUN_TEST(test_a_slot_does_not_inherit_the_tag);
     RUN_TEST(test_the_transformed_state_is_kept);
+    RUN_TEST(test_the_label_value_is_the_transformed_state);
+    RUN_TEST(test_page_and_widget_ids);
     RUN_TEST(test_a_null_state_arrives_as_text);
     RUN_TEST(test_a_null_state_on_a_number_reads_as_zero);
     RUN_TEST(test_a_plain_number_state_keeps_its_printed_form);

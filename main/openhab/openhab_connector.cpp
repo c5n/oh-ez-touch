@@ -1,4 +1,5 @@
 #include "openhab_connector.hpp"
+#include "openhab_event_parse.hpp"
 
 #include "config/pin_store.h"
 #include "debug.h"
@@ -469,6 +470,7 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
     }
 
     item->setStaticIcon(widget["staticIcon"].as<bool>());
+    item->setWidgetHash(openhab_id_hash(json_str(widget["widgetId"])));
 
     /* The colours the sitemap's rules chose for this state. A string, or
      * absent when the sitemap has no rule; anything unreadable is the
@@ -596,10 +598,30 @@ static bool parse_widget(JsonVariant widget, Item *item, char *label_buffer,
         }
     }
 
-    // Transformed State
+    /* Transformed State. openHAB 5 no longer sends "transformedState"; what
+     * it formatted -- a MAP, a date pattern -- is the "[...]" of the label,
+     * which is also what a sitemap event carries it as. */
     if (json_item["transformedState"])
     {
         item->setTransformedStateText(json_item["transformedState"]);
+    }
+    else
+    {
+        const char *label = json_str(widget["label"]);
+        const char *open = strchr(label, '[');
+        const char *close = (open != NULL) ? strrchr(open, ']') : NULL;
+
+        if (close != NULL)
+        {
+            size_t len = (size_t)(close - open - 1);
+
+            if (len >= label_buffer_size)
+                len = label_buffer_size - 1;
+
+            memcpy(label_buffer, open + 1, len);
+            label_buffer[len] = '\0';
+            item->setTransformedStateText(label_buffer);
+        }
     }
 
     // Links
@@ -733,6 +755,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         filter_ready = true;
 
         filter["title"] = true;
+        filter["id"] = true;
         /* Whole, not by its "message": the test below is is<JsonObject>(), and an
          * error object filtered down to a key the server did not send would still
          * have to be an object. It is a handful of bytes and only present when the
@@ -751,6 +774,7 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         widget_filter["linkedPage"]["link"] = true;
         /* false for a widget a visibility rule hides; parse_widget() skips it. */
         widget_filter["visibility"] = true;
+        widget_filter["widgetId"] = true;
         widget_filter["staticIcon"] = true;
         widget_filter["labelcolor"] = true;
         widget_filter["valuecolor"] = true;
@@ -891,6 +915,10 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
 
         clock_item_count = 0;
 
+        strlcpy(page_id, json_str(doc["id"]), sizeof(page_id));
+        widget_id_count = 0;
+        widget_ids_full = false;
+
         // Update Items
 
         // if current location is a child of the sitemap then set first item
@@ -921,6 +949,8 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         {
             JsonVariant widget = widget_array[widget_index];
 
+            rememberWidget(openhab_id_hash(json_str(widget["widgetId"])));
+
             /* A Frame is a heading over widgets, not a widget: openHAB nests
              * the real ones in its own "widgets" array. The panel has no
              * headings to draw, so its children simply join the page in
@@ -945,6 +975,8 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
 
                 for (size_t child = 0; child < children.size(); child++)
                 {
+                    rememberWidget(openhab_id_hash(json_str(children[child]["widgetId"])));
+
                     if (is_clock == true)
                     {
                         if (clock_item_count < CLOCK_ITEM_COUNT)
@@ -976,6 +1008,32 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
     }
 
     return retval;
+}
+
+void Sitemap::rememberWidget(uint32_t hash)
+{
+    if (hash == 0)
+        return;
+
+    if (widget_id_count >= PAGE_WIDGET_IDS_MAX)
+    {
+        widget_ids_full = true;
+        return;
+    }
+
+    widget_ids[widget_id_count++] = hash;
+}
+
+bool Sitemap::knowsWidget(uint32_t hash) const
+{
+    if (widget_ids_full == true)
+        return true;
+
+    for (size_t i = 0; i < widget_id_count; i++)
+        if (widget_ids[i] == hash)
+            return true;
+
+    return false;
 }
 
 /* ------------------------------------------------------------ SitemapList */

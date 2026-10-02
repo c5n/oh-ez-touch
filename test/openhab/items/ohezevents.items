@@ -1,0 +1,12 @@
+// The items behind ohezevents.sitemap: every field of a sitemap widget the
+// panel reads besides its state -- colours, visibility, read-only, state and
+// command options, a MAP transformation -- and what /rest/sitemaps/events
+// pushes when one of them changes. See doc/openhab-fixtures.md.
+
+Number:Temperature  EV_Temp     "Temperature [%.1f °C]"     <temperature>
+Switch              EV_Show     "Show extra"                <switch>
+Number              EV_Mode     "Mode"                      <heating>   { stateDescription=""[options="1=Comfort,2=Eco,3=Away"] }
+Number              EV_Fan      "Fan"                       <fan>       { commandDescription=""[options="0=Off,1=Low,2=High"] }
+Switch              EV_Sensor   "Motion"                    <motion>    { stateDescription=""[readOnly=true] }
+Contact             EV_Window   "Window [MAP(de.map):%s]"   <window>
+Number              EV_Extra    "Extra [%d]"                <none>

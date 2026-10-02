@@ -281,6 +281,18 @@ static bool theme_pending_night;
 static char current_page[STR_PAGE_LEN];
 /* The sitemap's home page, which openhab_ui_request_home() goes back to. */
 static char root_page[STR_PAGE_LEN];
+
+/* The page has to be fetched again, because the sitemap stream said so or
+ * because a widget it reported has to appear or disappear. Held while an item
+ * screen is open: it is looking at an Item the reload would overwrite. */
+static bool page_reload_pending;
+
+/* The widget whose appearance asked for the reload. If the page that comes
+ * back still has no place for it -- a child of a Frame that is itself hidden
+ * reports itself visible, and so does a widget past the sixth -- it is
+ * remembered as known, so that it asks only once. */
+static uint32_t page_reload_widget;
+
 /* The clock frame label the page on screen was parsed with, so a changed
  * setting can be told from an unchanged one. */
 static char parsed_clock_frame[sizeof(((config_item_t *)0)->backlight.clock_frame)];
@@ -1895,6 +1907,12 @@ static void page_result_apply(struct openhab_result_s *res)
 
         page_state = PAGE_READY;
 
+        /* See page_reload_widget. */
+        if (page_reload_widget != 0 && sitemap.knowsWidget(page_reload_widget) == false)
+            sitemap.ignoreWidget(page_reload_widget);
+
+        page_reload_widget = 0;
+
         /* The sitemap came back. Messagebox::destroy() is deliberately silent
          * -- it cannot tell a recovery from a timeout -- and this is the one
          * recovery with no replacement banner to announce it, so it is said
@@ -1945,6 +1963,11 @@ static void apply_item_state(size_t slot, const char *text, size_t len)
 
     if (wctx->item->applyState(text, len) > 0)
     {
+        /* What openHAB formatted for the old state is wrong for the new one.
+         * The raw state is at least right; a sitemap event puts the new
+         * formatted text back right after this. */
+        wctx->item->setTransformedStateText("");
+
         // item value changed
         update_state_widget(wctx);
 
@@ -2006,6 +2029,11 @@ static void events_subscribe_if_due(void)
     sub.count = 0;
     strlcpy(sub.website, current_website, sizeof(sub.website));
 
+    /* The page, for the sitemap stream; the items below are the fallback for
+     * a server without one. */
+    strlcpy(sub.sitemap, connect_current_sitemap, sizeof(sub.sitemap));
+    strlcpy(sub.page, sitemap.getPageId(), sizeof(sub.page));
+
     for (size_t i = 0; i < WIDGET_SLOT_COUNT && sub.count < OPENHAB_EVENTS_ITEM_MAX; ++i)
     {
         if (slot_is_polled(i) == false)
@@ -2031,12 +2059,89 @@ static void events_subscribe_if_due(void)
     openhab_events_subscribe(&sub);
 }
 
-/* Take one pushed state change and apply it to every slot showing that item.
+static void page_reload_request(uint32_t widget)
+{
+    page_reload_pending = true;
+
+    if (widget != 0)
+        page_reload_widget = widget;
+}
+
+static void page_reload_if_due(void)
+{
+    if (page_reload_pending == false || page_state != PAGE_READY
+        || item_screen_is_open() == true)
+        return;
+
+    page_reload_pending = false;
+    page_request(0);
+}
+
+/* One sitemap event onto every slot showing that widget: the state, the
+ * value openHAB formatted, the caption and the colours its rules chose. */
+static void events_apply_widget(const struct openhab_widget_event_s *ev)
+{
+    /* A page the stream has since been moved off. */
+    if (ev->page != openhab_id_hash(sitemap.getPageId()))
+        return;
+
+    bool shown = false;
+
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
+    {
+        struct widget_context_s *wctx = &widget_context[i];
+
+        if (wctx->item == NULL || wctx->item->getWidgetHash() != ev->widget)
+            continue;
+
+        shown = true;
+
+        /* Hidden by a visibility rule: the page without it is a different
+         * layout, which is the page fetched again. */
+        if (ev->visible == false)
+        {
+            page_reload_request(0);
+            return;
+        }
+
+        if (ev->has_state == true)
+        {
+            statistics.update_success_cnt++;
+            apply_item_state(i, ev->state, strlen(ev->state));
+        }
+
+        /* After the state, which forgets a transformed text that no longer
+         * matches it: this one does. */
+        wctx->item->setTransformedStateText(ev->display);
+        wctx->item->setLabelColor(ev->label_color);
+        wctx->item->setValueColor(ev->value_color);
+        wctx->item->setIconColor(ev->icon_color);
+
+        if (ev->caption[0] != '\0' && strcmp(ev->caption, wctx->item->getLabel()) != 0)
+        {
+            wctx->item->setLabel(ev->caption);
+
+            if (wctx->label != NULL)
+                lv_label_set_text(wctx->label, wctx->item->getLabel());
+        }
+
+        update_state_widget(wctx);
+        widget_apply_colors(wctx);
+    }
+
+    /* Not on the page, and not one the page had and left off: openHAB hid it
+     * when the page was sent, and now shows it. */
+    if (shown == false && ev->visible == true && sitemap.knowsWidget(ev->widget) == false)
+        page_reload_request(ev->widget);
+}
+
+/* Take one pushed change and apply it to every slot showing that item or
+ * widget.
  *
- * Matched by name, not by slot or generation: the stream carries neither, and
- * needs neither -- a state is the item's, whichever page asked for it. A
- * change for an item no longer on screen simply matches nothing. One per call,
- * for the reason results_apply_one() gives. */
+ * An item change is matched by name, not by slot or generation: the stream
+ * carries neither, and needs neither -- a state is the item's, whichever page
+ * asked for it. A change for an item no longer on screen simply matches
+ * nothing. One per call, for the reason results_apply_one() gives. */
 static void events_apply_one(void)
 {
     struct openhab_event_s ev;
@@ -2047,17 +2152,23 @@ static void events_apply_one(void)
     if (page_state != PAGE_READY)
         return;
 
+    if (ev.kind == OPENHAB_EVENT_KIND_WIDGET)
+    {
+        events_apply_widget(&ev.widget);
+        return;
+    }
+
     for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
     {
         char name[OPENHAB_EVENT_NAME_LEN];
 
         if (   slot_is_polled(i) == false
             || widget_context[i].item->name(name, sizeof(name)) == false
-            || strcmp(name, ev.name) != 0)
+            || strcmp(name, ev.item.name) != 0)
             continue;
 
         statistics.update_success_cnt++;
-        apply_item_state(i, ev.value, strlen(ev.value));
+        apply_item_state(i, ev.item.value, strlen(ev.item.value));
     }
 }
 
@@ -2181,6 +2292,11 @@ void openhab_ui_loop(void)
      * request, carried out here because ui_beep_play() belongs to this
      * task. */
     ui_beep_loop();
+
+    if (openhab_events_take_reload() == true)
+        page_reload_request(0);
+
+    page_reload_if_due();
 
     if (page_state == PAGE_READY)
     {

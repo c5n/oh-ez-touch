@@ -28,6 +28,13 @@
 #define STR_LINK_LEN 128
 #define STR_TITLE_LEN 32
 
+/* A page id: "1_5", or on a group's generated page the group's item name. */
+#define STR_PAGE_ID_LEN 64
+
+/* How many widget ids of one page are remembered. A page that shows six tiles
+ * rarely has more than a dozen widgets; see Sitemap::widget_ids. */
+#define PAGE_WIDGET_IDS_MAX 32
+
 /* Every URL this client builds, at one width.
  *
  * The widest of the three is the icon:
@@ -91,6 +98,9 @@ private:
     /* The widget's staticIcon: the icon does not follow the state, so it is
      * asked for without one, and once. */
     bool static_icon = false;
+    /* openhab_id_hash() of the widget's "widgetId", which is what a sitemap
+     * event names it by. 0 for none. */
+    uint32_t widget_hash = 0;
 
 public:
     /* The two URLs an item is asked for, built from its own fields rather than
@@ -148,6 +158,7 @@ public:
         value_color = OPENHAB_COLOR_NONE;
         icon_color = OPENHAB_COLOR_NONE;
         static_icon = false;
+        widget_hash = 0;
     }
 
     void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
@@ -179,6 +190,9 @@ public:
 
     bool isStaticIcon() const { return static_icon; }
     void setStaticIcon(bool on) { static_icon = on; }
+
+    uint32_t getWidgetHash() const { return widget_hash; }
+    void setWidgetHash(uint32_t hash) { widget_hash = hash; }
 
     enum ItemType getType() { return type; }
     void setType(enum ItemType newtype) { type = newtype; }
@@ -338,6 +352,23 @@ private:
     /* The label that names the clock frame, "" for none. */
     char clock_frame[STR_LABEL_LEN] = "";
 
+    /* The page's own "id": the sitemap's name on the root page, the linking
+     * widget's id below it. It is what a sitemap event subscription is opened
+     * for. */
+    char page_id[STR_PAGE_ID_LEN] = "";
+
+    /* openhab_id_hash() of every widget id the page carried, tile or not --
+     * Frames, widgets the panel cannot draw, widgets past the sixth. A sitemap
+     * event for a widget in here that is no tile is nothing to act on; one for
+     * a widget that is not in here is one openHAB left off the page because a
+     * visibility rule hid it, and is now showing. Past PAGE_WIDGET_IDS_MAX the
+     * set is "everything", so an unknown widget never reloads the page. */
+    uint32_t widget_ids[PAGE_WIDGET_IDS_MAX];
+    size_t   widget_id_count = 0;
+    bool     widget_ids_full = false;
+
+    void rememberWidget(uint32_t hash);
+
 public:
     /* Turn a page already in memory into the title and the item array.
      *
@@ -360,6 +391,14 @@ public:
               size_t scratch_size = 0);
 
     const char* getPageName() { return title; }
+    const char* getPageId() const { return page_id; }
+
+    /* Whether the page as parsed carried this widget; see widget_ids. */
+    bool knowsWidget(uint32_t hash) const;
+
+    /* Count a widget the page did not carry as one it did, until the next
+     * parse: a widget that reports itself shown and still has no place. */
+    void ignoreWidget(uint32_t hash) { rememberWidget(hash); }
     size_t getItemCount() { return item_count; }
     Item* getItem(size_t index) { return &item_array[index]; }
 

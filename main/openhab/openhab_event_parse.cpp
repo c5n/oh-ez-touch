@@ -6,8 +6,11 @@
 
 #include "openhab_event_parse.hpp"
 
+#include "openhab_color.h"
+
 #include <ArduinoJson.h>
 
+#include <ctype.h>
 #include <string.h>
 
 /* The third segment of "<root>/items/<name>/...". */
@@ -103,14 +106,170 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
     return OPENHAB_EVENT_STATE;
 }
 
+/* "Temperature [30,0 °C]" into "Temperature" and "30,0 °C". The caption the
+ * way label_trim() in openhab_connector.cpp makes it, so the two compare; the
+ * value up to the last ']', which a value may itself contain. */
+static void label_split(const char *label, char *caption, size_t caption_size,
+                        char *display, size_t display_size)
+{
+    const char *open = strchr(label, '[');
+    size_t      len = (open != NULL) ? (size_t)(open - label) : strlen(label);
+
+    while (len > 0 && isspace((unsigned char)label[len - 1]))
+        len--;
+
+    if (len >= caption_size)
+        len = caption_size - 1;
+
+    memcpy(caption, label, len);
+    caption[len] = '\0';
+    display[0] = '\0';
+
+    if (open == NULL)
+        return;
+
+    const char *close = strrchr(open, ']');
+
+    if (close == NULL)
+        return;
+
+    len = (size_t)(close - open - 1);
+
+    if (len >= display_size)
+        len = display_size - 1;
+
+    memcpy(display, open + 1, len);
+    display[len] = '\0';
+}
+
+enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_t len,
+                                                         struct openhab_widget_event_s *out)
+{
+    /* Built once, as the item filter above is. */
+    static JsonDocument filter;
+    static bool filter_ready = false;
+
+    if (filter_ready == false)
+    {
+        filter_ready = true;
+
+        filter["TYPE"] = true;
+        filter["widgetId"] = true;
+        filter["pageId"] = true;
+        filter["label"] = true;
+        filter["labelcolor"] = true;
+        filter["valuecolor"] = true;
+        filter["iconcolor"] = true;
+        filter["visibility"] = true;
+        filter["descriptionChanged"] = true;
+        filter["item"]["state"] = true;
+    }
+
+    JsonDocument event;
+
+    if (deserializeJson(event, json, len, DeserializationOption::Filter(filter))
+        != DeserializationError::Ok
+        || event.is<JsonObject>() == false)
+        return OPENHAB_SITEMAP_EVENT_INVALID;
+
+    const char *type = event["TYPE"].as<const char *>();
+
+    if (type != NULL)
+    {
+        if (strcmp(type, "ALIVE") == 0)
+            return OPENHAB_SITEMAP_EVENT_ALIVE;
+
+        if (strcmp(type, "SITEMAP_CHANGED") == 0)
+            return OPENHAB_SITEMAP_EVENT_RELOAD;
+
+        return OPENHAB_SITEMAP_EVENT_OTHER;
+    }
+
+    const char *widget_id = event["widgetId"].as<const char *>();
+
+    if (widget_id == NULL || widget_id[0] == '\0')
+        return OPENHAB_SITEMAP_EVENT_INVALID;
+
+    if (event["descriptionChanged"].as<bool>() == true)
+        return OPENHAB_SITEMAP_EVENT_RELOAD;
+
+    out->widget = openhab_id_hash(widget_id);
+    out->page = openhab_id_hash(event["pageId"].as<const char *>());
+
+    const char *state = event["item"]["state"].as<const char *>();
+
+    out->has_state = (state != NULL);
+    strlcpy(out->state, (state != NULL) ? state : "", sizeof(out->state));
+
+    const char *label = event["label"].as<const char *>();
+
+    label_split((label != NULL) ? label : "", out->caption, sizeof(out->caption),
+                out->display, sizeof(out->display));
+
+    out->label_color = openhab_color_parse(event["labelcolor"].as<const char *>());
+    out->value_color = openhab_color_parse(event["valuecolor"].as<const char *>());
+    out->icon_color = openhab_color_parse(event["iconcolor"].as<const char *>());
+
+    /* Only an explicit false hides, as on the page. */
+    out->visible = !(event["visibility"].is<bool>() && event["visibility"].as<bool>() == false);
+
+    return OPENHAB_SITEMAP_EVENT_WIDGET;
+}
+
+bool openhab_sitemap_subscription_id(const char *json, size_t len, char *id, size_t id_size)
+{
+    static JsonDocument filter;
+    static bool filter_ready = false;
+
+    if (filter_ready == false)
+    {
+        filter_ready = true;
+        filter["context"]["headers"]["Location"] = true;
+    }
+
+    JsonDocument doc;
+
+    if (deserializeJson(doc, json, len, DeserializationOption::Filter(filter))
+        != DeserializationError::Ok)
+        return false;
+
+    const char *location = doc["context"]["headers"]["Location"][0].as<const char *>();
+
+    if (location == NULL)
+        return false;
+
+    const char *slash = strrchr(location, '/');
+    const char *start = (slash != NULL) ? slash + 1 : location;
+
+    /* Goes into a URL path as it is, so only what an id is made of: the UUID
+     * openHAB hands out is hex and dashes. */
+    if (start[0] == '\0' || strspn(start, "0123456789abcdefABCDEF-") != strlen(start))
+        return false;
+
+    return strlcpy(id, start, id_size) < id_size;
+}
+
 void sse_reader_reset(struct sse_reader *r)
 {
     r->len = 0;
     r->overflow = false;
+    r->dropped = false;
+}
+
+bool sse_reader_take_overflow(struct sse_reader *r)
+{
+    bool dropped = r->dropped;
+
+    r->dropped = false;
+
+    return dropped;
 }
 
 static void sse_line_end(struct sse_reader *r, sse_data_cb cb, void *ctx)
 {
+    if (r->overflow == true && r->len >= 5 && memcmp(r->line, "data:", 5) == 0)
+        r->dropped = true;
+
     if (r->overflow == false && r->len >= 5 && memcmp(r->line, "data:", 5) == 0)
     {
         const char *data = r->line + 5;
@@ -128,7 +287,9 @@ static void sse_line_end(struct sse_reader *r, sse_data_cb cb, void *ctx)
         cb(data, data_len, ctx);
     }
 
-    sse_reader_reset(r);
+    /* The next line, not the reader: a drop stays reported until taken. */
+    r->len = 0;
+    r->overflow = false;
 }
 
 void sse_reader_feed(struct sse_reader *r, const char *buf, size_t len,

@@ -20,6 +20,13 @@
  * drains. Matching a name to a tile, and deciding what the value means, stays
  * on the task that owns the screen.
  *
+ * Two streams, one at a time. Where the server has it, the task follows the
+ * page on screen through GET /rest/sitemaps/events/<subscription>: one event
+ * per widget whose state, formatted value, colours or visibility changed, as
+ * openHAB's rules evaluated them. Where it has not -- the subscribe POST is
+ * refused -- it falls back to the item state changes of /rest/events, which
+ * carry the raw state and nothing else.
+ *
  * Polling does not go away. It is what keeps the tiles right while the stream
  * is down -- an openHAB restarting, a link coming back, a server too old to
  * have the endpoint -- and openhab_ui.cpp slows it to a safety net while the
@@ -49,10 +56,19 @@
  * the depth bounds latency under a burst rather than correctness. */
 #define OPENHAB_EVENTS_QUEUE_DEPTH 8
 
+/* A sitemap name, at the width Config stores it, and a page id. */
+#define OPENHAB_EVENTS_SITEMAP_LEN 32
+#define OPENHAB_EVENTS_PAGE_LEN 64
+
 /* What to listen for. Built by the UI, copied whole by subscribe(). */
 struct openhab_events_subscription_s
 {
     char   website[OPENHAB_EVENTS_WEBSITE_LEN];
+    /* The page on screen, for the sitemap stream. Either one "" falls back to
+     * the items below at once. */
+    char   sitemap[OPENHAB_EVENTS_SITEMAP_LEN];
+    char   page[OPENHAB_EVENTS_PAGE_LEN];
+    /* The items on screen, for the item stream. */
     size_t count;
     struct
     {
@@ -64,10 +80,26 @@ struct openhab_events_subscription_s
     } item[OPENHAB_EVENTS_ITEM_MAX];
 };
 
+enum openhab_event_kind_e
+{
+    OPENHAB_EVENT_KIND_ITEM,   /* `item`: an item stream's state change      */
+    OPENHAB_EVENT_KIND_WIDGET, /* `widget`: a sitemap stream's widget change */
+};
+
 struct openhab_event_s
 {
-    char name[OPENHAB_EVENT_NAME_LEN];
-    char value[OPENHAB_EVENTS_VALUE_LEN];
+    enum openhab_event_kind_e kind;
+
+    union
+    {
+        struct
+        {
+            char name[OPENHAB_EVENT_NAME_LEN];
+            char value[OPENHAB_EVENTS_VALUE_LEN];
+        } item;
+
+        struct openhab_widget_event_s widget;
+    };
 };
 
 /**
@@ -104,6 +136,15 @@ bool openhab_events_streaming(void);
  * to poll everything once.
  */
 bool openhab_events_take_resync(void);
+
+/**
+ * True once after the page on screen has to be fetched again: the sitemap
+ * stream said the sitemap file or a state description changed, it reconnected
+ * after having been up -- so colours and visibility may have changed unseen,
+ * which a resync's polls cannot bring back -- or it dropped an event too long
+ * to read.
+ */
+bool openhab_events_take_reload(void);
 
 /** Take at most one event. Never blocks. */
 bool openhab_events_poll(struct openhab_event_s *out);

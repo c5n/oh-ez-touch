@@ -1,0 +1,14 @@
+sitemap ohezevents label="Events"
+{
+    Text      item=EV_Temp   valuecolor=[<5="#4fc3f7", >25="orange"] iconcolor=[>25="red"] labelcolor=[>30="red"]
+    Switch    item=EV_Show
+    Text      item=EV_Mode
+    Selection item=EV_Fan
+    Switch    item=EV_Sensor
+    Text      item=EV_Window staticIcon=window visibility=[EV_Show==ON]
+
+    Frame label="Extra" visibility=[EV_Show==ON]
+    {
+        Text  item=EV_Extra
+    }
+}
