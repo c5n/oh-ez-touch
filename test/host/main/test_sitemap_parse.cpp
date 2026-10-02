@@ -224,11 +224,10 @@ static void test_mappings_become_the_selection(void)
  * and not as "some choices I could not read".
  *
  * It matters more than it looks, because an empty JSON array is *truthy* to
- * ArduinoJson: `if (widget["mappings"])` is true for every widget openHAB
+ * ArduinoJson: `if (widget["mappings"])` was true for every widget openHAB
  * sends, which is why the parser's fallback to the item's
- * commandDescription.commandOptions can never run against a real openHAB 5.
- * The fixture used to omit the key entirely and so exercised the fallback
- * instead of the path a server actually takes. */
+ * commandDescription.commandOptions never ran against a real openHAB 5. The
+ * parser tests the size now; the fallback's own tests are below. */
 static void test_an_empty_mappings_array_is_not_a_selection(void)
 {
     Sitemap sitemap;
@@ -241,6 +240,86 @@ static void test_an_empty_mappings_array_is_not_a_selection(void)
 
     /* And the link, which has no item behind it to fall back to either. */
     TEST_ASSERT_EQUAL_UINT(0, sitemap.getItem(1)->getSelectionCount());
+}
+
+/* The shape a real server sends for a Selection over an item with command
+ * options: an empty "mappings" next to them. The fallback used to test the
+ * array for presence, found the empty one, and never reached the options. */
+static void test_command_options_are_used_when_mappings_are_empty(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Selection\",\"label\":\"Fan\","
+        "\"mappings\":[],"
+        "\"item\":{\"type\":\"String\",\"state\":\"LOW\","
+        "\"link\":\"http://h/rest/items/Fan\","
+        "\"commandDescription\":{\"commandOptions\":["
+        "{\"command\":\"LOW\",\"label\":\"Low\"},"
+        "{\"command\":\"HIGH\",\"label\":\"High\"}]}}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(2, sitemap.getItem(0)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("HIGH", sitemap.getItem(0)->getSelectionCommand(1));
+    TEST_ASSERT_EQUAL_STRING("High", sitemap.getItem(0)->getSelectionLabel(1));
+    TEST_ASSERT_EQUAL_STRING("Low", sitemap.getItem(0)->mappedLabel());
+}
+
+/* The sitemap's own mappings win over the item's options: they are the more
+ * specific of the two, and what openHAB's own UIs offer. */
+static void test_mappings_win_over_command_options(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":[{\"type\":\"Selection\",\"label\":\"Fan\","
+        "\"mappings\":[{\"command\":\"OFF\",\"label\":\"Aus\"}],"
+        "\"item\":{\"type\":\"String\",\"state\":\"OFF\","
+        "\"link\":\"http://h/rest/items/Fan\","
+        "\"commandDescription\":{\"commandOptions\":["
+        "{\"command\":\"LOW\",\"label\":\"Low\"}]}}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+    TEST_ASSERT_EQUAL_UINT(1, sitemap.getItem(0)->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("Aus", sitemap.getItem(0)->mappedLabel());
+}
+
+/* A read-out over an item with state options: no mappings and no command
+ * options, so the state options are the labels -- keyed by "value" where the
+ * other two say "command". On a Number the stored state has been re-printed
+ * through "%f", so "2" is matched as a number. */
+static void test_state_options_label_a_read_out(void)
+{
+    Sitemap sitemap;
+    static const char page[] =
+        "{\"title\":\"T\",\"widgets\":["
+        "{\"type\":\"Text\",\"label\":\"Mode\",\"mappings\":[],"
+        "\"item\":{\"type\":\"Number\",\"state\":\"2\","
+        "\"link\":\"http://h/rest/items/Mode\","
+        "\"stateDescription\":{\"readOnly\":true,\"options\":["
+        "{\"value\":\"1\",\"label\":\"Comfort\"},"
+        "{\"value\":\"2\",\"label\":\"Eco\"}]}}},"
+        "{\"type\":\"Text\",\"label\":\"Door\",\"mappings\":[],"
+        "\"item\":{\"type\":\"String\",\"state\":\"OPEN\","
+        "\"link\":\"http://h/rest/items/Door\","
+        "\"stateDescription\":{\"options\":["
+        "{\"value\":\"OPEN\",\"label\":\"Offen\"}]}}}]}";
+
+    TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
+
+    Item *mode = sitemap.getItem(0);
+    Item *door = sitemap.getItem(1);
+
+    TEST_ASSERT_EQUAL(ItemType::type_number, mode->getType());
+    TEST_ASSERT_EQUAL_UINT(2, mode->getSelectionCount());
+    TEST_ASSERT_EQUAL_STRING("2", mode->getSelectionCommand(1));
+    TEST_ASSERT_EQUAL_STRING("Eco", mode->mappedLabel());
+
+    TEST_ASSERT_EQUAL_STRING("Offen", door->mappedLabel());
+
+    /* A state with no option of its own has no label: the tile shows it raw. */
+    TEST_ASSERT_EQUAL_INT(0, mode->applyState("3", 1) - 1);
+    TEST_ASSERT_NULL(mode->mappedLabel());
+    door->setStateText("CLOSED");
+    TEST_ASSERT_NULL(door->mappedLabel());
 }
 
 /* The fallback is still reachable for a server that omits the key, which is
@@ -927,6 +1006,9 @@ void test_sitemap_parse_run(void)
     RUN_TEST(test_the_two_link_shapes);
     RUN_TEST(test_an_empty_mappings_array_is_not_a_selection);
     RUN_TEST(test_command_options_are_used_when_mappings_are_absent);
+    RUN_TEST(test_command_options_are_used_when_mappings_are_empty);
+    RUN_TEST(test_mappings_win_over_command_options);
+    RUN_TEST(test_state_options_label_a_read_out);
     RUN_TEST(test_a_player_keeps_its_type_despite_its_mappings);
     RUN_TEST(test_the_pin_tag_marks_its_items);
     RUN_TEST(test_only_the_exact_tag_counts);

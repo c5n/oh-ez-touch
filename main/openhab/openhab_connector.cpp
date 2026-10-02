@@ -218,13 +218,21 @@ static const char *label_trim(const char *label, char *out, size_t out_size)
     return out;
 }
 
-/* openHAB offers the same label/command list either as the widget's "mappings"
- * or as the item's "commandOptions"; both are read into the item's fixed
- * selection arrays, so the count has to be clamped to what those hold. */
-static void parse_selection(Item *item, JsonVariant array_value)
+/* openHAB offers the same value/label list in three places: the widget's
+ * "mappings", the item's "commandOptions" and the item's state "options". All
+ * of them are read into the item's fixed selection arrays, so the count has to
+ * be clamped to what those hold. The state options name their value "value"
+ * where the other two say "command", which is what `value_key` is for.
+ *
+ * @return false for an absent or empty list, so the caller can try the next
+ *   source -- an empty array is what a real server sends for "none". */
+static bool parse_selection(Item *item, JsonVariant array_value, const char *value_key)
 {
     JsonArray map_array = array_value.as<JsonArray>();
     size_t count = map_array.size();
+
+    if (count == 0)
+        return false;
 
     if (count > ITEM_SELECTION_COUNT_MAX)
         count = ITEM_SELECTION_COUNT_MAX;
@@ -233,10 +241,12 @@ static void parse_selection(Item *item, JsonVariant array_value)
     {
         JsonVariant map_elem = map_array[i];
         item->setSelectionLabel(i, json_str(map_elem["label"]));
-        item->setSelectionCommand(i, json_str(map_elem["command"]));
+        item->setSelectionCommand(i, json_str(map_elem[value_key]));
     }
 
     item->setSelectionCount(count);
+
+    return true;
 }
 
 bool Item::stateUrl(char *out, size_t out_size) const
@@ -260,6 +270,33 @@ bool Item::name(char *out, size_t out_size) const
         return false;
 
     return strlcpy(out, slash + 1, out_size) < out_size;
+}
+
+const char *Item::mappedLabel() const
+{
+    char *value_end;
+    float value = strtof(state_text, &value_end);
+    bool  value_is_number = (value_end != state_text && *value_end == '\0');
+
+    for (size_t i = 0; i < mapping_count; i++)
+    {
+        if (strcmp(selection_command[i], state_text) == 0)
+            return selection_label[i];
+
+        /* A number's state has been re-printed through "%f" by the time it
+         * gets here ("1.000000"), and the option says "1": compared as
+         * numbers when both are numbers. */
+        if (value_is_number == true)
+        {
+            char *option_end;
+            float option = strtof(selection_command[i], &option_end);
+
+            if (option_end != selection_command[i] && *option_end == '\0' && option == value)
+                return selection_label[i];
+        }
+    }
+
+    return NULL;
 }
 
 bool Item::iconUrl(const char *website, char *out, size_t out_size) const
@@ -564,11 +601,18 @@ static void parse_widget(JsonVariant widget, Item *item, char *label_buffer,
         }
     }
 
-    // Mappings
-    if (widget["mappings"])
-        parse_selection(item, widget["mappings"]);
-    else if (json_item["commandDescription"]["commandOptions"])
-        parse_selection(item, json_item["commandDescription"]["commandOptions"]);
+    /* Mappings, from the first of the three places that has any. Tested by
+     * size, not by presence: every widget a real server sends carries
+     * "mappings", an empty array when the sitemap declares none, and an empty
+     * array is truthy to ArduinoJson -- so the fallbacks used to be dead code.
+     *
+     * The state options come last. They are what openHAB itself shows in
+     * place of a raw state ("0" reads "Off"), which is what a read-out tile
+     * uses them for too: the lookup is Item::mappedLabel(), local, so it stays
+     * right after a pushed state change that carries only the raw value. */
+    if (parse_selection(item, widget["mappings"], "command") == false
+        && parse_selection(item, json_item["commandDescription"]["commandOptions"], "command") == false)
+        parse_selection(item, json_item["stateDescription"]["options"], "value");
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_CONNECTOR
     printf("\r\n");
@@ -682,6 +726,13 @@ int Sitemap::parse(const char *payload, size_t payload_len, char *scratch,
         state_filter["maximum"] = true;
         state_filter["step"] = true;
         state_filter["pattern"] = true;
+
+        /* The labels openHAB shows for a raw state. The last of the three
+         * sources of a selection, see parse_widget(). */
+        JsonObject state_option_filter = state_filter["options"].add<JsonObject>();
+
+        state_option_filter["value"] = true;
+        state_option_filter["label"] = true;
 
         /* The other place a Selection's options come from, when the sitemap itself
          * carries no mappings. */

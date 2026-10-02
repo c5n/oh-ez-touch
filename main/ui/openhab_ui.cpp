@@ -502,27 +502,38 @@ static void event_handler(lv_event_t *e)
     ui_pin_guard(PIN_SCOPE_ITEM, tile_activate_unlocked, NULL);
 }
 
-/* Show the mapping label that matches the item's current command. openHAB
- * sends these for Switch and Selection items ("ON=Text1, OFF=Text2"); without
- * a matching mapping the raw state is the best that can be shown. */
+/* Show the label the item's mappings give its current state -- a Switch's
+ * "ON=Text1, OFF=Text2", a Selection's choices, or the state options openHAB
+ * itself shows in place of a raw value. Without a match the raw state is the
+ * best that can be shown. */
 static void set_label_from_mapping(lv_obj_t *label, Item *item)
 {
-    for (size_t index = 0; index < item->getSelectionCount(); index++)
-    {
-        if (strcmp(item->getSelectionCommand(index), item->getStateText()) == 0)
-        {
-            ui_reading_set_text(label, item->getSelectionLabel(index));
-            return;
-        }
-    }
+    const char *mapped = item->mappedLabel();
 
-    ui_reading_set_text(label, item->getStateText());
+    ui_reading_set_text(label, (mapped != NULL) ? mapped : item->getStateText());
 }
 
 void update_state_widget(struct widget_context_s *ctx)
 {
     if (ctx->state_widget == NULL)
         return;
+
+    /* A read-out whose state has a label of its own -- "2" that openHAB shows
+     * as "Eco" -- shows that label, whatever the state is otherwise drawn as.
+     * Looked up here rather than taken from the page, so unlike the
+     * transformed state it stays right after a pushed change. */
+    if (   ctx->item->getType() == ItemType::type_string
+        || ctx->item->getType() == ItemType::type_number
+        || ctx->item->getType() == ItemType::type_group)
+    {
+        const char *mapped = ctx->item->mappedLabel();
+
+        if (mapped != NULL)
+        {
+            ui_reading_set_text(ctx->state_widget, mapped);
+            return;
+        }
+    }
 
     switch (ctx->item->getType())
     {

@@ -209,6 +209,12 @@ public:
         strlcpy(selection_label[index], label, sizeof(selection_label[index]));
     }
     char *getSelectionLabel(size_t index) { return selection_label[index]; }
+
+    /* The label the selection list gives the current state -- "Off" for a
+     * state of "0" -- or NULL when it gives none. Exact text first, then as
+     * numbers when both sides are one, because a number's state is stored
+     * re-printed ("0.000000"). */
+    const char *mappedLabel() const;
     size_t getSelectionCount() { return mapping_count; }
     void setSelectionCount(size_t new_count) { mapping_count = new_count; }
 };
