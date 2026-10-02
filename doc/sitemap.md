@@ -67,7 +67,8 @@ openHAB lists (`maroon`, `red`, `orange`, `olive`, `yellow`, `purple`,
 `black`, `silver`, `gray`, `gold`) and `#rrggbb` are understood. Anything else
 keeps the theme's colour. The colours arrive with the page.
 
-`staticIcon=true` makes the panel fetch the icon once, without the state.
+A widget with `staticIcon=<name>` in place of `icon=<name>` has the same icon
+whatever its state. The panel fetches it once, without the state.
 
 An item with the tag `ohez-pin` asks for the Item PIN before its tile does
 anything. See [PINs](configuration.md#pins).
