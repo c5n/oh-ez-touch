@@ -522,13 +522,32 @@ function beaconHeight(rows) {
   return h;
 }
 
-function boxFor(host) {
-  return boxes.find((b) => b.kind === "device" && b.host === host);
+const boxByKey = new Map();
+const deviceBoxByHost = new Map();
+const apBoxByBssid = new Map();
+
+function indexBox(box) {
+  boxByKey.set(box.key, box);
+  if (box.kind === "device") deviceBoxByHost.set(box.host, box);
+  else if (box.kind === "ap") apBoxByBssid.set(box.bssid, box);
 }
 
-function apBoxFor(bssid) {
-  return boxes.find((b) => b.kind === "ap" && b.bssid === bssid);
+function rebuildBoxIndexes() {
+  boxByKey.clear();
+  deviceBoxByHost.clear();
+  apBoxByBssid.clear();
+  for (const box of boxes) indexBox(box);
 }
+
+function unindexBox(box) {
+  boxByKey.delete(box.key);
+  if (box.kind === "device") deviceBoxByHost.delete(box.host);
+  else if (box.kind === "ap") apBoxByBssid.delete(box.bssid);
+}
+
+function boxFor(host) { return deviceBoxByHost.get(host); }
+
+function apBoxFor(bssid) { return apBoxByBssid.get(bssid); }
 
 /* The broker is a box like the others -- the hub of every link and the
  * one object that never floats: pinned, in the middle of the canvas in
@@ -551,6 +570,7 @@ function ensureBrokerBox(live) {
       drag: null, pinned: true, pin: { x: 0.5, y: 0.5 },
     };
     boxes.unshift(brokerBox);
+    indexBox(brokerBox);
   }
   live.add("broker");
 
@@ -565,6 +585,7 @@ function ensureBrokerBox(live) {
 function startDeath(box) {
   if (box === brokerBox) return;              // the hub never dies
   box.dyingAt = performance.now();
+  box.dead = true;
   const now = performance.now();
 
   const ghost = (x0, y0, x1, y1, hex) => {
@@ -616,6 +637,7 @@ function syncBoxes() {
   const positions = state.settings.positions || {};
 
   ensureBrokerBox(live);
+  rebuildBoxIndexes();
 
   /* -- the access points: one box per BSSID any panel reports -------- */
 
@@ -634,7 +656,7 @@ function syncBoxes() {
       const key = "ap:" + bssid;
       live.add(key);
 
-      let box = boxes.find((b) => b.key === key);
+      let box = boxByKey.get(key);
       if (!box) {
         const angle = (index / Math.max(1, bssids.length)) * Math.PI * 2
                       + (Math.random() - 0.5) * 0.4;
@@ -671,6 +693,7 @@ function syncBoxes() {
           box.cy = pos.y * stage.h;
         }
         boxes.push(box);
+        indexBox(box);
       }
 
       box.ssid = groups.get(bssid);
@@ -700,7 +723,7 @@ function syncBoxes() {
   for (const dev of state.devices) {
     live.add(dev.host);
 
-    let box = boxes.find((b) => b.kind === "device" && b.host === dev.host);
+    let box = boxFor(dev.host);
     if (!box) {
       /* Born where its links already point: at its pinned place when it
        * has one, at its access point in the topology view, and on its
@@ -756,6 +779,7 @@ function syncBoxes() {
         ap: null,
       };
       boxes.push(box);
+      indexBox(box);
       born++;
     }
 
@@ -824,7 +848,7 @@ function syncBoxes() {
       const key = "beacon:" + beacon.addr;
       live.add(key);
 
-      let box = boxes.find((b) => b.key === key);
+      let box = boxByKey.get(key);
       if (!box) {
         /* A beacon is born where its lines already point -- the middle
          * of the panels that hear it -- so it never has to cross the
@@ -864,6 +888,7 @@ function syncBoxes() {
           drag: null,
         };
         boxes.push(box);
+        indexBox(box);
       }
 
       /* The box keeps only the live lines: the drawing, the springs and
@@ -905,9 +930,11 @@ function syncBoxes() {
   for (let i = boxes.length - 1; i >= 0; i--) {
     if (!live.has(boxes[i].key)) {
       startDeath(boxes[i]);
+      unindexBox(boxes[i]);
       boxes.splice(i, 1);
     }
   }
+  rebuildBoxIndexes();
 
   /* The dead finish dying on their own clock. */
   const now = performance.now();
@@ -1309,72 +1336,104 @@ function physicsStep(dt, time) {
   /* Gravity between the objects, and the separation of the ones that
    * touch: a pass of its own, so a pinned box -- which skipped its
    * springs above -- is still a mass the others feel and still a wall
-   * they are pushed off. */
-  for (let i = 0; i < boxes.length; i++) {
-    const box = boxes[i];
-    const p = paramsFor(box);
+   * they are pushed off. Only overlapping pairs can shove, so without
+   * gravity the pass walks a spatial grid and touches each box's
+   * neighbourhood instead of the whole fleet; the grid's cell is the
+   * largest box, so no pair that overlaps ever slips between cells. */
+  const gravityActive = params.device.grav !== 0 || params.ap.grav !== 0
+    || params.beacon.grav !== 0 || params.broker.grav !== 0;
+  let cellSize = BOX_W + 20;
+  for (const box of boxes)
+    cellSize = Math.max(cellSize, box.w + 20, box.h + 20);
+
+  const grid = new Map();
+  if (!gravityActive) {
+    for (let i = 0; i < boxes.length; i++) {
+      const key = Math.floor(boxes[i].cx / cellSize) + ","
+                  + Math.floor(boxes[i].cy / cellSize);
+      if (!grid.has(key)) grid.set(key, []);
+      grid.get(key).push(i);
+    }
+  }
+
+  const interact = (i, j) => {
+    const box = boxes[i], other = boxes[j];
+    const p = paramsFor(box), q = paramsFor(other);
     const stillBox = box.drag || box.pinned;
 
-    for (let j = i + 1; j < boxes.length; j++) {
-      const other = boxes[j];
-      const q = paramsFor(other);
+    const needX = (box.w + other.w) / 2 + 20;
+    const needY = (box.h + other.h) / 2 + 20;
+    const dx = other.cx - box.cx, dy = other.cy - box.cy;
+    const overlapX = needX - Math.abs(dx);
+    const overlapY = needY - Math.abs(dy);
 
-      const needX = (box.w + other.w) / 2 + 20;
-      const needY = (box.h + other.h) / 2 + 20;
-      const dx = other.cx - box.cx, dy = other.cy - box.cy;
-      const overlapX = needX - Math.abs(dx);
-      const overlapY = needY - Math.abs(dy);
-
-      /* Every object carries a gravity of its own, and it acts on every
-       * other object, whatever kind either is: each pulls the other
-       * toward itself -- or, at minus, pushes it away. The pull fades
-       * with distance and never grows past arm's length, so a clump
-       * settles as boxes that lean toward each other and rest, held by
-       * their springs, not a collapse into one point. */
-      if (p.grav !== 0 || q.grav !== 0) {
-        const d = Math.max(Math.hypot(dx, dy), 80) || 80;
-        const ax = dx / d, ay = dy / d;      // unit vector, box -> other
-        if (!other.drag && !other.pinned) {
-          other.vx -= ax * (p.grav / d) * dt;  // this box's pull on it
-          other.vy -= ay * (p.grav / d) * dt;
-        }
-        if (!stillBox) {
-          box.vx += ax * (q.grav / d) * dt;    // its pull on this box
-          box.vy += ay * (q.grav / d) * dt;
-        }
+    /* Every object carries a gravity of its own, and it acts on every
+     * other object, whatever kind either is: each pulls the other
+     * toward itself -- or, at minus, pushes it away. The pull fades
+     * with distance and never grows past arm's length, so a clump
+     * settles as boxes that lean toward each other and rest, held by
+     * their springs, not a collapse into one point. */
+    if (p.grav !== 0 || q.grav !== 0) {
+      const d = Math.max(Math.hypot(dx, dy), 80) || 80;
+      const ax = dx / d, ay = dy / d;      // unit vector, box -> other
+      if (!other.drag && !other.pinned) {
+        other.vx -= ax * (p.grav / d) * dt;  // this box's pull on it
+        other.vy -= ay * (p.grav / d) * dt;
       }
+      if (!stillBox) {
+        box.vx += ax * (q.grav / d) * dt;    // its pull on this box
+        box.vy += ay * (q.grav / d) * dt;
+      }
+    }
 
-      if (overlapX > 0 && overlapY > 0) {
-        /* A held or pinned box is carried or fixed, never pushed;
-         * everything else shares the work. */
-        const weightBox = stillBox ? 0 : 1;
-        const weightOther = (other.drag || other.pinned) ? 0 : 1;
-        const total = weightBox + weightOther;
-        if (!total) continue;
+    if (overlapX > 0 && overlapY > 0) {
+      /* A held or pinned box is carried or fixed, never pushed;
+       * everything else shares the work. */
+      const weightBox = stillBox ? 0 : 1;
+      const weightOther = (other.drag || other.pinned) ? 0 : 1;
+      const total = weightBox + weightOther;
+      if (!total) return;
 
-        /* Heavy oil gives way almost reluctantly: the separation is a
-         * slow, heavy shove -- two boxes that touch ooze apart, taking
-         * their time about it. */
-        const ease = Math.min(1, dt) * p.ease;
-        const dirX = dx >= 0 ? 1 : -1;
-        const dirY = dy >= 0 ? 1 : -1;
-        const pushX = dirX * overlapX * ease;
-        const pushY = dirY * overlapY * ease;
+      /* Heavy oil gives way almost reluctantly: the separation is a
+       * slow, heavy shove -- two boxes that touch ooze apart, taking
+       * their time about it. */
+      const ease = Math.min(1, dt) * p.ease;
+      const dirX = dx >= 0 ? 1 : -1;
+      const dirY = dy >= 0 ? 1 : -1;
+      const pushX = dirX * overlapX * ease;
+      const pushY = dirY * overlapY * ease;
 
-        box.cx -= pushX * weightBox / total;
-        box.cy -= pushY * weightBox / total;
-        other.cx += pushX * weightOther / total;
-        other.cy += pushY * weightOther / total;
+      box.cx -= pushX * weightBox / total;
+      box.cy -= pushY * weightBox / total;
+      other.cx += pushX * weightOther / total;
+      other.cy += pushY * weightOther / total;
 
-        /* A nudge in the same direction, so the flow keeps some of it. */
-        if (weightBox) {
-          box.vx -= dirX * 0.12 * ease * weightBox / total;
-          box.vy -= dirY * 0.12 * ease * weightBox / total;
-        }
-        if (weightOther) {
-          other.vx += dirX * 0.12 * ease * weightOther / total;
-          other.vy += dirY * 0.12 * ease * weightOther / total;
-        }
+      /* A nudge in the same direction, so the flow keeps some of it. */
+      if (weightBox) {
+        box.vx -= dirX * 0.12 * ease * weightBox / total;
+        box.vy -= dirY * 0.12 * ease * weightBox / total;
+      }
+      if (weightOther) {
+        other.vx += dirX * 0.12 * ease * weightOther / total;
+        other.vy += dirY * 0.12 * ease * weightOther / total;
+      }
+    }
+  };
+
+  for (let i = 0; i < boxes.length; i++) {
+    if (gravityActive) {
+      for (let j = i + 1; j < boxes.length; j++) interact(i, j);
+      continue;
+    }
+
+    const x = Math.floor(boxes[i].cx / cellSize);
+    const y = Math.floor(boxes[i].cy / cellSize);
+    for (let oy = -1; oy <= 1; oy++) {
+      for (let ox = -1; ox <= 1; ox++) {
+        const nearby = grid.get((x + ox) + "," + (y + oy));
+        if (!nearby) continue;
+        for (const j of nearby)
+          if (j > i) interact(i, j);
       }
     }
   }
@@ -1534,18 +1593,35 @@ function drawBackground(time) {
   if (!fxOn() || !bgFill) return;
   const cell = 28;
   const ox = (time * 0.004) % cell, oy = (time * 0.0023) % cell;
+  /* The workspace is four times the viewport, but the camera shows a
+   * quarter of it: the grid and the vignette only cover what is on
+   * screen, with a cell of slack for the drift. */
+  const v = camView();
+  const spanX = view.w / v.zoom, spanY = view.h / v.zoom;
+  const x0 = Math.max(0, v.x - cell), y0 = Math.max(0, v.y - cell);
+  const x1 = Math.min(stage.w, v.x + spanX + cell);
+  const y1 = Math.min(stage.h, v.y + spanY + cell);
   ctx.save();
   ctx.translate(-ox, -oy);
   ctx.fillStyle = bgFill;
-  ctx.fillRect(0, 0, stage.w + cell, stage.h + cell);
+  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   ctx.restore();
-  if (vignette) ctx.drawImage(vignette, 0, 0);
+  if (vignette)
+    ctx.drawImage(vignette, v.x, v.y, spanX, spanY, v.x, v.y, spanX, spanY);
 }
 
 /* A radar sweep around the hub: faint, slow, and only there when the
  * effects are on and the broker is in the picture. */
 function drawSweep(time) {
   if (!fxOn() || !ctx.createConicGradient || !brokerBox) return;
+  /* The sweep's circle reaches past the whole workspace, but only the
+   * camera's window is ever on screen: the fill is clipped to it, so
+   * the raster cost follows the viewport and not the stage. */
+  const v = camView();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(v.x, v.y, view.w / v.zoom, view.h / v.zoom);
+  ctx.clip();
   const r = Math.max(stage.w, stage.h) * 0.55;
   const grad = ctx.createConicGradient(time * 0.00035,
                                        brokerBox.cx, brokerBox.cy);
@@ -1558,6 +1634,7 @@ function drawSweep(time) {
   ctx.moveTo(brokerBox.cx, brokerBox.cy);
   ctx.arc(brokerBox.cx, brokerBox.cy, r, 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 }
 
 function drawGhosts(time) {
@@ -1621,7 +1698,7 @@ function drawHalos(time) {
 function drawWaves(time) {
   for (let i = waves.length - 1; i >= 0; i--) {
     const wv = waves[i];
-    const u = (time - wv.t0) / wv.dur;
+    const u = Math.max(0, Math.min(1, (time - wv.t0) / wv.dur));
     if (u >= 1) {
       waves.splice(i, 1);
       continue;
@@ -1862,8 +1939,7 @@ function draw(time) {
     const p = particles[i];
     p.t += dt / 60 / p.dur;
 
-    if (p.t >= 1 || (p.from && !boxes.includes(p.from))
-        || (p.to && !boxes.includes(p.to))) {
+    if (p.t >= 1 || (p.from && p.from.dead) || (p.to && p.to.dead)) {
       /* A broker-bound particle has no box to arrive at, so it wakes
        * the box it set out from instead. An access point carries the
        * news on: a second particle walks its LAN line home. */
@@ -2769,6 +2845,8 @@ function applyDrags() {
  * switches, not stop buttons: the devices keep tracking, the beacons keep
  * learning, and everything comes back exactly as it was. */
 function renderViewToggles() {
+  const wasSpace = $("canvas").classList.contains("hidden");
+  const space = isSpace();
   $("btn-view-broker").classList.toggle("off",
                                         state.settings.show_broker === false);
   $("btn-view-beacons").classList.toggle("off",
@@ -2778,8 +2856,9 @@ function renderViewToggles() {
   $("btn-mode-mesh").classList.toggle("active",
                                       !isTopology() && !isSpace());
   $("btn-mode-topology").classList.toggle("active", isTopology());
-  $("btn-mode-space").classList.toggle("active", isSpace());
-  $("canvas").classList.toggle("hidden", isSpace());
+  $("btn-mode-space").classList.toggle("active", space);
+  $("canvas").classList.toggle("hidden", space);
+  if (wasSpace !== space) resize();
 
   /* The zoom belongs to the topology view alone -- the mesh is its own
    * fixed picture, and the space view moves its own camera. */
@@ -3744,7 +3823,8 @@ function pollConsole() {
           renderConsoleBadge();
         }
       }
-      if (doc.entries.length) renderConsole();
+      if (doc.entries.length
+          && !$("console").classList.contains("hidden")) renderConsole();
     })
     .catch(() => {});
 
