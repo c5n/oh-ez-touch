@@ -65,7 +65,11 @@ every change:
 * **Devices** -- every panel that has ever published under the base
   topic, keyed by its hostname, with the newest value of every topic it
   publishes. A panel whose last will arrived is drawn greyed-out with its
-  last-seen time, and stays in the list until you remove it.
+  last-seen time, and stays in the list until you remove it. The picture
+  holds the recent: a topic nobody has heard from for an hour is not
+  listed any more, and a panel silent for a day is out of the picture
+  -- the registry keeps them both, and they are back the moment they
+  speak again.
 * **Beacons** -- every BLE advertiser the panels report, keyed by its
   address, kept in memory only: radio contacts are rebuilt from the
   broker's retained messages on every start, and an advertiser the
@@ -217,8 +221,9 @@ paint the new world at once, exactly as they do at startup.
   state works too), the LED sliders publish `led/<name>/set`, and the
   detail panel plays any of the eighteen themed sounds through
   `sound/set`. See [MQTT](mqtt.md) for the payloads.
-* **Detail** (click a box) -- every topic the panel publishes with its
-  value, retain flag and age, plus the controls and a way to remove a
+* **Detail** (click a box) -- every topic the panel has published
+  within the last hour, with its value, retain flag and age, plus the
+  controls and a way to remove a
   device from the list. An access point answers the click with its own
   panel: which panels are on it and how well it hears each of them --
   an access point is listened to, not talked to. A panel's or an access
@@ -231,7 +236,11 @@ paint the new world at once, exactly as they do at startup.
   base topic), and one save makes it all true. Saving does not switch
   the connection -- the selector in the top bar does that. The passwords
   are masked the way devmgr masks them, and a mask sent back means
-  "leave it alone".
+  "leave it alone". The dialog also holds the *GUI size* slider (70 to
+  160 per cent): one scale for the whole chrome -- the bars, the
+  buttons, the panels, the space view's cube and labels -- while the
+  canvases keep the resolution the window gives them. It acts at once
+  and is kept with the settings.
 * **Console** -- the drawer at the bottom shows what the visualizer is
   doing: broker connects and drops, devices appearing, going offline and
   coming back, beacons appearing and clearing, every published command,
@@ -338,17 +347,40 @@ doors and windows as frames of orange light.
   ![The ground floor alone: the upper floor, the broker and the bedroom's panel lifted off with the roof](img/mqttviz_space_ground.png)
 * **Beacons find their own places.** A beacon heard by two or more
   placed panels sits where its distances to them come closest to the
-  ones they report (multilateration, in the plane of the floor, at
-  1.2 m), with a fading trail and a line to every panel that hears it.
+  ones they report -- multilateration, in the plane of the floor, at
+  1.2 m -- with the hearings weighted the way they deserve: a panel
+  two metres away says where the beacon is, one thirty metres and two
+  floors away says only that it is somewhere far, so every hearing
+  counts with the weight of 1/d². The best point is looked for on a
+  coarse sweep over the house's plan first, because two readings'
+  circles cross twice and the near readings' crossing is the one that
+  is meant. A fading trail follows it, and a line to every panel that
+  hears it.
   Heard by one placed panel only, it circles that panel at the reported
   distance; heard by none, it is not drawn. The distance estimates read
   short (see [ble.md](ble.md)), and it shows.
+* **The lines tell how long they are.** Every line -- panel to access
+  point, access point to broker, beacon to each panel that hears it --
+  carries its length in metres at its middle, turned to lie along it
+  and flipped upright when it would run upside-down: the house is in
+  metres, so are the lines.
+* **The view cube.** In the lower left corner sits a small cube of the
+  camera's ways to look, turning with it so that the face the house is
+  seen from is the one that faces the eye. Tap a face -- front, back,
+  left, right, top, bottom -- for a smooth flight to the view straight
+  along its axis; tap one of the bevels for the diagonals: an edge's
+  for the view between two axes, a corner's for the isometric view
+  between three. A drag on the cube is the orbit's -- the hand swings
+  the view. Under it sit three buttons: a step in, a step out, and the
+  whole house framed again.
 * **The rest is the canvas's.** The lines run panel → access point →
   broker, and a message is a spark running up them; *Broker*, *Beacons*
   and *FX* switch the same things as in the other views (*FX* is the
   bloom). The camera -- left drag turns, right drag pans, the wheel
-  zooms, *⌂* frames the whole house -- is kept with the settings, and
-  the slider in the toolbar sets how solid the walls are drawn.
+  zooms, *⌂* frames the whole house, and it may look from below the
+  house as well -- is kept with
+  the settings, and the slider in the toolbar sets how solid the walls
+  are drawn.
 
 The 3D drawing is [three.js](https://threejs.org), vendored as one
 bundle in `mqttviz/web/vendor/` (see its README): nothing to install,
@@ -361,7 +393,7 @@ The page is a client of a small JSON API, which scripts may use too:
 | Route | Purpose |
 | ----- | ------- |
 | `GET /api/state` | Settings, broker profiles, broker status, devices, beacons |
-| `POST /api/settings` | View switches, logging, language (`en`/`de`), the view mode (`view_mode`, `mesh`/`topology`/`space`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the space view's camera (`cam3d`, `{px, py, pz, tx, ty, tz}` in metres) and wall opacity (`holo_opacity`, 5..100), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the profile list (`brokers`), and the active profile (`broker_index`) |
+| `POST /api/settings` | View switches, logging, language (`en`/`de`), the GUI size (`gui_scale`, 70..160), the view mode (`view_mode`, `mesh`/`topology`/`space`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the space view's camera (`cam3d`, `{px, py, pz, tx, ty, tz}` in metres) and wall opacity (`holo_opacity`, 5..100), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the profile list (`brokers`), and the active profile (`broker_index`) |
 | `POST /api/position` | `{"key": "panel:<host>", "x": 0..1, "y": 0..1}` -- pin one object of the topology view (`broker`, `ap:<bssid>`, `panel:<host>`) |
 | `POST /api/position/delete` | `{"key": ...}` -- unpin it again |
 | `POST /api/position3d` | `{"key": ..., "x", "y", "z": metres, "nx", "ny", "nz": the surface's normal, "yaw": radians, "level": id}` -- place one object in the space view |

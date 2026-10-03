@@ -117,3 +117,18 @@
       physics, layouts and the space view -- taken from a demo fleet by
       `mqttviz/demo/make-screenshots.sh`. See
       [Trying it without panels](mqttviz.md#trying-it-without-panels).
+- [x] mqttviz: The space view's lines carry their lengths in metres,
+      lying along them. See
+      [The lines tell how long they are](mqttviz.md#the-lines-tell-how-long-they-are).
+- [x] mqttviz: A view cube in the space view -- faces and bevels as
+      ways to look, a drag as the orbit's hand, zoom and framing
+      buttons under it. See
+      [The view cube](mqttviz.md#the-view-cube).
+- [x] mqttviz: A GUI size setting, one scale for the whole chrome
+      (70 to 160 per cent), kept with the settings. See
+      [Config](mqttviz.md#config).
+- [x] mqttviz: Place beacons by weighted hearings -- 1/d², near
+      readings outvoting far guesses through floors -- with a sweep
+      over the house's plan first, so the near readings' crossing wins
+      over its mirror. See
+      [Beacons find their own places](mqttviz.md#beacons-find-their-own-places).

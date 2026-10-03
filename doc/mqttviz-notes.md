@@ -259,3 +259,70 @@ it had none.
   framed the house's bounds but not the dock in front of it. The
   layouts list now says how many places a layout keeps in the house,
   and the wall slider is hidden while there is no house to dim.
+
+## Follow-up: lengths, beacons that trust the near, the view cube
+
+Requests, over a few days of trying it against the real house: drop the
+very old entries from the panels' topic lists, a length in metres on
+the 3D lines, the beacon that sat outside the workshop it was in, a
+view cube for the camera, and a GUI size for the whole chrome.
+
+- **The picture holds the recent.** `/api/state` now leaves out a
+  topic nobody has heard from for an hour and a panel silent for a
+  day. The registry keeps everything -- the filter is in the answer,
+  not in the store -- so both are back the moment they speak again.
+- **Line lengths.** Every link -- panel to access point, access point
+  to broker, beacon to panel -- carries its length in metres at its
+  middle, in the space view. The label is a CSS2D span inside the
+  positioned div: the renderer owns the div's transform, the span gets
+  the rotation, measured on the screen where the line is seen and
+  flipped upright past 90°.
+- **Beacons that trust the near.** The real house showed what the
+  demo's clean readings could not: panels on other floors report
+  distance estimates of 25 to 35 m for panels five metres away, and an
+  unweighted least-squares fit of those puts a workshop beacon thirty
+  metres outside the house. The descent also never converged -- forty
+  fixed steps stopped halfway. Now every hearing counts with the
+  weight of 1/d² -- a strong "2 m" is a claim, a weak "28 m through
+  two floors" is a guess -- and the best point is found on a coarse
+  sweep over the house's plan first, because two readings' circles
+  cross twice and the descent alone finds whichever crossing it starts
+  near. The sweep's best cell is polished by the old descent, run only
+  when the hearings change, throttled to half a second.
+- **A level id cut short.** The beacon, moved upstairs, still sat in
+  the basement: the server stored every place's level id cut to forty
+  characters (`[:40]`), and the house's ids are forty-two (`level-` +
+  a UUID); `levelById` then fell back to `houseLevels[0]`, which is the
+  basement, for every placed thing. The cap is sixty-four now, and the
+  page resolves an old cut id by its unique prefix, so the places
+  already kept still name their levels.
+- **The view cube.** A chamfered cube in the space view's lower left
+  corner -- six labelled faces for the views straight along an axis,
+  twelve edge bevels for the 45° diagonals, eight corner bevels for
+  the isometric ones -- drawn after the main pass into its own
+  scissored square with the depth cleared, so it floats over the house
+  without the bloom. It turns with the camera (the camera's quaternion
+  inverted); a tap flies there along the shortest arc, slerped around
+  the orbit target with the distance kept; a drag falls through to the
+  orbit, so the cube is the orbit's hand too, told apart from the tap
+  by the same five pixels a drag is. The poles keep a breath of the
+  azimuth they came from, and `maxPolarAngle` had to give up its
+  0.495π -- the bottom face is a view from below, and the clamp would
+  have snapped it right back.
+- **The GUI size.** One setting, 70 to 160 per cent: `--gui-scale` on
+  the root, `zoom` on the chrome (the top bar, the panels, the
+  dialogs, the space toolbar), `calc()` on the cube's buttons and the
+  space view's labels -- which must not be zoomed, their positions are
+  the projection's -- and the cube itself, drawn in the canvas, sized
+  in page pixels to match. The corner's stack (help text, buttons,
+  cube) is measured, not guessed, so it holds at any scale.
+- The mesh view's boxes, meanwhile, are found through index maps now
+  instead of `boxes.find` over the whole list, and its sparks, sweeps
+  and waves got small fixes on the way.
+
+Verified: the geometry and the picking against the vendored three
+(26 meshes, every face, edge and corner picking its direction, the
+slerp midpoint and the 180° case exact); the beacon's place against
+the live `/api/state` of the real house -- outside at (-5.3, -6.9)
+before, in the workshop at (1.8, 0.8) after, its floor following the
+strongest hearing once the cut level ids resolved.
