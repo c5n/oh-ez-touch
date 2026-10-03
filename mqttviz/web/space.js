@@ -388,8 +388,19 @@ function buildHouse() {
   renderToolbar();
 }
 
+/* The level an id names. The house's levels carry ids long enough to
+ * be their own, but a place as the server kept it arrives with a level
+ * id that an older version of it cut short: such an id is still the
+ * unique beginning of the level's own, and means the same level. */
+function findLevel(id) {
+  if (!id) return null;
+  return houseLevels.find((l) => l.id === id)
+         || houseLevels.find((l) => l.id.slice(0, id.length) === id)
+         || null;
+}
+
 function levelById(id) {
-  return houseLevels.find((l) => l.id === id) || houseLevels[0];
+  return findLevel(id) || houseLevels[0];
 }
 
 /* The level looked at is drawn whole; the ones below it dimmed, the
@@ -408,8 +419,7 @@ function applyLevelFilter() {
 /* Whether a level is drawn at all -- what sits on a hidden one is
  * hidden with it. */
 function levelShown(id) {
-  if (!id) return true;
-  const level = houseLevels.find((l) => l.id === id);
+  const level = findLevel(id);
   return !level || level.group.visible;
 }
 

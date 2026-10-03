@@ -183,7 +183,9 @@ def normalise_position3d(raw):
                            3)
     except (TypeError, ValueError):
         return None
-    pos["level"] = str(raw.get("level") or "")[:40]
+    # A level's id is a UUID with a prefix -- long enough that a cap
+    # must never cut into it, or the place stops naming its level.
+    pos["level"] = str(raw.get("level") or "")[:64]
     return pos
 
 
