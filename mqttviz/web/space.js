@@ -921,10 +921,11 @@ function frame(time) {
   }
 
   updateLinks(time);
-  controls.update();
+  if (!stepViewTween(time)) controls.update();
 
   if (host.fxOn()) composer.render();
   else renderer.render(scene, camera);
+  renderCube();
   labels.render(scene, camera);
 }
 
@@ -966,6 +967,217 @@ function saveCamera() {
     settings().cam3d = cam3d;
     host.api("/api/settings", { cam3d }).catch(() => {});
   }, 800);
+}
+
+/* -------------------------------------------------------- the view cube */
+
+/* A little house of the camera's own, in the upper right corner: six
+ * faces -- front, back, left, right, top, bottom -- each a tap for
+ * the view straight along its axis, and the bevels between them for
+ * the diagonals: the bevel along an edge looks from between two
+ * axes, a corner's from between three. The cube turns with the
+ * camera, so the face the house is seen from is the one that faces
+ * the eye. */
+
+const CUBE_PX = 104;           // the cube's square on the page, in px
+const CUBE_GAP = 14;           // between the square and the page's edge
+const CUBE_BEVEL = 0.26;       // of the half-size: how deep the bevels cut
+
+let cubeScene = null, cubeCam = null, cubeGroup = null;
+let cubeHover = null, cubePress = false;
+const cubeFaces = [];          // [{mesh, key}]: for relabelling
+const cubeRay = new THREE.Raycaster();
+const cubePointer = new THREE.Vector2();
+let viewTween = null;          // the flight to a tapped direction
+
+function faceTexture(text) {
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d");
+  g.fillStyle = "#12161f";
+  g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = "rgba(95, 224, 255, 0.5)";
+  g.lineWidth = 5;
+  g.beginPath();
+  if (g.roundRect) g.roundRect(4, 4, 120, 120, 14);
+  else g.rect(4, 4, 120, 120);
+  g.stroke();
+  g.fillStyle = "#9fdcff";
+  g.font = "600 18px 'Segoe UI', system-ui, sans-serif";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(String(text).toUpperCase(), 64, 66);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function labelFaces() {
+  for (const face of cubeFaces) {
+    face.mesh.material.map = faceTexture(host.t(face.key));
+    face.mesh.material.needsUpdate = true;
+  }
+}
+
+function cubeMesh(points, material, dir) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(
+    points.flat(), 3));
+  geometry.setIndex(points.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.userData.dir = dir;
+  return mesh;
+}
+
+function buildCube() {
+  cubeScene = new THREE.Scene();
+  cubeCam = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 10);
+  cubeCam.position.set(0, 0, 4);
+  cubeGroup = new THREE.Group();
+  cubeScene.add(cubeGroup);
+
+  const a = 1 - CUBE_BEVEL;
+  const uvs = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  /* Each face's corners run so its label stands upright from outside:
+   * the first is the lower left of what the eye sees. */
+  const faces = [
+    ["space.front", [0, 0, 1],
+     [[-a, -a, 1], [a, -a, 1], [a, a, 1], [-a, a, 1]]],
+    ["space.back", [0, 0, -1],
+     [[a, -a, -1], [-a, -a, -1], [-a, a, -1], [a, a, -1]]],
+    ["space.right", [1, 0, 0],
+     [[1, -a, a], [1, -a, -a], [1, a, -a], [1, a, a]]],
+    ["space.left", [-1, 0, 0],
+     [[-1, -a, -a], [-1, -a, a], [-1, a, a], [-1, a, -a]]],
+    ["space.top", [0, 1, 0],
+     [[-a, 1, a], [a, 1, a], [a, 1, -a], [-a, 1, -a]]],
+    ["space.bottom", [0, -1, 0],
+     [[-a, -1, -a], [a, -1, -a], [a, -1, a], [-a, -1, a]]],
+  ];
+  for (const [key, dir, corners] of faces) {
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    material.userData.base = new THREE.Color(0xffffff);
+    const mesh = cubeMesh(corners, material, new THREE.Vector3(...dir));
+    mesh.geometry.setAttribute("uv", new THREE.Float32BufferAttribute(
+      uvs.flat(), 2));
+    cubeFaces.push({ mesh, key });
+    cubeGroup.add(mesh);
+  }
+  labelFaces();
+
+  const bevel = () => {
+    const material = new THREE.MeshBasicMaterial({ color: "#233145",
+                                                   side: THREE.DoubleSide });
+    material.userData.base = new THREE.Color("#233145");
+    return material;
+  };
+  for (let i = 0; i < 3; i++) {
+    for (let j = i + 1; j < 3; j++) {
+      const k = 3 - i - j;
+      for (const si of [1, -1]) {
+        for (const sj of [1, -1]) {
+          const q = (pi, pj, w) => {
+            const p = [0, 0, 0];
+            p[i] = pi; p[j] = pj; p[k] = w;
+            return p;
+          };
+          const strip = [q(si, sj * a, -a), q(si * a, sj, -a),
+                         q(si * a, sj, a), q(si, sj * a, a)];
+          const dir = new THREE.Vector3();
+          dir.setComponent(i, si); dir.setComponent(j, sj);
+          cubeGroup.add(cubeMesh(strip, bevel(), dir.normalize()));
+        }
+      }
+    }
+  }
+  for (const sx of [1, -1]) {
+    for (const sy of [1, -1]) {
+      for (const sz of [1, -1]) {
+        const corner = [[sx, sy * a, sz * a], [sx * a, sy, sz * a],
+                        [sx * a, sy * a, sz]];
+        const dir = new THREE.Vector3(sx, sy, sz).normalize();
+        cubeGroup.add(cubeMesh(corner, bevel(), dir));
+      }
+    }
+  }
+}
+
+function cubeRect() {
+  const w = renderer.domElement.clientWidth;
+  return { x: w - CUBE_GAP - CUBE_PX, y: CUBE_GAP, s: CUBE_PX };
+}
+
+function cubeAt(event) {
+  if (!cubeGroup) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const r = cubeRect();
+  const cx = event.clientX - rect.left, cy = event.clientY - rect.top;
+  if (cx < r.x || cy < r.y || cx > r.x + r.s || cy > r.y + r.s) return null;
+  cubePointer.set((cx - r.x) / r.s * 2 - 1, -((cy - r.y) / r.s * 2 - 1));
+  cubeRay.setFromCamera(cubePointer, cubeCam);
+  const hit = cubeRay.intersectObject(cubeGroup, true)[0];
+  return hit ? hit.object : null;
+}
+
+function setCubeHover(mesh) {
+  if (mesh === cubeHover) return;
+  if (cubeHover) {
+    cubeHover.material.color.copy(cubeHover.material.userData.base);
+  }
+  cubeHover = mesh;
+  if (mesh) mesh.material.color.set("#ffd38a");
+}
+
+/* The flight to a tapped direction: the camera keeps its distance and
+ * swings around the point it looks at, its up never rolling -- the
+ * shortest arc the two directions span. Over the poles the orbit
+ * cannot stand upright, so the view keeps a breath of the azimuth it
+ * came from. */
+function startViewTween(dir) {
+  const from = camera.position.clone().sub(controls.target).normalize();
+  const to = dir.clone().normalize();
+  if (Math.abs(to.y) > 0.999) {
+    const azimuth = Math.atan2(from.x, from.z);
+    to.set(Math.sin(azimuth) * 0.06, to.y, Math.cos(azimuth) * 0.06)
+      .normalize();
+  }
+  viewTween = { t0: performance.now(), dur: 650, from, to,
+                dist: camera.position.distanceTo(controls.target) };
+}
+
+function stepViewTween(time) {
+  if (!viewTween) return false;
+  const t = Math.min(1, (time - viewTween.t0) / viewTween.dur);
+  const arc = new THREE.Quaternion()
+    .setFromUnitVectors(viewTween.from, viewTween.to);
+  const turn = new THREE.Quaternion().slerp(arc, t * t * (3 - 2 * t));
+  const dir = viewTween.from.clone().applyQuaternion(turn).normalize();
+  camera.position.copy(controls.target).addScaledVector(dir, viewTween.dist);
+  camera.lookAt(controls.target);
+  if (t >= 1) { viewTween = null; saveCamera(); }
+  return true;
+}
+
+/* The cube is drawn into its own square of the picture, after it: the
+ * scissor keeps it off the rest, and the depth is cleared first, so
+ * it floats in front of whatever the house shows there. */
+function renderCube() {
+  if (!cubeGroup) return;
+  const w = renderer.domElement.clientWidth;
+  const h = renderer.domElement.clientHeight;
+  const r = cubeRect();
+  const y = h - r.y - r.s;               // the GL counts from below
+  cubeGroup.quaternion.copy(camera.quaternion).invert();
+  const autoClear = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.setScissorTest(true);
+  renderer.setScissor(r.x, y, r.s, r.s);
+  renderer.setViewport(r.x, y, r.s, r.s);
+  renderer.clearDepth();
+  renderer.render(cubeScene, cubeCam);
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, w, h);
+  renderer.autoClear = autoClear;
 }
 
 /* ------------------------------------------------------------ the hands */
@@ -1044,6 +1256,15 @@ function placementAt(event, obj) {
 
 function onPointerDown(event) {
   if (event.button !== 0) return;
+  const cube = cubeAt(event);
+  if (cube) {
+    /* The tap is the cube's, not the orbit's and not a drag's. */
+    cubePress = true;
+    controls.enabled = false;
+    startViewTween(cube.userData.dir);
+    return;
+  }
+  viewTween = null;
   const obj = objectAt(event);
   if (!obj) return;
   drag = { obj, x: event.clientX, y: event.clientY, moved: false,
@@ -1058,6 +1279,13 @@ function onPointerDown(event) {
 
 function onPointerMove(event) {
   if (!drag) {
+    const cube = cubeAt(event);
+    if (cube) {
+      setCubeHover(cube);
+      renderer.domElement.style.cursor = "pointer";
+      return;
+    }
+    setCubeHover(null);
     const obj = objectAt(event);
     hovered = obj;
     renderer.domElement.style.cursor = obj ? "pointer" : "";
@@ -1103,6 +1331,11 @@ function onPointerMove(event) {
 }
 
 function onPointerUp(event) {
+  if (cubePress) {
+    cubePress = false;
+    controls.enabled = true;
+    return;
+  }
   if (!drag) return;
   const { obj, moved, changed } = drag;
   drag = null;
@@ -1333,7 +1566,9 @@ function init() {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.08;
-  controls.maxPolarAngle = Math.PI * 0.495;
+  /* The orbit may go under the house: the view cube's bottom face is
+   * a view from below, and it has to hold. */
+  controls.maxPolarAngle = Math.PI - 0.02;
   controls.addEventListener("end", saveCamera);
 
   root = new THREE.Group();
@@ -1367,6 +1602,8 @@ function init() {
   bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.25, 0.4);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+
+  buildCube();
 
   const dom = renderer.domElement;
   dom.addEventListener("pointerdown", onPointerDown, { capture: true });
@@ -1422,6 +1659,8 @@ function leave() {
   }
   setVisible(false);
   hovered = null;
+  setCubeHover(null);
+  viewTween = null;
 }
 
 /* Called by app.js after every poll and every switch of the picture:
@@ -1466,7 +1705,11 @@ if (location.hash === "#debug") {
   }, 300);
 }
 
-document.addEventListener("langchange", () => { if (ready) renderToolbar(); });
+document.addEventListener("langchange", () => {
+  if (!ready) return;
+  renderToolbar();
+  labelFaces();
+});
 
 window.MqttvizSpace = {
   update,
