@@ -1173,15 +1173,24 @@ class Handler(BaseHTTPRequestHandler):
     def handle_state(self):
         with STATE.lock:
             devices = []
+            now = time.time()
             for host in sorted(STATE.devices):
                 device = STATE.devices[host]
+
+                # A panel nobody has heard from for a day is history:
+                # it is not in the picture any more.
+                if device.get("last_ts") and now - device["last_ts"] > 86400:
+                    continue
 
                 topics = {}
                 for suffix, record in device.get("topics", {}).items():
                     record = dict(record)
-                    record["age"] = max(0, round(time.time()
-                                                 - record.get("ts", 0)))
-                    topics[suffix] = record
+                    age = max(0, round(now - record.get("ts", 0)))
+                    # A topic an hour old is not news either: the detail
+                    # view lists what the device says, not what it said.
+                    if age <= 3600:
+                        record["age"] = age
+                        topics[suffix] = record
 
                 devices.append({
                     "host": device["host"],
