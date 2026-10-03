@@ -122,6 +122,7 @@ const I18N = {
     "set.user": "username",
     "set.pass": "password",
     "set.language": "language",
+    "set.guiScale": "GUI size",
     "set.verbose": "log every message",
     "hint.settings": "Saving keeps every profile; the one in use is picked"
                      + " with the selector in the top bar. The passwords"
@@ -364,6 +365,7 @@ const I18N = {
     "set.user": "Benutzername",
     "set.pass": "Passwort",
     "set.language": "Sprache",
+    "set.guiScale": "GUI-Größe",
     "set.verbose": "jede Nachricht protokollieren",
     "hint.settings": "Speichern behält jedes Profil; welches benutzt wird,"
                      + " wählt die Auswahl in der Leiste oben. Die"

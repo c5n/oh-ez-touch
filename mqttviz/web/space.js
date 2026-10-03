@@ -969,26 +969,50 @@ function saveCamera() {
   }, 800);
 }
 
+/* The zoom buttons below the cube: the camera steps along the line it
+ * looks along, the way the wheel's dolly does, and keeps the point it
+ * looks at. */
+function zoomBy(factor) {
+  viewTween = null;
+  const offset = camera.position.clone().sub(controls.target);
+  const dist = Math.max(0.5, offset.length() * factor);
+  camera.position.copy(controls.target)
+    .addScaledVector(offset.normalize(), dist);
+  controls.update();
+  saveCamera();
+}
+
 /* -------------------------------------------------------- the view cube */
 
-/* A little house of the camera's own, in the upper right corner: six
+/* A little house of the camera's own, in the lower left corner: six
  * faces -- front, back, left, right, top, bottom -- each a tap for
  * the view straight along its axis, and the bevels between them for
  * the diagonals: the bevel along an edge looks from between two
  * axes, a corner's from between three. The cube turns with the
  * camera, so the face the house is seen from is the one that faces
- * the eye. */
+ * the eye. A drag on it is the orbit's: the hand swings the view. */
 
-const CUBE_PX = 104;           // the cube's square on the page, in px
+const CUBE_PX = 312;           // the cube's square at a GUI scale of 100%
 const CUBE_GAP = 14;           // between the square and the page's edge
+const CUBE_BOTTOM = 56;        // the help text's place under it, kept clear
 const CUBE_BEVEL = 0.26;       // of the half-size: how deep the bevels cut
 
 let cubeScene = null, cubeCam = null, cubeGroup = null;
-let cubeHover = null, cubePress = false;
+let cubeHover = null, cubePress = null;
+let cubeBottom = CUBE_BOTTOM + 36;   // the cube's lower edge, from below
 const cubeFaces = [];          // [{mesh, key}]: for relabelling
 const cubeRay = new THREE.Raycaster();
 const cubePointer = new THREE.Vector2();
 let viewTween = null;          // the flight to a tapped direction
+
+/* The cube is part of the interface: it grows with the GUI size
+ * setting, like everything else that is not a canvas. */
+function guiScale() {
+  const n = Number(settings().gui_scale);
+  return isFinite(n) && n >= 70 ? Math.min(160, n) / 100 : 1;
+}
+
+function cubePx() { return Math.round(CUBE_PX * guiScale()); }
 
 function faceTexture(text) {
   const c = document.createElement("canvas");
@@ -1102,9 +1126,21 @@ function buildCube() {
   }
 }
 
+/* The corner's stack, from the bottom of the stage: the help text,
+ * then the buttons, then the cube over them. Measured, not guessed,
+ * so the buttons follow the cube whatever the GUI size. */
+function layoutCubeChrome() {
+  if (!ui.cubeBtns) return;
+  const h = renderer.domElement.clientHeight;
+  const btnH = ui.cubeBtns.offsetHeight || 34;
+  cubeBottom = CUBE_BOTTOM + btnH + 6;
+  ui.cubeBtns.style.top = (h - CUBE_BOTTOM - btnH) + "px";
+}
+
 function cubeRect() {
-  const w = renderer.domElement.clientWidth;
-  return { x: w - CUBE_GAP - CUBE_PX, y: CUBE_GAP, s: CUBE_PX };
+  const h = renderer.domElement.clientHeight;
+  const size = cubePx();
+  return { x: CUBE_GAP, y: h - cubeBottom - size, s: size };
 }
 
 function cubeAt(event) {
@@ -1258,10 +1294,10 @@ function onPointerDown(event) {
   if (event.button !== 0) return;
   const cube = cubeAt(event);
   if (cube) {
-    /* The tap is the cube's, not the orbit's and not a drag's. */
-    cubePress = true;
-    controls.enabled = false;
-    startViewTween(cube.userData.dir);
+    /* The tap is the cube's; the drag is the orbit's -- the controls
+     * take the hand, the tap is told apart on release. */
+    cubePress = { mesh: cube, x: event.clientX, y: event.clientY,
+                  moved: false };
     return;
   }
   viewTween = null;
@@ -1278,6 +1314,11 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
+  if (cubePress && !cubePress.moved
+      && Math.hypot(event.clientX - cubePress.x,
+                    event.clientY - cubePress.y) > 5) {
+    cubePress.moved = true;
+  }
   if (!drag) {
     const cube = cubeAt(event);
     if (cube) {
@@ -1332,8 +1373,9 @@ function onPointerMove(event) {
 
 function onPointerUp(event) {
   if (cubePress) {
-    cubePress = false;
-    controls.enabled = true;
+    const press = cubePress;
+    cubePress = null;
+    if (!press.moved) startViewTween(press.mesh.userData.dir);
     return;
   }
   if (!drag) return;
@@ -1437,7 +1479,13 @@ function buildChrome() {
 
   ui.help = el("div", "space-help");
 
-  stageEl.append(ui.bar, ui.empty, ui.help);
+  ui.cubeBtns = el("div", "space-cube-btns");
+  ui.zoomInBtn = el("button", "space-cube-btn", "+");
+  ui.zoomOutBtn = el("button", "space-cube-btn", "−");
+  ui.fitBtn = el("button", "space-cube-btn", "⤢");
+  ui.cubeBtns.append(ui.zoomInBtn, ui.zoomOutBtn, ui.fitBtn);
+
+  stageEl.append(ui.bar, ui.cubeBtns, ui.empty, ui.help);
 
   ui.file.addEventListener("change", () => {
     const file = ui.file.files[0];
@@ -1446,6 +1494,9 @@ function buildChrome() {
   });
   ui.removeBtn.addEventListener("click", removeHouse);
   ui.homeBtn.addEventListener("click", () => { frameHouse(); saveCamera(); });
+  ui.zoomInBtn.addEventListener("click", () => zoomBy(1 / 1.3));
+  ui.zoomOutBtn.addEventListener("click", () => zoomBy(1.3));
+  ui.fitBtn.addEventListener("click", () => { frameHouse(); saveCamera(); });
 
   let opacitySave = null;
   ui.opacity.addEventListener("input", () => {
@@ -1465,6 +1516,9 @@ function renderToolbar() {
   ui.removeBtn.textContent = t("space.remove");
   ui.homeBtn.textContent = "⌂";
   ui.homeBtn.title = t("space.home");
+  ui.zoomInBtn.title = t("tip.zoomIn");
+  ui.zoomOutBtn.title = t("tip.zoomOut");
+  ui.fitBtn.title = t("space.home");
   ui.opacity.title = t("space.opacity");
   ui.removeBtn.classList.toggle("hidden", !house);
   ui.opacity.classList.toggle("hidden", !house);
@@ -1490,6 +1544,10 @@ function renderToolbar() {
   };
   button(t("space.allLevels"), null);
   for (const level of houseLevels) button(level.name || level.id, level.id);
+
+  /* The cube's corner follows: the buttons' size, and with it the
+   * cube's place, changes with the GUI size setting. */
+  layoutCubeChrome();
 }
 
 async function loadHouse() {
@@ -1627,11 +1685,12 @@ function resize() {
   composer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  layoutCubeChrome();
 }
 
 function setVisible(on) {
   for (const node of [renderer.domElement, labels.domElement, ui.bar,
-                      ui.help]) {
+                      ui.cubeBtns, ui.help]) {
     node.classList.toggle("hidden", !on);
   }
   ui.empty.classList.toggle("hidden", !on || !!house);
@@ -1659,6 +1718,7 @@ function leave() {
   }
   setVisible(false);
   hovered = null;
+  cubePress = null;
   setCubeHover(null);
   viewTween = null;
 }

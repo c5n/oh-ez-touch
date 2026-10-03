@@ -237,6 +237,14 @@ def normalise_holo_opacity(raw):
         return 50
 
 
+def normalise_gui_scale(raw):
+    """How large the interface is drawn: a percentage of its size."""
+    try:
+        return max(70, min(160, int(raw)))
+    except (TypeError, ValueError):
+        return 100
+
+
 def normalise_layout_name(name):
     """One name for a saved arrangement, whatever the page said: a
     short non-empty string."""
@@ -440,6 +448,7 @@ class State:
         "positions3d": {},
         "cam3d": None,
         "holo_opacity": 50,
+        "gui_scale": 100,
         "phys_nodes": dict(PHYS_DEFAULTS),
         "phys_aps": dict(PHYS_DEFAULTS),
         "phys_beacons": dict(PHYS_DEFAULTS),
@@ -576,6 +585,8 @@ class State:
         self.settings["cam3d"] = normalise_cam3d(self.settings.get("cam3d"))
         self.settings["holo_opacity"] = normalise_holo_opacity(
             self.settings.get("holo_opacity"))
+        self.settings["gui_scale"] = normalise_gui_scale(
+            self.settings.get("gui_scale"))
 
         # The language of the page: English or German, kept with the rest
         # so every browser that opens the tool starts right.
@@ -1376,6 +1387,9 @@ class Handler(BaseHTTPRequestHandler):
             if "holo_opacity" in body:
                 STATE.settings["holo_opacity"] = normalise_holo_opacity(
                     body["holo_opacity"])
+            if "gui_scale" in body:
+                STATE.settings["gui_scale"] = normalise_gui_scale(
+                    body["gui_scale"])
 
             # The physics sliders: whole numbers in their ranges, whatever
             # the page meant by them, clamped here -- and set apart for

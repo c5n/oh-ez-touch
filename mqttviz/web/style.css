@@ -17,6 +17,17 @@
   --lcars-teal: #5fc9b0;
   --good: #7ec97e;
   --bad: #e06a5f;
+  --gui-scale: 1;
+}
+
+/* The GUI size setting: one scale for every part of the chrome, read
+ * as --gui-scale and set by app.js. The canvases are left out of it --
+ * they draw their picture at the size the window gives them, and the
+ * labels in the space view grow with the scale instead, so what they
+ * say stays readable at any size of house. */
+#topbar, #zoom-controls, #detail, #physics, #settings, #layouts,
+#console, #toast, .space-bar, .space-empty {
+  zoom: var(--gui-scale);
 }
 
 * { box-sizing: border-box; }
@@ -215,6 +226,7 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 
 .space-label {
   font: 600 11px/1.2 "Segoe UI", system-ui, sans-serif;
+  font-size: calc(11px * var(--gui-scale));
   letter-spacing: 0.04em;
   color: var(--text);
   padding: 1px 6px;
@@ -230,6 +242,7 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 .space-label.space-beacon { color: var(--lcars-teal); font-weight: 500; }
 .space-label.space-length {
   font: 500 10px/1.1 "Segoe UI", system-ui, sans-serif;
+  font-size: calc(10px * var(--gui-scale));
   color: var(--dim);
   opacity: 0.9;
   padding: 0 4px;
@@ -249,14 +262,14 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 
 .space-bar {
   position: absolute;
-  left: 14px;
+  right: 14px;
   top: 12px;
   display: flex;
   align-items: center;
   gap: 8px;
   z-index: 5;
   flex-wrap: wrap;
-  max-width: calc(100% - 420px);
+  max-width: calc(100% - 350px);
 }
 .space-bar .segment { gap: 0; }
 .space-bar .seg-btn { flex: none; padding: 4px 10px; font-size: 11px; }
@@ -267,6 +280,34 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
   text-shadow: 0 0 8px rgba(95, 224, 255, 0.7);
 }
 .space-opacity { width: 110px; accent-color: #5fe0ff; }
+
+/* The buttons under the view cube: zoom in, zoom out, and the whole
+ * house in the picture again. They are sized with the GUI scale in
+ * mind rather than zoomed: they sit against the cube, which the
+ * canvas draws, and the two must stay measured in the same pixels. */
+.space-cube-btns {
+  position: absolute;
+  left: 14px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+}
+.space-cube-btn {
+  flex: none;
+  width: calc(34px * var(--gui-scale, 1));
+  padding: calc(4px * var(--gui-scale, 1)) 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
+  background: #171c27;
+  color: var(--dim);
+  font: 600 15px "Segoe UI", system-ui, sans-serif;
+  font-size: calc(15px * var(--gui-scale, 1));
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+.space-cube-btn:hover { border-color: var(--dim); color: var(--text); }
+
+.gui-scale { flex: 1; accent-color: #5fe0ff; }
 
 .space-help {
   position: absolute;

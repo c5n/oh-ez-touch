@@ -131,6 +131,7 @@ async function pollState() {
     if (doc.settings.lang && doc.settings.lang !== lang) {
       setLang(doc.settings.lang);
     }
+    applyGuiScale(doc.settings.gui_scale);
 
     /* The camera is adopted once, where the last session left it
      * looking; after that the hands own it, and it is saved when it
@@ -3574,6 +3575,15 @@ $("broker-remove").addEventListener("click", () => {
   fillBrokerForm();
 });
 
+/* How large the interface is drawn: one number for every part of the
+ * chrome -- the bars, the buttons, the panels -- which the stylesheet
+ * reads as --gui-scale. The canvases are not part of it: they draw
+ * what they draw, at the size the window gives them. */
+function applyGuiScale(percent) {
+  const scale = Math.max(0.7, Math.min(1.6, (Number(percent) || 100) / 100));
+  document.documentElement.style.setProperty("--gui-scale", scale);
+}
+
 function openSettings() {
   const s = state.settings;
   brokerDialog.brokers = JSON.parse(JSON.stringify(s.brokers || [{}]));
@@ -3583,6 +3593,7 @@ function openSettings() {
   $("set-enabled").checked = !!s.mqtt_enabled;
   $("set-verbose").checked = !!s.verbose;
   $("set-lang").value = s.lang === "de" ? "de" : "en";
+  $("set-gui-scale").value = s.gui_scale || 100;
   renderBrokerList();
   fillBrokerForm();
   $("settings").classList.remove("hidden");
@@ -3603,9 +3614,12 @@ $("settings-form").addEventListener("submit", async (event) => {
       brokers: brokerDialog.brokers,
       verbose: $("set-verbose").checked,
       lang: $("set-lang").value,
+      gui_scale: Number($("set-gui-scale").value),
     });
-    /* The language acts at once, the way it acts on the server. */
+    /* The language and the GUI size act at once, the way they act on
+     * the server. */
     setLang($("set-lang").value);
+    applyGuiScale($("set-gui-scale").value);
     closeSettings();
     toast(t("toast.settingsSaved"));
     pollState();
