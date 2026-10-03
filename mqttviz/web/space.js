@@ -34,6 +34,7 @@ let ready = false;
 let active = false;
 let renderer, labels, scene, camera, controls, composer, bloom;
 let root, houseGroup, objGroup, linkLines, beaconLines, pulsePoints;
+let linkLabelGroup = null;
 let house = null;
 let houseLevels = [];        // [{id, name, elevation, height, group, ...}]
 let levelFilter = null;      // a level id, or null for the whole house
@@ -42,6 +43,7 @@ let bounds = { min: [-3, -3], max: [3, 3] };
 let camAdopted = false;
 let houseLoaded = false;     // the camera frames the house, once it is in
 let lastTime = performance.now();
+let frameRequest = null;
 
 const objs = new Map();      // key -> one object of the network
 const pulses = [];           // activity travelling along the links
@@ -643,10 +645,18 @@ function syncObjects() {
 /* -------------------------------------------------------------- beacons */
 
 /* Where a beacon is, from what the placed panels say of it: the point
- * whose distances to them come closest to the ones they report -- a
- * few steps of gradient descent from where it was, in the plane of
- * the floor, at hand height. One panel alone can only say how far: the
- * beacon circles it at that distance. None, and it is not drawn. */
+ * whose distances to them come closest to the ones they report. The
+ * hearings are not equal: a panel two metres away says where the
+ * beacon is, one thirty metres -- and two floors -- away says only
+ * that it is somewhere far, an RSSI guess through concrete that must
+ * not outvote the near ones. So every hearing counts, but with the
+ * weight of 1/d² -- and the best point is first looked for on a
+ * coarse sweep over the house, because two readings' circles cross
+ * twice and a descent alone finds whichever crossing it starts near.
+ * A few steps of weighted descent polish the sweep's best cell, in
+ * the plane of the floor, at hand height. One panel alone can only
+ * say how far: the beacon circles it at that distance. None, and it
+ * is not drawn. */
 function solveBeacon(obj, dt) {
   const beacon = obj.dev;
   const timeout = Number((settings().phys_beacons || {}).line_timeout) || 90;
@@ -671,23 +681,40 @@ function solveBeacon(obj, dt) {
     return true;
   }
 
-  let x = obj.solved ? obj.target.x : 0, z = obj.solved ? obj.target.z : 0;
-  if (!obj.solved) {
-    for (const h of hearers) { x += h.p.x; z += h.p.z; }
-    x /= hearers.length; z /= hearers.length;
-    x += 0.05; z += 0.05;                 // never exactly on a panel
+  const sig = hearers.map((h) => h.panel.key + ":" + h.d).join("|");
+  if (obj.solved && sig === obj.solveSig
+      && performance.now() - (obj.solveAt || 0) < 500) return true;
+  obj.solveSig = sig;
+  obj.solveAt = performance.now();
+
+  const cost = (x, z) => {
+    let c = 0;
+    for (const h of hearers) {
+      const r = Math.max(0.05, Math.hypot(x - h.p.x, z - h.p.z));
+      c += (r - h.d) * (r - h.d) / (h.d * h.d);
+    }
+    return c;
+  };
+  let x = bounds.min[0], z = bounds.min[1], best = Infinity;
+  for (let gx = bounds.min[0]; gx <= bounds.max[0]; gx += 0.25) {
+    for (let gz = bounds.min[1]; gz <= bounds.max[1]; gz += 0.25) {
+      const c = cost(gx, gz);
+      if (c < best) { best = c; x = gx; z = gz; }
+    }
   }
   for (let i = 0; i < 40; i++) {
-    let gx = 0, gz = 0;
+    let gx = 0, gz = 0, wsum = 0;
     for (const h of hearers) {
       const dx = x - h.p.x, dz = z - h.p.z;
       const r = Math.max(0.05, Math.hypot(dx, dz));
       const err = r - h.d;
-      gx += err * dx / r;
-      gz += err * dz / r;
+      const w = 1 / (h.d * h.d);
+      gx += w * err * dx / r;
+      gz += w * err * dz / r;
+      wsum += w;
     }
-    x -= 0.4 * gx / hearers.length;
-    z -= 0.4 * gz / hearers.length;
+    x -= 0.4 * gx / wsum;
+    z -= 0.4 * gz / wsum;
   }
   obj.solved = true;
   obj.target.set(x, floorY, z);
@@ -720,8 +747,55 @@ function spawnPulse(panel) {
   pulses.push({ from: panel, t0: performance.now(), dur: 900 });
 }
 
+/* The length of every drawn line, as a small label at its middle. The
+ * house is in metres, so are the lines -- one label per link, kept
+ * from frame to frame, dropped when the line is no longer drawn. The
+ * label lies along its line: the angle is measured on the screen,
+ * where the line is seen, and turned upright when it would run
+ * upside-down. */
+const linkLabelMap = new Map();     // "a>b" -> CSS2DObject
+const _linkA = new THREE.Vector3(), _linkB = new THREE.Vector3();
+
+function setLinkLabel(key, a, b) {
+  let label = linkLabelMap.get(key);
+  if (!label) {
+    const el = document.createElement("div");
+    el.className = "space-label space-length";
+    const span = document.createElement("span");
+    el.appendChild(span);
+    label = new CSS2DObject(el);
+    linkLabelGroup.add(label);
+    linkLabelMap.set(key, label);
+  }
+  label.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+  const span = label.element.firstChild;
+  const text = a.distanceTo(b).toFixed(1) + " m";
+  if (span.textContent !== text) span.textContent = text;
+
+  camera.updateMatrixWorld();
+  _linkA.copy(a).project(camera);
+  _linkB.copy(b).project(camera);
+  const w = (renderer.domElement.clientWidth || 1) / 2;
+  const h = (renderer.domElement.clientHeight || 1) / 2;
+  let angle = Math.atan2(-(_linkB.y - _linkA.y) * h,
+                         (_linkB.x - _linkA.x) * w) * 180 / Math.PI;
+  if (angle > 90) angle -= 180;          // never upside-down
+  if (angle < -90) angle += 180;
+  span.style.transform = "rotate(" + angle.toFixed(1) + "deg)";
+}
+
+function pruneLinkLabels(drawn) {
+  for (const [key, label] of linkLabelMap) {
+    if (drawn.has(key)) continue;
+    linkLabelGroup.remove(label);
+    label.element.remove();
+    linkLabelMap.delete(key);
+  }
+}
+
 function updateLinks(time) {
   const pos = [], col = [];
+  const drawn = new Set();
   for (const obj of objs.values()) {
     const up = uplinkOf(obj);
     if (!up || !obj.group.visible || !up.group.visible) continue;
@@ -729,6 +803,9 @@ function updateLinks(time) {
     const k = 0.35 + (obj.flash || 0) * 0.65;
     col.push(linkColor.r * k, linkColor.g * k, linkColor.b * k,
              linkColor.r * 0.35, linkColor.g * 0.35, linkColor.b * 0.35);
+    const key = obj.key + ">" + up.key;
+    setLinkLabel(key, obj.pos, up.pos);
+    drawn.add(key);
   }
   setLineBuffer(linkLines, pos, col);
 
@@ -743,9 +820,13 @@ function updateLinks(time) {
       bcol.push(beaconColor.r * fade, beaconColor.g * fade,
                 beaconColor.b * fade, beaconColor.r * fade * 0.4,
                 beaconColor.g * fade * 0.4, beaconColor.b * fade * 0.4);
+      const key = obj.key + ">" + h.panel.key;
+      setLinkLabel(key, obj.pos, h.panel.pos);
+      drawn.add(key);
     }
   }
   setLineBuffer(beaconLines, bpos, bcol);
+  pruneLinkLabels(drawn);
 
   const ppos = [];
   for (let i = pulses.length - 1; i >= 0; i--) {
@@ -762,22 +843,35 @@ function updateLinks(time) {
     ppos.push(a.x + (b.x - a.x) * lt, a.y + (b.y - a.y) * lt,
               a.z + (b.z - a.z) * lt);
   }
-  pulsePoints.geometry.setAttribute(
-    "position", new THREE.Float32BufferAttribute(ppos, 3));
+  setDynamicAttribute(pulsePoints.geometry, "position", ppos, 3);
+  pulsePoints.geometry.setDrawRange(0, ppos.length / 3);
+}
+
+function setDynamicAttribute(geometry, name, values, itemSize) {
+  let attribute = geometry.getAttribute(name);
+  if (!attribute || attribute.array.length < values.length) {
+    let size = attribute ? Math.max(itemSize, attribute.array.length) : itemSize;
+    while (size < values.length) size *= 2;
+    attribute = new THREE.BufferAttribute(new Float32Array(size), itemSize);
+    attribute.setUsage(THREE.DynamicDrawUsage);
+    geometry.setAttribute(name, attribute);
+  }
+  attribute.array.set(values);
+  attribute.needsUpdate = true;
 }
 
 function setLineBuffer(lines, pos, col) {
-  lines.geometry.setAttribute("position",
-                              new THREE.Float32BufferAttribute(pos, 3));
-  lines.geometry.setAttribute("color",
-                              new THREE.Float32BufferAttribute(col, 3));
+  setDynamicAttribute(lines.geometry, "position", pos, 3);
+  setDynamicAttribute(lines.geometry, "color", col, 3);
+  lines.geometry.setDrawRange(0, pos.length / 3);
 }
 
 /* ------------------------------------------------------------- the loop */
 
 function frame(time) {
+  frameRequest = null;
   if (!active) return;
-  requestAnimationFrame(frame);
+  frameRequest = requestAnimationFrame(frame);
   const dt = Math.min(0.1, (time - lastTime) / 1000);
   lastTime = time;
 
@@ -1245,6 +1339,8 @@ function init() {
                                   blending: THREE.AdditiveBlending }));
   linkLines = vertexLines();
   beaconLines = vertexLines();
+  linkLabelGroup = new THREE.Group();
+  scene.add(linkLabelGroup);
   pulsePoints = new THREE.Points(
     new THREE.BufferGeometry(),
     new THREE.PointsMaterial({ map: glowTexture("#ffd38a"), size: 0.18,
@@ -1304,12 +1400,16 @@ function enter() {
   syncObjects();
   renderToolbar();
   lastTime = performance.now();
-  requestAnimationFrame(frame);
+  frameRequest = requestAnimationFrame(frame);
 }
 
 function leave() {
   if (!active) return;
   active = false;
+  if (frameRequest !== null) {
+    cancelAnimationFrame(frameRequest);
+    frameRequest = null;
+  }
   setVisible(false);
   hovered = null;
 }

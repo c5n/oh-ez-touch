@@ -228,6 +228,15 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 .space-label.space-ap { color: var(--lcars-peri); }
 .space-label.space-broker { color: #ffd38a; }
 .space-label.space-beacon { color: var(--lcars-teal); font-weight: 500; }
+.space-label.space-length {
+  font: 500 10px/1.1 "Segoe UI", system-ui, sans-serif;
+  color: var(--dim);
+  opacity: 0.9;
+  padding: 0 4px;
+  border: none;
+  background: rgba(11, 13, 18, 0.4);
+  text-shadow: 0 0 5px rgba(95, 224, 255, 0.4);
+}
 .space-label.offline { color: var(--dim); opacity: 0.7; }
 
 .space-room {
