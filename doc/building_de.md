@@ -95,6 +95,25 @@ idf.py -B build/arduitouch -DSDKCONFIG=build/arduitouch/sdkconfig \
 idf.py -B build/arduitouch build
 ```
 
+Für ein ArduiTouch 2.4" mit angeschlossenem esp-prog verwenden Sie die
+JTAG-Defaults und ein eigenes Build-Verzeichnis. Geflasht wird über den
+UART-Adapter des Targets (meist `/dev/ttyUSB0`); die JTAG-Schnittstelle ersetzt
+diesen seriellen Port nicht:
+
+```bash
+idf.py -B build/arduitouch_jtag -DSDKCONFIG=build/arduitouch_jtag/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch_jtag" \
+       set-target esp32
+idf.py -B build/arduitouch_jtag build
+idf.py -B build/arduitouch_jtag -p /dev/ttyUSB0 flash monitor
+```
+
+Dieser Build verlegt Touch-CS und Hintergrundbeleuchtung von den GPIOs 12–15,
+die JTAG benötigt. Falls dieses Build-Verzeichnis bereits ohne JTAG-Defaults
+konfiguriert wurde, löschen Sie `build/arduitouch_jtag/sdkconfig` und führen
+`set-target esp32` erneut aus; Defaults werden nur in eine neue `sdkconfig`
+übernommen.
+
 Ohne eine Board-Defaults-Datei gilt der Kconfig-Standardwert: ArduiTouch
 2.4".
 

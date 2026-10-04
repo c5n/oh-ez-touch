@@ -154,7 +154,7 @@ static const char *TAG = "ohez_mqtt";
  * anyone sets by hand; the depth exists so that a broker replaying a handful of
  * retained commands at connect time does not lose any -- and with the relays
  * and the LEDs subscribing too there are now six more of those to replay. */
-#define MQTT_COMMAND_QUEUE_DEPTH 16
+#define MQTT_COMMAND_QUEUE_DEPTH 8
 
 /* How many modules may own a subtree of the command tree. Four are taken:
  * the settings here, the relays, the LEDs and the beeper. */
@@ -498,6 +498,13 @@ static void publish_system(Config &config)
 {
     char            value[MQTT_VALUE_MAX];
     port_net_info_t net;
+
+    /* Skip publishing system metrics if memory is critically low */
+    size_t free_heap = port_free_heap();
+    if (free_heap < 8000) {
+        // Critical memory level, avoid additional allocations
+        return;
+    }
 
     /* port_millis() is the uptime: monotonic since boot, and nothing resets
      * it. Same source as the Info tab's row and the web status page's. */

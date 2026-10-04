@@ -134,6 +134,9 @@ static lv_obj_t *content = nullptr;
  * WLAN state change arrive separately and each has to redraw both halves. */
 static bool wifi_online;
 
+/* Track number of concurrent icon requests to manage memory usage */
+static int active_icon_requests = 0;
+
 struct widget_context_s
 {
     uint64_t update_timestamp = 0;
@@ -833,11 +836,26 @@ static void widget_icon_request(size_t slot)
     if (wctx->icon_pending == true)
         return;
 
+    // Check memory availability before requesting icon
+    size_t free_heap = port_free_heap();
+    if (free_heap < 10000) {
+        // Skip icon request if memory is low
+        return;
+    }
+
+    // Limit concurrent icon requests to prevent memory exhaustion
+    if (active_icon_requests >= 3) {
+        // Too many concurrent icon requests, skip this one
+        return;
+    }
+
     if (wctx->item->iconUrl(current_website, url, sizeof(url)) == false)
         return;
 
-    if (openhab_client_request_icon(url, (uint8_t)slot, page_generation) == true)
+    if (openhab_client_request_icon(url, (uint8_t)slot, page_generation) == true) {
         wctx->icon_pending = true;
+        active_icon_requests++;  // Increment counter when request is made
+    }
 }
 
 /* Halve an ARGB8888 image in both directions. The tiles show every icon at
@@ -954,6 +972,13 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
          * device. */
         unsigned png_width, png_height;
 
+        // Check memory before attempting PNG decode to avoid crashes
+        size_t free_heap_before = port_free_heap();
+        if (free_heap_before < 15000) {
+            // Clear LVGL image cache to free up memory before decoding
+            lv_image_cache_drop(NULL);
+        }
+        
         // Decode the loaded image in ARGB8888
         unsigned int error = lodepng_decode32(&pixels, &png_width, &png_height,
                                               (const unsigned char *)png, png_len);
@@ -2270,8 +2295,17 @@ static void results_apply_one(void)
         /* A failed or missing icon is not counted, and never was: getIcon()
          * returning 0 was silent. Counting it would let a panel whose openHAB
          * has no icon set drive itself into a restart every three minutes. */
-        if (res.ok == true && res.payload != NULL)
-            widget_icon_decode_and_show(&widget_context[res.slot], &res);
+        if (res.ok == true && res.payload != NULL) {
+            // Only process icon if sufficient memory available
+            size_t free_heap = port_free_heap();
+            if (free_heap > 10000) {
+                widget_icon_decode_and_show(&widget_context[res.slot], &res);
+            }
+        }
+        // Decrement counter when icon request is completed (processed or skipped)
+        if (active_icon_requests > 0) {
+            active_icon_requests--;
+        }
         break;
 
     case OPENHAB_REQ_STATE:
@@ -2370,10 +2404,22 @@ void openhab_ui_loop(void)
     static uint64_t night_check_next_timestamp;
     static uint64_t update_ntp_next_timestamp;
     static uint64_t statistics_window_timestamp;
+    static uint64_t last_memory_cleanup = 0;
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     static uint64_t statistics_timestamp;
 #endif
     openhab_ui_messagebox.loop();
+
+    // Periodic memory cleanup to prevent fragmentation
+    uint64_t current_time = port_millis();
+    if (current_time - last_memory_cleanup > 30000) {  // Every 30 seconds
+        size_t free_heap = port_free_heap();
+        if (free_heap < 20000) {
+            // Clear LVGL image cache when memory is low
+            lv_image_cache_drop(NULL);
+        }
+        last_memory_cleanup = current_time;
+    }
 
     results_apply_one();
     events_apply_one();
@@ -2427,8 +2473,13 @@ void openhab_ui_loop(void)
                         port_millis() - (interval - ITEM_UPDATE_INTERVAL);
                     widget_context[i].refresh_request = false;
                     update_state_widget(&widget_context[i]);
-                    if (widget_context[i].item->isStaticIcon() == false)
-                        widget_icon_request(i);
+                    if (widget_context[i].item->isStaticIcon() == false) {
+                        // Only request icon if sufficient memory available
+                        size_t free_heap = port_free_heap();
+                        if (free_heap > 12000) {
+                            widget_icon_request(i);
+                        }
+                    }
                     statistics.update_success_cnt++;
                 }
 
@@ -2452,12 +2503,18 @@ void openhab_ui_loop(void)
                          * poll still produces exactly one success or one
                          * failure, so the counters below stay a true tally. */
                         statistics.update_fail_cnt++;
-                    }
-                    else
-                    {
-                        widget_context[i].state_pending = true;
-                    }
-                }
+                     }
+                     else
+                     {
+                         widget_context[i].state_pending = true;
+                         
+                         // Check memory availability before requesting icon after state update
+                         size_t free_heap = port_free_heap();
+                         if (free_heap > 15000 && !widget_context[i].icon_pending && widget_context[i].item->isStaticIcon() == false) {
+                             widget_icon_request(i);
+                         }
+                     }
+                 }
             }
         }
     }

@@ -95,7 +95,7 @@ static const char *TAG = "ble_scan";
  * room" -- which is a setting and does a better job of keeping the table small
  * than a cap on its size would.
  */
-#define BLE_SCAN_MAX 24
+#define BLE_SCAN_MAX 16
 
 /* "ble/" + 12 hex + "/" + the longest leaf, which is "manufacturer" or
  * "temperature", at twelve and eleven. */
