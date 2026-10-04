@@ -18,6 +18,24 @@
   --good: #7ec97e;
   --bad: #e06a5f;
   --gui-scale: 1;
+  /* The motion of the chrome: drawers and consoles arrive quickly and
+   * settle late -- one curve for every sliding piece of the page. The
+   * spring adds a gentle overshoot, so a panel comes to rest like a
+   * thing with weight, not like a calculation. */
+  --ease-slide: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.3, 1.25, 0.45, 1);
+  /* The right edge of the stage belongs to the sidepanel's button rail;
+   * every floating panel keeps clear of it by this much. The rail is as
+   * wide as its widest flag -- the German Config is a longer word than
+   * the English one -- so app.js measures it and writes it back here;
+   * this is the fallback until it has. */
+  --rail-w: 144px;;
+  --drawer-w: 340px;
+  --sidepanel-gap: 8px;
+  /* How far the sidepanel rests off-screen while no drawer is open: the
+   * rail lands flush at the stage's right edge, the drawer just past
+   * the window, hidden. */
+  --drawer-hide: 352px;
 }
 
 /* The GUI size setting: one scale for every part of the chrome, read
@@ -25,8 +43,8 @@
  * they draw their picture at the size the window gives them, and the
  * labels in the space view grow with the scale instead, so what they
  * say stays readable at any size of house. */
-#topbar, #zoom-controls, #detail, #physics, #settings, #layouts,
-#console, #toast, .space-bar, .space-empty {
+#topbar, #zoom-controls, #detail, #sidepanel, #sidepanel-left, #console,
+#bottombar, #toast, .space-empty {
   zoom: var(--gui-scale);
 }
 
@@ -172,11 +190,8 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 .lcars-btn.small { padding: 4px 12px; font-size: 12px; }
 .lcars-btn.danger { background: var(--lcars-salmon); color: #2a0e08; }
 
-/* A view switch that is off keeps its shape but goes quiet. */
-.lcars-btn.view-toggle.off {
-  background: #1d2430;
-  color: var(--dim);
-}
+/* A switch that is off keeps its shape but goes quiet. */
+.lcars-btn.toggle.off { background: #1d2430; color: var(--dim); }
 
 .lcars-btn.filter {
   background: #1d2430;
@@ -218,9 +233,17 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
   touch-action: none;
 }
 
+/* The labels over the 3D picture. The renderer gives every label a
+ * place in the queue of the eye -- an inline z-index, counted down
+ * from however many stand visible -- and without a context of their
+ * own those numbers reach past this overlay and out-rank the panels:
+ * a label would hang in front of a drawer's face. One z-index of 0
+ * here makes the overlay a context: the queue orders only within it,
+ * and the whole overlay stays under the stage's chrome. */
 #space-labels {
   position: absolute;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
 }
 
@@ -260,63 +283,75 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
   white-space: nowrap;
 }
 
-.space-bar {
-  position: absolute;
-  right: 14px;
-  top: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  z-index: 5;
-  flex-wrap: wrap;
-  max-width: calc(100% - 350px);
-}
-.space-bar .segment { gap: 0; }
-.space-bar .seg-btn { flex: none; padding: 4px 10px; font-size: 11px; }
-.space-name {
+/* The model panel's rows: the house's name over its floors, the walls'
+ * solidity on a slider, and the file the house came from -- replaced
+ * or taken away. The floors wrap as a segment: a house has as many as
+ * it has. */
+#model-box { display: flex; flex-direction: column; gap: 10px; }
+#model-box .space-name {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #171c27;
+  border: 1px solid var(--panel-edge);
   color: #5fe0ff;
   font-size: 12px;
   letter-spacing: 0.08em;
   text-shadow: 0 0 8px rgba(95, 224, 255, 0.7);
+  word-break: break-all;
 }
-.space-opacity { width: 110px; accent-color: #5fe0ff; }
+#model-box .space-levels { flex-wrap: wrap; gap: 4px; }
+#model-box .space-levels .seg-btn { flex: none; padding: 4px 10px; font-size: 11px; }
+#model-box .space-opacity { width: 100%; accent-color: #5fe0ff; }
+#model-box .control-row { margin: 0; }
 
-/* The buttons under the view cube: zoom in, zoom out, and the whole
- * house in the picture again. They are sized with the GUI scale in
- * mind rather than zoomed: they sit against the cube, which the
- * canvas draws, and the two must stay measured in the same pixels. */
+/* The camera buttons under the view cube, in the view panel now: zoom
+ * in, zoom out, and the whole house in the picture again. They ride
+ * the drawer, so the GUI scale's zoom carries them like the rest of
+ * the chrome. */
 .space-cube-btns {
-  position: absolute;
-  left: 14px;
-  z-index: 5;
   display: flex;
+  justify-content: center;
   gap: 4px;
 }
 .space-cube-btn {
   flex: none;
-  width: calc(34px * var(--gui-scale, 1));
-  padding: calc(4px * var(--gui-scale, 1)) 0;
+  width: 34px;
+  padding: 4px 0;
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
   background: #171c27;
   color: var(--dim);
   font: 600 15px "Segoe UI", system-ui, sans-serif;
-  font-size: calc(15px * var(--gui-scale, 1));
   letter-spacing: 0.03em;
   cursor: pointer;
 }
 .space-cube-btn:hover { border-color: var(--dim); color: var(--text); }
 
+/* The view cube's square in the panel: a small thing now -- the panel
+ * carries it, so it takes panel room, not canvas. The GUI scale's zoom
+ * carries it with the rest of the chrome, so it stays a plain square
+ * here; space.js keeps its canvas as the square's own. */
+#cube-mount {
+  width: 190px;
+  aspect-ratio: 1;
+  margin: 10px auto 0;
+}
+#cube-mount canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* A touch on the cube is the orbit's: the hand owns it, not the
+   * page's pan. */
+  touch-action: none;
+  cursor: pointer;
+}
+
 .gui-scale { flex: 1; accent-color: #5fe0ff; }
 
+/* The gestures of the space view, under the cube's camera buttons. */
 .space-help {
-  position: absolute;
-  left: 14px;
-  bottom: 12px;
-  z-index: 5;
-  font-size: 11px;
   color: var(--dim);
-  pointer-events: none;
+  font-size: 11px;
 }
 
 .space-empty {
@@ -341,15 +376,12 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
   margin-bottom: 6px;
 }
 
-/* The zoom of the topology view: three quiet buttons in the canvas's
- * own corner, only there while the picture can be moved at all. */
+/* The zoom of the topology view: three quiet buttons in the view
+ * panel now, only there while the picture can be moved at all. */
 .zoom-controls {
-  position: absolute;
-  left: 14px;
-  bottom: 14px;
   display: flex;
   gap: 6px;
-  z-index: 5;
+  margin: 8px 0;
 }
 .zoom-controls .lcars-btn { min-width: 30px; }
 
@@ -358,7 +390,7 @@ select.broker-select:hover { border-color: var(--lcars-orange); }
 #detail {
   position: absolute;
   top: 12px;
-  right: 12px;
+  right: var(--rail-w);
   bottom: 12px;
   width: 380px;
   display: flex;
@@ -442,30 +474,204 @@ input[type="range"] { flex: 1; accent-color: var(--lcars-orange); }
 .topic-row .t-age { color: var(--dim); }
 .topic-row .t-suffix .retain { color: var(--lcars-teal); }
 
-/* The physics panel: a side panel at the right edge, never a blockade --
- * the canvas keeps moving behind it, and the sliders can be dragged
- * while the fleet is watched. When the device detail is open, the
- * physics panel steps to its left rather than on top of it. */
-#physics {
+/* ---------------------------------------------------------------- drawers */
+
+/* The sidepanel assembly: the buttons ride the drawers. The rail is the
+ * left edge of every drawer -- closed, it rests at the stage's right
+ * edge; opened, the buttons come out with the drawer and stand beside
+ * it, one hand's width of LCARS. The whole assembly slides on one
+ * transform, so buttons and drawer move as the one thing they now are.
+ *
+ * A finger owns the sweep: a drag moves the assembly live -- no easing
+ * under the hand, a rubber band at the ends -- and letting go settles
+ * it by position or by the speed of the hand, whichever says more. */
+#sidepanel {
   position: absolute;
   top: 12px;
-  right: 12px;
-  bottom: 12px;
-  width: 300px;
+  right: 8px;
+  bottom: 54px;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  background: rgba(18, 22, 31, 0.96);
-  border: 1px solid var(--panel-edge);
-  border-left: 4px solid var(--lcars-orange);
-  border-radius: 14px 4px 4px 14px;
-  overflow-y: auto;
-  transition: right 0.3s;
-  z-index: 5;
+  gap: var(--sidepanel-gap);
+  z-index: 6;
+  transform: translateX(var(--drawer-hide));
+  transition:
+    transform 0.5s var(--ease-spring),
+    right 0.35s var(--ease-slide);
+  /* The vertical pans stay native, so a drawer's list still scrolls by
+   * touch; the horizontal sweep is the finger's to give. */
+  touch-action: pan-y;
+  user-select: none;
 }
 
-#detail:not(.hidden) ~ #physics { right: 404px; }
+#sidepanel.open { transform: translateX(0); }
+
+/* While the hand holds it, nothing eases -- the panel is where the
+ * finger says, nowhere else. */
+#sidepanel.dragging { transition: none; }
+
+#drawer-stack { position: relative; width: var(--drawer-w); flex: none; }
+
+/* One drawer of the stack: all five occupy the same cell, the open one
+ * above the rest. */
+.drawer {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: rgba(18, 22, 31, 0.96);
+  border: 1px solid var(--panel-edge);
+  border-radius: 14px 4px 4px 14px;
+  overflow-y: auto;
+}
+
+.drawer.open { display: flex; }
+
+/* The device detail is a panel of the stage too: the whole assembly
+ * steps to its left rather than on top of it, rail and drawer
+ * together. */
+#detail:not(.hidden) ~ #sidepanel { right: calc(var(--rail-w) + 392px); }
+
+/* The other edge, the same assembly mirrored: the view's own controls
+ * and the house it looks at ride drawers out of the stage's left. The
+ * stack sits at the window's edge and the flags hang at its right, so
+ * closed, a sweep to the right slides the drawer out beneath them --
+ * and the whole assembly is the one sliding thing here too. */
+#sidepanel-left {
+  position: absolute;
+  top: 12px;
+  left: 8px;
+  bottom: 54px;
+  display: flex;
+  gap: var(--sidepanel-gap);
+  z-index: 6;
+  transform: translateX(calc(var(--drawer-hide) * -1));
+  transition: transform 0.5s var(--ease-spring);
+  touch-action: pan-y;
+  user-select: none;
+}
+
+#sidepanel-left.open { transform: translateX(0); }
+#sidepanel-left.dragging { transition: none; }
+
+#drawer-stack-left { position: relative; width: var(--drawer-w); flex: none; }
+
+/* The left drawers hang from their right edge, so their accent stands
+ * on it and the rounding follows the stage's side: the view's controls
+ * periwinkle, the house teal. */
+#view-panel, #model-panel {
+  border-radius: 4px 14px 14px 4px;
+  border-left: 1px solid var(--panel-edge);
+  border-right: 4px solid var(--lcars-peri);
+}
+#model-panel { border-right-color: var(--lcars-teal); }
+
+/* The flags of the left rail: the console button's twins again, hemmed
+ * on the left where they hang at the panel's right edge. The rail is
+ * a grid like its right twin -- one width for all flags, pinned at the
+ * top of the edge. */
+#rail-left {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+#rail-left .rail-btn {
+  border-radius: 4px 14px 14px 4px;
+  box-shadow: 2px 3px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* Each drawer carries its own accent, the way the detail panel carries
+ * the periwinkle: the canvas's tunables orange, the picture's switches
+ * orange too, the light salmon, the arrangements teal, the connection
+ * periwinkle. */
+#physics, #objects { border-left: 4px solid var(--lcars-orange); }
+#fx { border-left: 4px solid var(--lcars-salmon); }
+#layouts { border-left: 4px solid var(--lcars-teal); }
+#settings { border-left: 4px solid var(--lcars-peri); }
+
+/* The forms the drawers carry: broker profiles, arrangements, physics.
+ * One quiet column, the inputs the page's own width. */
+.drawer label {
+  display: block;
+  margin: 10px 0;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.drawer input[type="text"],
+.drawer input[type="number"],
+.drawer input[type="password"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-edge);
+  background: #0e1118;
+  color: var(--text);
+  font: 13px ui-monospace, monospace;
+}
+
+/* A switch row, as the objects and fx panels show them: the name of a
+ * thing on the left, its state as a button on the right, the whole row
+ * carrying the help text as its hover. A row whose master switch is
+ * off keeps its shape but goes quiet. */
+.obj-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 6px 0;
+  border-radius: 8px;
+  background: #171c27;
+  border: 1px solid var(--panel-edge);
+  cursor: help;
+  transition: opacity 0.25s var(--ease-slide);
+}
+.obj-row .o-label { flex: 1; color: var(--text); font-size: 13px; }
+.obj-row.dimmed { opacity: 0.45; }
+
+.lcars-btn.toggle.off { background: #1d2430; color: var(--dim); }
+
+/* The button rail: the drawers' own left edge, at its top. Each button
+ * is the console button's twin exactly -- the same orange pill, the
+ * same rounded fly edge and hemmed side, horizontal -- and the five of
+ * them cluster at the top of the edge instead of running down it:
+ * flags pinned where the panel hangs, one width for all, the widest
+ * word's. The flag whose drawer is open comes down from the mast: the
+ * quiet blue of a pressed switch. */
+#rail {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.rail-btn {
+  padding: 6px 18px;
+  border: 0;
+  border-radius: 14px 4px 4px 14px;
+  background: var(--lcars-orange);
+  color: #1a1200;
+  font: 600 13px/1 "Segoe UI", system-ui, sans-serif;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: -2px 3px 8px rgba(0, 0, 0, 0.35);
+  transition:
+    color 0.25s var(--ease-slide),
+    background 0.25s var(--ease-slide),
+    filter 0.25s var(--ease-slide);
+}
+.rail-btn:hover { filter: brightness(1.12); }
+.rail-btn.panel-open {
+  background: #26304a;
+  color: var(--text);
+  box-shadow: none;
+}
 
 /* The two halves of the physics: the panels and the beacons float on
  * the same canvas, but each kind is set apart with its own sliders. */
@@ -539,52 +745,6 @@ input[type="range"] { flex: 1; accent-color: var(--lcars-orange); }
   accent-color: var(--lcars-orange);
 }
 
-/* The top bar button while its panel is open. */
-.lcars-btn.panel-open { background: #26304a; color: var(--text); }
-
-/* ------------------------------------------------------------------- modal */
-
-.modal {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 7, 10, 0.7);
-}
-
-.modal-card {
-  width: 420px;
-  max-height: 90%;
-  overflow-y: auto;
-  padding: 18px;
-  background: var(--panel);
-  border: 1px solid var(--panel-edge);
-  border-top: 5px solid var(--lcars-orange);
-  border-radius: 16px;
-}
-
-.modal-card label {
-  display: block;
-  margin: 10px 0;
-  color: var(--dim);
-  font-size: 12px;
-}
-
-.modal-card input[type="text"],
-.modal-card input[type="number"],
-.modal-card input[type="password"] {
-  display: block;
-  width: 100%;
-  margin-top: 4px;
-  padding: 7px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-edge);
-  background: #0e1118;
-  color: var(--text);
-  font: 13px ui-monospace, monospace;
-}
-
 .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text) !important; }
 
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
@@ -615,21 +775,67 @@ input[type="range"] { flex: 1; accent-color: var(--lcars-orange); }
 .hint { color: var(--dim); font-size: 11px; }
 .form-actions { display: flex; justify-content: flex-end; margin-top: 12px; }
 
-/* ----------------------------------------------------------------- console */
+/* --------------------------------------------------------------- console */
 
-#console {
+/* The bottom bar: the strip the console hangs from. Its one button
+ * slides the console up from behind it -- or a finger that leaves the
+ * bar upward does -- and the badge on the button counts the warnings
+ * and errors that arrived while it was closed. */
+#bottombar {
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 12px;
-  height: 200px;
+  bottom: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+  border-top: 1px solid var(--panel-edge);
+  background: linear-gradient(0deg, #0e1118, #131722);
+  z-index: 7;
+  touch-action: none;
+  user-select: none;
+}
+
+/* The console: a drawer of the bottom bar, resting fully below the
+ * stage while closed and sliding up on the same curve the sidepanel
+ * slides out on. Its head is the handle a finger sweeps down to close
+ * it; the entries keep their own scrolling. */
+#console {
+  position: absolute;
+  left: 12px;
+  right: var(--rail-w);
+  bottom: 50px;
+  height: 220px;
   display: flex;
   flex-direction: column;
   padding: 10px 14px;
   background: rgba(14, 17, 24, 0.96);
   border: 1px solid var(--panel-edge);
   border-radius: 14px 4px 14px 4px;
+  transform: translateY(calc(100% + 80px));
+  visibility: hidden;
+  transition:
+    transform 0.5s var(--ease-spring),
+    visibility 0s 0.5s;
+  z-index: 9;
 }
+
+#console.open {
+  transform: translateY(0);
+  visibility: visible;
+  transition:
+    transform 0.5s var(--ease-spring),
+    visibility 0s 0s;
+}
+
+#console.dragging {
+  transition: visibility 0s 0s;   /* the panel follows the finger alone */
+}
+
+#console .panel-head { touch-action: none; cursor: grab; }
+#console .panel-head:active { cursor: grabbing; }
 
 #console-filters { display: flex; gap: 4px; }
 

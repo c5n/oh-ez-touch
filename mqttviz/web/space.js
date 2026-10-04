@@ -55,8 +55,15 @@ const ui = {};
 function settings() { return host.state.settings || {}; }
 function placed() { return settings().positions3d || {}; }
 function opacity() { return (Number(settings().holo_opacity) || 50) / 100; }
-function showBroker() { return settings().show_broker !== false; }
-function showBeacons() { return settings().show_beacons !== false; }
+
+/* What this view draws is what this view keeps: the switches and the
+ * sliders live in the space view's own settings, not shared with the
+ * two 2D pictures. */
+function viewSettings() { return host.viewSettings() || {}; }
+function showBroker() { return viewSettings().show_broker !== false; }
+function showPanels() { return viewSettings().show_panels !== false; }
+function showAps() { return viewSettings().show_aps !== false; }
+function showBeacons() { return viewSettings().show_beacons !== false; }
 
 /* A soft radial glow, the 3D cousin of the canvas's halo sprites. */
 const glowTextures = {};
@@ -669,7 +676,8 @@ function syncObjects() {
  * is not drawn. */
 function solveBeacon(obj, dt) {
   const beacon = obj.dev;
-  const timeout = Number((settings().phys_beacons || {}).line_timeout) || 90;
+  const timeout = Number((viewSettings().phys_beacons || {}).line_timeout)
+                  || 90;
   const hearers = [];
   for (const seen of beacon.devices || []) {
     const panel = objs.get("panel:" + seen.host);
@@ -753,6 +761,7 @@ function uplinkOf(obj) {
  * point, and on to the broker. */
 function spawnPulse(panel) {
   if (!active) return;
+  if (!host.fxGroup("motion")) return;      // the sparks are a light too
   if (pulses.length > 120) pulses.shift();
   pulses.push({ from: panel, t0: performance.now(), dur: 900 });
 }
@@ -895,7 +904,7 @@ function frame(time) {
       const ok = showBeacons() && solveBeacon(obj, dt)
                  && levelShown(obj.hearers[0].panel.level);
       obj.group.visible = ok;
-      if (obj.trail) obj.trail.visible = ok;
+      if (obj.trail) obj.trail.visible = ok && host.fxGroup("trails");
       if (!ok) { obj.fresh = true; continue; }
       if (obj.fresh) { obj.pos.copy(obj.target); obj.fresh = false; }
       obj.pos.lerp(obj.target, 1 - Math.exp(-dt * 1.5));
@@ -910,8 +919,13 @@ function frame(time) {
       }
     } else {
       if (!obj.dragging) obj.pos.lerp(obj.target, ease);
-      obj.group.visible = (obj.kind !== "broker" || showBroker())
-                          && (!obj.placed || levelShown(obj.level));
+      /* Each kind is a switch of the objects panel; the space view
+       * reads its own -- hidden kinds leave the links to follow the
+       * next one that is drawn, the way the levels already do. */
+      const shown = obj.kind === "broker" ? showBroker()
+        : obj.kind === "panel" ? showPanels()
+        : obj.kind === "ap" ? showAps() : true;
+      obj.group.visible = shown && (!obj.placed || levelShown(obj.level));
     }
     obj.group.position.copy(obj.pos);
     obj.flash = Math.max(0, (obj.flash || 0) - dt * 1.5);
@@ -923,7 +937,9 @@ function frame(time) {
   updateLinks(time);
   if (!stepViewTween(time)) controls.update();
 
-  if (host.fxOn()) composer.render();
+  /* The bloom is this view's glow: the same switch the 2D pictures read
+   * for their halos. */
+  if (host.fxGroup("glow")) composer.render();
   else renderer.render(scene, camera);
   renderCube();
   labels.render(scene, camera);
@@ -984,35 +1000,26 @@ function zoomBy(factor) {
 
 /* -------------------------------------------------------- the view cube */
 
-/* A little house of the camera's own, in the lower left corner: six
+/* A little house of the camera's own, in the view panel now: six
  * faces -- front, back, left, right, top, bottom -- each a tap for
  * the view straight along its axis, and the bevels between them for
  * the diagonals: the bevel along an edge looks from between two
  * axes, a corner's from between three. The cube turns with the
  * camera, so the face the house is seen from is the one that faces
- * the eye. A drag on it is the orbit's: the hand swings the view. */
-
-const CUBE_PX = 312;           // the cube's square at a GUI scale of 100%
-const CUBE_GAP = 14;           // between the square and the page's edge
-const CUBE_BOTTOM = 56;        // the help text's place under it, kept clear
+ * the eye. A drag on it is the orbit's: the hand swings the view.
+ *
+ * Its square is the mount's, a plain div in the drawer: the panel
+ * carries the cube, so it rides the slide -- and wherever the slide
+ * has it, that is where the cube is drawn, measured from the mount's
+ * place on the page every frame. */
 const CUBE_BEVEL = 0.26;       // of the half-size: how deep the bevels cut
 
 let cubeScene = null, cubeCam = null, cubeGroup = null;
 let cubeHover = null, cubePress = null;
-let cubeBottom = CUBE_BOTTOM + 36;   // the cube's lower edge, from below
 const cubeFaces = [];          // [{mesh, key}]: for relabelling
 const cubeRay = new THREE.Raycaster();
 const cubePointer = new THREE.Vector2();
 let viewTween = null;          // the flight to a tapped direction
-
-/* The cube is part of the interface: it grows with the GUI size
- * setting, like everything else that is not a canvas. */
-function guiScale() {
-  const n = Number(settings().gui_scale);
-  return isFinite(n) && n >= 70 ? Math.min(160, n) / 100 : 1;
-}
-
-function cubePx() { return Math.round(CUBE_PX * guiScale()); }
 
 function faceTexture(text) {
   const c = document.createElement("canvas");
@@ -1053,7 +1060,41 @@ function cubeMesh(points, material, dir) {
   return mesh;
 }
 
+let cubeRenderer = null;      // the cube's own little canvas, in the mount
+let cubeW = 0;
+
 function buildCube() {
+  /* The cube is a canvas of its own now, riding the drawer: the panel
+   * carries it, the slide moves it, and it stands above the drawer's
+   * face instead of behind it. Its square is the mount's -- the whole
+   * mount, whatever the GUI scale's zoom makes of it. */
+  cubeRenderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  cubeRenderer.domElement.style.width = "100%";
+  cubeRenderer.domElement.style.height = "100%";
+  document.getElementById("cube-mount").append(cubeRenderer.domElement);
+
+  /* The cube's drag is the orbit's, and the orbit lives on the big
+   * canvas: the press is handed over as one synthetic event there, and
+   * the controls capture the pointer on the spot -- from then on the
+   * drag and its release find their way to the same handlers as ever,
+   * wherever they were born. The hover, which no capture carries,
+   * travels the same road. */
+  const forward = (event) => {
+    renderer.domElement.dispatchEvent(new PointerEvent(event.type, {
+      pointerId: event.pointerId, pointerType: event.pointerType,
+      isPrimary: event.isPrimary, clientX: event.clientX,
+      clientY: event.clientY, button: event.button,
+      buttons: event.buttons, bubbles: true, composed: true,
+    }));
+  };
+  cubeRenderer.domElement.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    forward(event);
+  });
+  cubeRenderer.domElement.addEventListener("pointermove", (event) => {
+    if (!cubePress) forward(event);
+  });
+
   cubeScene = new THREE.Scene();
   cubeCam = new THREE.OrthographicCamera(-1.7, 1.7, 1.7, -1.7, 0.1, 10);
   cubeCam.position.set(0, 0, 4);
@@ -1126,30 +1167,12 @@ function buildCube() {
   }
 }
 
-/* The corner's stack, from the bottom of the stage: the help text,
- * then the buttons, then the cube over them. Measured, not guessed,
- * so the buttons follow the cube whatever the GUI size. */
-function layoutCubeChrome() {
-  if (!ui.cubeBtns) return;
-  const h = renderer.domElement.clientHeight;
-  const btnH = ui.cubeBtns.offsetHeight || 34;
-  cubeBottom = CUBE_BOTTOM + btnH + 6;
-  ui.cubeBtns.style.top = (h - CUBE_BOTTOM - btnH) + "px";
-}
-
-function cubeRect() {
-  const h = renderer.domElement.clientHeight;
-  const size = cubePx();
-  return { x: CUBE_GAP, y: h - cubeBottom - size, s: size };
-}
-
 function cubeAt(event) {
-  if (!cubeGroup) return null;
-  const rect = renderer.domElement.getBoundingClientRect();
-  const r = cubeRect();
+  if (!cubeGroup || !cubeRenderer) return null;
+  const rect = cubeRenderer.domElement.getBoundingClientRect();
   const cx = event.clientX - rect.left, cy = event.clientY - rect.top;
-  if (cx < r.x || cy < r.y || cx > r.x + r.s || cy > r.y + r.s) return null;
-  cubePointer.set((cx - r.x) / r.s * 2 - 1, -((cy - r.y) / r.s * 2 - 1));
+  if (cx < 0 || cy < 0 || cx > rect.width || cy > rect.height) return null;
+  cubePointer.set(cx / rect.width * 2 - 1, -(cy / rect.height * 2 - 1));
   cubeRay.setFromCamera(cubePointer, cubeCam);
   const hit = cubeRay.intersectObject(cubeGroup, true)[0];
   return hit ? hit.object : null;
@@ -1194,26 +1217,21 @@ function stepViewTween(time) {
   return true;
 }
 
-/* The cube is drawn into its own square of the picture, after it: the
- * scissor keeps it off the rest, and the depth is cleared first, so
- * it floats in front of whatever the house shows there. */
+/* The cube is drawn on its own canvas, after the house: a small clear
+ * picture above the drawer's face, transparent around itself. Its
+ * square is kept at the mount's -- the GUI scale's zoom carries the
+ * panel, so the backing store follows what the zoom makes of it. */
 function renderCube() {
-  if (!cubeGroup) return;
-  const w = renderer.domElement.clientWidth;
-  const h = renderer.domElement.clientHeight;
-  const r = cubeRect();
-  const y = h - r.y - r.s;               // the GL counts from below
+  if (!cubeGroup || !cubeRenderer) return;
+  const w = cubeRenderer.domElement.getBoundingClientRect().width;
+  if (w && Math.abs(w - cubeW) > 0.5) {
+    cubeW = w;
+    cubeRenderer.setPixelRatio(
+      Math.min(2, window.devicePixelRatio || 1));
+    cubeRenderer.setSize(w, w, false);
+  }
   cubeGroup.quaternion.copy(camera.quaternion).invert();
-  const autoClear = renderer.autoClear;
-  renderer.autoClear = false;
-  renderer.setScissorTest(true);
-  renderer.setScissor(r.x, y, r.s, r.s);
-  renderer.setViewport(r.x, y, r.s, r.s);
-  renderer.clearDepth();
-  renderer.render(cubeScene, cubeCam);
-  renderer.setScissorTest(false);
-  renderer.setViewport(0, 0, w, h);
-  renderer.autoClear = autoClear;
+  cubeRenderer.render(cubeScene, cubeCam);
 }
 
 /* ------------------------------------------------------------ the hands */
@@ -1447,11 +1465,29 @@ function el(tag, cls, text) {
   return node;
 }
 
-/* The space view's own toolbar: the levels, the brightness of the
- * house, and the house itself -- imported, replaced, removed. */
+/* The space view's own chrome, in the stage's left drawers now: the
+ * view panel carries the cube with its camera buttons and the
+ * gestures; the model panel carries the house -- its name, its floors,
+ * the solidity of its walls, and the file it came from. The one thing
+ * that stays on the canvas itself is the empty state's invitation. */
 function buildChrome() {
-  ui.bar = el("div", "space-bar");
+  ui.mount = el("div");
+  ui.mount.id = "cube-mount";
+  ui.cubeBtns = el("div", "space-cube-btns");
+  ui.zoomInBtn = el("button", "space-cube-btn", "+");
+  ui.zoomOutBtn = el("button", "space-cube-btn", "−");
+  ui.fitBtn = el("button", "space-cube-btn", "⤢");
+  ui.cubeBtns.append(ui.zoomInBtn, ui.zoomOutBtn, ui.fitBtn);
+  ui.help = el("div", "space-help");
+  document.getElementById("view-space-box").append(
+    ui.mount, ui.cubeBtns, ui.help);
+
   ui.levels = el("div", "segment space-levels");
+  ui.name = el("span", "space-name");
+  ui.opacity = el("input", "space-opacity");
+  ui.opacity.type = "range";
+  ui.opacity.min = 5;
+  ui.opacity.max = 100;
   ui.importBtn = el("label", "lcars-btn small");
   ui.file = el("input");
   ui.file.type = "file";
@@ -1460,15 +1496,10 @@ function buildChrome() {
   ui.file.id = "space-file";
   ui.importBtn.htmlFor = "space-file";
   ui.removeBtn = el("button", "lcars-btn small danger");
-  ui.homeBtn = el("button", "lcars-btn small");
-  ui.opacity = el("input", "space-opacity");
-  ui.opacity.type = "range";
-  ui.opacity.min = 5;
-  ui.opacity.max = 100;
-  ui.name = el("span", "space-name");
-  ui.hint = el("span", "space-hint");
-  ui.bar.append(ui.levels, ui.name, ui.opacity, ui.homeBtn, ui.importBtn,
-                ui.file, ui.removeBtn);
+  ui.buttons = el("div", "control-row");
+  ui.buttons.append(ui.importBtn, ui.file, ui.removeBtn);
+  document.getElementById("model-box").append(
+    ui.name, ui.levels, ui.opacity, ui.buttons);
 
   ui.empty = el("div", "space-empty");
   ui.emptyTitle = el("div", "space-empty-title");
@@ -1476,16 +1507,7 @@ function buildChrome() {
   ui.emptyBtn = el("label", "lcars-btn");
   ui.emptyBtn.htmlFor = "space-file";
   ui.empty.append(ui.emptyTitle, ui.emptyText, ui.emptyBtn);
-
-  ui.help = el("div", "space-help");
-
-  ui.cubeBtns = el("div", "space-cube-btns");
-  ui.zoomInBtn = el("button", "space-cube-btn", "+");
-  ui.zoomOutBtn = el("button", "space-cube-btn", "−");
-  ui.fitBtn = el("button", "space-cube-btn", "⤢");
-  ui.cubeBtns.append(ui.zoomInBtn, ui.zoomOutBtn, ui.fitBtn);
-
-  stageEl.append(ui.bar, ui.cubeBtns, ui.empty, ui.help);
+  stageEl.append(ui.empty);
 
   ui.file.addEventListener("change", () => {
     const file = ui.file.files[0];
@@ -1493,7 +1515,6 @@ function buildChrome() {
     if (file) importHouse(file);
   });
   ui.removeBtn.addEventListener("click", removeHouse);
-  ui.homeBtn.addEventListener("click", () => { frameHouse(); saveCamera(); });
   ui.zoomInBtn.addEventListener("click", () => zoomBy(1 / 1.3));
   ui.zoomOutBtn.addEventListener("click", () => zoomBy(1.3));
   ui.fitBtn.addEventListener("click", () => { frameHouse(); saveCamera(); });
@@ -1509,19 +1530,18 @@ function buildChrome() {
 }
 
 function renderToolbar() {
-  if (!ui.bar) return;
+  if (!ui.levels) return;
   const t = host.t;
   ui.importBtn.textContent = house ? t("space.replace") : t("space.import");
   ui.emptyBtn.textContent = t("space.import");
   ui.removeBtn.textContent = t("space.remove");
-  ui.homeBtn.textContent = "⌂";
-  ui.homeBtn.title = t("space.home");
   ui.zoomInBtn.title = t("tip.zoomIn");
   ui.zoomOutBtn.title = t("tip.zoomOut");
   ui.fitBtn.title = t("space.home");
   ui.opacity.title = t("space.opacity");
   ui.removeBtn.classList.toggle("hidden", !house);
   ui.opacity.classList.toggle("hidden", !house);
+  ui.name.classList.toggle("hidden", !house);
   if (document.activeElement !== ui.opacity)
     ui.opacity.value = settings().holo_opacity || 50;
   ui.name.textContent = house ? house.name : "";
@@ -1544,10 +1564,6 @@ function renderToolbar() {
   };
   button(t("space.allLevels"), null);
   for (const level of houseLevels) button(level.name || level.id, level.id);
-
-  /* The cube's corner follows: the buttons' size, and with it the
-   * cube's place, changes with the GUI size setting. */
-  layoutCubeChrome();
 }
 
 async function loadHouse() {
@@ -1661,8 +1677,6 @@ function init() {
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
-  buildCube();
-
   const dom = renderer.domElement;
   dom.addEventListener("pointerdown", onPointerDown, { capture: true });
   dom.addEventListener("pointermove", onPointerMove);
@@ -1671,7 +1685,8 @@ function init() {
   dom.addEventListener("wheel", onWheel, { capture: true, passive: false });
 
   new ResizeObserver(resize).observe(stageEl);
-  buildChrome();
+  buildChrome();       // the panels' boxes first -- the cube rides one
+  buildCube();
   resize();
   loadHouse();
 }
@@ -1685,14 +1700,15 @@ function resize() {
   composer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  layoutCubeChrome();
 }
 
 function setVisible(on) {
-  for (const node of [renderer.domElement, labels.domElement, ui.bar,
-                      ui.cubeBtns, ui.help]) {
+  for (const node of [renderer.domElement, labels.domElement, ui.empty]) {
     node.classList.toggle("hidden", !on);
   }
+  /* The drawers' own rows -- the cube, the camera buttons, the house --
+     are hidden with their boxes: app.js folds the left edge's panels
+     away when the view is not this one. */
   ui.empty.classList.toggle("hidden", !on || !!house);
 }
 

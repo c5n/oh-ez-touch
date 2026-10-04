@@ -46,7 +46,7 @@ how the pictures in this guide were taken.
     mqttviz/demo/make-screenshots.sh                 # every picture below
 
 `demo_house.py` writes a small SweetHome3D file for the
-[space view](#the-space-view) -- import it with the view's toolbar.
+[space view](#the-space-view) -- import it with the *Model* panel.
 `make-screenshots.sh` starts the demo on a port of its own, arranges
 it, and takes the pictures into `doc/img/mqttviz_*.png` with a headless
 Chromium (it needs Node 22 and a Chromium besides Python 3).
@@ -161,7 +161,8 @@ paint the new world at once, exactly as they do at startup.
   for every field it advertised and which panel hears it how well.
 ![The topology view: the panels pinned above their two access points, the broker below, the beacons between](img/mqttviz_topology.png)
 
-* **Two pictures of the same facts** -- the *Mesh*/*Topology* switch in
+* **Three pictures of the same facts** -- the *Mesh*/*Topology*/*3D*
+  switch in
   the top bar. The mesh is the classic view: every panel on its line to
   the broker, the beacons on their leashes. The topology view is the
   network as it is: one access point box per BSSID the panels report
@@ -174,6 +175,39 @@ paint the new world at once, exactly as they do at startup.
   settings, and switching is a morph: the boxes keep their places and
   the springs move them to the other picture's layout. The third
   picture, the house in 3D, has [a section of its own](#the-space-view).
+  * **The flag rails, and a memory per view** -- the stage's controls
+    sit on its edges, both of them. The right edge carries the five
+    (Physics, Objects, FX, Layouts, Config), each button the console
+    button's twin exactly -- the same orange pill, horizontal, hemmed
+    where it hangs at the panel -- clustered at the top of the edge
+    instead of running down it. The left edge carries the view's own
+    two: *View*, the looking itself -- the topology's zoom, the 3D
+    view's cube with its camera buttons -- and *Model*, the house the
+    3D view hangs its facts on: its floors, its walls' solidity, and
+    the file it came from. The mesh view has neither -- its picture
+    is fixed and houseless, so its left rail stays bare. Closed, the
+    flags rest flush at the stage's edges; opened, they ride out with
+    their drawers and stand beside them, one drawer at a time on
+    each edge. The
+    whole assembly is the work of one finger: a button slides its
+    drawer out and back on one springing curve, and a sweep works too
+    -- the panel follows the hand live, a rubber band at the ends, and
+    settles by position or by the speed of the hand, whichever says
+    more; the canvas keeps moving behind it all the while. The console
+    button on the bottom bar answers the same way, its console sliding
+    up -- or a finger that leaves the bar upward -- and a sweep down
+    the console's head closes it. Every view keeps its own
+    settings, each of the three an entry of its own: what it draws (the
+    objects switches), how lit it is (the fx switches), how it moves
+    (the physics sliders), and which of its drawers stood open, on which
+    tab, on either edge. Coming back to a view finds it as it was
+    left -- the drawer slides out again on its own. A drawer only
+    offers what its view
+    has: the access points are a switch of the topology and the 3D
+    alone, the trail and the ambient light belong to the 2D pictures,
+    and the space view's physics is the beacons' leash alone. The
+    broker profiles, the language and the GUI size are the one tool's,
+    not a view's.
  * **Places, kept** -- the stationary objects of the topology view (the
    broker, the access points, the panels) can be pinned: drag one where
    it belongs and let go, and the place is kept -- saved as a fraction of
@@ -183,37 +217,41 @@ paint the new world at once, exactly as they do at startup.
    never pinned -- they are mobile, and the radio says where they sit.
  * **The workspace and the zoom** -- the topology view lays out in a
    workspace of four times the canvas's area, twice each way, with the
-   canvas's picture in its middle: the switch to it changes nothing the
-   eye can see. The *wheel* zooms (the point under the cursor stays
-   under the cursor; a trackpad pinch works too), *dragging the empty
-   space* moves the workspace, and the buttons in the canvas's corner
-   answer: a step in, a step out, and *home* -- a glide back to the
-   classic picture at 100%. At half zoom the whole workspace is on the
-   screen at once; the camera is kept with the settings, so the page
-   comes up looking where it was left. The mesh view is its own fixed
-   picture: zoomed to home always, nothing to move.
- * **Arrangements, named** -- the *Layouts* button in the top bar opens a
-   dialog that keeps whole arrangements: *save current* writes the
-   places as they stand, and the picture they belong to, under a name
-   (the same name twice is the newer arrangement winning); *restore*
-   brings one back whole -- the springs move the boxes to the places it
-   kept, the way a view switch does -- and *delete* forgets one. The
-   dialog writes the same content to a file of your own and reads such
-   files back in: names the file carries win over the same names here,
-   names only here live on -- an import adds, it never wipes. Restoring
-   remembers what stood before: the layout backup file
-   (`mqttviz/data/layouts.json`) holds it, so trying a layout on costs
-   nothing that cannot be taken back.
- * **The light** -- the *FX* switch in the top bar turns the effects
-  layer on and off: the drifting dot grid and vignette, the radar sweep
-  around the hub, the pulsing core and rotating ring of the broker, the
-  breathing halos under every box, links that grow when they are born
-  and leave ghosts when they die, WLAN and LAN lines with a current of
-  dashes walking toward the broker, beacon trails, particles with longer
-  additive tails and a flash where they arrive, boxes that lift under
-  the cursor and overshoot into place when they are born. The physics is
-  the same either way; off is for the machine that has to, on is the
-  shipped default.
+    canvas's picture in its middle: the switch to it changes nothing the
+    eye can see. The *wheel* zooms (the point under the cursor stays
+    under the cursor; a trackpad pinch works too), *dragging the empty
+    space* moves the workspace, and the buttons in the *View* panel on
+    the stage's left answer: a step in, a step out, and *home* -- a glide
+    back to the classic picture at 100%. At half zoom the whole workspace
+    is on the
+    screen at once; the camera is kept with the settings, so the page
+    comes up looking where it was left. The mesh view is its own fixed
+    picture: zoomed to home always, nothing to move.
+  * **Arrangements, named** -- the *Layouts* button on the stage's rail
+    slides a drawer out that keeps whole arrangements: *save current*
+    writes the places as they stand, and the picture they belong to,
+    under a name (the same name twice is the newer arrangement
+    winning); *restore*
+    brings one back whole -- the springs move the boxes to the places it
+    kept, the way a view switch does -- and *delete* forgets one. The
+    drawer writes the same content to a file of your own and reads such
+    files back in: names the file carries win over the same names here,
+    names only here live on -- an import adds, it never wipes. Restoring
+    remembers what stood before: the layout backup file
+    (`mqttviz/data/layouts.json`) holds it, so trying a layout on costs
+    nothing that cannot be taken back.
+  * **The light** -- the *FX* button on the rail slides a drawer out with
+   the effects layer of the current view: a master switch for the whole
+   layer, and a row for each kind of light it is made of -- the ambient
+   background (the drifting dot grid and vignette, the radar sweep
+   around the hub), the glow (the pulsing core and rotating ring of the
+   broker, the breathing halos under every box, the light on the lines),
+   the beacon trails, and the motion (the particles with their additive
+   tails and the flash where they arrive, the waves on arrival and
+   pinning, the current of dashes walking the WLAN and LAN lines toward
+   the broker, the ghosts a dying link leaves behind). A view offers
+   only the kinds it has. The physics is the same either way; off is
+   for the machine that has to, on is the shipped default.
 ![The Layouts dialog with one saved arrangement](img/mqttviz_layouts.png)
 
 * **Controls that publish back** -- the relay badges answer a click with
@@ -231,33 +269,39 @@ paint the new world at once, exactly as they do at startup.
   what the box is and doing the other thing.
 ![A panel's detail: its relays, a sound to play, and every topic it publishes](img/mqttviz_detail.png)
 
-* **Config** -- the broker profile list in a dialog of its own: add a
+* **Config** -- the *Config* button on the rail slides a drawer out
+  holding the broker profile list: add a
   broker, remove one, edit any of them (name, host, port, credentials,
   base topic), and one save makes it all true. Saving does not switch
   the connection -- the selector in the top bar does that. The passwords
   are masked the way devmgr masks them, and a mask sent back means
-  "leave it alone". The dialog also holds the *GUI size* slider (70 to
+  "leave it alone". The drawer also holds the *GUI size* slider (70 to
   160 per cent): one scale for the whole chrome -- the bars, the
   buttons, the panels, the space view's cube and labels -- while the
   canvases keep the resolution the window gives them. It acts at once
   and is kept with the settings.
-* **Console** -- the drawer at the bottom shows what the visualizer is
+* **Console** -- the console button on the bottom bar slides the
+  console up from behind it, showing what the visualizer is
   doing: broker connects and drops, devices appearing, going offline and
   coming back, beacons appearing and clearing, every published command,
-  and -- switched on in the config panel -- every message that arrives.
-* **View switches** -- the *Broker*, *Beacons* and *FX* buttons in the
-  top bar say what the canvas draws and how lit it is. They are view
+  and -- switched on in the config drawer -- every message that arrives.
+* **Objects** -- the *Objects* button on the rail slides a drawer out
+  with one switch per kind of thing the current view draws: the broker
+  node, the panels, the access points (topology and 3D only), and the
+  BLE beacons. The switches are view
   switches, not stop buttons:
   the devices keep tracking and the beacons keep learning behind them,
   and everything is back exactly as it was when a switch flips back.
-  The choice is kept with the settings, so it survives a restart.
-* **Physics** -- the *Physics* button opens a side panel at the right
+* **Physics** -- the *Physics* button on the rail slides the physics
+  drawer out at the right
   edge with the sliders that say how the network moves and the lines
   hang. The panels, the access points, the beacons and the broker are
   set apart: four tabs -- *Panels*, *Access Points*, *Beacons* and
   *Broker* -- each with its own sliders, because the kinds of things in
   the picture deserve physics of their own. (The *Access Points* tab is
-  offered in the topology view, which is the one that has them.) The
+  offered in the topology view, which is the one that has them; the
+  space view keeps only the beacons' line timeout, the one slider that
+  reaches into it.) The
   kinds that float each have
   viscosity (drag), the link spring (how hard every line holds the
   length it wants), the link length (the radius of the ring around the
@@ -287,11 +331,12 @@ paint the new world at once, exactly as they do at startup.
   detail is open, the physics panel steps to its left. Every slider
   acts on the canvas the moment it is touched -- the feel is the thing
   being edited, and it has to be felt -- the readout prints the
-  constant the canvas is really using, and the hover of a row explains
-  in plain words what its slider does. One save keeps the feel of all
-  four; closing without saving puts it back; *defaults* returns to
-  the thick oil the canvas ships with. The sliders are the whole truth:
-  nothing hidden blends underneath them.
+   constant the canvas is really using, and the hover of a row explains
+   in plain words what its slider does. One save keeps the feel of all
+   four, for the view the drawer was opened in -- every view has a feel
+   of its own; closing without saving puts it back; *defaults* returns to
+   the thick oil the canvas ships with. The sliders are the whole truth:
+   nothing hidden blends underneath them.
 ![The physics panel, its four tabs and the panels' sliders](img/mqttviz_physics.png)
 
 * **Language** -- the page speaks English and German, chosen in the
@@ -312,17 +357,17 @@ doors and windows as frames of orange light.
 
 ![The space view: the demo house in both levels, the panels on its walls, the access points on the floors, the broker upstairs, the beacons between](img/mqttviz_space.png)
 
-* **The house comes from SweetHome3D.** *import SweetHome3D…* in the
-  view's toolbar takes a `.sh3d` file; the server reads its `Home.xml`
-  entry (walls, rooms, levels, doors and windows; nothing of the
-  furniture, the textures or the models) and keeps the result in
-  `mqttviz/data/house.json`. SweetHome3D has written `Home.xml` since
-  version 5.3: an older file is refused with that word, and opening it
-  in a newer SweetHome3D and saving it again is the cure. *replace
-  house…* imports another, *remove house* forgets it -- the places in
-  it stay, so a new import of the same home finds them where they were.
-  The converter also runs on its own: `python3 mqttviz/sh3d.py
-  home.sh3d > house.json`.
+ * **The house comes from SweetHome3D.** *import SweetHome3D…* in the
+   view's *Model* panel takes a `.sh3d` file; the server reads its `Home.xml`
+   entry (walls, rooms, levels, doors and windows; nothing of the
+   furniture, the textures or the models) and keeps the result in
+   `mqttviz/data/house.json`. SweetHome3D has written `Home.xml` since
+   version 5.3: an older file is refused with that word, and opening it
+   in a newer SweetHome3D and saving it again is the cure. *replace
+   house…* imports another, *remove house* forgets it -- the places in
+   it stay, so a new import of the same home finds them where they were.
+   The converter also runs on its own: `python3 mqttviz/sh3d.py
+   home.sh3d > house.json`.
 
   ![Before the first import: the dock, the projector's ring and the way in](img/mqttviz_space_empty.png)
 * **Units and axes.** Everything is metres. SweetHome3D's plan x is x,
@@ -338,11 +383,12 @@ doors and windows as frames of orange light.
   object changes its height. Let go and the place is kept; a click
   without a drag opens the detail panel, whose *take out of the house*
   puts the object back in the row.
-* **Levels.** With more than one level, the toolbar picks which one is
-  looked at: that one whole, the ones below it dimmed, the ones above
-  not at all -- the roof lifted off, and with it everything placed up
-  there. With *all* shown a drag lands on the highest floor under the
-  pointer; pick a level to reach the ones below.
+ * **Levels.** With more than one level, the *Model* panel picks which
+   one is
+   looked at: that one whole, the ones below it dimmed, the ones above
+   not at all -- the roof lifted off, and with it everything placed up
+   there. With *all* shown a drag lands on the highest floor under the
+   pointer; pick a level to reach the ones below.
 
   ![The ground floor alone: the upper floor, the broker and the bedroom's panel lifted off with the roof](img/mqttviz_space_ground.png)
 * **Beacons find their own places.** A beacon heard by two or more
@@ -364,23 +410,24 @@ doors and windows as frames of orange light.
   carries its length in metres at its middle, turned to lie along it
   and flipped upright when it would run upside-down: the house is in
   metres, so are the lines.
-* **The view cube.** In the lower left corner sits a small cube of the
-  camera's ways to look, turning with it so that the face the house is
-  seen from is the one that faces the eye. Tap a face -- front, back,
-  left, right, top, bottom -- for a smooth flight to the view straight
-  along its axis; tap one of the bevels for the diagonals: an edge's
-  for the view between two axes, a corner's for the isometric view
-  between three. A drag on the cube is the orbit's -- the hand swings
-  the view. Under it sit three buttons: a step in, a step out, and the
-  whole house framed again.
-* **The rest is the canvas's.** The lines run panel → access point →
-  broker, and a message is a spark running up them; *Broker*, *Beacons*
-  and *FX* switch the same things as in the other views (*FX* is the
-  bloom). The camera -- left drag turns, right drag pans, the wheel
-  zooms, *⌂* frames the whole house, and it may look from below the
-  house as well -- is kept with
-  the settings, and the slider in the toolbar sets how solid the walls
-  are drawn.
+ * **The view cube.** In the *View* panel sits a small cube of the
+   camera's ways to look, turning with it so that the face the house is
+   seen from is the one that faces the eye. Tap a face -- front, back,
+   left, right, top, bottom -- for a smooth flight to the view straight
+   along its axis; tap one of the bevels for the diagonals: an edge's
+   for the view between two axes, a corner's for the isometric view
+   between three. A drag on the cube is the orbit's -- the hand swings
+   the view. Under it sit three buttons: a step in, a step out, and the
+   whole house framed again. The cube rides the panel: it slides out
+   with the drawer and back, wherever the slide holds it.
+ * **The rest is the canvas's.** The lines run panel → access point →
+   broker, and a message is a spark running up them; the *Objects* and
+   *FX* drawers switch the same things as in the other views (the space
+   view's glow is the bloom, its pulses the motion). The camera -- left drag turns, right drag pans, the wheel
+   zooms, and it may look from below the
+   house as well -- is kept with
+   the settings, and the slider in the *Model* panel sets how solid the
+   walls are drawn.
 
 The 3D drawing is [three.js](https://threejs.org), vendored as one
 bundle in `mqttviz/web/vendor/` (see its README): nothing to install,
@@ -393,7 +440,7 @@ The page is a client of a small JSON API, which scripts may use too:
 | Route | Purpose |
 | ----- | ------- |
 | `GET /api/state` | Settings, broker profiles, broker status, devices, beacons |
-| `POST /api/settings` | View switches, logging, language (`en`/`de`), the GUI size (`gui_scale`, 70..160), the view mode (`view_mode`, `mesh`/`topology`/`space`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the space view's camera (`cam3d`, `{px, py, pz, tx, ty, tz}` in metres) and wall opacity (`holo_opacity`, 5..100), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the profile list (`brokers`), and the active profile (`broker_index`) |
+| `POST /api/settings` | Logging, language (`en`/`de`), the GUI size (`gui_scale`, 70..160), the view mode (`view_mode`, `mesh`/`topology`/`space`), the topology view's camera (`cam`, `{zoom: 0.5..2.5, x/y: 0..1}` as fractions of the workspace), the space view's camera (`cam3d`, `{px, py, pz, tx, ty, tz}` in metres) and wall opacity (`holo_opacity`, 5..100), and `view_settings`: the settings each of the three views keeps separately -- the object switches (`show_broker`, `show_panels`, `show_aps`, `show_beacons`), the effects switches (`show_fx`, `fx_ambient`, `fx_glow`, `fx_trails`, `fx_motion`), the physics of each kind (`phys_nodes`, `phys_aps`, `phys_beacons`, `phys_broker`), the drawer state of the right edge (`drawer`, one of `physics`/`objects`/`fx`/`layouts`/`config` or empty) and of the left (`ldrawer`, `view` for the topology and the 3D, `model` for the 3D alone, or empty) with the physics tab (`phys_kind`) -- sent as `{"view_settings": {"<mode>": {...}}}`, merged per view. Also the profile list (`brokers`), and the active profile (`broker_index`) |
 | `POST /api/position` | `{"key": "panel:<host>", "x": 0..1, "y": 0..1}` -- pin one object of the topology view (`broker`, `ap:<bssid>`, `panel:<host>`) |
 | `POST /api/position/delete` | `{"key": ...}` -- unpin it again |
 | `POST /api/position3d` | `{"key": ..., "x", "y", "z": metres, "nx", "ny", "nz": the surface's normal, "yaw": radians, "level": id}` -- place one object in the space view |

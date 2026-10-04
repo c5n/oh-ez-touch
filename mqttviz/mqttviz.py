@@ -99,6 +99,31 @@ PHYS_RANGES = {
 # like any other object's.
 PHYS_KINDS = ("phys_nodes", "phys_aps", "phys_beacons", "phys_broker")
 
+# The names the page calls the physics kinds by, in its own tabs.
+PHYS_KIND_NAMES = ("device", "ap", "beacon", "broker")
+
+# The side drawers the page may keep open, one at a time: the five of
+# the right edge, and the two of the left -- the view's own controls and
+# the house it looks at. The left pair is not every view's: the mesh is
+# a fixed picture with no looking to steer and no house, so its rail
+# stays bare.
+DRAWERS = ("physics", "config", "layouts", "fx", "objects")
+LEFT_DRAWERS = {"view": ("topology", "space"), "model": ("space",)}
+
+
+def left_drawer_ok(mode, name):
+    """Whether a left drawer belongs to a picture: only the views it
+    was drawn for may keep it open."""
+    return name in LEFT_DRAWERS and mode in LEFT_DRAWERS[name]
+
+# Which picture the switches and sliders below belong to: the classic
+# mesh, the topology, or the house in 3D. Each view keeps its own copy,
+# so the same tool draws a different picture -- with a different feel --
+# in each of them.
+VIEW_SWITCH_KEYS = ("show_broker", "show_panels", "show_aps", "show_beacons",
+                    "show_fx", "fx_ambient", "fx_glow", "fx_trails",
+                    "fx_motion")
+
 # What a stored position may be keyed by: the broker, an access point by
 # its BSSID, or a panel by its hostname. The page owns the keys; this
 # end only bounds them.
@@ -331,6 +356,105 @@ def normalise_phys(raw):
     return phys
 
 
+def default_view_settings():
+    """The switches and sliders of one view, as the canvas ships: every
+    object drawn, every effect on, the physics at its thick-oil
+    defaults, and no drawer open."""
+    return {
+        "show_broker": True,
+        "show_panels": True,
+        "show_aps": True,
+        "show_beacons": True,
+        "show_fx": True,
+        "fx_ambient": True,
+        "fx_glow": True,
+        "fx_trails": True,
+        "fx_motion": True,
+        "phys_nodes": dict(PHYS_DEFAULTS),
+        "phys_aps": dict(PHYS_DEFAULTS),
+        "phys_beacons": dict(PHYS_DEFAULTS),
+        "phys_broker": dict(PHYS_DEFAULTS),
+        "drawer": "",
+        "ldrawer": "",
+        "phys_kind": "device",
+    }
+
+
+def normalise_view_settings(raw):
+    """The whole per-view table: one complete entry per picture, however
+    incomplete the file or the page was -- unknown views and keys are
+    dropped, missing ones filled at their defaults."""
+    table = {mode: default_view_settings() for mode in VIEW_MODES}
+    if not isinstance(raw, dict):
+        return table
+
+    for mode, values in raw.items():
+        if mode not in VIEW_MODES or not isinstance(values, dict):
+            continue
+        entry = table[mode]
+        for key in VIEW_SWITCH_KEYS:
+            if key in values:
+                entry[key] = bool(values[key])
+        if values.get("drawer") in DRAWERS:
+            entry["drawer"] = values["drawer"]
+        if left_drawer_ok(mode, values.get("ldrawer")):
+            entry["ldrawer"] = values["ldrawer"]
+        if values.get("phys_kind") in PHYS_KIND_NAMES:
+            entry["phys_kind"] = values["phys_kind"]
+        for phys_key in PHYS_KINDS:
+            if isinstance(values.get(phys_key), dict):
+                entry[phys_key] = normalise_phys(values[phys_key])
+    return table
+
+
+def merge_view_settings(current, incoming):
+    """What the page sends: a few keys of a few views, laid over what
+    stood. The page owns one view at a time; this end keeps all three
+    whole, whatever arrives."""
+    table = normalise_view_settings(current)
+
+    for mode, updates in incoming.items():
+        if mode not in VIEW_MODES:
+            raise ValueError("unknown view: " + str(mode))
+        if not isinstance(updates, dict):
+            raise ValueError("view settings must be an object")
+
+        entry = table[mode]
+        for key in VIEW_SWITCH_KEYS:
+            if key in updates:
+                entry[key] = bool(updates[key])
+
+        if "drawer" in updates:
+            entry["drawer"] = updates["drawer"] \
+                if updates["drawer"] in DRAWERS else ""
+        if "ldrawer" in updates:
+            entry["ldrawer"] = updates["ldrawer"] \
+                if left_drawer_ok(mode, updates["ldrawer"]) else ""
+        if "phys_kind" in updates:
+            entry["phys_kind"] = updates["phys_kind"] \
+                if updates["phys_kind"] in PHYS_KIND_NAMES else "device"
+
+        for phys_key in PHYS_KINDS:
+            if phys_key not in updates:
+                continue
+            sliders = updates[phys_key]
+            if not isinstance(sliders, dict):
+                raise ValueError(phys_key + " must be an object")
+            merged = dict(entry[phys_key])
+            for key, default in PHYS_DEFAULTS.items():
+                if key not in sliders:
+                    continue
+                try:
+                    value = int(sliders[key])
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        "%s.%s must be a number" % (phys_key, key))
+                low, high = PHYS_RANGES.get(key, (0, 100))
+                merged[key] = max(low, min(high, value))
+            entry[phys_key] = normalise_phys(merged)
+    return table
+
+
 def topic_sanitise(base):
     """The same rules the firmware applies to its own base topic: no
     wildcards, no empty levels, and never the empty string."""
@@ -436,9 +560,6 @@ class State:
         "broker_index": 0,
         "log_level": "info",
         "verbose": False,
-        "show_broker": True,
-        "show_beacons": True,
-        "show_fx": True,
         "view_mode": "mesh",
         "lang": "en",
         "positions": {},
@@ -449,20 +570,15 @@ class State:
         "cam3d": None,
         "holo_opacity": 50,
         "gui_scale": 100,
-        "phys_nodes": dict(PHYS_DEFAULTS),
-        "phys_aps": dict(PHYS_DEFAULTS),
-        "phys_beacons": dict(PHYS_DEFAULTS),
-        "phys_broker": dict(PHYS_DEFAULTS),
+        "view_settings": {},
     }
 
     def __init__(self):
         self.lock = threading.RLock()
         self.settings = dict(self.DEFAULT_SETTINGS)
         self.settings["brokers"] = [dict(DEFAULT_BROKER)]
-        self.settings["phys_nodes"] = dict(PHYS_DEFAULTS)
-        self.settings["phys_aps"] = dict(PHYS_DEFAULTS)
-        self.settings["phys_beacons"] = dict(PHYS_DEFAULTS)
-        self.settings["phys_broker"] = dict(PHYS_DEFAULTS)
+        self.settings["view_settings"] = {mode: default_view_settings()
+                                          for mode in VIEW_MODES}
         self.devices = {}          # hostname -> device dict
         self.beacons = {}          # address -> beacon dict, memory only
         self.log_entries = deque(maxlen=LOG_CAPACITY)
@@ -518,22 +634,39 @@ class State:
             profiles, follow_id=old and old.get("id"),
             follow_name=old and old["name"])
 
-        # Whatever the file said the sliders were, they are sliders now:
-        # every one whole, in range, and missing ones at their defaults.
-        # A file from before the two halves were set apart kept one set
-        # under "phys"; it becomes all of them, so nothing on the canvas
-        # moves the day after the upgrade.
+        # Each picture of the facts keeps its own settings now: what it
+        # draws, which effects it draws, how its boxes move, and which
+        # of its drawers stood open. A file from before the views were
+        # set apart kept one set of switches and one physics, flat at
+        # the top; it becomes the same choice in all three views, so
+        # nothing on any canvas moves the day after the upgrade.
         file_settings = doc.get("settings") if isinstance(
             doc.get("settings"), dict) else {}
-        legacy = file_settings.get("phys")
-        phys_keys = ("phys_nodes", "phys_aps", "phys_beacons", "phys_broker")
-        if isinstance(legacy, dict) and not any(
-                k in file_settings for k in phys_keys):
-            for key in phys_keys:
-                self.settings[key] = normalise_phys(legacy)
+        if isinstance(file_settings.get("view_settings"), dict):
+            self.settings["view_settings"] = normalise_view_settings(
+                file_settings.get("view_settings"))
         else:
-            for key in phys_keys:
-                self.settings[key] = normalise_phys(self.settings.get(key))
+            legacy = {key: file_settings[key]
+                      for key in ("show_broker", "show_beacons", "show_fx")
+                      + PHYS_KINDS if key in file_settings}
+            # A file from before the kinds were set apart kept one set
+            # of sliders under "phys"; it becomes all of them.
+            old_phys = file_settings.get("phys")
+            if isinstance(old_phys, dict) and not any(
+                    key in file_settings for key in PHYS_KINDS):
+                for key in PHYS_KINDS:
+                    legacy[key] = normalise_phys(old_phys)
+
+            table = {mode: default_view_settings() for mode in VIEW_MODES}
+            for mode in VIEW_MODES:
+                for key, value in legacy.items():
+                    if key in PHYS_KINDS:
+                        table[mode][key] = normalise_phys(value)
+                    else:
+                        table[mode][key] = bool(value)
+            self.settings["view_settings"] = table
+            if legacy:
+                self.save()
 
         # Which picture the canvas draws: the classic mesh, or the
         # topology of broker, access points and panels.
@@ -1355,18 +1488,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_error_json("unknown log level")
                 STATE.settings["log_level"] = body["log_level"]
 
-            # View switches -- what the page draws, not what it knows.
-            # The devices keep tracking either way.
-            if "show_broker" in body:
-                STATE.settings["show_broker"] = bool(body["show_broker"])
-
-            if "show_beacons" in body:
-                STATE.settings["show_beacons"] = bool(body["show_beacons"])
-
-            # The effects layer: the physics is the same either way, the
-            # glow is what the switch turns off.
-            if "show_fx" in body:
-                STATE.settings["show_fx"] = bool(body["show_fx"])
+            # What each view draws, and how it feels, kept per picture:
+            # the switches and sliders arrive as a few keys of one view,
+            # laid over the table this end keeps whole.
+            if "view_settings" in body:
+                incoming = body["view_settings"]
+                if not isinstance(incoming, dict):
+                    return self.send_error_json(
+                        "view settings must be an object")
+                try:
+                    STATE.settings["view_settings"] = merge_view_settings(
+                        STATE.settings.get("view_settings"), incoming)
+                except ValueError as error:
+                    return self.send_error_json(str(error))
 
             # Which picture the canvas draws of the same facts.
             if "view_mode" in body:
@@ -1390,32 +1524,6 @@ class Handler(BaseHTTPRequestHandler):
             if "gui_scale" in body:
                 STATE.settings["gui_scale"] = normalise_gui_scale(
                     body["gui_scale"])
-
-            # The physics sliders: whole numbers in their ranges, whatever
-            # the page meant by them, clamped here -- and set apart for
-            # the two kinds of things that float, the panels and the
-            # beacons. The canvas takes care of what the numbers mean.
-            for phys_key in PHYS_KINDS:
-                if phys_key not in body:
-                    continue
-
-                incoming = body[phys_key]
-                if not isinstance(incoming, dict):
-                    return self.send_error_json(
-                        phys_key + " must be an object")
-
-                merged = dict(STATE.settings.get(phys_key) or {})
-                for key, default in PHYS_DEFAULTS.items():
-                    if key not in incoming:
-                        continue
-                    try:
-                        value = int(incoming[key])
-                    except (TypeError, ValueError):
-                        return self.send_error_json(
-                            "%s.%s must be a number" % (phys_key, key))
-                    low, high = PHYS_RANGES.get(key, (0, 100))
-                    merged[key] = max(low, min(high, value))
-                STATE.settings[phys_key] = normalise_phys(merged)
 
             # The language of the page: English or German.
             if "lang" in body:

@@ -25,22 +25,40 @@
     <button id="btn-mode-topology" class="seg-btn" data-i18n-title="tip.modeTopology" data-i18n="view.topology">Topology</button>
     <button id="btn-mode-space" class="seg-btn" data-i18n-title="tip.modeSpace" data-i18n="view.space">3D</button>
   </div>
-  <button id="btn-view-broker" class="lcars-btn view-toggle" data-i18n-title="tip.brokerView" data-i18n="word.broker">Broker</button>
-  <button id="btn-view-beacons" class="lcars-btn view-toggle" data-i18n-title="tip.beaconsView" data-i18n="word.beacons">Beacons</button>
-  <button id="btn-view-fx" class="lcars-btn view-toggle" data-i18n-title="tip.fxView" data-i18n="word.fx">FX</button>
-  <button id="btn-layouts" class="lcars-btn" data-i18n-title="tip.layouts" data-i18n="word.layouts">Layouts</button>
-  <button id="btn-physics" class="lcars-btn" data-i18n-title="tip.physics" data-i18n="word.physics">Physics</button>
-  <button id="btn-settings" class="lcars-btn" data-i18n-title="tip.config" data-i18n="word.config">Config</button>
-  <button id="btn-console" class="lcars-btn"><span data-i18n="word.console">Console</span><span id="console-badge" class="badge hidden">0</span></button>
 </header>
 
 <main id="stage">
   <canvas id="canvas"></canvas>
 
-  <div id="zoom-controls" class="zoom-controls hidden">
-    <button id="btn-zoom-in" class="lcars-btn small" data-i18n-title="tip.zoomIn">+</button>
-    <button id="btn-zoom-out" class="lcars-btn small" data-i18n-title="tip.zoomOut">−</button>
-    <button id="btn-zoom-home" class="lcars-btn small" data-i18n-title="tip.zoomHome">⌂</button>
+  <div id="sidepanel-left">
+    <div id="drawer-stack-left">
+      <aside id="view-panel" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="word.view">View</span>
+          <button id="view-close" class="lcars-btn small" data-i18n="word.close">close</button>
+        </div>
+        <p class="hint" data-i18n="hint.view">How this view is looked at.</p>
+        <div id="zoom-controls" class="zoom-controls hidden">
+          <button id="btn-zoom-in" class="lcars-btn small" data-i18n-title="tip.zoomIn">+</button>
+          <button id="btn-zoom-out" class="lcars-btn small" data-i18n-title="tip.zoomOut">−</button>
+          <button id="btn-zoom-home" class="lcars-btn small" data-i18n-title="tip.zoomHome">⌂</button>
+        </div>
+        <div id="view-space-box" class="hidden"></div>
+      </aside>
+
+      <aside id="model-panel" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="word.model">Model</span>
+          <button id="model-close" class="lcars-btn small" data-i18n="word.close">close</button>
+        </div>
+        <p class="hint" data-i18n="hint.model">The house the 3D view hangs its facts on.</p>
+        <div id="model-box"></div>
+      </aside>
+    </div>
+    <nav id="rail-left">
+      <button id="rail-view" class="rail-btn" data-i18n-title="tip.viewPanel" data-i18n="word.view">View</button>
+      <button id="rail-model" class="rail-btn" data-i18n-title="tip.modelPanel" data-i18n="word.model">Model</button>
+    </nav>
   </div>
 
   <aside id="detail" class="hidden">
@@ -74,120 +92,145 @@
     </div>
   </aside>
 
-  <aside id="physics" class="hidden">
-    <div class="panel-head">
-      <span class="panel-title" data-i18n="word.physics">Physics</span>
-      <button id="physics-close" class="lcars-btn small" data-i18n="word.close">close</button>
-    </div>
-    <div id="physics-tabs" class="segment">
-      <button id="phys-tab-nodes" class="seg-btn active" data-i18n="physics.nodes">Panels</button>
-      <button id="phys-tab-aps" class="seg-btn hidden" data-i18n="physics.aps">Access Points</button>
-      <button id="phys-tab-beacons" class="seg-btn" data-i18n="physics.beacons">Beacons</button>
-      <button id="phys-tab-broker" class="seg-btn" data-i18n="word.broker">Broker</button>
-    </div>
-    <p class="hint" data-i18n="hint.physics">How the boxes move and the lines hang. Every slider
-    acts on the canvas the moment it is touched; save keeps the feel,
-    closing without saving puts it back.</p>
-    <form id="physics-form" onSubmit="return false;">
-      <div id="physics-rows-nodes"></div>
-      <div id="physics-rows-aps" class="hidden"></div>
-      <div id="physics-rows-beacons" class="hidden"></div>
-      <div id="physics-rows-broker" class="hidden"></div>
-      <div class="control-row">
-        <button type="button" id="physics-reset" class="lcars-btn small danger" data-i18n="word.defaults">defaults</button>
-        <div class="spacer"></div>
-        <button type="button" id="physics-save" class="lcars-btn" data-i18n="word.save">save</button>
-      </div>
-    </form>
-  </aside>
+  <div id="sidepanel">
+    <nav id="rail">
+      <button id="rail-physics" class="rail-btn" data-i18n-title="tip.physics" data-i18n="word.physics">Physics</button>
+      <button id="rail-objects" class="rail-btn" data-i18n-title="tip.objects" data-i18n="word.objects">Objects</button>
+      <button id="rail-fx" class="rail-btn" data-i18n-title="tip.fxPanel" data-i18n="word.fx">FX</button>
+      <button id="rail-layouts" class="rail-btn" data-i18n-title="tip.layouts" data-i18n="word.layouts">Layouts</button>
+      <button id="rail-config" class="rail-btn" data-i18n-title="tip.config" data-i18n="word.config">Config</button>
+    </nav>
+    <div id="drawer-stack">
+      <aside id="physics" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="word.physics">Physics</span>
+          <button id="physics-close" class="lcars-btn small" data-i18n="word.close">close</button>
+        </div>
+        <div id="physics-tabs" class="segment">
+          <button id="phys-tab-nodes" class="seg-btn active" data-i18n="physics.nodes">Panels</button>
+          <button id="phys-tab-aps" class="seg-btn hidden" data-i18n="physics.aps">Access Points</button>
+          <button id="phys-tab-beacons" class="seg-btn" data-i18n="physics.beacons">Beacons</button>
+          <button id="phys-tab-broker" class="seg-btn" data-i18n="word.broker">Broker</button>
+        </div>
+        <p class="hint" id="physics-hint" data-i18n="hint.physics">How the boxes move and the lines hang. Every slider
+        acts on the canvas the moment it is touched; save keeps the feel,
+        closing without saving puts it back.</p>
+        <form id="physics-form" onSubmit="return false;">
+          <div id="physics-rows-nodes"></div>
+          <div id="physics-rows-aps" class="hidden"></div>
+          <div id="physics-rows-beacons" class="hidden"></div>
+          <div id="physics-rows-broker" class="hidden"></div>
+          <div class="control-row">
+            <button type="button" id="physics-reset" class="lcars-btn small danger" data-i18n="word.defaults">defaults</button>
+            <div class="spacer"></div>
+            <button type="button" id="physics-save" class="lcars-btn" data-i18n="word.save">save</button>
+          </div>
+        </form>
+      </aside>
 
-  <div id="settings" class="modal hidden">
-    <div class="modal-card">
-      <div class="panel-head">
-        <span class="panel-title" data-i18n="set.title">MQTT brokers</span>
-        <button id="settings-close" class="lcars-btn small" data-i18n="word.close">close</button>
-      </div>
-      <form id="settings-form">
-        <label class="check-row">
-          <input type="checkbox" id="set-enabled">
-          <span data-i18n="set.connected">connected to the broker</span>
-        </label>
-        <div id="broker-list" class="broker-list"></div>
-        <div class="control-row">
-          <button type="button" id="broker-add" class="lcars-btn small" data-i18n="set.add">add broker</button>
-          <button type="button" id="broker-remove" class="lcars-btn small danger" data-i18n="set.remove">remove selected</button>
+      <aside id="objects" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="word.objects">Objects</span>
+          <button id="objects-close" class="lcars-btn small" data-i18n="word.close">close</button>
         </div>
-        <div class="grid2">
-          <label><span data-i18n="set.name">name</span>
-            <input type="text" id="set-name" autocomplete="off">
-          </label>
-          <label><span data-i18n="set.base">base topic</span>
-            <input type="text" id="set-base" autocomplete="off">
-          </label>
-          <label><span data-i18n="set.host">broker host</span>
-            <input type="text" id="set-host" autocomplete="off">
-          </label>
-          <label><span data-i18n="set.port">broker port</span>
-            <input type="number" id="set-port" min="1" max="65535">
-          </label>
-          <label><span data-i18n="set.user">username</span>
-            <input type="text" id="set-user" autocomplete="off">
-          </label>
-          <label><span data-i18n="set.pass">password</span>
-            <input type="password" id="set-pass" autocomplete="new-password">
-          </label>
+        <p class="hint" data-i18n="hint.objects">What this view draws of the same facts.</p>
+        <div id="objects-rows"></div>
+      </aside>
+
+      <aside id="fx" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="word.fx">FX</span>
+          <button id="fx-close" class="lcars-btn small" data-i18n="word.close">close</button>
         </div>
-        <label class="lang-row"><span data-i18n="set.language">language</span>
-          <select id="set-lang">
-            <option value="en">English</option>
-            <option value="de">Deutsch</option>
-          </select>
-        </label>
-        <label class="lang-row"><span data-i18n="set.guiScale">GUI size</span>
-          <input type="range" id="set-gui-scale" class="gui-scale"
-                 min="70" max="160" step="5" value="100">
-        </label>
-        <label class="check-row">
-          <input type="checkbox" id="set-verbose">
-          <span data-i18n="set.verbose">log every message</span>
-        </label>
-        <p class="hint" data-i18n="hint.settings">Saving keeps every profile; the one in use is picked
-        with the selector in the top bar. The passwords are stored in
-        mqttviz/data/mqttviz.json, which git does not keep.</p>
-        <div class="form-actions">
-          <button type="submit" id="settings-save" class="lcars-btn" data-i18n="word.save">save</button>
+        <p class="hint" data-i18n="hint.fx">The light layer of the picture.</p>
+        <div id="fx-rows"></div>
+      </aside>
+
+      <aside id="layouts" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="lay.title">Layouts</span>
+          <button id="layouts-close" class="lcars-btn small" data-i18n="word.close">close</button>
         </div>
-      </form>
+        <form id="layout-form" onSubmit="return false;">
+          <p class="hint" data-i18n="hint.layouts">Save the arrangement as it stands under a
+          name and bring a saved one back whole. The server keeps a backup file beside
+          the state — mqttviz/data/layouts.json, rewritten on every change — and the
+          button here writes the same content to a file of your own.</p>
+          <div class="control-row">
+            <input type="text" id="layout-name" autocomplete="off"
+                   data-i18n-placeholder="lay.namePlaceholder">
+            <button type="button" id="layout-save" class="lcars-btn small" data-i18n="lay.saveCurrent">save current</button>
+          </div>
+          <div id="layout-list" class="broker-list layout-list"></div>
+          <div class="control-row">
+            <button type="button" id="layout-download" class="lcars-btn small" data-i18n="lay.download">backup file</button>
+            <label class="lcars-btn small" for="layout-import" data-i18n="lay.import">import backup</label>
+            <input type="file" id="layout-import" accept=".json,application/json" hidden>
+          </div>
+        </form>
+      </aside>
+
+      <aside id="settings" class="drawer">
+        <div class="panel-head">
+          <span class="panel-title" data-i18n="set.title">MQTT brokers</span>
+          <button id="settings-close" class="lcars-btn small" data-i18n="word.close">close</button>
+        </div>
+        <form id="settings-form">
+          <label class="check-row">
+            <input type="checkbox" id="set-enabled">
+            <span data-i18n="set.connected">connected to the broker</span>
+          </label>
+          <div id="broker-list" class="broker-list"></div>
+          <div class="control-row">
+            <button type="button" id="broker-add" class="lcars-btn small" data-i18n="set.add">add broker</button>
+            <button type="button" id="broker-remove" class="lcars-btn small danger" data-i18n="set.remove">remove selected</button>
+          </div>
+          <div class="grid2">
+            <label><span data-i18n="set.name">name</span>
+              <input type="text" id="set-name" autocomplete="off">
+            </label>
+            <label><span data-i18n="set.base">base topic</span>
+              <input type="text" id="set-base" autocomplete="off">
+            </label>
+            <label><span data-i18n="set.host">broker host</span>
+              <input type="text" id="set-host" autocomplete="off">
+            </label>
+            <label><span data-i18n="set.port">broker port</span>
+              <input type="number" id="set-port" min="1" max="65535">
+            </label>
+            <label><span data-i18n="set.user">username</span>
+              <input type="text" id="set-user" autocomplete="off">
+            </label>
+            <label><span data-i18n="set.pass">password</span>
+              <input type="password" id="set-pass" autocomplete="new-password">
+            </label>
+          </div>
+          <label class="lang-row"><span data-i18n="set.language">language</span>
+            <select id="set-lang">
+              <option value="en">English</option>
+              <option value="de">Deutsch</option>
+            </select>
+          </label>
+          <label class="lang-row"><span data-i18n="set.guiScale">GUI size</span>
+            <input type="range" id="set-gui-scale" class="gui-scale"
+                   min="70" max="160" step="5" value="100">
+          </label>
+          <label class="check-row">
+            <input type="checkbox" id="set-verbose">
+            <span data-i18n="set.verbose">log every message</span>
+          </label>
+          <p class="hint" data-i18n="hint.settings">Saving keeps every profile; the one in use is picked
+          with the selector in the top bar. The passwords are stored in
+          mqttviz/data/mqttviz.json, which git does not keep.</p>
+          <div class="form-actions">
+            <button type="submit" id="settings-save" class="lcars-btn" data-i18n="word.save">save</button>
+          </div>
+        </form>
+      </aside>
     </div>
   </div>
 
-  <div id="layouts" class="modal hidden">
-    <div class="modal-card">
-      <div class="panel-head">
-        <span class="panel-title" data-i18n="lay.title">Layouts</span>
-        <button id="layouts-close" class="lcars-btn small" data-i18n="word.close">close</button>
-      </div>
-      <form id="layout-form" onSubmit="return false;">
-        <p class="hint" data-i18n="hint.layouts">Save the arrangement as it stands under a
-        name and bring a saved one back whole. The server keeps a backup file beside
-        the state — mqttviz/data/layouts.json, rewritten on every change — and the
-        button here writes the same content to a file of your own.</p>
-        <div class="control-row">
-          <input type="text" id="layout-name" autocomplete="off"
-                 data-i18n-placeholder="lay.namePlaceholder">
-          <button type="button" id="layout-save" class="lcars-btn small" data-i18n="lay.saveCurrent">save current</button>
-        </div>
-        <div id="layout-list" class="broker-list layout-list"></div>
-        <div class="control-row">
-          <button type="button" id="layout-download" class="lcars-btn small" data-i18n="lay.download">backup file</button>
-          <label class="lcars-btn small" for="layout-import" data-i18n="lay.import">import backup</label>
-          <input type="file" id="layout-import" accept=".json,application/json" hidden>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="console" class="hidden">
+  <div id="console">
     <div class="panel-head">
       <span class="panel-title" data-i18n="word.console">Console</span>
       <div id="console-filters">
@@ -203,6 +246,10 @@
     </div>
     <div id="console-entries"></div>
   </div>
+
+  <footer id="bottombar">
+    <button id="btn-console" class="lcars-btn" data-i18n-title="tip.console"><span data-i18n="word.console">Console</span><span id="console-badge" class="badge hidden">0</span></button>
+  </footer>
 
   <div id="toast" class="hidden"></div>
   <div id="debug-geom" hidden></div>

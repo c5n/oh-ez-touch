@@ -114,6 +114,7 @@ const consoleState = {
 };
 
 async function pollState() {
+  const prevMode = state.settings.view_mode;
   try {
     const doc = await api("/api/state");
     state.settings = doc.settings;
@@ -155,15 +156,16 @@ async function pollState() {
   if (window.MqttvizSpace) window.MqttvizSpace.update();
   renderBrokerChip();
   renderBrokerSelect();
-  renderViewToggles();
+  renderChrome(prevMode);
   if (!$("detail").classList.contains("hidden")) renderDetail();
-  /* While the physics panel is open, the sliders own the feel: the
-   * server still says what was saved, and says it again every second,
-   * but the canvas follows the hand on the slider until the panel
-   * closes. */
-  if (!$("physics").classList.contains("hidden") && physicsDraft) {
+  /* While the physics drawer is open, the sliders own the feel of this
+   * view: the server still says what was saved, and says it again
+   * every second, but the canvas follows the hand on the slider until
+   * the drawer closes. */
+  if (activeDrawer === "physics" && physicsDraft) {
+    const mine = ensureViewSettings(physicsDraftMode || currentMode());
     for (const kind of PHYS_KINDS) {
-      state.settings[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
+      mine[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
     }
   }
   state.pollTimer = setTimeout(pollState, 1000);
@@ -197,6 +199,13 @@ let hovered = null;        // the box under the cursor, for the lift
 
 /* ------------------------------------------------------------- view mode */
 
+const VIEW_MODES = ["mesh", "topology", "space"];
+
+function currentMode() {
+  return VIEW_MODES.includes(state.settings.view_mode)
+    ? state.settings.view_mode : "mesh";
+}
+
 function isTopology() {
   return state.settings.view_mode === "topology";
 }
@@ -208,8 +217,39 @@ function isSpace() {
   return state.settings.view_mode === "space";
 }
 
+/* Each picture of the facts keeps its own settings -- what it draws,
+ * which effects it draws, how its boxes move, and which of its drawers
+ * stood open -- kept by the server under view_settings[mode]. Whatever
+ * the poll has not brought yet falls back to the shipped defaults. */
+function viewSettings(mode) {
+  const key = mode || currentMode();
+  return ((state.settings.view_settings || {})[key]) || {};
+}
+
+/* The live per-view object, the one the page writes its switches
+ * into -- created on demand, whatever the poll brought. */
+function ensureViewSettings(mode) {
+  const key = mode || currentMode();
+  const table = state.settings.view_settings
+    || (state.settings.view_settings = {});
+  return table[key] || (table[key] = {});
+}
+
 function fxOn() {
-  return state.settings.show_fx !== false;
+  return viewSettings().show_fx !== false;
+}
+
+/* One kind of light of the effects layer: on only while the master
+ * switch and its own row say so. What a view does not have is not
+ * offered in the panel, and reads as on here. */
+function fxGroup(name) {
+  return fxOn() && viewSettings()["fx_" + name] !== false;
+}
+
+/* One kind of object in the picture: the switch is a view switch, not
+ * a stop button -- everything keeps tracking behind it. */
+function showKind(key) {
+  return viewSettings()["show_" + key] !== false;
 }
 
 /* One access point key, whatever the panel published: the firmware
@@ -600,14 +640,14 @@ function startDeath(box) {
   if (box.kind === "device") {
     const uplink = (isTopology() && box.ap && apBoxFor(box.ap))
                    || (isTopology() ? null : bp);
-    if (uplink && state.settings.show_broker !== false)
+    if (uplink && showKind("broker"))
       ghost(uplink.cx, uplink.cy, box.cx, box.cy, PALETTE.peri);
     for (const other of boxes)
       if (other.kind === "beacon" && other.dev
           && other.dev.devices.some((d) => d.host === box.host))
         ghost(other.cx, other.cy, box.cx, box.cy, PALETTE.teal);
   } else if (box.kind === "ap") {
-    if (state.settings.show_broker !== false)
+    if (showKind("broker"))
       ghost(bp.cx, bp.cy, box.cx, box.cy, PALETTE.peri);
     for (const other of boxes)
       if (other.kind === "device" && other.ap === box.bssid)
@@ -643,8 +683,10 @@ function syncBoxes() {
   /* -- the access points: one box per BSSID any panel reports -------- */
 
   /* The space view draws access points too; their boxes here are what
-   * its detail panel reads. */
-  if (topo || isSpace()) {
+   * its detail panel reads. They are a kind the objects panel switches,
+   * so while they are off the boxes are not here at all -- the same way
+   * the beacons are. */
+  if ((topo || isSpace()) && showKind("aps")) {
     const groups = new Map();
     for (const dev of state.devices) {
       const bssid = deviceBssid(dev);
@@ -720,8 +762,11 @@ function syncBoxes() {
     });
   }
 
+  /* The panels are a kind the objects panel switches too: while they
+   * are off, the boxes vanish from the canvas the way the beacons'
+   * do -- the devices keep being tracked behind the switch. */
   let born = 0;
-  for (const dev of state.devices) {
+  if (showKind("panels")) for (const dev of state.devices) {
     live.add(dev.host);
 
     let box = boxFor(dev.host);
@@ -832,7 +877,7 @@ function syncBoxes() {
   /* Beacons are only turned into boxes while they are switched on -- the
    * boxes vanish from the canvas and the seats the moment they are not,
    * and the beacons keep being tracked behind the switch. */
-  if (state.settings.show_beacons !== false) {
+  if (showKind("beacons")) {
     /* A line is only a line while its hearing is fresh and strong
      * enough: one whose panel has not reported the beacon for the line
      * timeout, or whose signal is weaker than the minimum, is gone --
@@ -1071,6 +1116,11 @@ const BEACON_EXTRA = [
 const AP_SPEC = PHYS_SPEC;
 
 function physSpecFor(kind) {
+  /* The space view keeps only the one slider that reaches into it: how
+   * long a beacon's hearing holds its leash in the house. */
+  if (isSpace() && kind === "beacon") {
+    return BEACON_EXTRA.filter((spec) => spec.key === "line_timeout");
+  }
   if (kind === "broker") return BROKER_SPEC;
   if (kind === "ap") return AP_SPEC;
   return kind === "beacon" ? PHYS_SPEC.concat(BEACON_EXTRA) : PHYS_SPEC;
@@ -1093,7 +1143,7 @@ function physRowsId(kind) {
 }
 
 function physParams(kind) {
-  const sliders = state.settings[PHYS_SETTINGS_KEY[kind] || "phys_nodes"]
+  const sliders = viewSettings()[PHYS_SETTINGS_KEY[kind] || "phys_nodes"]
                   || PHYS_DEFAULTS;
   const value = (key, low, high) => {
     const v = sliders[key];
@@ -1591,7 +1641,7 @@ function drawLink(x0, y0, x1, y1, kind, opts) {
 }
 
 function drawBackground(time) {
-  if (!fxOn() || !bgFill) return;
+  if (!fxGroup("ambient") || !bgFill) return;
   const cell = 28;
   const ox = (time * 0.004) % cell, oy = (time * 0.0023) % cell;
   /* The workspace is four times the viewport, but the camera shows a
@@ -1614,7 +1664,7 @@ function drawBackground(time) {
 /* A radar sweep around the hub: faint, slow, and only there when the
  * effects are on and the broker is in the picture. */
 function drawSweep(time) {
-  if (!fxOn() || !ctx.createConicGradient || !brokerBox) return;
+  if (!fxGroup("ambient") || !ctx.createConicGradient || !brokerBox) return;
   /* The sweep's circle reaches past the whole workspace, but only the
    * camera's window is ever on screen: the fill is clipped to it, so
    * the raster cost follows the viewport and not the stage. */
@@ -1639,6 +1689,7 @@ function drawSweep(time) {
 }
 
 function drawGhosts(time) {
+  if (!fxGroup("motion")) { ghostLinks.length = 0; return; }
   for (let i = ghostLinks.length - 1; i >= 0; i--) {
     const gh = ghostLinks[i];
     const u = (time - gh.t0) / 350;
@@ -1660,7 +1711,7 @@ function drawGhosts(time) {
 /* Where a mobile thing has been: the last positions of every beacon,
  * stamped additively and fading behind it as it moves. */
 function drawTrails() {
-  if (!fxOn()) return;
+  if (!fxGroup("trails")) return;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   const [r, g, b] = hexRgb(PALETTE.teal);
@@ -1683,7 +1734,7 @@ function drawTrails() {
 /* The halo under every box: a soft light in the colour of its kind,
  * breathing on its own phase, brighter while it talks or lifts. */
 function drawHalos(time) {
-  if (!fxOn()) return;
+  if (!fxGroup("glow")) return;
   for (const box of boxes) {
     if (box.kind === "broker") continue;          // the hub glows on its own
     const hex = box.kind === "beacon" ? PALETTE.teal
@@ -1697,6 +1748,7 @@ function drawHalos(time) {
 }
 
 function drawWaves(time) {
+  if (!fxGroup("motion")) { waves.length = 0; return; }
   for (let i = waves.length - 1; i >= 0; i--) {
     const wv = waves[i];
     const u = Math.max(0, Math.min(1, (time - wv.t0) / wv.dur));
@@ -1743,7 +1795,7 @@ function drawDying(time) {
  * cursor. The scale never moves the box -- physics owns the position. */
 function boxTransform(box, time, fn) {
   let s = easeOutBack(birthT(box, time));
-  if (fxOn()) s *= 1 + 0.008 * Math.sin(time * 0.0012 + box.seed * 6);
+  if (fxGroup("glow")) s *= 1 + 0.008 * Math.sin(time * 0.0012 + box.seed * 6);
   s *= 1 + 0.03 * (box.hoverEase || 0);
   if (Math.abs(s - 1) < 0.001) {
     fn();
@@ -1791,7 +1843,7 @@ function draw(time) {
     return;
   }
   const topo = isTopology();
-  const showBroker = state.settings.show_broker !== false;
+  const showBroker = showKind("broker");
 
   /* -- the camera ------------------------------------------------------- */
 
@@ -1854,7 +1906,7 @@ function draw(time) {
       drawLink(x0, y0, x1, y1, "beacon", {
         color: "rgba(" + mix(90, 95) + "," + mix(107, 201) + ","
                + mix(128, 176) + "," + alpha + ")",
-        glow: fxOn() ? "rgba(95, 201, 176," + (0.12 * q * asleep) + ")" : null,
+        glow: fxGroup("glow") ? "rgba(95, 201, 176," + (0.12 * q * asleep) + ")" : null,
         width: 0.6 + 2.6 * q,
         grow: grow.t,
       });
@@ -1881,11 +1933,11 @@ function draw(time) {
       drawLink(brokerBox.cx, brokerBox.cy, box.cx, box.cy,
                lan ? "ap" : "device", {
         color: "rgba(153, 194, 255," + alpha + ")",
-        glow: fxOn() ? "rgba(153, 194, 255,0.05)" : null,
+        glow: fxGroup("glow") ? "rgba(153, 194, 255,0.05)" : null,
         width: lan ? 1.4 : 1,
         /* The LAN is a cable with a current in it: the dashes walk
          * toward the broker, the way the messages do. */
-        dash: lan && fxOn() ? [3, 9] : [],
+        dash: lan && fxGroup("motion") ? [3, 9] : [],
         dashOffset: lan ? time * 0.02 : 0,
         grow: grow.t,
       });
@@ -1914,11 +1966,11 @@ function draw(time) {
         const alpha = 0.10 + 0.45 * panel.q + deviceBox.activity * 0.20;
         drawLink(x0, y0, x1, y1, "device", {
           color: "rgba(153, 194, 255," + alpha + ")",
-          glow: fxOn() ? "rgba(153, 194, 255,"
-                        + (0.05 + 0.10 * panel.q) + ")" : null,
+          glow: fxGroup("glow") ? "rgba(153, 194, 255,"
+                               + (0.05 + 0.10 * panel.q) + ")" : null,
           width: 0.7 + 1.8 * panel.q,
-          dash: fxOn() && panel.q > 0.25 ? [2, 8] : [],
-          dashOffset: fxOn() && panel.q > 0.25 ? time * 0.02 : 0,
+          dash: fxGroup("motion") && panel.q > 0.25 ? [2, 8] : [],
+          dashOffset: fxGroup("motion") && panel.q > 0.25 ? time * 0.02 : 0,
           grow: grow.t,
         });
       }
@@ -1936,6 +1988,10 @@ function draw(time) {
   const dt = Math.min(0.05, (time - frameTime) / 1000) * 60;
   frameTime = time;
 
+  /* The particles are the news travelling, a kind of light of their
+   * own: while they are switched off the queue is emptied, not paused. */
+  if (!fxGroup("motion")) particles.length = 0;
+
   for (let i = particles.length - 1; i >= 0; i--) {
     const p = particles[i];
     p.t += dt / 60 / p.dur;
@@ -1946,7 +2002,7 @@ function draw(time) {
        * news on: a second particle walks its LAN line home. */
       const arrived = p.to || p.from;
       arrived.activity = 1;
-      if (fxOn()) {
+      if (fxGroup("motion")) {
         wave(arrived.cx, arrived.cy,
              p.to && p.to.kind === "device" ? PALETTE.teal : PALETTE.peri,
              24, 450);
@@ -1975,7 +2031,7 @@ function draw(time) {
                  : "153, 194, 255";
 
     ctx.save();
-    if (fxOn()) ctx.globalCompositeOperation = "lighter";
+    if (fxGroup("motion")) ctx.globalCompositeOperation = "lighter";
     for (let trail = 0; trail < 5; trail++) {
       const t = Math.max(0, p.t - trail * 0.04);
       const u = 1 - t;
@@ -2027,7 +2083,7 @@ function drawBroker(box, time) {
   const x = Math.round(box.cx - box.w / 2);
   const y = Math.round(box.cy - box.h / 2);
 
-  if (fxOn()) {
+  if (fxGroup("glow")) {
     const alive = b.connected ? 1 : 0.3;
     stampGlow(box.cx, box.cy, 150 + 18 * Math.sin(time * 0.002),
               (0.12 + 0.20 * box.activity) * alive, PALETTE.orange);
@@ -2736,7 +2792,7 @@ function savePin(box) {
   state.settings.positions = { ...(state.settings.positions || {}) };
   state.settings.positions[pinKeyFor(box)] = box.pin;
 
-  if (fxOn()) wave(box.cx, box.cy, PALETTE.orange, 46, 550);
+  if (fxGroup("motion")) wave(box.cx, box.cy, PALETTE.orange, 46, 550);
   api("/api/position", { key: pinKeyFor(box), x, y })
     .catch((error) => toast(error.message, "err"));
 }
@@ -2749,7 +2805,7 @@ function unpinBox(box) {
   state.settings.positions = { ...(state.settings.positions || {}) };
   delete state.settings.positions[pinKeyFor(box)];
 
-  if (fxOn()) wave(box.cx, box.cy, PALETTE.peri, 40, 500);
+  if (fxGroup("motion")) wave(box.cx, box.cy, PALETTE.peri, 40, 500);
   api("/api/position/delete", { key: pinKeyFor(box) })
     .catch((error) => toast(error.message, "err"));
 }
@@ -2839,46 +2895,507 @@ function applyDrags() {
   }
 }
 
-/* ------------------------------------------------------------- view switches */
+/* ------------------------------------------------------------ view chrome */
 
-/* The two switches in the top bar say what the canvas draws -- the broker
- * node with its links, and the beacon boxes with theirs. They are view
- * switches, not stop buttons: the devices keep tracking, the beacons keep
- * learning, and everything comes back exactly as it was. */
-function renderViewToggles() {
+/* The stage's controls live on its edges now: the sidepanel assembly on
+ * the right -- the buttons riding the drawers' left edge, so they slide
+ * out and back with them -- its twin on the left for the view's own
+ * controls and the house it looks at, and the console button on the
+ * bottom bar. A button opens its drawer and closes it again -- one
+ * drawer at a time on each edge, because two half-width truths are
+ * worse than one -- and each view remembers, as a setting, which of
+ * its drawers stood open and on which tab. */
+const DRAWER_PANEL = {
+  physics: "physics",
+  objects: "objects",
+  fx: "fx",
+  layouts: "layouts",
+  config: "settings",
+};
+const DRAWER_BUTTON = {
+  physics: "rail-physics",
+  objects: "rail-objects",
+  fx: "rail-fx",
+  layouts: "rail-layouts",
+  config: "rail-config",
+};
+
+/* The left edge's drawers: the view's own controls and the model it
+ * looks at. They are not every view's -- the mesh is a fixed picture
+ * with nothing to steer, and the house is the space view's alone. */
+const DRAWER_PANEL_LEFT = {
+  view: "view-panel",
+  model: "model-panel",
+};
+const DRAWER_BUTTON_LEFT = {
+  view: "rail-view",
+  model: "rail-model",
+};
+const LEFT_DRAWERS = {
+  view: ["topology", "space"],
+  model: ["space"],
+};
+
+function leftDrawerValid(mode, name) {
+  return !!name && LEFT_DRAWERS[name]
+    && LEFT_DRAWERS[name].includes(mode);
+}
+
+let activeDrawer = null;
+const lastDrawer = {};       // per view: the drawer a sweep out brings back
+
+/* What the page shows of the picture the poll owns: the mode buttons,
+ * the right canvas, the zoom, and the panels whose content follows the
+ * view. The drawer state is only re-applied when the view itself
+ * turned over -- each view restores its own drawer then, and a poll
+ * never closes one on the hand that opened it. */
+function renderChrome(prevMode) {
+  const mode = currentMode();
+  const space = mode === "space";
   const wasSpace = $("canvas").classList.contains("hidden");
-  const space = isSpace();
-  $("btn-view-broker").classList.toggle("off",
-                                        state.settings.show_broker === false);
-  $("btn-view-beacons").classList.toggle("off",
-                                         state.settings.show_beacons === false);
-  $("btn-view-fx").classList.toggle("off",
-                                    state.settings.show_fx === false);
-  $("btn-mode-mesh").classList.toggle("active",
-                                      !isTopology() && !isSpace());
-  $("btn-mode-topology").classList.toggle("active", isTopology());
+
+  $("btn-mode-mesh").classList.toggle("active", mode === "mesh");
+  $("btn-mode-topology").classList.toggle("active", mode === "topology");
   $("btn-mode-space").classList.toggle("active", space);
   $("canvas").classList.toggle("hidden", space);
   if (wasSpace !== space) resize();
 
   /* The zoom belongs to the topology view alone -- the mesh is its own
    * fixed picture, and the space view moves its own camera. */
-  $("zoom-controls").classList.toggle("hidden", !isTopology());
+  $("zoom-controls").classList.toggle("hidden", mode !== "topology");
+
+  /* The left edge's flags: only a view that has a left drawer shows
+   * them -- the mesh's picture is fixed and houseless, so its rail
+   * stays bare and the whole assembly rests out of the way. */
+  $("rail-view").classList.toggle("hidden", mode === "mesh");
+  $("rail-model").classList.toggle("hidden", !space);
+  $("sidepanel-left").classList.toggle("hidden", mode === "mesh");
+  $("view-space-box").classList.toggle("hidden", !space);
+  $("model-box").classList.toggle("hidden", !space);
+
+  renderObjectsPanel();
+  renderFxPanel();
+  renderPhysicsTabs();
+  renderRail();
+
+  if (prevMode !== mode) {
+    /* The rows the view offers are the rows it has: the space view,
+     * for one, keeps only the beacons' leash. */
+    buildPhysicsPanel();
+    syncPhysicsReadouts();
+    applyDrawerState(viewSettings(mode).drawer, true);
+    applyLeftDrawerState(viewSettings(mode).ldrawer, true);
+  }
 }
 
-async function toggleView(key, button) {
-  const value = state.settings[key] === false;
-  state.settings[key] = value;               // the picture moves at once;
-  renderViewToggles();                       // the server keeps the choice
+function renderRail() {
+  for (const name in DRAWER_BUTTON) {
+    $(DRAWER_BUTTON[name]).classList.toggle("panel-open",
+                                            activeDrawer === name);
+  }
+  for (const name in DRAWER_BUTTON_LEFT) {
+    $(DRAWER_BUTTON_LEFT[name]).classList.toggle("panel-open",
+                                                  activeLeftDrawer === name);
+  }
+}
 
+/* The rail is as wide as its widest flag -- the German Config is a
+ * longer word than the English one -- so the clearance the other
+ * panels keep from the stage's right edge is measured, not guessed,
+ * and measured again when the language turns over. */
+function measureRail() {
+  document.documentElement.style.setProperty(
+    "--rail-w", ($("rail").offsetWidth + 12) + "px");
+}
+
+/* The whole assembly -- buttons and drawer -- is one sliding thing:
+ * the open class of the sidepanel says where it rests. */
+function syncSidepanelOpen() {
+  $("sidepanel").classList.toggle("open", !!activeDrawer);
+}
+
+/* What a drawer does when it arrives: the ones with drafts take their
+ * copy of the truth here, the ones with lists render them. */
+function openDrawerDom(name) {
+  if (name === "physics") beginPhysicsDraft();
+  if (name === "config") beginSettingsDraft();
+  if (name === "layouts") renderLayouts();
+  if (name === "objects") renderObjectsPanel();
+  if (name === "fx") renderFxPanel();
+  lastDrawer[currentMode()] = name;      // a sweep out brings this one
+  $(DRAWER_PANEL[name]).classList.add("open");
+}
+
+/* What it gives back when it leaves: a physics draft nobody saved is
+ * an experiment that ends here. */
+function closeDrawerDom(name) {
+  $(DRAWER_PANEL[name]).classList.remove("open");
+  if (name === "physics") endPhysicsDraft();
+}
+
+/* The drawer state a view kept, applied without saving -- restoring a
+ * view, or turning over to another, is not a choice the server is
+ * told. `force` re-opens a drawer that is already open, because the
+ * physics draft in it belongs to the view that is being left. */
+function applyDrawerState(name, force) {
+  const target = DRAWER_PANEL[name] ? name : null;
+  if (activeDrawer === target && !force) {
+    syncSidepanelOpen();
+    renderRail();
+    return;
+  }
+  if (activeDrawer) closeDrawerDom(activeDrawer);
+  activeDrawer = target;
+  if (target) openDrawerDom(target);
+  syncSidepanelOpen();
+  renderRail();
+}
+
+/* The one way the drawer state ever changes -- a button, a sweep, a
+ * restored view -- so the server is told once, the same way, from
+ * wherever the hand made the choice. */
+async function setDrawerState(name) {
+  const mode = currentMode();
+  const before = activeDrawer;
+
+  applyDrawerState(name);
+  ensureViewSettings(mode).drawer = name || "";
   try {
-    await api("/api/settings", { [key]: value });
+    await api("/api/settings",
+              { view_settings: { [mode]: { drawer: name || "" } } });
   } catch (error) {
-    state.settings[key] = !value;
-    renderViewToggles();
+    ensureViewSettings(mode).drawer = before || "";
+    applyDrawerState(before);
     toast(error.message, "err");
   }
 }
+
+async function toggleDrawer(name) {
+  await setDrawerState(activeDrawer === name ? null : name);
+}
+
+async function closeDrawer(name) {
+  if (activeDrawer === name) await toggleDrawer(name);
+}
+
+for (const [name, id] of Object.entries(DRAWER_BUTTON)) {
+  $(id).addEventListener("click", () => toggleDrawer(name));
+}
+for (const [name, id] of Object.entries(
+  { physics: "physics-close", objects: "objects-close", fx: "fx-close",
+    layouts: "layouts-close", config: "settings-close" })) {
+  $(id).addEventListener("click", () => closeDrawer(name));
+}
+
+/* The left edge answers the right's rules exactly, with a state of its
+ * own: one drawer at a time over there, remembered per view, kept by
+ * the server as ldrawer. A drawer the view does not have is not a
+ * drawer -- turning to the mesh folds the left assembly away, and no
+ * stored name opens what is not offered. */
+let activeLeftDrawer = null;
+const lastLeftDrawer = {};    // per view: the drawer a sweep out brings back
+
+function syncSidepanelLeftOpen() {
+  $("sidepanel-left").classList.toggle("open", !!activeLeftDrawer);
+}
+
+function applyLeftDrawerState(name, force) {
+  const target = leftDrawerValid(currentMode(), name) ? name : null;
+  if (activeLeftDrawer === target && !force) {
+    syncSidepanelLeftOpen();
+    renderRail();
+    return;
+  }
+  if (activeLeftDrawer)
+    $(DRAWER_PANEL_LEFT[activeLeftDrawer]).classList.remove("open");
+  activeLeftDrawer = target;
+  if (target) {
+    lastLeftDrawer[currentMode()] = target;
+    $(DRAWER_PANEL_LEFT[target]).classList.add("open");
+  }
+  syncSidepanelLeftOpen();
+  renderRail();
+}
+
+async function setLeftDrawerState(name) {
+  const mode = currentMode();
+  const before = activeLeftDrawer;
+
+  applyLeftDrawerState(name);
+  ensureViewSettings(mode).ldrawer = activeLeftDrawer || "";
+  try {
+    await api("/api/settings",
+              { view_settings: { [mode]: { ldrawer: activeLeftDrawer || "" } } });
+  } catch (error) {
+    ensureViewSettings(mode).ldrawer = before || "";
+    applyLeftDrawerState(before);
+    toast(error.message, "err");
+  }
+}
+
+async function toggleLeftDrawer(name) {
+  await setLeftDrawerState(activeLeftDrawer === name ? null : name);
+}
+
+async function closeLeftDrawer(name) {
+  if (activeLeftDrawer === name) await toggleLeftDrawer(name);
+}
+
+for (const [name, id] of Object.entries(DRAWER_BUTTON_LEFT)) {
+  $(id).addEventListener("click", () => toggleLeftDrawer(name));
+}
+for (const [name, id] of Object.entries(
+  { view: "view-close", model: "model-close" })) {
+  $(id).addEventListener("click", () => closeLeftDrawer(name));
+}
+
+/* -------------------------------------------------------- finger control */
+
+/* A panel that follows the finger: the sidepanel of the stage's right
+ * edge and the console of its bottom one. A drag begins only with a
+ * clear intent -- the hand moving more along the panel's axis than
+ * across it, by a finger's width -- and while it lasts the panel keeps
+ * its easing off and its position the hand's, with a rubber band at
+ * the ends. Letting go settles by position, or by the speed of the
+ * hand when it says more; the slide that follows runs on the spring
+ * curve, from wherever the finger left the panel. A drag that moved
+ * the panel eats the click it ends in, so a sweep never presses the
+ * button it started on.
+ *
+ * `invert` mirrors the whole thing for the left edge: there the open
+ * end of the track is the far end, the closed rest at zero's mirror,
+ * and a sweep to the right is the one that opens. */
+function fingerSlide(handle, target, axis, extentOf, hooks, invert) {
+  const along = axis === "x" ? "clientX" : "clientY";
+  const across = axis === "x" ? "clientY" : "clientX";
+  let drag = null;
+  let swiped = false;
+
+  handle.addEventListener("click", (event) => {
+    if (!swiped) return;
+    swiped = false;
+    event.stopPropagation();
+    event.preventDefault();
+  }, true);
+
+  handle.addEventListener("pointerdown", (event) => {
+    if (drag || !event.isPrimary) return;
+    /* Sliders and fields keep their own drags; everything else is the
+     * panel's. */
+    if (event.target.closest("input, select, textarea")) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    drag = {
+      id: event.pointerId,
+      start: event[along],
+      across: event[across],
+      base: hooks.open() ? 0 : (invert ? -extentOf() : extentOf()),
+      pos: null,
+      last: event[along],
+      at: performance.now(),
+      v: 0,
+      moving: false,
+    };
+  });
+
+  handle.addEventListener("pointermove", (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    const d = event[along] - drag.start;
+
+    if (!drag.moving) {
+      if (Math.abs(d) < 12
+          || Math.abs(d) < Math.abs(event[across] - drag.across) * 1.3)
+        return;
+      drag.moving = true;
+      target.classList.add("dragging");
+      try {
+        handle.setPointerCapture(event.pointerId);
+      } catch (error) { /* the pointer left as the intent proved */ }
+    }
+    event.preventDefault();
+
+    const now = performance.now();
+    const dt = now - drag.at;
+    if (dt > 0) {
+      drag.v = (event[along] - drag.last) / dt;
+      drag.last = event[along];
+      drag.at = now;
+    }
+
+    /* The rubber band: the ends resist, so the panel feels held. */
+    const extent = extentOf();
+    let pos = drag.base + d;
+    if (!invert) {
+      if (pos < 0) pos *= 0.35;
+      else if (pos > extent) pos = extent + (pos - extent) * 0.35;
+    } else {
+      if (pos > 0) pos *= 0.35;
+      else if (pos < -extent) pos = -extent + (pos + extent) * 0.35;
+    }
+    drag.pos = pos;
+    target.style.transform =
+      "translate" + (axis === "x" ? "X" : "Y") + "(" + pos + "px)";
+  });
+
+  const settle = (event) => {
+    if (!drag || event.pointerId !== drag.id) return;
+    if (drag.moving) {
+      const extent = extentOf();
+      target.classList.remove("dragging");
+      target.style.transform = "";
+      /* The speed of the hand says more than the place it let go --
+       * read along the open direction, whichever edge it is. */
+      const flinging = Math.abs(drag.v) > 0.4;
+      const v = invert ? -drag.v : drag.v;
+      const pos = invert ? -(drag.pos || 0) : (drag.pos || 0);
+      hooks.settle(flinging ? v < 0 : pos < extent / 2);
+      swiped = true;
+    }
+    drag = null;
+  };
+
+  handle.addEventListener("pointerup", settle);
+  handle.addEventListener("pointercancel", settle);
+}
+
+/* The sidepanel: a sweep out brings the drawer the view had, a sweep
+ * back closes it, and either way the buttons ride along. */
+fingerSlide($("sidepanel"), $("sidepanel"), "x",
+  () => parseFloat(getComputedStyle(document.documentElement)
+                   .getPropertyValue("--drawer-hide")) || 352,
+  {
+    open: () => !!activeDrawer,
+    settle: (open) => {
+      const mode = currentMode();
+      setDrawerState(open ? (lastDrawer[mode] || "physics") : null);
+    },
+  });
+
+/* The left edge answers: a sweep to the right brings that edge's
+ * drawer back, a sweep to the left folds it away. */
+fingerSlide($("sidepanel-left"), $("sidepanel-left"), "x",
+  () => parseFloat(getComputedStyle(document.documentElement)
+                   .getPropertyValue("--drawer-hide")) || 352,
+  {
+    open: () => !!activeLeftDrawer,
+    settle: (open) => {
+      const mode = currentMode();
+      setLeftDrawerState(open ? (lastLeftDrawer[mode] || "view") : null);
+    },
+  }, true);
+
+/* ---------------------------------------------------------------- objects */
+
+/* The kinds of things the picture draws, one row in the objects panel
+ * each. The list is a registry: a new kind joins the panel with one
+ * entry here -- its label, its tip, the views it appears in, and the
+ * switch the canvases read. More kinds will come. */
+const OBJECT_KINDS = [
+  { key: "broker", label: "obj.broker", tip: "tip.brokerView",
+    views: ["mesh", "topology", "space"] },
+  { key: "panels", label: "obj.panels", tip: "tip.objPanels",
+    views: ["mesh", "topology", "space"] },
+  { key: "aps", label: "obj.aps", tip: "tip.objAps",
+    views: ["topology", "space"] },
+  { key: "beacons", label: "obj.beacons", tip: "tip.beaconsView",
+    views: ["mesh", "topology", "space"] },
+];
+
+/* A switch row, as the objects and fx panels show them: the name of a
+ * thing on the left, its state as a button on the right, the whole row
+ * carrying the help text as its hover. */
+function makeSwitchRow(labelKey, tipKey, on, onClick) {
+  const row = document.createElement("div");
+  row.className = "obj-row";
+  row.title = t(tipKey);
+  row.innerHTML =
+    '<span class="o-label">' + esc(t(labelKey)) + "</span>"
+    + '<button class="lcars-btn small toggle' + (on ? '"' : ' off"')
+    + ">" + t(on ? "word.on" : "word.off") + "</button>";
+  row.querySelector("button").addEventListener("click", onClick);
+  return row;
+}
+
+/* The objects panel follows the view: only the kinds the view draws are
+ * offered, and the switches say what it draws of them now. */
+function renderObjectsPanel() {
+  const box = $("objects-rows");
+  const mode = currentMode();
+  box.textContent = "";
+
+  for (const kind of OBJECT_KINDS) {
+    if (!kind.views.includes(mode)) continue;
+    box.appendChild(makeSwitchRow(kind.label, kind.tip, showKind(kind.key),
+                                  () => toggleObjectKind(kind.key)));
+  }
+}
+
+async function toggleObjectKind(key) {
+  const mode = currentMode();
+  const value = !showKind(key);
+
+  ensureViewSettings(mode)["show_" + key] = value;
+  try {
+    await api("/api/settings",
+              { view_settings: { [mode]: { ["show_" + key]: value } } });
+  } catch (error) {
+    ensureViewSettings(mode)["show_" + key] = !value;
+    toast(error.message, "err");
+  }
+  renderObjectsPanel();
+  syncBoxes();
+  if (window.MqttvizSpace) window.MqttvizSpace.update();
+}
+
+/* -------------------------------------------------------------------- fx */
+
+/* The kinds of light the picture draws, one row in the fx panel each:
+ * the master switch first, then the groups -- and what a view does not
+ * have, it is not offered. */
+const FX_GROUPS = [
+  { key: "ambient", label: "fx.ambient", tip: "help.fxAmbient",
+    views: ["mesh", "topology"] },
+  { key: "glow", label: "fx.glow", tip: "help.fxGlow",
+    views: ["mesh", "topology", "space"] },
+  { key: "trails", label: "fx.trails", tip: "help.fxTrails",
+    views: ["mesh", "topology"] },
+  { key: "motion", label: "fx.motion", tip: "help.fxMotion",
+    views: ["mesh", "topology", "space"] },
+];
+
+function renderFxPanel() {
+  const box = $("fx-rows");
+  const mode = currentMode();
+  const master = fxOn();
+  box.textContent = "";
+
+  box.appendChild(makeSwitchRow("fx.master", "help.fxMaster", master,
+                                () => toggleFxSwitch("show_fx")));
+  for (const group of FX_GROUPS) {
+    if (!group.views.includes(mode)) continue;
+    const row = makeSwitchRow(group.label, group.tip,
+                              viewSettings()["fx_" + group.key] !== false,
+                              () => toggleFxSwitch("fx_" + group.key));
+    if (!master) row.classList.add("dimmed");
+    box.appendChild(row);
+  }
+}
+
+async function toggleFxSwitch(key) {
+  const mode = currentMode();
+  const value = viewSettings()[key] === false;
+
+  ensureViewSettings(mode)[key] = value;
+  renderFxPanel();
+  try {
+    await api("/api/settings", { view_settings: { [mode]: { [key]: value } } });
+  } catch (error) {
+    ensureViewSettings(mode)[key] = !value;
+    renderFxPanel();
+    toast(error.message, "err");
+  }
+}
+
+/* ------------------------------------------------------- the view itself */
 
 /* Which picture the canvas draws of the same facts: the classic mesh,
  * or the topology of broker, access points and panels. The boxes stay
@@ -2889,8 +3406,7 @@ async function switchViewMode(mode) {
   if (before === mode) return;
   state.settings.view_mode = mode;
 
-  renderViewToggles();
-  renderPhysicsTabs();
+  renderChrome(before);
   syncBoxes();
   if (window.MqttvizSpace) window.MqttvizSpace.update();
 
@@ -2898,20 +3414,13 @@ async function switchViewMode(mode) {
     await api("/api/settings", { view_mode: mode });
   } catch (error) {
     state.settings.view_mode = before;
-    renderViewToggles();
-    renderPhysicsTabs();
+    renderChrome(mode);
     syncBoxes();
     if (window.MqttvizSpace) window.MqttvizSpace.update();
     toast(error.message, "err");
   }
 }
 
-$("btn-view-broker").addEventListener("click", () =>
-  toggleView("show_broker"));
-$("btn-view-beacons").addEventListener("click", () =>
-  toggleView("show_beacons"));
-$("btn-view-fx").addEventListener("click", () =>
-  toggleView("show_fx"));
 $("btn-mode-mesh").addEventListener("click", () =>
   switchViewMode("mesh"));
 $("btn-mode-topology").addEventListener("click", () =>
@@ -2921,20 +3430,20 @@ $("btn-mode-space").addEventListener("click", () =>
 
 /* ---------------------------------------------------------------- physics */
 
-/* The panel works like the rest of the tool's dialogs: a draft the
+/* The drawer works like the rest of the tool's dialogs: a draft the
  * page owns, made true all at once by save. The difference is that a
  * slider acts on the canvas the moment it is touched -- the feel is the
  * thing being edited, and it has to be felt -- so the draft is what
- * the motion reads while the panel is open. Closing without saving
+ * the motion reads while the drawer is open. Closing without saving
  * puts the saved feel back, exactly like every other dialog.
  *
- * The panels, the beacons and the broker are set apart: three tabs,
- * three drafts, one save. The canvas reads each kind's own sliders, so
- * the beacons can be tuned while the panels sit still, and the hub can
- * gather the whole mesh without touching anything else. */
+ * The panels, the access points, the beacons and the broker are set
+ * apart -- four tabs, four drafts, one save -- and every view keeps
+ * its own feel: the mesh can hang loose while the topology is taut,
+ * and the space view keeps only the beacon leash it owns. */
 let physicsDraft = null;          // { device: {...}, beacon: {...}, broker: {...} }
 let physicsSaved = null;          // the same shape, as the server has it
-let physicsKind = "device";       // which half the panel is showing
+let physicsDraftMode = null;       // the view whose feel the draft is
 
 function buildPhysicsPanel() {
   for (const kind of PHYS_KINDS) {
@@ -2958,23 +3467,26 @@ function buildPhysicsPanel() {
   }
 }
 
-/* The rows are rebuilt whenever the language changes; the containers
- * are permanent, so their listeners are attached exactly once. */
+/* The rows are rebuilt whenever the language or the view changes; the
+ * containers are permanent, so their listeners are attached exactly
+ * once. */
 for (const kind of PHYS_KINDS) {
   $(physRowsId(kind)).addEventListener("input", (event) => {
     const key = event.target.dataset.key;
     if (!key || !physicsDraft) return;
     physicsDraft[kind][key] = Number(event.target.value);
-    state.settings[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
+    ensureViewSettings(physicsDraftMode || currentMode())
+      [PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
     syncPhysicsReadouts();                  // the canvas feels it now
   });
 }
 
 function syncPhysicsReadouts() {
+  const mine = viewSettings();
   for (const kind of PHYS_KINDS) {
     const draft = physicsDraft
       ? physicsDraft[kind]
-      : state.settings[PHYS_SETTINGS_KEY[kind]] || PHYS_DEFAULTS;
+      : mine[PHYS_SETTINGS_KEY[kind]] || PHYS_DEFAULTS;
     const container = $(physRowsId(kind));
 
     for (const spec of physSpecFor(kind)) {
@@ -2988,93 +3500,119 @@ function syncPhysicsReadouts() {
   }
 }
 
-function renderPhysicsTabs() {
-  /* The access points are a kind of the topology view; the mesh has
-   * none, so its slider tab is not offered there. */
-  $("phys-tab-aps").classList.toggle("hidden", !isTopology());
-  if (!isTopology() && physicsKind === "ap") physicsKind = "device";
-
-  for (const [kind, id] of [["device", "phys-tab-nodes"],
-                            ["ap", "phys-tab-aps"],
-                            ["beacon", "phys-tab-beacons"],
-                            ["broker", "phys-tab-broker"]]) {
-    $(id).classList.toggle("active", physicsKind === kind);
-    $(physRowsId(kind)).classList.toggle("hidden", physicsKind !== kind);
-  }
+/* The tab each view stands on is a setting of its own, so coming back
+ * to a view finds its drawer as it was left, tab included. */
+function physicsKind() {
+  const kind = viewSettings().phys_kind;
+  return PHYS_KINDS.includes(kind) ? kind : "device";
 }
 
-$("phys-tab-nodes").addEventListener("click", () => {
-  physicsKind = "device";
-  renderPhysicsTabs();
-});
-$("phys-tab-aps").addEventListener("click", () => {
-  physicsKind = "ap";
-  renderPhysicsTabs();
-});
-$("phys-tab-beacons").addEventListener("click", () => {
-  physicsKind = "beacon";
-  renderPhysicsTabs();
-});
-$("phys-tab-broker").addEventListener("click", () => {
-  physicsKind = "broker";
-  renderPhysicsTabs();
-});
+function renderPhysicsTabs() {
+  /* The tabs are what the view has: the access points belong to the
+   * topology alone, and the space view keeps only the beacons' leash. */
+  const mode = currentMode();
+  const space = mode === "space";
+  $("phys-tab-aps").classList.toggle("hidden", mode !== "topology");
+  $("phys-tab-nodes").classList.toggle("hidden", space);
+  $("phys-tab-broker").classList.toggle("hidden", space);
 
-function openPhysics() {
+  let kind = physicsKind();
+  if (space) kind = "beacon";
+  else if (kind === "ap" && mode !== "topology") kind = "device";
+
+  for (const [k, id] of [["device", "phys-tab-nodes"],
+                         ["ap", "phys-tab-aps"],
+                         ["beacon", "phys-tab-beacons"],
+                         ["broker", "phys-tab-broker"]]) {
+    $(id).classList.toggle("active", kind === k);
+    $(physRowsId(k)).classList.toggle("hidden", kind !== k);
+  }
+
+  $("physics-hint").textContent =
+    t(space ? "hint.physicsSpace" : "hint.physics");
+  syncPhysicsReadouts();
+}
+
+function setPhysicsKind(kind) {
+  const mode = currentMode();
+  if (physicsKind() === kind) return;
+  ensureViewSettings(mode).phys_kind = kind;
+  renderPhysicsTabs();
+  api("/api/settings", { view_settings: { [mode]: { phys_kind: kind } } })
+    .catch((error) => toast(error.message, "err"));
+}
+
+$("phys-tab-nodes").addEventListener("click", () =>
+  setPhysicsKind("device"));
+$("phys-tab-aps").addEventListener("click", () =>
+  setPhysicsKind("ap"));
+$("phys-tab-beacons").addEventListener("click", () =>
+  setPhysicsKind("beacon"));
+$("phys-tab-broker").addEventListener("click", () =>
+  setPhysicsKind("broker"));
+
+/* Opening the drawer copies this view's saved feel into the draft and
+ * makes the draft what the canvas reads; closing without saving puts
+ * the saved feel back. */
+function beginPhysicsDraft() {
+  const mode = currentMode();
+  const mine = viewSettings(mode);
+  physicsDraftMode = mode;
   physicsSaved = {};
   for (const kind of PHYS_KINDS) {
     physicsSaved[kind] = JSON.parse(JSON.stringify(
-      state.settings[PHYS_SETTINGS_KEY[kind]] || PHYS_DEFAULTS));
+      mine[PHYS_SETTINGS_KEY[kind]] || PHYS_DEFAULTS));
   }
   physicsDraft = JSON.parse(JSON.stringify(physicsSaved));
+
+  const live = ensureViewSettings(mode);
   for (const kind of PHYS_KINDS) {
-    state.settings[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
+    live[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
   }
-  syncPhysicsReadouts();
   renderPhysicsTabs();
-  $("physics").classList.remove("hidden");
-  $("btn-physics").classList.add("panel-open");
 }
 
-function closePhysics() {
-  /* Unsaved sliders are an experiment that ends here. */
-  for (const kind of PHYS_KINDS) {
-    state.settings[PHYS_SETTINGS_KEY[kind]] = physicsSaved
-      ? physicsSaved[kind] : PHYS_DEFAULTS;
+function endPhysicsDraft() {
+  if (physicsDraft) {
+    /* The feel goes back to the view it was taken from, even when the
+     * drawer is being reopened for another one. */
+    const live = ensureViewSettings(physicsDraftMode || currentMode());
+    for (const kind of PHYS_KINDS) {
+      live[PHYS_SETTINGS_KEY[kind]] = physicsSaved
+        ? physicsSaved[kind] : PHYS_DEFAULTS;
+    }
   }
   physicsDraft = null;
-  $("physics").classList.add("hidden");
-  $("btn-physics").classList.remove("panel-open");
+  physicsSaved = null;
+  physicsDraftMode = null;
 }
 
-/* The button opens the side panel and closes it again; either way the
- * canvas keeps moving behind it. */
-$("btn-physics").addEventListener("click", () => {
-  if ($("physics").classList.contains("hidden")) openPhysics();
-  else closePhysics();
-});
-$("physics-close").addEventListener("click", closePhysics);
-
 $("physics-reset").addEventListener("click", () => {
+  if (!physicsDraft) return;
   physicsDraft = {};
   for (const kind of PHYS_KINDS) {
     physicsDraft[kind] = JSON.parse(JSON.stringify(PHYS_DEFAULTS));
-    state.settings[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
+    ensureViewSettings(physicsDraftMode || currentMode())
+      [PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
   }
   syncPhysicsReadouts();
 });
 
 $("physics-save").addEventListener("click", async () => {
+  if (!physicsDraft) return;
+  const mode = physicsDraftMode || currentMode();
+  const patch = {};
+  for (const kind of PHYS_KINDS) {
+    patch[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
+  }
+
   try {
-    const body = {};
-    for (const kind of PHYS_KINDS) {
-      body[PHYS_SETTINGS_KEY[kind]] = physicsDraft[kind];
-    }
-    const doc = await api("/api/settings", body);
+    const doc = await api("/api/settings", { view_settings: { [mode]: patch } });
     physicsSaved = {};
     for (const kind of PHYS_KINDS) {
       physicsSaved[kind] = JSON.parse(JSON.stringify(
-        doc.settings[PHYS_SETTINGS_KEY[kind]]));
+        (((doc.settings.view_settings || {})[mode]) || {})
+        [PHYS_SETTINGS_KEY[kind]] || PHYS_DEFAULTS));
     }
     toast(t("toast.physSaved"));
   } catch (error) {
@@ -3584,7 +4122,11 @@ function applyGuiScale(percent) {
   document.documentElement.style.setProperty("--gui-scale", scale);
 }
 
-function openSettings() {
+/* The drawer's arrival takes its copy of the profile list: adding,
+ * removing and editing happen in the page, and one save makes them all
+ * true at once. Which profile the tool is connected to is the top bar's
+ * selector, not this drawer. */
+function beginSettingsDraft() {
   const s = state.settings;
   brokerDialog.brokers = JSON.parse(JSON.stringify(s.brokers || [{}]));
   const active = (s.brokers || [])[activeProfileIndex()] || {};
@@ -3596,15 +4138,7 @@ function openSettings() {
   $("set-gui-scale").value = s.gui_scale || 100;
   renderBrokerList();
   fillBrokerForm();
-  $("settings").classList.remove("hidden");
 }
-
-function closeSettings() {
-  $("settings").classList.add("hidden");
-}
-
-$("btn-settings").addEventListener("click", openSettings);
-$("settings-close").addEventListener("click", closeSettings);
 
 $("settings-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -3620,7 +4154,7 @@ $("settings-form").addEventListener("submit", async (event) => {
      * the server. */
     setLang($("set-lang").value);
     applyGuiScale($("set-gui-scale").value);
-    closeSettings();
+    await closeDrawer("config");
     toast(t("toast.settingsSaved"));
     pollState();
   } catch (error) {
@@ -3642,18 +4176,6 @@ $("settings-form").addEventListener("submit", async (event) => {
 function layoutList() {
   return state.settings.layouts || {};
 }
-
-function openLayouts() {
-  renderLayouts();
-  $("layouts").classList.remove("hidden");
-}
-
-function closeLayouts() {
-  $("layouts").classList.add("hidden");
-}
-
-$("btn-layouts").addEventListener("click", openLayouts);
-$("layouts-close").addEventListener("click", closeLayouts);
 
 function renderLayouts() {
   const list = $("layout-list");
@@ -3729,16 +4251,18 @@ async function saveLayout() {
 /* Restoring is the canvas re-forming itself: the springs move the
  * boxes to the places the layout kept, the way a view switch does --
  * and what stood before is in the backup file, so trying a layout on
- * costs nothing. */
+ * costs nothing. The layout may bring another picture with it: the
+ * chrome follows, drawer and all. */
 async function loadLayout(name) {
+  const before = currentMode();
   try {
     const doc = await api("/api/layout/load", { name });
     state.settings = doc.settings;
     syncBoxes();
-    renderViewToggles();
-    renderPhysicsTabs();
+    renderChrome(before);
+    if (window.MqttvizSpace) window.MqttvizSpace.update();
     renderLayouts();
-    if (fxOn()) {
+    if (fxGroup("motion")) {
       const pos = (state.settings.positions || {})["broker"];
       if (pos) wave(pos.x * stage.w, pos.y * stage.h, PALETTE.orange,
                    46, 550);
@@ -3828,7 +4352,7 @@ function pollConsole() {
       for (const entry of doc.entries) {
         consoleState.since = Math.max(consoleState.since, entry.seq);
 
-        if (!$("console").classList.contains("hidden")
+        if ($("console").classList.contains("open")
             || consoleState.levels.has(entry.level)) {
           consoleState.entries.push(entry);
         }
@@ -3838,7 +4362,7 @@ function pollConsole() {
         }
       }
       if (doc.entries.length
-          && !$("console").classList.contains("hidden")) renderConsole();
+          && $("console").classList.contains("open")) renderConsole();
     })
     .catch(() => {});
 
@@ -3876,20 +4400,50 @@ function renderConsoleBadge() {
   badge.textContent = consoleState.unseen;
 }
 
-$("btn-console").addEventListener("click", () => {
+/* The console button sits on the bottom bar and slides the console up
+ * from behind it: the one drawer of the stage's bottom edge. A finger
+ * works it too -- a sweep down its head closes it, a sweep up from the
+ * bar opens it. */
+function setConsoleOpen(open) {
   const panel = $("console");
-  const opening = panel.classList.contains("hidden");
-  panel.classList.toggle("hidden");
-  if (opening) {
+  if (panel.classList.contains("open") === open) return;
+  panel.classList.toggle("open", open);
+  if (open) {
     consoleState.unseen = 0;
     renderConsoleBadge();
     renderConsole();
   }
-});
+}
 
-$("console-close").addEventListener("click", () => {
-  $("console").classList.add("hidden");
-});
+$("btn-console").addEventListener("click", () =>
+  setConsoleOpen(!$("console").classList.contains("open")));
+
+$("console-close").addEventListener("click", () => setConsoleOpen(false));
+
+fingerSlide($("console").querySelector(".panel-head"), $("console"), "y",
+  () => $("console").offsetHeight + 80,
+  {
+    open: () => $("console").classList.contains("open"),
+    settle: (open) => setConsoleOpen(open),
+  });
+
+/* A finger that leaves the bottom bar upward opens the console, the
+ * same gesture the bar's button answers with a click. */
+(function () {
+  const bar = $("bottombar");
+  let start = null;
+
+  bar.addEventListener("pointerdown", (event) => {
+    if (!event.isPrimary) return;
+    start = { id: event.pointerId, y: event.clientY };
+  });
+  bar.addEventListener("pointerup", (event) => {
+    if (!start || event.pointerId !== start.id) return;
+    if (start.y - event.clientY > 36) setConsoleOpen(true);
+    start = null;
+  });
+  bar.addEventListener("pointercancel", () => { start = null; });
+})();
 
 $("console-clear").addEventListener("click", async () => {
   await api("/api/log/clear").catch(() => {});
@@ -3927,8 +4481,11 @@ document.addEventListener("langchange", () => {
   buildPhysicsPanel();
   syncPhysicsReadouts();
   renderPhysicsTabs();
+  renderObjectsPanel();
+  renderFxPanel();
   renderBrokerChip();
-  if (!$("settings").classList.contains("hidden")) renderBrokerList();
+  measureRail();
+  if (activeDrawer === "config") renderBrokerList();
   if (!$("detail").classList.contains("hidden")) renderDetail();
 });
 
@@ -3955,9 +4512,11 @@ if (location.hash === "#debug") {
 
 /* What the space view (space.js, an ES module loaded after this script)
  * needs of the page: the polled facts, the API, the words and the
- * colours, and the detail panel to open on a tap. */
+ * colours, this view's own settings, and the detail panel to open on a
+ * tap. */
 window.mqttvizHost = {
-  state, api, toast, t, tf, PALETTE, fxOn, deviceBssid, deviceSsid,
+  state, api, toast, t, tf, PALETTE, fxOn, fxGroup, viewSettings,
+  deviceBssid, deviceSsid,
   openDetail, openApDetail, openBeaconDetail,
 };
 
@@ -3969,11 +4528,13 @@ requestAnimationFrame(function tick(time) {
 
 resize();
 buildPhysicsPanel();
+measureRail();
 /* The hub exists before the first poll: the physics and the particles
  * both reference it from their very first frame. */
 ensureBrokerBox(new Set());
-/* Deep link: #physics opens the physics panel, the way devmgr's
- * #config=<mac> opens a device's settings. */
-if (location.hash === "#physics") openPhysics();
+/* Deep link: #physics slides the physics drawer out, the way devmgr's
+ * #config=<mac> opens a device's settings. What the view saved opens
+ * with the first poll anyway. */
+if (location.hash === "#physics") applyDrawerState("physics");
 pollState();
 pollConsole();

@@ -19,6 +19,9 @@ const I18N = {
     "word.broker": "Broker",
     "word.beacons": "Beacons",
     "word.fx": "FX",
+    "word.objects": "Objects",
+    "word.view": "View",
+    "word.model": "Model",
     "word.physics": "Physics",
     "word.config": "Config",
     "word.layouts": "Layouts",
@@ -44,6 +47,13 @@ const I18N = {
     "tip.brokerView": "show or hide the broker node",
     "tip.beaconsView": "show or hide the BLE beacons",
     "tip.fxView": "show or hide the light effects",
+    "tip.fxPanel": "the light effects — each view keeps its own",
+    "tip.objects": "what this view draws",
+    "tip.viewPanel": "how this view is looked at",
+    "tip.modelPanel": "the house of the 3D view",
+    "tip.objPanels": "show or hide the panels",
+    "tip.objAps": "show or hide the access points",
+    "tip.console": "the tool's log",
     "tip.modeMesh": "the classic picture: every panel on its line to the broker",
     "tip.modeTopology": "the network as it is: broker, access points, panels, beacons",
     "tip.modeSpace": "the network in the house: a SweetHome3D plan in 3D",
@@ -255,6 +265,51 @@ const I18N = {
     "unit.perFrame": "/frame",
     "unit.ofLength": "% of length",
     "unit.grav100": "pull @ 100 px",
+
+    /* -- the objects and fx panels ------------------------------------ */
+    "obj.broker": "the broker node",
+    "obj.panels": "the panels",
+    "obj.aps": "the access points",
+    "obj.beacons": "the BLE beacons",
+    "hint.objects": "What this view draws of the same facts. The switches"
+                    + " hide, they do not stop: everything keeps being"
+                    + " tracked behind them, and comes back exactly as it"
+                    + " was. Each view keeps its own switches.",
+    "hint.view": "How this view is looked at: the topology's zoom lives"
+                 + " here, and the 3D view's cube, with its camera"
+                 + " buttons beside it. A face of the cube is a look"
+                 + " from that side; a drag on it swings the view.",
+    "hint.model": "The house the 3D view hangs its facts on: which floor is"
+                  + " shown, how solid its walls stand, and the file it"
+                  + " came from -- replaced or taken away here.",
+    "fx.master": "all effects",
+    "fx.ambient": "ambient background",
+    "fx.glow": "glow",
+    "fx.trails": "beacon trails",
+    "fx.motion": "pulses and waves",
+    "help.fxMaster": "The whole light layer of this view, in one switch."
+                     + " The physics is the same either way; the rows"
+                     + " below are what it turns off.",
+    "help.fxAmbient": "The quiet background of the picture: the drifting"
+                      + " grid, the vignette, the radar sweep around the"
+                      + " hub.",
+    "help.fxGlow": "The light the objects carry: the halos under the"
+                   + " boxes, the glow on the lines, the breathing of the"
+                   + " fleet -- and, in the house, the bloom of the"
+                   + " projection.",
+    "help.fxTrails": "Where a moving beacon has been: the fading dots it"
+                     + " leaves behind as it moves.",
+    "help.fxMotion": "The news travelling: the particles along the links,"
+                     + " the waves on arrival and pinning, the dashes"
+                     + " walking the lines -- and, in the house, the"
+                     + " sparks on the panel lines.",
+    "hint.fx": "The light layer of the picture, kept for each view of its"
+               + " own: the master switch is the whole layer, each row"
+               + " below one kind of light. What a view does not have,"
+               + " it is not offered.",
+    "hint.physicsSpace": "In the house the panels sit where they were put;"
+                         + " the one physics the space view keeps is how"
+                         + " long a beacon's hearing holds its leash.",
   },
 
   de: {
@@ -262,6 +317,9 @@ const I18N = {
     "word.broker": "Broker",
     "word.beacons": "Beacons",
     "word.fx": "FX",
+    "word.objects": "Objekte",
+    "word.view": "Ansicht",
+    "word.model": "Modell",
     "word.physics": "Physik",
     "word.config": "Einstellungen",
     "word.layouts": "Layouts",
@@ -287,6 +345,13 @@ const I18N = {
     "tip.brokerView": "den Broker-Knoten zeigen oder verbergen",
     "tip.beaconsView": "die BLE-Beacons zeigen oder verbergen",
     "tip.fxView": "die Lichteffekte ein- oder ausblenden",
+    "tip.fxPanel": "die Lichteffekte — jede Ansicht hält ihre eigenen",
+    "tip.objects": "was diese Ansicht zeichnet",
+    "tip.viewPanel": "wie diese Ansicht angesehen wird",
+    "tip.modelPanel": "das Haus der 3D-Ansicht",
+    "tip.objPanels": "die Panels zeigen oder verbergen",
+    "tip.objAps": "die Access Points zeigen oder verbergen",
+    "tip.console": "das Protokoll des Werkzeugs",
     "tip.modeMesh": "das klassische Bild: jedes Panel an seiner Leine zum Broker",
     "tip.modeTopology": "das Netz, wie es ist: Broker, Access Points, Panels, Beacons",
     "tip.modeSpace": "das Netz im Haus: ein SweetHome3D-Plan in 3D",
@@ -506,6 +571,54 @@ const I18N = {
     "unit.perFrame": "/Bild",
     "unit.ofLength": "% der Länge",
     "unit.grav100": "Zug bei 100 px",
+
+    /* -- die Objekte- und FX-Panels ---------------------------------- */
+    "obj.broker": "der Broker-Knoten",
+    "obj.panels": "die Panels",
+    "obj.aps": "die Access Points",
+    "obj.beacons": "die BLE-Beacons",
+    "hint.objects": "Was diese Ansicht aus denselben Fakten zeichnet."
+                    + " Die Schalter verbergen, sie stoppen nicht: alles"
+                    + " wird hinter ihnen weiter verfolgt und kommt"
+                     + " unverändert zurück. Jede Ansicht hält ihre"
+                     + " eigenen Schalter.",
+    "hint.view": "Wie diese Ansicht angesehen wird: hier wohnt der Zoom"
+                 + " der Topologie, und der Würfel der 3D-Ansicht mit"
+                 + " seinen Kameratasten daneben. Eine Fläche des Würfels"
+                 + " ist ein Blick von dorther; ein Zugriff schwingt die"
+                 + " Ansicht.",
+    "hint.model": "Das Haus, an das die 3D-Ansicht ihre Fakten hängt:"
+                  + " welches Stockwerk gezeigt wird, wie fest seine"
+                  + " Wände stehen, und die Datei, aus der es kam — hier"
+                  + " auch ersetzt oder weggenommen.",
+    "fx.master": "alle Effekte",
+    "fx.ambient": "Umgebungshintergrund",
+    "fx.glow": "Glühen",
+    "fx.trails": "Beacon-Spuren",
+    "fx.motion": "Impulse und Wellen",
+    "help.fxMaster": "Die ganze Lichtschicht dieser Ansicht in einem"
+                     + " Schalter. Die Physik bleibt dieselbe; die Zeilen"
+                     + " darunter sind es, was er ausstellt.",
+    "help.fxAmbient": "Der ruhige Hintergrund des Bildes: das driftende"
+                      + " Raster, die Vignette, der Radarstreifen um den"
+                      + " Knoten.",
+    "help.fxGlow": "Das Licht, das die Objekte tragen: die Höfe unter den"
+                   + " Boxen, das Glühen der Linien, das Atmen der Flotte"
+                   + " — und im Haus der Bloom der Projektion.",
+    "help.fxTrails": "Wo ein bewegter Beacon gewesen ist: die verblassenden"
+                     + " Punkte, die er im Laufen hinterlässt.",
+    "help.fxMotion": "Die reisende Nachricht: die Partikel auf den"
+                     + " Verbindungen, die Wellen bei Ankunft und Fixierung,"
+                     + " die schreitenden Strichel auf den Linien — und im"
+                     + " Haus die Funken auf den Panel-Linien.",
+    "hint.fx": "Die Lichtschicht des Bildes, für jede Ansicht einzeln"
+               + " gehalten: der Hauptschalter ist die ganze Schicht,"
+               + " jede Zeile darunter eine Art von Licht. Was eine"
+               + " Ansicht nicht hat, wird ihr nicht angeboten.",
+    "hint.physicsSpace": "Im Haus sitzen die Panels, wohin sie gestellt"
+                         + " wurden; die eine Physik, die die Raumansicht"
+                         + " behält, ist, wie lange ein Hören die Leine"
+                         + " eines Beacons hält.",
   },
 };
 
