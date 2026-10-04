@@ -1,0 +1,53 @@
+# Aufgabenliste
+
+- [ ] openhab_ui: Laden von Icons korrigieren. Einige der ursprünglichen Icon-Dateien sind zu groß und müssen neu kodiert werden. Siehe [Icon-Größen](sitemap_de.md#symbolgrößen).
+- [ ] openhab_ui: Elementsteuerungsbildschirm nach einer Zeitüberschreitung automatisch schließen. Mit dem Bildschirmstapel jetzt unkompliziert: ein Timer und ein `ui_screen_pop()`.
+- [ ] openhab_ui: Nach einer Zeitüberschreitung automatisch zum Startbildschirm zurückkehren.
+- [ ] openhab_ui: Text der Widget-Beschriftung gegenüber dem Text der Element-Beschriftung bevorzugen.
+- [ ] openhab_ui: Geschützte Bereiche mit PIN-Schutz hinzufügen.
+- [x] openhab_ui: Auswahl-, Sollwert- und Schiebereglerelemente verbessern.
+- [x] openhab: Über `/rest/events` übermittelte Elementzustände übernehmen, statt jede Kachel alle fünf Sekunden abzufragen. Siehe [Der Ereignisstrom](architecture_de.md#der-ereignisstream).
+- [x] openhab_ui: Das Bild eines Image-Elements anzeigen – etwa das einer Türklingel oder Kamera – und es von jeder Seite aus öffnen, wenn die Klingel ertönt. Siehe [Image](sitemap_de.md#bild-eine-türklingel-oder-eine-kamera) und [Türklingel](configuration_de.md#türklingel).
+- [ ] openhab: Das Bild wurde auf der Hardware noch nicht abgerufen. Den Stack des Client-Tasks (4 KB, mit TJpgDec darauf) und den Heap während eines Klingelvorgangs messen sowie prüfen, ob die Seite eines Image-Elements auf einem fragmentierten Heap lädt.
+- [ ] openhab_ui: Progressive JPEGs oder PNGs anzeigen. TJpgDec liest nur Baseline-JPEGs, und eine PNG müsste vollständig dekodiert werden.
+- [ ] openhab: Ein API-Token senden. Das Panel sendet keines; daher müssen `/rest/events`, `/rest/sitemaps/events`, die Sitemap und die Elementzustände für anonyme Clients zugänglich sein.
+- [x] openhab: Auch Änderungen an Sitemaps verfolgen. `/rest/sitemaps/events` übermittelt formatierte Beschriftungen, Farben und Sichtbarkeit, die `/rest/events` nicht enthält. Siehe [Der Ereignisstrom](architecture_de.md#der-ereignisstream).
+- [x] ac: OTA-Firmware-Update verbessern --> batchupdate.py. Siehe [Geräte aktualisieren](update_de.md).
+- [x] main: Symbol für aktives Portal anzeigen.
+- [x] openhab_ui: Unterstützung für Themen hinzufügen.
+- [x] openhab_ui: Jeder Themenfamilie eine eigene Gestaltung, Kacheln, Schriftart und Signalton geben, statt dieselbe Geometrie mit drei Farbpaletten zu verwenden. Siehe [Bildschirme, Frames und Bewegung](architecture_de.md#bildschirme-frames-und-bewegung).
+- [x] ui, control: Das Panel polyphon machen. Siehe [Das Panel hören](simulator_de.md#das-panel-hören).
+- [x] openhab_ui: Elementsteuerungen als eigene, fingerfreundlich angeordnete Bildschirme gestalten und während der Anzeige Änderungen vom Server übernehmen lassen.
+- [x] main, port, ui: Bildschirmkalibrierung hinzufügen. Vier Berührungen an den Ecken, daraus Ursprung und Ausdehnung berechnen, mit denen der Zeiger umgerechnet wird, und das Ergebnis zeigt die bevorstehende Korrektur an. Siehe [Touchscreen kalibrieren](configuration_de.md#touchscreen-kalibrieren).
+- [x] main: Einrichtungsassistent mit Eingabe der WLAN-Zugangsdaten statt des Portalverfahrens hinzufügen. Siehe [Einstellungen auf dem Bildschirm](configuration_de.md#einstellungen-auf-dem-bildschirm).
+- [ ] doc: Screenshots erneut aufnehmen. `doc/img/browser_*.png` zeigen weiterhin die entfernten AutoConnect-Seiten, und `doc/img/arduitouch_main.jpeg` zeigt die UI vor der Überarbeitung.
+- [x] build: `-O0` ersetzen. `CONFIG_COMPILER_OPTIMIZATION_SIZE` spart 138 KB.
+- [x] build: Dem Renderer die fehlende CPU-Leistung geben: 240 MHz, LVGL mit `-O2`, `LV_USE_ASSERT_OBJ` auf dem Gerät ausgeschaltet und eine Schleife, die so lange schläft, wie LVGL es verlangt. Siehe [Wofür die Framezeit verwendet wird](architecture_de.md#wofür-die-framezeit-verwendet-wird).
+- [x] build, ui: Dem Renderer einen eigenen Core und eine Möglichkeit geben, das nachzuweisen. Der Main-Task wechselte zu Core 1, und der Frame misst sich selbst. Siehe [Wofür die Framezeit verwendet wird](architecture_de.md#wofür-die-framezeit-verwendet-wird).
+- [ ] build: Vier Stellschrauben für das Display sind dokumentiert, aber keine wurde betätigt, denn für jede braucht es ein Panel statt einer Diskussion. Siehe [Was noch möglich ist und was es braucht](architecture_de.md#was-noch-möglich-ist-und-was-es-braucht).
+- [x] ui, test: Das ursprüngliche Aussehen als vierte Familie `Classic` zurückbringen.
+- [x] ota: Das einfache Arduino-OTA entfernen, zusammen mit dem Arduino-Framework.
+- [ ] main: Die hier gebaute Gerätefirmware wurde nicht auf Hardware ausgeführt. Die Treiber für Display, Touch, Hintergrundbeleuchtung und BME280 sind Übertragungen, die anhand der Herstellerquellen geprüft wurden, keine Messungen.
+- [x] control, ui: Dem Signalgeber Melodien, Hüllkurven und Effekte geben und den Akkordmixer hinter einem Kconfig-Schalter belassen. Siehe [Der Signalgeber](beeper_de.md).
+- [ ] control: Der Signalgeber wurde anhand der Zahlen vermessen, die er an den Pin ausgibt, aber noch nicht auf Hardware angehört. Der Schallwandler wird nicht modelliert. Siehe [Der Signalgeber](beeper_de.md).
+- [ ] sensors: DS18B20-One-Wire-Sensoren unterstützen.
+- [x] peripherals: Die drei Relais und drei Stimmungs-LEDs des Lanbon L8 über MQTT steuern. Siehe [Relais und LEDs](mqtt_de.md#relais-und-leds).
+- [ ] peripherals: Relais und LEDs wurden noch nicht auf Hardware betrieben. Die Pin-Tabelle zeigt die openHASP- und ESPHome-Zuordnung für den L8-HS, keine Messung.
+- [x] mqtt: Einen MQTT-Client hinzufügen. Siehe [MQTT](mqtt_de.md).
+- [x] ui, mqtt: LCARS-Klänge überarbeiten, einen Türklingelton hinzufügen, den nur ein Broker auslösen kann, und MQTT das Abspielen beliebiger Klänge ermöglichen. Siehe [Einen Klang abspielen](mqtt_de.md#einen-klang-abspielen).
+- [x] control, ui: Eine dreißigsekündige Demonstrationsmelodie über eine Demo-Schaltfläche auf der Audio-Einstellungsseite hinzufügen. Siehe [Die Demonstrationsmelodie](beeper_de.md#die-demonstrationsmelodie).
+- [ ] mqtt: TLS unterstützen. `CONFIG_MQTT_TRANSPORT_SSL` ist ausgeschaltet, und der Client verwendet unverschlüsseltes TCP.
+- [ ] mqtt: Discovery nach dem Vorbild von Home Assistant, damit Topics nicht von Hand verbunden werden müssen.
+- [x] ble: BLE-Beacons erfassen und über MQTT veröffentlichen. Siehe [Bluetooth-LE-Beacons](ble_de.md).
+- [ ] ble: Beacons in Reichweite auf dem Panel anzeigen. Die Tabelle ist vorhanden, aber es wird noch nichts gezeichnet.
+- [ ] ble: Der BLE-Scanner wurde ebenfalls noch nicht auf Hardware betrieben. Der NimBLE-Port wurde anhand der IDF-Beobachterbeispiele und die Parser anhand der Formatspezifikationen geprüft, nicht anhand eines echten Tags.
+- [x] mqttviz: Die Topologieansicht neben der Mesh-Ansicht hinzufügen: Access Points aus den BSSID-Topics der Panels, anheftbare Positionen, Beacon-Platzierung anhand des Distanz-Topics und eine Effektebene mit einem FX-Schalter. Siehe [Der MQTT-Visualizer](mqttviz_de.md) und [die Notiz](mqttviz-notes_de.md).
+- [x] mqttviz: Ganze Anordnungen als benannte Layouts speichern und mit einem Klick wiederherstellen; daneben eine Sicherungsdatei für den Zustand anlegen, die festhält, was durch eine Wiederherstellung ersetzt wurde. Siehe [Benannte Anordnungen](mqttviz_de.md#die-seite).
+- [x] mqttviz: Der Topologieansicht einen viermal so großen Arbeitsbereich mit eigener Kamera geben – Mausrad-Zoom, Verschieben, Startansicht – sowie eine einmalige Umrechnung, bei der jeder Pin an seiner sichtbaren Position bleibt. Siehe [Arbeitsfläche und Zoom](mqttviz_de.md#die-seite).
+- [x] mqttviz: Eine 3D-Raumansicht hinzufügen: ein als Laserprojektion-Hologramm importiertes SweetHome3D-Haus, Broker, Access Points und Panels an Wänden und auf Böden platziert, Beacons per Multilateration in Metern positioniert. Siehe [Die Raumansicht](mqttviz_de.md#die-raumansicht).
+- [ ] mqttviz: Die Raumansicht mit echten SweetHome3D-Häusern ausprobieren – geprüft wurde sie bisher nur mit generierten `Home.xml`-Dateien. Die Biegerichtung runder Wände und Ebenen mit gleichen `elevationIndex`-Werten sind wahrscheinliche Überraschungen.
+- [x] doc: Die Bilder des Visualizers – Mesh, Topologie, Detailansicht, Physik, Layouts und Raumansicht – mit einer Demo-Flotte über `mqttviz/demo/make-screenshots.sh` aufnehmen. Siehe [Ohne Panels ausprobieren](mqttviz_de.md#ohne-panels-ausprobieren).
+- [x] mqttviz: Längen in Metern entlang der Linien der Raumansicht anzeigen. Siehe [Die Linien zeigen ihre Länge](mqttviz_de.md#die-raumansicht).
+- [x] mqttviz: Einen Ansichtswürfel in die Raumansicht einfügen – Flächen und Kanten als Blickrichtungen, Ziehen als Steuerung der Umlaufbewegung sowie Zoom- und Rahmen-Schaltflächen darunter. Siehe [Der Ansichtswürfel](mqttviz_de.md#die-raumansicht).
+- [x] mqttviz: Eine Einstellung für die GUI-Größe hinzufügen, die die gesamte Oberfläche einheitlich skaliert (70 bis 160 Prozent) und mit den Einstellungen gespeichert wird. Siehe [Konfiguration](mqttviz_de.md#broker).
+- [x] mqttviz: Beacons anhand gewichteter Empfangsmessungen platzieren – 1/d², wobei Messwerte aus der Nähe über mehrere Stockwerke hinweg entfernte Schätzungen überstimmen – und zuerst das Hausraster durchsuchen, damit der Schnittpunkt der nahen Messungen gegenüber seinem Spiegelbild gewinnt. Siehe [Beacons finden ihre Position selbst](mqttviz_de.md#die-raumansicht).
