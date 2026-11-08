@@ -145,3 +145,25 @@ CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=n
 CONFIG_ESP_WIFI_ENABLE_WPA3_SAE=n
 CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_STA=n
 CONFIG_ESP_WIFI_ENABLE_WPA3_OWE_SOFTAP=n
+
+# Heap for the panel itself. With WiFi, MQTT, the BLE scanner, the BME280 and
+# the openHAB event stream all on, an ArduiTouch ran with about 6 KB of free
+# heap, and an LVGL draw that found no memory crashed it (StoreProhibited in
+# lv_draw_add_task). A web UI request or an icon load was enough to get there.
+# The values below were measured on that panel: the stack high-water marks
+# with every feature on and the web UI under load.
+#
+# Six static WiFi RX buffers instead of ten: 6.4 KB. The panel moves sitemap
+# pages and icons, not bulk data, and the dynamic RX buffers still take bursts.
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+
+# Task stacks that were sized for other applications. Used at most: the MQTT
+# task 1.6 KB of 6 KB, the esp_timer task 0.3 KB of 3.5 KB, the NimBLE host
+# task 1.8 KB of 4 KB. Together 5 KB.
+CONFIG_MQTT_USE_CUSTOM_CONFIG=y
+CONFIG_MQTT_TASK_STACK_SIZE=3584
+CONFIG_ESP_TIMER_TASK_STACK_SIZE=2048
+CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=3072
+
+# The host side of the one connection slot the controller keeps (see above).
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
