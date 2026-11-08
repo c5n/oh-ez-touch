@@ -1,6 +1,7 @@
 #include "sdkconfig.h"
 
 #include "openhab_ui.hpp"
+#include "icons/icon_png.h"
 #include "icons/icon_set.hpp"
 #include "openhab/openhab_bell.hpp"
 #include "openhab/openhab_client.hpp"
@@ -893,6 +894,66 @@ static unsigned char *icon_downscale_2x(const unsigned char *src, unsigned width
     return dst;
 }
 
+/* The PNGs icon_png_decode() leaves alone: lodepng's decode to RGBA, the
+ * swap to LVGL's byte order, and the halvings down to the set's size. */
+static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void *png,
+                                       size_t png_len, unsigned char **out,
+                                       unsigned *out_width, unsigned *out_height)
+{
+    unsigned char *pixels;
+    /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and the
+     * two are the same type on the host and different ones on the device. */
+    unsigned png_width, png_height;
+    unsigned int error = lodepng_decode32(&pixels, &png_width, &png_height,
+                                          (const unsigned char *)png, png_len);
+
+    if (error == 83 && wctx->img_dsc.data != NULL)
+    {
+        lv_image_cache_drop(&wctx->img_dsc);
+        free((void *)wctx->img_dsc.data);
+        wctx->img_dsc.data = NULL;
+
+        error = lodepng_decode32(&pixels, &png_width, &png_height,
+                                 (const unsigned char *)png, png_len);
+    }
+
+    if (error)
+    {
+        printf("widget_icon: %s PNG decode error %u: %s (len %u, heap %u free, %u largest)\n",
+               wctx->item != NULL ? wctx->item->getIconName() : "?",
+               error, lodepng_error_text(error), (unsigned)png_len,
+               (unsigned)port_free_heap(), (unsigned)port_largest_free_block());
+        return false;
+    }
+
+    convert_color_depth(pixels, png_width * png_height);
+
+    /* Halved in both directions until it fits -- never below the set's size.
+     * The halved copy is a fresh small block and the decode buffer goes back
+     * whole, so the next decode's working set still finds the block this one
+     * just used. */
+    while (png_width % 2 == 0 && png_height % 2 == 0
+           && png_width / 2 >= ICON_SET_PIXEL_SIZE
+           && png_height / 2 >= ICON_SET_PIXEL_SIZE)
+    {
+        unsigned char *halved = icon_downscale_2x(pixels, png_width, png_height);
+
+        if (halved == NULL)
+            break;
+
+        free(pixels);
+        pixels = halved;
+        png_width /= 2;
+        png_height /= 2;
+    }
+
+    *out = pixels;
+    *out_width = png_width;
+    *out_height = png_height;
+
+    return true;
+}
+
 /* Put an arrived icon on its tile. load_icon()'s other half.
  *
  * Two kinds arrive here, and they could not be treated more differently.
@@ -905,8 +966,10 @@ static unsigned char *icon_downscale_2x(const unsigned char *src, unsigned width
  *
  * Anything else is a PNG that came from the server, and that one does get the
  * decode -- and, if the server serves an icon set larger than the firmware's
- * own, a downscale back to the set's size afterwards, so a tile never draws
- * a big custom icon next to small built-in ones. The decode stays on this
+ * own, a downscale back to the set's size, so a tile never draws a big custom
+ * icon next to small built-in ones. icon_png_decode() does both without a
+ * block of the picture's size (see icon_png.h); lodepng is left with the
+ * formats it does not take. The decode stays on this
  * task deliberately. It is single-digit milliseconds against the hundreds the
  * fetch can take, it keeps what is in flight down to the size of the PNG
  * rather than the size of the pixels, and it keeps the malloc and the free of
@@ -949,63 +1012,45 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
     }
     else
     {
-        /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and
-         * the two are the same type on the host and different ones on the
-         * device. */
         unsigned png_width, png_height;
-
-        // Decode the loaded image in ARGB8888
-        unsigned int error = lodepng_decode32(&pixels, &png_width, &png_height,
-                                              (const unsigned char *)png, png_len);
+        enum icon_png_e result = icon_png_decode((const uint8_t *)png, png_len,
+                                                 ICON_SET_PIXEL_SIZE, NULL, 0, &pixels,
+                                                 &png_width, &png_height);
 
         /* A memory failure with an icon already on the tile deserves a second
          * attempt without it: the old pixels are part of the very heap the
          * decode is asking for, and holding them to the bitter end is what
          * made a refresh never fit next to them. The fallback takes the tile
          * if the retry fails too -- an honest placeholder over a stale icon.
-         * Only error 83 earns the retry; a corrupt PNG decodes no better
-         * with more heap. */
-        if (error == 83 && wctx->img_dsc.data != NULL)
+         * Only a memory failure earns the retry; a corrupt PNG decodes no
+         * better with more heap. */
+        if (result == ICON_PNG_NO_MEMORY && wctx->img_dsc.data != NULL)
         {
             lv_image_cache_drop(&wctx->img_dsc);
             free((void *)wctx->img_dsc.data);
             wctx->img_dsc.data = NULL;
 
-            error = lodepng_decode32(&pixels, &png_width, &png_height,
-                                     (const unsigned char *)png, png_len);
+            result = icon_png_decode((const uint8_t *)png, png_len, ICON_SET_PIXEL_SIZE,
+                                     NULL, 0, &pixels,
+                                     &png_width, &png_height);
         }
 
-        if (error)
+        /* 16 bits, fewer than 8 or interlaced: lodepng, with its two blocks of
+         * the picture's size, and the halving after it. */
+        if (result == ICON_PNG_UNSUPPORTED)
         {
-            printf("widget_icon: %s PNG decode error %u: %s (len %u, heap %u free, %u largest)\n",
+            if (widget_icon_decode_lodepng(wctx, png, png_len, &pixels, &png_width,
+                                           &png_height) == false)
+                return;
+        }
+        else if (result != ICON_PNG_OK)
+        {
+            printf("widget_icon: %s PNG %s (len %u, heap %u free, %u largest)\n",
                    wctx->item != NULL ? wctx->item->getIconName() : "?",
-                   error, lodepng_error_text(error), (unsigned)png_len,
-                   (unsigned)port_free_heap(), (unsigned)port_largest_free_block());
+                   result == ICON_PNG_NO_MEMORY ? "out of memory" : "broken",
+                   (unsigned)png_len, (unsigned)port_free_heap(),
+                   (unsigned)port_largest_free_block());
             return;
-        }
-
-        convert_color_depth(pixels, png_width * png_height);
-
-        /* Server icons larger than the built-in set go down to its size: a
-         * 64 px custom icon next to the 32 px built-ins is exactly the pixel
-         * soup scaling the built-ins up used to be, only mirrored. Halved in
-         * both directions until it fits -- never below the set's size. The
-         * halved copy is a fresh small block and the decode buffer goes back
-         * whole, so the next decode's working set still finds the block this
-         * one just used. */
-        while (png_width % 2 == 0 && png_height % 2 == 0
-               && png_width / 2 >= ICON_SET_PIXEL_SIZE
-               && png_height / 2 >= ICON_SET_PIXEL_SIZE)
-        {
-            unsigned char *halved = icon_downscale_2x(pixels, png_width, png_height);
-
-            if (halved == NULL)
-                break;
-
-            free(pixels);
-            pixels = halved;
-            png_width /= 2;
-            png_height /= 2;
         }
 
         cf = LV_COLOR_FORMAT_ARGB8888;

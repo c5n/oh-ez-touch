@@ -133,6 +133,12 @@
 # components/tjpgd. libc and TJpgDec, nothing else -- the socket is a read
 # callback the tests supply from memory, in reads of any size.
 #
+# icons/icon_png.c came when server icons stopped needing a block of their
+# own size: a PNG inflated into 2 KB segments and downscaled from them. libc
+# only; lodepng is linked here as the reference it is checked against, the
+# decoder that did the job before and still does the formats icon_png.c
+# refuses.
+#
 # Everything else in main/ still is not reachable from here, deliberately.
 idf_component_register(SRCS "test_runner.cpp"
                             "test_backlight_control.cpp"
@@ -143,6 +149,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "test_config_file.cpp"
                             "test_event_parse.cpp"
                             "test_frame_stats.cpp"
+                            "test_icon_png.cpp"
                             "test_icon_set.cpp"
                             "test_image_decode.cpp"
                             "test_item_setters.cpp"
@@ -173,6 +180,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ui/ui_beep_tables_seq.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/ble/ble_beacon.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config.cpp"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/icons/icon_png.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/icons/icon_set.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/port_storage_stdio.c"
@@ -196,7 +204,7 @@ idf_component_register(SRCS "test_runner.cpp"
                        INCLUDE_DIRS "."
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main"
                                     "${CMAKE_CURRENT_LIST_DIR}/../../../main/port"
-                       REQUIRES unity ArduinoJson freertos tjpgd)
+                       REQUIRES unity ArduinoJson freertos tjpgd lodepng)
 
 # test_image_decode.cpp reads its JPEGs from here at run time rather than out
 # of a C array: a full-HD snapshot is 40 KB, which as hex is a quarter of a

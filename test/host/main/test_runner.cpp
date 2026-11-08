@@ -33,6 +33,7 @@ extern "C" void app_main(void)
     test_config_file_run();
     test_event_parse_run();
     test_frame_stats_run();
+    test_icon_png_run();
     test_icon_set_run();
     test_image_decode_run();
     test_item_setters_run();
