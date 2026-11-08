@@ -189,7 +189,7 @@ Das Theme wird sofort nach dem Speichern auf dem Bildschirm und im Browser wirks
 
 | Einstellung | Standardwert | Beschreibung |
 | --- | --- | --- |
-| Inaktivitätszeitlimit | 60 | Sekunden seit der letzten Berührung, bis das Display gedimmt wird. |
+| Inaktivitätszeitlimit | 60 | Sekunden seit der letzten Berührung, bis das Display gedimmt wird. Beim Dimmen schließt das Panel außerdem eine offene Elementsteuerung und kehrt zur Startseite der Sitemap zurück. Ein offener Einstellungsbildschirm bleibt. 0 schaltet all das ab. |
 | Normale Helligkeit | 100 | Normale Helligkeit in Prozent. |
 | Gedimmte Helligkeit | 40 | Gedimmte Helligkeit in Prozent. |
 | Uhrzeit und Datum im gedimmten Zustand anzeigen | Off | Uhrbildschirm beim Dimmen des Displays anzeigen: die Uhrzeit und darunter den Wochentag und das Datum oder die Uhr-Elemente der Startseite. Die nächste Berührung aktiviert das Bedienfeld auf der Startseite. |

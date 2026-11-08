@@ -1,8 +1,8 @@
 # Aufgabenliste
 
 - [x] openhab_ui: Laden von Icons korrigieren. Die klassischen Icons sind eingebaut, und ein Server-Icon darf den Empfangspuffer (12 KB) füllen statt 5000 Byte. Siehe [Icon-Größen](sitemap_de.md#symbolgrößen).
-- [ ] openhab_ui: Elementsteuerungsbildschirm nach einer Zeitüberschreitung automatisch schließen. Mit dem Bildschirmstapel jetzt unkompliziert: ein Timer und ein `ui_screen_pop()`.
-- [ ] openhab_ui: Nach einer Zeitüberschreitung automatisch zum Startbildschirm zurückkehren.
+- [x] openhab_ui: Elementsteuerungsbildschirm nach einer Zeitüberschreitung automatisch schließen. Beim Inaktivitätszeitlimit, auch auf der Startseite. Siehe [LCD-Hintergrundbeleuchtung dimmen](configuration_de.md#lcd-hintergrundbeleuchtung-dimmen).
+- [x] openhab_ui: Nach einer Zeitüberschreitung automatisch zum Startbildschirm zurückkehren. Beim Inaktivitätszeitlimit, wenn das Display dimmt.
 - [ ] openhab_ui: Text der Widget-Beschriftung gegenüber dem Text der Element-Beschriftung bevorzugen.
 - [ ] openhab_ui: Geschützte Bereiche mit PIN-Schutz hinzufügen.
 - [x] openhab_ui: Auswahl-, Sollwert- und Schiebereglerelemente verbessern.

@@ -1595,18 +1595,22 @@ void openhab_ui_request_home(void)
     if (root_page[0] == '\0' || page_state == PAGE_IDLE)
         return;
 
+    /* An open control closes whether or not the page changes: the next person
+     * to walk up should find the page, not the dimmer somebody left open on
+     * it. On another page it has to close anyway, because it points into the
+     * sitemap the reload is about to overwrite. The settings screen is left
+     * alone: it is not about the page, and on a panel with no network yet it
+     * is the only way to get one. With the clock screen on, clock_show() has
+     * closed the control already by the time this would matter. */
+    if (item_screen_is_open() == true)
+        item_screen_dismiss();
+
     bool on_root = (strcmp(current_page, root_page) == 0);
     bool frame_changed =
         (strcmp(parsed_clock_frame, current_config->item.backlight.clock_frame) != 0);
 
     if (on_root == true && frame_changed == false)
         return;
-
-    /* An open control points into the sitemap the reload is about to
-     * overwrite. The settings screen is left alone: it is not about the page,
-     * and on a panel with no network yet it is the only way to get one. */
-    if (item_screen_is_open() == true)
-        item_screen_dismiss();
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("openhab_ui_request_home: back to %s\r\n", root_page);

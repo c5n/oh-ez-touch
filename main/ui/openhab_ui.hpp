@@ -80,9 +80,9 @@ bool openhab_ui_tile_info(size_t index, struct openhab_ui_tile_s *out);
 unsigned openhab_ui_pin_protected_count(void);
 
 /* Go back to the sitemap's home page, which is what the panel does when it is
- * left alone (main.cpp, on the activity timeout). Closes an open control,
- * since the reload overwrites the item it points at; does nothing on the
- * home page already. LVGL task only. */
+ * left alone (main.cpp, on the activity timeout). Closes an open control, on
+ * the home page as well; reloads nothing on the home page already. LVGL task
+ * only. */
 void openhab_ui_request_home(void);
 
 /* The clock screen's items: the first CLOCK_ITEM_COUNT children of the home

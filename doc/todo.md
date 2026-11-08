@@ -3,10 +3,11 @@
 - [x] openhab_ui: Fix icon loading. The classic icons are built in, and a
       server icon may fill the receive buffer (12 KB) instead of 5000 bytes.
       See [Icon sizes](sitemap.md#icon-sizes).
-- [ ] openhab_ui: Auto close item control screen after timeout.
-      Straightforward now that there is a screen stack: one timer and an
-      `ui_screen_pop()`.
-- [ ] openhab_ui: Auto back to homescreen after timeout.
+- [x] openhab_ui: Auto close item control screen after timeout. On the
+      activity timeout, on the home page as well. See
+      [LCD Backlight Dimming](configuration.md#lcd-backlight-dimming).
+- [x] openhab_ui: Auto back to homescreen after timeout. On the activity
+      timeout, when the display dims.
 - [ ] openhab_ui: Prefer widget label text instead of item label text.
 - [ ] openhab_ui: Add secured sections with PIN protection.
 - [x] openhab_ui: Improve selection, setpoint and slider elements.

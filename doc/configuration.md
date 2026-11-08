@@ -288,7 +288,7 @@ only by fallback.
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| Activity timeout | 60 | Seconds since the last touch before the display dims. |
+| Activity timeout | 60 | Seconds since the last touch before the display dims. When it dims, the panel also closes an open item control and goes back to the sitemap's home page. An open settings screen stays. 0 turns all of this off. |
 | Normal Brightness | 100 | Normal brightness level in percent. |
 | Dim Brightness | 40 | Dim brightness level in percent. |
 | Show time and date when dimmed | Off | Show the clock screen when the display dims: the time, and under it the weekday and date or the home page's clock items. The next touch wakes the panel on the home page. |
