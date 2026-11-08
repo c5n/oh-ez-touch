@@ -24,10 +24,10 @@
       (`trafficlight` on one panel) needs about 16 KB in one piece for its
       decode, and fails on a fragmented heap. Decode row by row, or downscale
       while decoding.
-- [ ] openhab: The doorbell task ignores an event the heap could not parse,
-      so a ring at that moment is lost.
-- [ ] openhab: The event parsers build their filters on the first call with
-      no lock, and the event task and the doorbell task both call them.
+- [x] openhab: Keep a ring the heap could not parse. The doorbell reads such
+      an event once more as text, without the heap.
+- [x] openhab: Build the event parsers' filters under a lock. The event task
+      and the doorbell task both parse, and either can be first.
 - [ ] openhab: The picture has not been fetched on hardware. Measure the
       client task's stack (4 KB, with TJpgDec on it) and the heap during a
       ring, and whether an Image item's page loads on a fragmented heap.
@@ -72,9 +72,10 @@
       [What is left, and what it needs](architecture.md#what-is-left-and-what-it-needs).
 - [x] ui, test: Bring the original look back as a fourth family, `Classic`.
 - [x] ota: Delete the Arduino basic OTA, together with the Arduino framework.
-- [ ] main: The device firmware built here has not been run on hardware. The
-      display, touch, backlight and BME280 drivers are translations checked
-      against the vendor sources, not measurements.
+- [ ] main: The firmware runs on an ArduiTouch with WiFi, openHAB, MQTT, the
+      BLE scan and the BME280 on, and a 10-minute soak passed (2026-11-08).
+      Still not measured: the touch accuracy, the backlight levels and the
+      BME280 values against a reference. The other boards have not run it.
 - [x] control, ui: Give the beeper melodies, envelopes and effects, and keep
       the chord mixer behind a Kconfig switch. See [The beeper](beeper.md).
 - [ ] control: The beeper has been measured in the numbers it hands the pin,
@@ -101,8 +102,8 @@
       [Bluetooth LE beacons](ble.md).
 - [ ] ble: Show the beacons in range on the panel. The table is there;
       nothing draws it yet.
-- [ ] ble: The BLE scanner has not been run on hardware either. The NimBLE
-      port is checked against the IDF observer examples and the parsers
+- [ ] ble: The BLE scan runs on an ArduiTouch (active scan, every 30 s), but
+      no tag was in range: `ble/count` stayed 0. The parsers are checked
       against the format specifications, not against a real tag.
 - [x] mqttviz: Add the topology view next to the mesh view -- access
       points from the panels' BSSID topics, pinnable positions, beacon

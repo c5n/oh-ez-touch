@@ -10,8 +10,8 @@
 - [x] openhab_ui: Das Bild eines Image-Elements anzeigen – etwa das einer Türklingel oder Kamera – und es von jeder Seite aus öffnen, wenn die Klingel ertönt. Siehe [Image](sitemap_de.md#bild-eine-türklingel-oder-eine-kamera) und [Türklingel](configuration_de.md#türklingel).
 - [x] main, openhab, build: Dem Heap auf einem ESP32 mit allen Funktionen Platz zurückgeben. Gemessene Task-Stacks und WLAN-Puffer, keine Puffer für ausgeschaltete Funktionen, ein abgelehnter Sitemap-Stream wird erneut angefragt. Siehe [Das Heap-Budget](architecture_de.md#das-heap-budget).
 - [ ] openhab_ui: Ein 64-px-Server-Icon, das der eingebaute Satz nicht enthält (`trafficlight` auf einem Panel), braucht zum Dekodieren etwa 16 KB am Stück und scheitert auf einem fragmentierten Heap. Zeilenweise dekodieren oder beim Dekodieren verkleinern.
-- [ ] openhab: Der Türklingel-Task ignoriert ein Ereignis, das der Heap nicht parsen konnte; ein Klingeln in diesem Moment geht verloren.
-- [ ] openhab: Die Ereignisparser bauen ihre Filter beim ersten Aufruf ohne Sperre, und der Ereignistask und der Türklingel-Task rufen sie beide auf.
+- [x] openhab: Ein Klingeln behalten, das der Heap nicht parsen konnte. Die Türklingel liest ein solches Ereignis noch einmal als Text, ohne Heap.
+- [x] openhab: Die Filter der Ereignisparser unter einer Sperre bauen. Der Ereignistask und der Türklingel-Task parsen beide, und jeder von ihnen kann der erste sein.
 - [ ] openhab: Das Bild wurde auf der Hardware noch nicht abgerufen. Den Stack des Client-Tasks (4 KB, mit TJpgDec darauf) und den Heap während eines Klingelvorgangs messen sowie prüfen, ob die Seite eines Image-Elements auf einem fragmentierten Heap lädt.
 - [ ] openhab_ui: Progressive JPEGs oder PNGs anzeigen. TJpgDec liest nur Baseline-JPEGs, und eine PNG müsste vollständig dekodiert werden.
 - [ ] openhab: Ein API-Token senden. Das Panel sendet keines; daher müssen `/rest/events`, `/rest/sitemaps/events`, die Sitemap und die Elementzustände für anonyme Clients zugänglich sein.
@@ -31,7 +31,7 @@
 - [ ] build: Vier Stellschrauben für das Display sind dokumentiert, aber keine wurde betätigt, denn für jede braucht es ein Panel statt einer Diskussion. Siehe [Was noch möglich ist und was es braucht](architecture_de.md#was-noch-möglich-ist-und-was-es-braucht).
 - [x] ui, test: Das ursprüngliche Aussehen als vierte Familie `Classic` zurückbringen.
 - [x] ota: Das einfache Arduino-OTA entfernen, zusammen mit dem Arduino-Framework.
-- [ ] main: Die hier gebaute Gerätefirmware wurde nicht auf Hardware ausgeführt. Die Treiber für Display, Touch, Hintergrundbeleuchtung und BME280 sind Übertragungen, die anhand der Herstellerquellen geprüft wurden, keine Messungen.
+- [ ] main: Die Firmware läuft auf einem ArduiTouch mit WLAN, openHAB, MQTT, BLE-Scan und BME280, und ein 10-minütiger Dauertest lief durch (2026-11-08). Noch nicht gemessen: die Touch-Genauigkeit, die Helligkeitsstufen der Hintergrundbeleuchtung und die BME280-Werte gegen eine Referenz. Die anderen Boards haben sie noch nicht ausgeführt.
 - [x] control, ui: Dem Signalgeber Melodien, Hüllkurven und Effekte geben und den Akkordmixer hinter einem Kconfig-Schalter belassen. Siehe [Der Signalgeber](beeper_de.md).
 - [ ] control: Der Signalgeber wurde anhand der Zahlen vermessen, die er an den Pin ausgibt, aber noch nicht auf Hardware angehört. Der Schallwandler wird nicht modelliert. Siehe [Der Signalgeber](beeper_de.md).
 - [ ] sensors: DS18B20-One-Wire-Sensoren unterstützen.
@@ -44,7 +44,7 @@
 - [ ] mqtt: Discovery nach dem Vorbild von Home Assistant, damit Topics nicht von Hand verbunden werden müssen.
 - [x] ble: BLE-Beacons erfassen und über MQTT veröffentlichen. Siehe [Bluetooth-LE-Beacons](ble_de.md).
 - [ ] ble: Beacons in Reichweite auf dem Panel anzeigen. Die Tabelle ist vorhanden, aber es wird noch nichts gezeichnet.
-- [ ] ble: Der BLE-Scanner wurde ebenfalls noch nicht auf Hardware betrieben. Der NimBLE-Port wurde anhand der IDF-Beobachterbeispiele und die Parser anhand der Formatspezifikationen geprüft, nicht anhand eines echten Tags.
+- [ ] ble: Der BLE-Scan läuft auf einem ArduiTouch (aktiver Scan, alle 30 s), aber kein Tag war in Reichweite: `ble/count` blieb 0. Die Parser sind anhand der Formatspezifikationen geprüft, nicht anhand eines echten Tags.
 - [x] mqttviz: Die Topologieansicht neben der Mesh-Ansicht hinzufügen: Access Points aus den BSSID-Topics der Panels, anheftbare Positionen, Beacon-Platzierung anhand des Distanz-Topics und eine Effektebene mit einem FX-Schalter. Siehe [Der MQTT-Visualizer](mqttviz_de.md) und [die Notiz](mqttviz-notes_de.md).
 - [x] mqttviz: Ganze Anordnungen als benannte Layouts speichern und mit einem Klick wiederherstellen; daneben eine Sicherungsdatei für den Zustand anlegen, die festhält, was durch eine Wiederherstellung ersetzt wurde. Siehe [Benannte Anordnungen](mqttviz_de.md#die-seite).
 - [x] mqttviz: Der Topologieansicht einen viermal so großen Arbeitsbereich mit eigener Kamera geben – Mausrad-Zoom, Verschieben, Startansicht – sowie eine einmalige Umrechnung, bei der jeder Pin an seiner sichtbaren Position bleibt. Siehe [Arbeitsfläche und Zoom](mqttviz_de.md#die-seite).
