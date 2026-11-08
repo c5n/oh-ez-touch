@@ -19,6 +19,7 @@
 
 #include <atomic>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "freertos/FreeRTOS.h"
@@ -62,7 +63,9 @@ static std::atomic<bool> rang{false};
 /* The task's own. */
 static struct target_s active;
 static esp_http_client_handle_t client;
-static struct sse_reader reader;
+/* Allocated together with the task. Most panels have no doorbell, and in
+ * .bss the line buffer would cost them its two kilobytes all the same. */
+static struct sse_reader *reader;
 static char url[BELL_URL_LEN];
 
 static void on_data(const char *data, size_t len, void *ctx)
@@ -136,7 +139,7 @@ static bool stream(void)
     ESP_LOGI(TAG, "following %s", active.item);
 
     esp_http_client_set_timeout_ms(client, BELL_READ_TIMEOUT_MS);
-    sse_reader_reset(&reader);
+    sse_reader_reset(reader);
 
     struct json_squeeze_s squeeze;
     uint64_t last_data = port_millis();
@@ -155,8 +158,8 @@ static bool stream(void)
         {
             size_t kept = json_squeeze(&squeeze, buf, (size_t)read);
 
-            sse_reader_feed(&reader, buf, kept, on_data, &last_data);
-            sse_reader_take_overflow(&reader);
+            sse_reader_feed(reader, buf, kept, on_data, &last_data);
+            sse_reader_take_overflow(reader);
             continue;
         }
 
@@ -233,9 +236,13 @@ void openhab_bell_follow(const char *website, const char *item)
         if (item[0] == '\0')
             return;
 
-        lock = xSemaphoreCreateMutex();
+        if (lock == NULL)
+            lock = xSemaphoreCreateMutex();
 
-        if (lock == NULL
+        if (reader == NULL)
+            reader = (struct sse_reader *)malloc(sizeof(*reader));
+
+        if (lock == NULL || reader == NULL
             || xTaskCreate(bell_task, "openhab_bell", BELL_TASK_STACK_SIZE, NULL, 1, &task)
                    != pdPASS)
         {

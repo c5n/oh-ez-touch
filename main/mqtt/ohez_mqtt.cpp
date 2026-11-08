@@ -499,13 +499,6 @@ static void publish_system(Config &config)
     char            value[MQTT_VALUE_MAX];
     port_net_info_t net;
 
-    /* Skip publishing system metrics if memory is critically low */
-    size_t free_heap = port_free_heap();
-    if (free_heap < 8000) {
-        // Critical memory level, avoid additional allocations
-        return;
-    }
-
     /* port_millis() is the uptime: monotonic since boot, and nothing resets
      * it. Same source as the Info tab's row and the web status page's. */
     snprintf(value, sizeof(value), "%llu", (unsigned long long)(port_millis() / 1000));

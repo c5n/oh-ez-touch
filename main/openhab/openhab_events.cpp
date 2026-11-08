@@ -32,7 +32,9 @@ static const char *TAG = "openhab_events";
 #if CONFIG_IDF_TARGET_LINUX
 #define OPENHAB_EVENTS_TASK_STACK_SIZE 32768
 #else
-#define OPENHAB_EVENTS_TASK_STACK_SIZE 4096
+/* An ArduiTouch streaming a sitemap page from openHAB 5.2.1 was measured at
+ * 1.85 KB of this in use; the rest is margin. */
+#define OPENHAB_EVENTS_TASK_STACK_SIZE 3072
 #endif
 
 #define OPENHAB_EVENTS_TASK_PRIORITY 1
@@ -57,6 +59,9 @@ static const char *TAG = "openhab_events";
 /* The answer to the subscribe POST: a status and a context object, about 330
  * bytes with a long host in its Location. */
 #define OPENHAB_EVENTS_SUBSCRIBE_BODY_LEN 768
+
+static_assert(OPENHAB_EVENTS_SUBSCRIBE_BODY_LEN <= SSE_LINE_LEN,
+              "the subscribe answer is read into the SSE reader's line buffer");
 
 /* A subscription id is a UUID, 36 characters. */
 #define OPENHAB_EVENTS_SUBSCRIPTION_LEN 48
@@ -98,8 +103,6 @@ static char sitemap_refused[OPENHAB_EVENTS_WEBSITE_LEN];
 /* A sitemap stream for this subscription has been up before: the next one to
  * come up has missed whatever changed in between. */
 static bool sitemap_was_up;
-
-static char subscribe_body[OPENHAB_EVENTS_SUBSCRIBE_BODY_LEN];
 
 static void openhab_events_task(void *parameter);
 
@@ -477,8 +480,12 @@ static enum subscribe_e subscribe(char *id, size_t id_size)
         return SUBSCRIBE_FAILED;
     }
 
-    int status = esp_http_client_get_status_code(client);
-    int body = esp_http_client_read_response(client, subscribe_body, sizeof(subscribe_body) - 1);
+    /* Read into the line buffer of the SSE reader: no stream is open while
+     * the subscribe runs, and stream() resets the reader before it reads. */
+    char *subscribe_body = reader.line;
+    int   status = esp_http_client_get_status_code(client);
+    int   body = esp_http_client_read_response(client, subscribe_body,
+                                               OPENHAB_EVENTS_SUBSCRIBE_BODY_LEN - 1);
 
     esp_http_client_close(client);
 
