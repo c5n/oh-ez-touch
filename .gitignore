@@ -65,3 +65,5 @@ test/host/*
 !test/host/CMakeLists.txt
 !test/host/sdkconfig.defaults
 !test/host/main/
+# The tests' input files, read at run time from TEST_FIXTURE_DIR.
+!test/host/fixtures/
