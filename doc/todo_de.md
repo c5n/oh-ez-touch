@@ -3,8 +3,8 @@
 - [x] openhab_ui: Laden von Icons korrigieren. Die klassischen Icons sind eingebaut, und ein Server-Icon darf den Empfangspuffer (12 KB) füllen statt 5000 Byte. Siehe [Icon-Größen](sitemap_de.md#symbolgrößen).
 - [x] openhab_ui: Elementsteuerungsbildschirm nach einer Zeitüberschreitung automatisch schließen. Beim Inaktivitätszeitlimit, auch auf der Startseite. Siehe [LCD-Hintergrundbeleuchtung dimmen](configuration_de.md#lcd-hintergrundbeleuchtung-dimmen).
 - [x] openhab_ui: Nach einer Zeitüberschreitung automatisch zum Startbildschirm zurückkehren. Beim Inaktivitätszeitlimit, wenn das Display dimmt.
-- [ ] openhab_ui: Text der Widget-Beschriftung gegenüber dem Text der Element-Beschriftung bevorzugen.
-- [ ] openhab_ui: Geschützte Bereiche mit PIN-Schutz hinzufügen.
+- [x] openhab_ui: Text der Widget-Beschriftung gegenüber dem Text der Element-Beschriftung bevorzugen. Die Kachel zeigt das `label` des Widgets. openHAB nimmt es aus der Sitemap und füllt es nur dann mit der Beschriftung des Elements, wenn die Sitemap keine angibt.
+- [x] openhab_ui: Geschützte Bereiche mit PIN-Schutz hinzufügen. Kacheln, deren Element das Tag `ohez-pin` hat, fragen nach der Element-PIN. Siehe [PINs](configuration_de.md#pins).
 - [x] openhab_ui: Auswahl-, Sollwert- und Schiebereglerelemente verbessern.
 - [x] openhab: Über `/rest/events` übermittelte Elementzustände übernehmen, statt jede Kachel alle fünf Sekunden abzufragen. Siehe [Der Ereignisstrom](architecture_de.md#der-ereignisstream).
 - [x] openhab_ui: Das Bild eines Image-Elements anzeigen – etwa das einer Türklingel oder Kamera – und es von jeder Seite aus öffnen, wenn die Klingel ertönt. Siehe [Image](sitemap_de.md#bild-eine-türklingel-oder-eine-kamera) und [Türklingel](configuration_de.md#türklingel).

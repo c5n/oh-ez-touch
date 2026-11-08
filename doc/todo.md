@@ -8,8 +8,12 @@
       [LCD Backlight Dimming](configuration.md#lcd-backlight-dimming).
 - [x] openhab_ui: Auto back to homescreen after timeout. On the activity
       timeout, when the display dims.
-- [ ] openhab_ui: Prefer widget label text instead of item label text.
-- [ ] openhab_ui: Add secured sections with PIN protection.
+- [x] openhab_ui: Prefer widget label text instead of item label text. The
+      tile shows the widget's `label`, which openHAB takes from the sitemap
+      and fills from the item's label only when the sitemap gives none.
+- [x] openhab_ui: Add secured sections with PIN protection. Tiles whose item
+      has the tag `ohez-pin` ask for the Item PIN. See
+      [PINs](configuration.md#pins).
 - [x] openhab_ui: Improve selection, setpoint and slider elements.
 - [x] openhab: Take item states pushed over `/rest/events` instead of polling
       every tile every five seconds. See
