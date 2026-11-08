@@ -10,10 +10,13 @@
 
 #include <ArduinoJson.h>
 
+#include <atomic>
+#include <mutex>
+
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
-/* The third segment of "<root>/items/<name>/...". */
 /* The heap, or for the host tests an allocator that always fails. A failed
  * deserializeJson() is NoMemory then, which is what an empty heap gives. */
 class FailingAllocator : public ArduinoJson::Allocator
@@ -52,6 +55,64 @@ static ArduinoJson::Allocator *allocator(void)
                                         : ArduinoJson::detail::DefaultAllocator::instance();
 }
 
+/* The filters of all three parsers. The event task and the doorbell task both
+ * parse, so the first call can come from either, or from both at once: the
+ * filters are built under a lock, and a build that ran out of heap is thrown
+ * away and tried again on the next call. Once built they are only read, and
+ * the flag's release/acquire pair is what makes the finished documents
+ * visible to a task that did not build them. */
+static std::mutex filters_lock;
+static std::atomic<bool> filters_built{false};
+static JsonDocument item_filter;
+static JsonDocument payload_filter;
+static JsonDocument sitemap_filter;
+static JsonDocument subscription_filter;
+
+static bool filters_ready(void)
+{
+    if (filters_built.load(std::memory_order_acquire) == true)
+        return true;
+
+    std::lock_guard<std::mutex> guard(filters_lock);
+
+    if (filters_built.load(std::memory_order_relaxed) == true)
+        return true;
+
+    item_filter.clear();
+    item_filter["topic"] = true;
+    item_filter["payload"] = true;
+    item_filter["type"] = true;
+
+    payload_filter.clear();
+    payload_filter["value"] = true;
+
+    sitemap_filter.clear();
+    sitemap_filter["TYPE"] = true;
+    sitemap_filter["widgetId"] = true;
+    sitemap_filter["pageId"] = true;
+    sitemap_filter["label"] = true;
+    sitemap_filter["labelcolor"] = true;
+    sitemap_filter["valuecolor"] = true;
+    sitemap_filter["iconcolor"] = true;
+    sitemap_filter["visibility"] = true;
+    sitemap_filter["descriptionChanged"] = true;
+    sitemap_filter["item"]["state"] = true;
+
+    subscription_filter.clear();
+    subscription_filter["context"]["headers"]["Location"] = true;
+
+    /* A filter that lost a member to the heap would silently drop that member
+     * from every event it ever filtered. */
+    if (   item_filter.overflowed() == true || payload_filter.overflowed() == true
+        || sitemap_filter.overflowed() == true || subscription_filter.overflowed() == true)
+        return false;
+
+    filters_built.store(true, std::memory_order_release);
+
+    return true;
+}
+
+/* The third segment of "<root>/items/<name>/...". */
 static bool topic_item_name(const char *topic, char *name, size_t name_size)
 {
     const char *items = strchr(topic, '/');
@@ -80,27 +141,15 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
                                          char *name, size_t name_size,
                                          char *value, size_t value_size)
 {
-    /* Only ever called from the one task that reads the stream, and from the
-     * host tests, which are one thread too; so the filters are built once and
-     * kept. The documents are not: an event is a few hundred bytes, and a
-     * handful a minute is not the churn the page parser's arena exists for. */
-    static JsonDocument event_filter;
-    static JsonDocument payload_filter;
-    static bool filters_ready = false;
-
-    if (filters_ready == false)
-    {
-        filters_ready = true;
-
-        event_filter["topic"] = true;
-        event_filter["payload"] = true;
-        event_filter["type"] = true;
-        payload_filter["value"] = true;
-    }
+    /* The filters are kept, the documents are not: an event is a few hundred
+     * bytes, and a handful a minute is not the churn the page parser's arena
+     * exists for. */
+    if (filters_ready() == false)
+        return OPENHAB_EVENT_NOMEM;
 
     JsonDocument         event(allocator());
     DeserializationError error = deserializeJson(event, json, len,
-                                                 DeserializationOption::Filter(event_filter));
+                                                 DeserializationOption::Filter(item_filter));
 
     if (error == DeserializationError::NoMemory)
         return OPENHAB_EVENT_NOMEM;
@@ -152,6 +201,65 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
     return OPENHAB_EVENT_STATE;
 }
 
+/* memmem(), which newlib and glibc both have but neither declares by default. */
+static const char *find(const char *hay, size_t hay_len, const char *needle)
+{
+    size_t needle_len = strlen(needle);
+
+    if (needle_len == 0 || needle_len > hay_len)
+        return NULL;
+
+    for (size_t i = 0; i + needle_len <= hay_len; i++)
+    {
+        if (hay[i] == needle[0] && memcmp(hay + i, needle, needle_len) == 0)
+            return hay + i;
+    }
+
+    return NULL;
+}
+
+bool openhab_event_scan_state(const char *json, size_t len, const char *item,
+                              char *value, size_t value_size)
+{
+    /* "/items/<item>/", so that "A" is not found in "openhab/items/AB/...". */
+    char topic[OPENHAB_EVENT_NAME_LEN + 16];
+
+    if (item == NULL || item[0] == '\0' || value_size == 0)
+        return false;
+
+    if ((size_t)snprintf(topic, sizeof(topic), "/items/%s/", item) >= sizeof(topic))
+        return false;
+
+    /* Group events end the same way. */
+    if (find(json, len, "ItemStateChangedEvent\"") == NULL || find(json, len, topic) == NULL)
+        return false;
+
+    /* Inside the payload string, so with its quotes escaped. "oldValue" has a
+     * capital V and does not match. */
+    static const char key[] = "\\\"value\\\":\\\"";
+    const char *start = find(json, len, key);
+
+    if (start == NULL)
+        return false;
+
+    start += sizeof(key) - 1;
+
+    const char *end = find(start, len - (size_t)(start - json), "\\\"");
+
+    if (end == NULL)
+        return false;
+
+    size_t value_len = (size_t)(end - start);
+
+    if (value_len >= value_size)
+        value_len = value_size - 1;
+
+    memcpy(value, start, value_len);
+    value[value_len] = '\0';
+
+    return true;
+}
+
 /* "Temperature [30,0 °C]" into "Temperature" and "30,0 °C". The caption the
  * way label_trim() in openhab_connector.cpp makes it, so the two compare; the
  * value up to the last ']', which a value may itself contain. */
@@ -191,29 +299,12 @@ static void label_split(const char *label, char *caption, size_t caption_size,
 enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_t len,
                                                          struct openhab_widget_event_s *out)
 {
-    /* Built once, as the item filter above is. */
-    static JsonDocument filter;
-    static bool filter_ready = false;
-
-    if (filter_ready == false)
-    {
-        filter_ready = true;
-
-        filter["TYPE"] = true;
-        filter["widgetId"] = true;
-        filter["pageId"] = true;
-        filter["label"] = true;
-        filter["labelcolor"] = true;
-        filter["valuecolor"] = true;
-        filter["iconcolor"] = true;
-        filter["visibility"] = true;
-        filter["descriptionChanged"] = true;
-        filter["item"]["state"] = true;
-    }
+    if (filters_ready() == false)
+        return OPENHAB_SITEMAP_EVENT_NOMEM;
 
     JsonDocument         event(allocator());
     DeserializationError error = deserializeJson(event, json, len,
-                                                 DeserializationOption::Filter(filter));
+                                                 DeserializationOption::Filter(sitemap_filter));
 
     if (error == DeserializationError::NoMemory)
         return OPENHAB_SITEMAP_EVENT_NOMEM;
@@ -267,18 +358,12 @@ enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_
 
 bool openhab_sitemap_subscription_id(const char *json, size_t len, char *id, size_t id_size)
 {
-    static JsonDocument filter;
-    static bool filter_ready = false;
-
-    if (filter_ready == false)
-    {
-        filter_ready = true;
-        filter["context"]["headers"]["Location"] = true;
-    }
+    if (filters_ready() == false)
+        return false;
 
     JsonDocument doc;
 
-    if (deserializeJson(doc, json, len, DeserializationOption::Filter(filter))
+    if (deserializeJson(doc, json, len, DeserializationOption::Filter(subscription_filter))
         != DeserializationError::Ok)
         return false;
 

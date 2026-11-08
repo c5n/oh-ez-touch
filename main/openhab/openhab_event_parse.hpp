@@ -74,6 +74,23 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
                                          char *name, size_t name_size,
                                          char *value, size_t value_size);
 
+/**
+ * The state of `item` out of an item event, read without a parse and without
+ * the heap. Only for a caller that got OPENHAB_EVENT_NOMEM and cannot wait for
+ * the next poll: the doorbell, whose ring is an event and not a state.
+ *
+ * It looks for the item's topic, an ItemStateChangedEvent or
+ * GroupItemStateChangedEvent type and the payload's "value", as substrings.
+ * That is enough for an event openHAB wrote, and no more: it does not check
+ * where in the line they are, and it does not unescape the value -- a value
+ * with an escaped character in it ends there.
+ *
+ * @param value receives the state, truncated to `value_size`.
+ * @return false if the line is not a state change of `item`.
+ */
+bool openhab_event_scan_state(const char *json, size_t len, const char *item,
+                              char *value, size_t value_size);
+
 /* What GET /rest/sitemaps/events/<subscription> says about one widget of the
  * page it was opened for, as openHAB 5.2.1 sends it:
  *
@@ -130,7 +147,8 @@ enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_
 /**
  * For the host tests: true makes every document allocation of the two event
  * parsers above fail, as on a panel that is out of heap; false restores the
- * heap. Call each parser once before, so that its filter is built.
+ * heap. The filters are not affected: they are built from the heap on the
+ * first call of any parser, so call one before.
  */
 void openhab_event_parse_fail_allocations(bool fail);
 

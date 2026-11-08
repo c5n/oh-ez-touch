@@ -76,14 +76,27 @@ static void on_data(const char *data, size_t len, void *ctx)
 
     *last_data = port_millis();
 
-    if (openhab_event_parse(data, len, name, sizeof(name), value, sizeof(value))
-        != OPENHAB_EVENT_STATE)
-        return;
+    switch (openhab_event_parse(data, len, name, sizeof(name), value, sizeof(value)))
+    {
+    case OPENHAB_EVENT_STATE:
+        if (strcmp(name, active.item) != 0)
+            return;
+        break;
 
-    if (strcmp(name, active.item) != 0)
-        return;
+    /* The event stream answers this with a poll of every tile. The doorbell
+     * has nothing to poll: a ring is the change, and the state may already be
+     * OFF again. So the line is read once more without the heap. */
+    case OPENHAB_EVENT_NOMEM:
+        if (openhab_event_scan_state(data, len, active.item, value, sizeof(value)) == false)
+            return;
+        ESP_LOGW(TAG, "out of heap, %s read by scan", active.item);
+        break;
 
-    ESP_LOGI(TAG, "%s = %s", name, value);
+    default:
+        return;
+    }
+
+    ESP_LOGI(TAG, "%s = %s", active.item, value);
 
     if (strcmp(value, "ON") == 0 || strcmp(value, "OPEN") == 0)
         rang.store(true, std::memory_order_relaxed);

@@ -358,6 +358,50 @@ static void test_out_of_heap(void)
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_ALIVE, sitemap_parse(alive, &ev));
 }
 
+/* The doorbell's fallback for an event the heap could not parse: the same
+ * line, read as text. It finds the item's own state change, a group's, and
+ * nothing else -- not a keepalive, not another item whose name starts the
+ * same way, not the old value. */
+static void test_scan_state(void)
+{
+    const char *ring = "{\"topic\":\"openhab/items/Bell/statechanged\","
+                       "\"payload\":\"{\\\"type\\\":\\\"OnOff\\\",\\\"value\\\":\\\"ON\\\","
+                       "\\\"oldType\\\":\\\"OnOff\\\",\\\"oldValue\\\":\\\"OFF\\\"}\","
+                       "\"type\":\"ItemStateChangedEvent\"}";
+    const char *group = "{\"topic\":\"openhab/items/Bell/Bell_Front/statechanged\","
+                        "\"payload\":\"{\\\"type\\\":\\\"OpenClosed\\\",\\\"value\\\":\\\"OPEN\\\"}\","
+                        "\"type\":\"GroupItemStateChangedEvent\"}";
+    const char *other = "{\"topic\":\"openhab/items/Bell_Light/statechanged\","
+                        "\"payload\":\"{\\\"type\\\":\\\"OnOff\\\",\\\"value\\\":\\\"ON\\\"}\","
+                        "\"type\":\"ItemStateChangedEvent\"}";
+    const char *command = "{\"topic\":\"openhab/items/Bell/command\","
+                          "\"payload\":\"{\\\"type\\\":\\\"OnOff\\\",\\\"value\\\":\\\"ON\\\"}\","
+                          "\"type\":\"ItemCommandEvent\"}";
+    const char *alive = "{\"type\":\"ALIVE\",\"interval\":10}";
+    char state[3];
+
+    TEST_ASSERT_TRUE(openhab_event_scan_state(ring, strlen(ring), "Bell", value, sizeof(value)));
+    TEST_ASSERT_EQUAL_STRING("ON", value);
+
+    TEST_ASSERT_TRUE(openhab_event_scan_state(group, strlen(group), "Bell", value, sizeof(value)));
+    TEST_ASSERT_EQUAL_STRING("OPEN", value);
+
+    TEST_ASSERT_FALSE(openhab_event_scan_state(other, strlen(other), "Bell", value, sizeof(value)));
+    TEST_ASSERT_FALSE(openhab_event_scan_state(command, strlen(command), "Bell", value, sizeof(value)));
+    TEST_ASSERT_FALSE(openhab_event_scan_state(alive, strlen(alive), "Bell", value, sizeof(value)));
+    TEST_ASSERT_FALSE(openhab_event_scan_state(ring, strlen(ring), "", value, sizeof(value)));
+
+    /* Truncated like a parsed value. */
+    TEST_ASSERT_TRUE(openhab_event_scan_state(group, strlen(group), "Bell", state, sizeof(state)));
+    TEST_ASSERT_EQUAL_STRING("OP", state);
+
+    /* The line ends where `len` says, not at a NUL: cut inside the value, the
+     * value has no end. */
+    const char *cut = strstr(ring, "ON\\\"");
+    TEST_ASSERT_FALSE(openhab_event_scan_state(ring, (size_t)(cut + 1 - ring), "Bell",
+                                               value, sizeof(value)));
+}
+
 /* The label's two halves: a caption that is cut, a value with a ']' of its
  * own, and a label that is all value. */
 static void test_sitemap_label_split(void)
@@ -430,6 +474,7 @@ void test_event_parse_run(void)
     RUN_TEST(test_sitemap_malformed);
     RUN_TEST(test_sitemap_label_split);
     RUN_TEST(test_out_of_heap);
+    RUN_TEST(test_scan_state);
     RUN_TEST(test_subscription_id);
     RUN_TEST(test_id_hash);
 }

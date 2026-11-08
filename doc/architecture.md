@@ -356,7 +356,11 @@ What keeps the budget:
 - **A failed allocation is a dropped event, not a malformed one.** The
   event parsers report `NOMEM` when the heap cannot hold the document, and
   the task fetches the page again or polls, as for an event lost to a full
-  queue.
+  queue. The doorbell has nothing to poll, because a ring is the change and
+  not the state. It reads such an event once more as text
+  (`openhab_event_scan_state()`), which needs no heap. The parsers' filters
+  are built under a lock on the first call, and a build that ran out of heap
+  is tried again on the next one.
 - **Do not skip work by a heap threshold.** A check like "no icon below
   10 KB free" hides the shortage instead of fixing it: on a short panel it
   turns a feature off for good, and the crash comes back as soon as the
