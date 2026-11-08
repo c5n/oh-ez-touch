@@ -63,6 +63,11 @@ A device without credentials opens an access point named after its hostname.
 The screen shows the name and the address. See
 [Configuration](configuration.md#wlan-setup).
 
+The built-in icon set is a generated file, `main/icons/icon_set_data.h`. It
+is not in the repository. Run `tools/build_icon_set.py` once per working
+copy, and again when the boot log shows less than 576 bytes per icon. See
+[Icon set](icon-set.md).
+
 ## Build
 
 Each board is a build of its own. A defaults file selects the board. The build
@@ -114,8 +119,10 @@ would overwrite each other's file. With the file inside the build directory,
 `-B` alone identifies a build.
 
 A defaults file only seeds a **new** `sdkconfig`. After you edit a defaults
-file, delete the build's `sdkconfig` (or the whole build directory) and run
-`set-target` again.
+file, or pull a change to one, delete the build's `sdkconfig` (or the whole
+build directory) and run `set-target` again. This applies to the heap
+settings in `sdkconfig.defaults.esp32` too: a build directory configured
+before them keeps the old task stacks and WiFi buffers.
 
 `idf.py -B build/arduitouch menuconfig` gives access to everything else: the
 board choice, the beeper engine, the JTAG pin remap and the per-module debug

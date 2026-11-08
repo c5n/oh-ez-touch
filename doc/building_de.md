@@ -69,6 +69,11 @@ Ein Gerät ohne Zugangsdaten öffnet einen Access Point mit seinem Hostnamen.
 Auf dem Bildschirm werden der Name und die Adresse angezeigt. Siehe
 [Konfiguration](configuration_de.md#wlan-einrichten).
 
+Der eingebaute Icon-Satz ist eine generierte Datei, `main/icons/icon_set_data.h`.
+Sie ist nicht im Repository. Führen Sie `tools/build_icon_set.py` einmal pro
+Arbeitskopie aus, und erneut, wenn das Bootprotokoll weniger als 576 Byte pro
+Icon anzeigt. Siehe [Icon-Satz](icon-set_de.md).
+
 ## Bauen
 
 Für jedes Board wird ein eigener Build erstellt. Eine Defaults-Datei wählt das
@@ -123,9 +128,12 @@ Die Builds würden sich gegenseitig die Datei überschreiben. Liegt die Datei
 im Build-Verzeichnis, identifiziert `-B` allein einen Build.
 
 Eine Defaults-Datei liefert nur die Ausgangswerte für eine **neue**
-`sdkconfig`. Löschen Sie nach einer Änderung an einer Defaults-Datei die
-`sdkconfig` des Builds (oder das gesamte Build-Verzeichnis) und führen Sie
-`set-target` erneut aus.
+`sdkconfig`. Löschen Sie nach einer Änderung an einer Defaults-Datei, auch
+nach einem Pull mit einer solchen Änderung, die `sdkconfig` des Builds (oder
+das gesamte Build-Verzeichnis) und führen Sie `set-target` erneut aus. Das
+gilt auch für die Heap-Einstellungen in `sdkconfig.defaults.esp32`: Ein
+Build-Verzeichnis, das vorher konfiguriert wurde, behält die alten Task-Stacks
+und WLAN-Puffer.
 
 Mit `idf.py -B build/arduitouch menuconfig` erhalten Sie Zugriff auf alle
 weiteren Einstellungen: die Board-Auswahl, die Signalgeber-Engine, die

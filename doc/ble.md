@@ -49,6 +49,12 @@ Anything else in range (a phone, a watch, a thermostat) is a `device`. It is
 published with its advertised name, transmit power, service UUIDs and
 manufacturer data, and only when **Publish non-beacon devices** is on.
 
+The panel tracks at most 16 advertisers at a time. When the table is full, a
+new advertiser takes the place of the weakest entry only if it ranks higher:
+a beacon ranks above a device, and between two of the same kind the stronger
+signal wins. The **Ignore weaker than** setting is the better way to keep the
+table to the room.
+
 ## Active scan
 
 Off by default. With it off, the panel listens passively: it hears the

@@ -213,7 +213,7 @@ is polled every five seconds as before. While it is up, once a minute, and
 five seconds after a tap changed it: a command that was dropped or refused
 changes nothing on the server, so no event would put the tile back. Nothing
 is replayed after a reconnect, so every connect, and every event dropped for
-want of queue room, polls every tile once at once. On the item stream,
+want of queue room or of heap to parse it, polls every tile once at once. On the item stream,
 openHAB 3.4 and later send a keepalive every ten seconds, and thirty seconds
 without a byte counts as a dead stream.
 
@@ -316,6 +316,58 @@ that timed out therefore used to arrive as a *successful* poll with an empty
 body, which the item then stored -- a switch showing nothing and a temperature
 reading zero, on a panel whose server was perfectly healthy and whose signal
 was merely poor.
+
+### The heap budget
+
+An ESP32 without PSRAM has about 205 KB of heap, and every feature takes its
+share at startup. Measured on an ArduiTouch with MQTT, the BLE scanner and the
+BME280 on, with the IDF's default stacks and buffers:
+
+| What | Heap |
+| --- | --- |
+| WLAN, with ten static RX buffers | 41 KB |
+| Display and LVGL, two DMA draw buffers | 36 KB |
+| BLE controller and NimBLE host | 21 KB |
+| openHAB client task and its 12 KB receive buffer | 21 KB |
+| Web interface | 10.5 KB |
+| openHAB event task, with a 4 KB stack | 5.4 KB |
+
+With the settings below, setup ends with 48 KB free instead of 30 KB. The rest goes at runtime: the TCP connections
+to openHAB and the MQTT broker, the tiles of the page, their icons and the
+web interface's requests. A panel that settles at 15 to 20 KB free works.
+A panel that settles at 6 KB does not, and the failure does not say so: the
+first LVGL draw that finds no memory writes through a NULL pointer
+(`StoreProhibited` in `lv_draw_add_task`), and the panel restarts. On the
+way there, lwIP refuses to send (`errno=12`), web requests time out and
+icons stay placeholders.
+
+What keeps the budget:
+
+- **Measure stacks, do not guess them.** `sdkconfig.defaults.esp32` sets
+  the MQTT, esp_timer and NimBLE host task stacks to what a loaded panel
+  used plus a margin, and six static WiFi RX buffers instead of ten.
+  Together that is 11 KB. `uxTaskGetStackHighWaterMark()` per task, with
+  every feature on and the web interface in use, is the measurement.
+- **No buffer for a feature that is off.** The doorbell's 2 KB line buffer
+  is allocated when a ring item is set, not in `.bss`.
+- **One buffer per job, shared where the jobs do not overlap.** The answer
+  to the sitemap stream's subscribe is read into the SSE reader's idle line
+  buffer; the sitemap list rides the client's receive buffer like a page.
+- **A failed allocation is a dropped event, not a malformed one.** The
+  event parsers report `NOMEM` when the heap cannot hold the document, and
+  the task fetches the page again or polls, as for an event lost to a full
+  queue.
+- **Do not skip work by a heap threshold.** A check like "no icon below
+  10 KB free" hides the shortage instead of fixing it: on a short panel it
+  turns a feature off for good, and the crash comes back as soon as the
+  check is gone.
+- **Keep the built-in icon set current.** A `main/icons/icon_set_data.h`
+  generated before the set became indexed records holds PNGs, and every
+  built-in icon then costs a decode and 4 KB per tile. See
+  [icon-set](icon-set.md).
+
+`LV_MEM_SIZE` in `lv_conf.h` has no effect: LVGL allocates through the C
+library (`LV_STDLIB_CLIB`), from the same heap as everything else.
 
 ## What counts as a touch
 

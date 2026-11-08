@@ -16,7 +16,7 @@ idf.py reconfigure                 # usually unnecessary; see below
 Dadurch wird `main/icons/icon_set_data.h` erzeugt. Ohne diese Datei geht nichts kaputt: Jede Suche findet nichts, und jedes Icon kommt von openHAB – genauso wie vor Einführung dieser Funktion. `idf.py` gibt beim Konfigurieren aus, welcher der beiden Fälle vorliegt:
 
 ```
--- oh-ez-touch: built-in icon set present (icon_set_data.h, 651552 bytes of source)
+-- oh-ez-touch: built-in icon set present (icon_set_data.h, 1227345 bytes of source)
 -- oh-ez-touch: no built-in icon set -- icons come from openHAB over HTTP; ...
 ```
 
@@ -25,6 +25,8 @@ Dieselbe Information erscheint beim Start auch auf der Konsole des Panels:
 ```
 I (1234) openhab_client: built-in icons: 396, 228096 bytes
 ```
+
+Das sind 576 Byte pro Icon. Eine kleinere Summe, etwa `396, 119769 bytes`, stammt von einem Header, der vor der Umstellung auf indizierte Datensätze erzeugt wurde: Er enthält PNGs, und jedes eingebaute Icon kostet dann eine PNG-Dekodierung und eine 4-KB-Kopie in ARGB8888 pro Kachel. Führen Sie `tools/build_icon_set.py` erneut aus. Der vollständige Satz belegt 223 KB Flash; die App-Partition eines ArduiTouch ist damit zu etwa 98 % gefüllt.
 
 `main/CMakeLists.txt` überwacht `main/icons/` über `CMAKE_CONFIGURE_DEPENDS`. Normalerweise reicht es deshalb, den Header zu erstellen; beim nächsten Build wird er mitkompiliert. Das explizite `idf.py reconfigure` ist für den Fall gedacht, dass die Überwachung nicht greift. Der Fehler bleibt unbemerkt – der Build ruft weiterhin Icons über HTTP ab –, daher sollte man die Konfigurationsausgabe prüfen, statt es einfach anzunehmen.
 

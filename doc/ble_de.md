@@ -52,6 +52,8 @@ Alles andere in Reichweite (ein Smartphone, eine Uhr, ein Thermostat) ist ein
 `device`. Es wird mit seinem angekündigten Namen, seiner Sendeleistung, seinen
 Service-UUIDs und Herstellerdaten veröffentlicht – und nur, wenn **Publish non-beacon devices** eingeschaltet ist.
 
+Das Panel verfolgt höchstens 16 Sender gleichzeitig. Ist die Tabelle voll, ersetzt ein neuer Sender den schwächsten Eintrag nur, wenn er höher eingestuft wird: Ein Beacon steht über einem Gerät, und zwischen zwei Sendern derselben Art gewinnt das stärkere Signal. Die Einstellung **Ignore weaker than** ist der bessere Weg, die Tabelle auf den Raum zu beschränken.
+
 ## Aktiver Scan
 
 Standardmäßig deaktiviert. Ist die Funktion ausgeschaltet, empfängt das

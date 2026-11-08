@@ -90,7 +90,7 @@ static const char *TAG = "ble_scan";
 /**
  * Advertisers tracked at once.
  *
- * A fixed table rather than a setting: it is about 3 KB of static RAM, and the
+ * A fixed table rather than a setting: it is about 5.5 KB of static RAM, and the
  * number that matters to a user is the RSSI threshold -- "only things in this
  * room" -- which is a setting and does a better job of keeping the table small
  * than a cap on its size would.

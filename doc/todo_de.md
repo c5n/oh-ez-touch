@@ -8,6 +8,10 @@
 - [x] openhab_ui: Auswahl-, Sollwert- und Schiebereglerelemente verbessern.
 - [x] openhab: Über `/rest/events` übermittelte Elementzustände übernehmen, statt jede Kachel alle fünf Sekunden abzufragen. Siehe [Der Ereignisstrom](architecture_de.md#der-ereignisstream).
 - [x] openhab_ui: Das Bild eines Image-Elements anzeigen – etwa das einer Türklingel oder Kamera – und es von jeder Seite aus öffnen, wenn die Klingel ertönt. Siehe [Image](sitemap_de.md#bild-eine-türklingel-oder-eine-kamera) und [Türklingel](configuration_de.md#türklingel).
+- [x] main, openhab, build: Dem Heap auf einem ESP32 mit allen Funktionen Platz zurückgeben. Gemessene Task-Stacks und WLAN-Puffer, keine Puffer für ausgeschaltete Funktionen, ein abgelehnter Sitemap-Stream wird erneut angefragt. Siehe [Das Heap-Budget](architecture_de.md#das-heap-budget).
+- [ ] openhab_ui: Ein 64-px-Server-Icon, das der eingebaute Satz nicht enthält (`trafficlight` auf einem Panel), braucht zum Dekodieren etwa 16 KB am Stück und scheitert auf einem fragmentierten Heap. Zeilenweise dekodieren oder beim Dekodieren verkleinern.
+- [ ] openhab: Der Türklingel-Task ignoriert ein Ereignis, das der Heap nicht parsen konnte; ein Klingeln in diesem Moment geht verloren.
+- [ ] openhab: Die Ereignisparser bauen ihre Filter beim ersten Aufruf ohne Sperre, und der Ereignistask und der Türklingel-Task rufen sie beide auf.
 - [ ] openhab: Das Bild wurde auf der Hardware noch nicht abgerufen. Den Stack des Client-Tasks (4 KB, mit TJpgDec darauf) und den Heap während eines Klingelvorgangs messen sowie prüfen, ob die Seite eines Image-Elements auf einem fragmentierten Heap lädt.
 - [ ] openhab_ui: Progressive JPEGs oder PNGs anzeigen. TJpgDec liest nur Baseline-JPEGs, und eine PNG müsste vollständig dekodiert werden.
 - [ ] openhab: Ein API-Token senden. Das Panel sendet keines; daher müssen `/rest/events`, `/rest/sitemaps/events`, die Sitemap und die Elementzustände für anonyme Clients zugänglich sein.

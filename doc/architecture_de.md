@@ -116,7 +116,7 @@ Das Parsen beider Streams erfolgt in `main/openhab/openhab_event_parse.cpp`, das
 
 **Die Türklingel** hat einen eigenen Stream (`main/openhab/openhab_bell.cpp`), weil die Klingel auf keiner Seite liegt: `GET /rest/events?topics=*/items/<ring>/statechanged`, der nur geöffnet wird, wenn ein Klingelelement konfiguriert ist.
 
-Die Abfrage bleibt als Fallback bestehen. Während der Stream nicht verfügbar ist – openHAB startet neu, die Verbindung kommt zurück, ein Server ohne diesen Endpunkt –, wird jede Kachel wie bisher alle fünf Sekunden abgefragt. Während der Stream verfügbar ist, geschieht das einmal pro Minute und fünf Sekunden nach einem Tipp, der den Status geändert hat: Ein verworfener oder abgelehnter Befehl ändert nichts auf dem Server, daher würde kein Ereignis die Kachel zurücksetzen. Nach einer erneuten Verbindung werden Ereignisse nicht wiedergegeben; deshalb werden bei jeder Verbindung und bei jedem wegen fehlender Queue-Kapazität verworfenen Ereignis alle Kacheln sofort einmal abgefragt. Beim Elementstream senden openHAB 3.4 und neuere Versionen alle zehn Sekunden einen Keepalive; dreißig Sekunden ohne Byte gelten als ausgefallener Stream.
+Die Abfrage bleibt als Fallback bestehen. Während der Stream nicht verfügbar ist – openHAB startet neu, die Verbindung kommt zurück, ein Server ohne diesen Endpunkt –, wird jede Kachel wie bisher alle fünf Sekunden abgefragt. Während der Stream verfügbar ist, geschieht das einmal pro Minute und fünf Sekunden nach einem Tipp, der den Status geändert hat: Ein verworfener oder abgelehnter Befehl ändert nichts auf dem Server, daher würde kein Ereignis die Kachel zurücksetzen. Nach einer erneuten Verbindung werden Ereignisse nicht wiedergegeben; deshalb werden bei jeder Verbindung und bei jedem Ereignis, das wegen fehlender Queue-Kapazität oder fehlenden Heaps zum Parsen verworfen wurde, alle Kacheln sofort einmal abgefragt. Beim Elementstream senden openHAB 3.4 und neuere Versionen alle zehn Sekunden einen Keepalive; dreißig Sekunden ohne Byte gelten als ausgefallener Stream.
 
 Zwei weitere Anfragen nutzen den Worker gemeinsam:
 
@@ -143,6 +143,32 @@ Die Icons einer Seite sind die andere Hälfte derselben Betrachtung. Der eingeba
 Zwei benachbarte Komponenten kommen hinzu, weil sie beim Laden einer Seite um denselben Heap konkurrieren. Ein BLE-Scanfenster wird verschoben, solange das Panel berührt wird, und frühzeitig beendet, wenn es geöffnet ist ([ble_de.md](ble_de.md) beschreibt den Arbeitszyklus). Und eine Überblendung, die LVGL um einen Ebenenpuffer bittet, den der Heap nicht mehr bereitstellen kann, wird einfach übersprungen (`UI_FADE_MIN_LARGEST_BLOCK` in `main/ui/ui_motion.cpp`). Stattdessen wird das Objekt direkt angezeigt. Das ist in diesem Moment am ehesten verzichtbar und deutlich besser als die Alternative: `LV_USE_ASSERT_MALLOC` ist jetzt 0, weil der Handler mit `while(1)` endlos wartet und eine fehlgeschlagene Allokation das Panel eingefroren hat.
 
 Ein vom Netzwerk abgeschnittener Body ist ein Fehler, keine kurze Antwort. Diese Unterscheidung wird in `main/openhab/openhab_http.cpp` vorgenommen und muss manuell erfolgen: `esp_http_client_read_response()` meldet einen Lese-Timeout als nichtnegative Byteanzahl – genau wie einen vollständigen Body. Eine Statusabfrage mit Timeout kam daher früher als *erfolgreiche* Abfrage mit leerem Body an und wurde vom Element gespeichert: Ein Schalter zeigte nichts an und eine Temperatur wurde als null angezeigt, obwohl der Server des Panels einwandfrei funktionierte und lediglich das Signal schwach war.
+
+### Das Heap-Budget
+
+Ein ESP32 ohne PSRAM hat etwa 205 KB Heap, und jede Funktion nimmt beim Start ihren Anteil. Gemessen auf einem ArduiTouch mit MQTT, BLE-Scanner und BME280, mit den Standard-Stacks und -Puffern des IDF:
+
+| Was | Heap |
+| --- | --- |
+| WLAN, mit zehn statischen RX-Puffern | 41 KB |
+| Display und LVGL, zwei DMA-Zeichenpuffer | 36 KB |
+| BLE-Controller und NimBLE-Host | 21 KB |
+| openHAB-Clienttask und sein 12-KB-Empfangspuffer | 21 KB |
+| Weboberfläche | 10,5 KB |
+| openHAB-Ereignistask, mit 4 KB Stack | 5,4 KB |
+
+Mit den Einstellungen unten endet der Start mit 48 KB statt 30 KB freiem Heap. Der Rest wird zur Laufzeit belegt: die TCP-Verbindungen zu openHAB und zum MQTT-Broker, die Kacheln der Seite, ihre Icons und die Anfragen an die Weboberfläche. Ein Panel, das sich bei 15 bis 20 KB frei einpendelt, funktioniert. Ein Panel, das sich bei 6 KB einpendelt, funktioniert nicht, und der Fehler nennt die Ursache nicht: Die erste LVGL-Zeichenoperation, die keinen Speicher bekommt, schreibt über einen NULL-Zeiger (`StoreProhibited` in `lv_draw_add_task`), und das Panel startet neu. Vorher verweigert lwIP das Senden (`errno=12`), Webanfragen laufen in eine Zeitüberschreitung, und Icons bleiben Platzhalter.
+
+Was das Budget einhält:
+
+- **Stacks messen, nicht schätzen.** `sdkconfig.defaults.esp32` setzt die Stacks der Tasks für MQTT, esp_timer und den NimBLE-Host auf den Verbrauch eines belasteten Panels plus Reserve, und sechs statt zehn statische WLAN-RX-Puffer. Zusammen sind das 11 KB. Gemessen wird mit `uxTaskGetStackHighWaterMark()` pro Task, mit allen Funktionen eingeschaltet und benutzter Weboberfläche.
+- **Kein Puffer für eine ausgeschaltete Funktion.** Der 2-KB-Zeilenpuffer der Türklingel wird alloziert, wenn ein Klingelelement eingestellt ist, und liegt nicht in `.bss`.
+- **Ein Puffer pro Aufgabe, gemeinsam genutzt, wo sich die Aufgaben nicht überschneiden.** Die Antwort auf das Abonnement des Sitemap-Streams wird in den freien Zeilenpuffer des SSE-Lesers gelesen; die Liste der Sitemaps nutzt den Empfangspuffer des Clients wie eine Seite.
+- **Eine fehlgeschlagene Allokation ist ein verworfenes Ereignis, kein fehlerhaftes.** Die Ereignisparser melden `NOMEM`, wenn der Heap das Dokument nicht aufnehmen kann. Der Task lädt dann die Seite neu oder fragt ab, wie bei einem Ereignis, das an einer vollen Queue verloren ging.
+- **Keine Arbeit anhand einer Heap-Schwelle auslassen.** Eine Prüfung wie „kein Icon unter 10 KB frei“ verdeckt den Mangel, statt ihn zu beheben: Auf einem knappen Panel schaltet sie eine Funktion dauerhaft ab, und der Absturz kehrt zurück, sobald die Prüfung entfernt ist.
+- **Den eingebauten Icon-Satz aktuell halten.** Ein `main/icons/icon_set_data.h`, das vor der Umstellung auf indizierte Datensätze erzeugt wurde, enthält PNGs. Jedes eingebaute Icon kostet dann eine Dekodierung und 4 KB pro Kachel. Siehe [icon-set](icon-set_de.md).
+
+`LV_MEM_SIZE` in `lv_conf.h` hat keine Wirkung: LVGL alloziert über die C-Bibliothek (`LV_STDLIB_CLIB`) aus demselben Heap wie alles andere.
 
 ## Was als Berührung gilt
 

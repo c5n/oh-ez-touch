@@ -27,7 +27,7 @@ firmware did before this existed. `idf.py` prints which of the two it is at
 configure time:
 
 ```
--- oh-ez-touch: built-in icon set present (icon_set_data.h, 651552 bytes of source)
+-- oh-ez-touch: built-in icon set present (icon_set_data.h, 1227345 bytes of source)
 -- oh-ez-touch: no built-in icon set -- icons come from openHAB over HTTP; ...
 ```
 
@@ -36,6 +36,12 @@ and the panel says the same thing on the console at boot:
 ```
 I (1234) openhab_client: built-in icons: 396, 228096 bytes
 ```
+
+That is 576 bytes per icon. A smaller total, such as `396, 119769 bytes`,
+is a header generated before the set became indexed records: it holds PNGs,
+and every built-in icon then costs a PNG decode and a 4 KB ARGB8888 copy per
+tile. Run `tools/build_icon_set.py` again. The full set takes 223 KB of
+flash, which leaves an ArduiTouch app partition about 98% full.
 
 `main/CMakeLists.txt` watches `main/icons/` with `CMAKE_CONFIGURE_DEPENDS`, so
 creating the header is normally enough to get it compiled in on the next build.

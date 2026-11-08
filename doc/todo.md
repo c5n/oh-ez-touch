@@ -16,6 +16,18 @@
       and open it from any page when the bell rings. See
       [Image](sitemap.md#image-a-doorbell-or-a-camera) and
       [Doorbell](configuration.md#doorbell).
+- [x] main, openhab, build: Give the heap back on an ESP32 with every feature
+      on. Measured task stacks and WiFi buffers, no buffers for features that
+      are off, a refused sitemap stream asked again. See
+      [The heap budget](architecture.md#the-heap-budget).
+- [ ] openhab_ui: A 64 px server icon that the built-in set does not have
+      (`trafficlight` on one panel) needs about 16 KB in one piece for its
+      decode, and fails on a fragmented heap. Decode row by row, or downscale
+      while decoding.
+- [ ] openhab: The doorbell task ignores an event the heap could not parse,
+      so a ring at that moment is lost.
+- [ ] openhab: The event parsers build their filters on the first call with
+      no lock, and the event task and the doorbell task both call them.
 - [ ] openhab: The picture has not been fetched on hardware. Measure the
       client task's stack (4 KB, with TJpgDec on it) and the heap during a
       ring, and whether an Image item's page loads on a fragmented heap.
