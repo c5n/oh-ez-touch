@@ -1,6 +1,6 @@
 # Aufgabenliste
 
-- [ ] openhab_ui: Laden von Icons korrigieren. Einige der ursprünglichen Icon-Dateien sind zu groß und müssen neu kodiert werden. Siehe [Icon-Größen](sitemap_de.md#symbolgrößen).
+- [x] openhab_ui: Laden von Icons korrigieren. Die klassischen Icons sind eingebaut, und ein Server-Icon darf den Empfangspuffer (12 KB) füllen statt 5000 Byte. Siehe [Icon-Größen](sitemap_de.md#symbolgrößen).
 - [ ] openhab_ui: Elementsteuerungsbildschirm nach einer Zeitüberschreitung automatisch schließen. Mit dem Bildschirmstapel jetzt unkompliziert: ein Timer und ein `ui_screen_pop()`.
 - [ ] openhab_ui: Nach einer Zeitüberschreitung automatisch zum Startbildschirm zurückkehren.
 - [ ] openhab_ui: Text der Widget-Beschriftung gegenüber dem Text der Element-Beschriftung bevorzugen.

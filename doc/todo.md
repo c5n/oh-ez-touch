@@ -1,7 +1,8 @@
 # ToDo list
 
-- [ ] openhab_ui: Fix icon loading. Some of the original icon file sizes are
-      too large and have to be reencoded. See [Icon sizes](sitemap.md#icon-sizes).
+- [x] openhab_ui: Fix icon loading. The classic icons are built in, and a
+      server icon may fill the receive buffer (12 KB) instead of 5000 bytes.
+      See [Icon sizes](sitemap.md#icon-sizes).
 - [ ] openhab_ui: Auto close item control screen after timeout.
       Straightforward now that there is a screen stack: one timer and an
       `ui_screen_pop()`.

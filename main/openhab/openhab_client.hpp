@@ -56,7 +56,12 @@
  * a state poll needs 32 bytes -- while every sub page it navigated to failed
  * with SITEMAP ACCESS FAILED and never came back. */
 #define OPENHAB_CLIENT_PAGE_BUFFER_SIZE 12288
-#define OPENHAB_CLIENT_ICON_BUFFER_SIZE 5000
+/* An icon is read into the same buffer as a page and is decoded from there
+ * (see icons/icon_png.h), so it may fill all of it: there is no copy of the
+ * size of the body any more. What a large PNG costs instead is scratch -- the
+ * decode takes its first segments from what the PNG leaves free in the
+ * buffer, and asks the heap for the rest. */
+#define OPENHAB_CLIENT_ICON_BUFFER_SIZE OPENHAB_CLIENT_PAGE_BUFFER_SIZE
 
 /* And the list of sitemaps. A real openHAB 5.2.1 sends about 210 bytes per
  * sitemap there -- a link, a homepage object with a link and two flags, the

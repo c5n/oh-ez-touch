@@ -236,19 +236,28 @@ Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
 
 ## Icon sizes
 
-Some of the original openhab-webui icons are exceptionally large. The ESP32
-has limited RAM. Re-encode the PNG files with ImageMagick:
+The classic icons are built into the firmware (see [icon-set](icon-set.md)),
+so the panel does not fetch them from the server, whatever size the server's
+files have. The panel fetches only the icons the built-in set does not have:
+your own icons in `$OPENHAB_CONF/icons/classic/`.
+
+For such an icon:
+
+- The PNG file can be up to 12288 bytes. A larger file is refused, and the
+  tile shows no icon.
+- The picture can be any size. The panel halves it until it is 32 px, as
+  long as both sides are even.
+- The PNG is decoded in the receive buffer, behind the file itself. A small
+  file leaves more of the buffer to the decode, and the decode then needs
+  less heap. A 64x64 RGBA icon of 2 KB needs about 10 KB of heap; the same
+  picture in a file of 12 KB needs about 20 KB.
+
+So keep your own icons small. A 32x32 icon is the cheapest. Remove metadata
+such as colour profiles with ImageMagick:
 
 ```bash
-sudo apt install imagemagick
-git clone https://github.com/openhab/openhab-webui.git
-cd openhab-webui/bundles/org.openhab.ui.iconset.classic/src/main/resources/icons
-mkdir output
-for f in *.png; do convert $f -strip output/$f; done
+convert my_icon.png -strip my_icon.png
 ```
-
-Move the files from the `output` folder to your
-`openhab2-conf/icons/classic/` folder.
 
 ## Test fixtures
 

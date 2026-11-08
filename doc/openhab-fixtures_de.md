@@ -152,7 +152,7 @@ Diese Angaben sollte man zur Hand haben, wenn eine Seite erstellt wird, die in d
 | Statustext | 32 Byte | `STR_STATE_TEXT_LEN` |
 | Body einer Sitemap-Seite | 12288 Byte, nach dem Kürzen von Strings über 512 Byte | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE`, `JSON_SQUEEZE_STRING_MAX` |
 | Bild nach dem Dekodieren | höchstens halbe Bildschirmbreite und -höhe | `main/ui/items/item_image.cpp` |
-| Icon-Body | 5000 Byte | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
+| Icon-Body | 12288 Byte, der Empfangspuffer | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
 | Body von `/rest/sitemaps` | 8192 Byte | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |
 | angebotene Sitemaps | 12 | `SITEMAP_LIST_COUNT_MAX` |
 | bei einem mDNS-Scan aufgelistete Server | 8 | `OPENHAB_DISCOVER_COUNT_MAX` |

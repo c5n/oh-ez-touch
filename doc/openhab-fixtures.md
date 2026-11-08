@@ -280,7 +280,7 @@ Worth having beside you when writing a page that is meant to fit.
 | state text | 32 bytes | `STR_STATE_TEXT_LEN` |
 | sitemap page body | 12288 bytes, after strings over 512 bytes are cut | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE`, `JSON_SQUEEZE_STRING_MAX` |
 | a picture, as decoded | half the screen each way, or less | `main/ui/items/item_image.cpp` |
-| icon body | 5000 bytes | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
+| icon body | 12288 bytes, the receive buffer | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
 | `/rest/sitemaps` body | 8192 bytes | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |
 | sitemaps offered | 12 | `SITEMAP_LIST_COUNT_MAX` |
 | servers an mDNS scan lists | 8 | `OPENHAB_DISCOVER_COUNT_MAX` |
