@@ -292,11 +292,20 @@ The icons a page wants are the other half of the same story. The built-in set
 is indexed records LVGL reads without a decode (see
 [icon-set](icon-set.md)); a fetched PNG is decoded on the UI task and, if the
 server's icon set is larger than the panel's 32 px, halved to it before the
-tile keeps it. The decoder itself is a patched lodepng -- in-place
-unfiltering, no concatenation copy for a single-IDAT file, a reserve that
-fails fast instead of growing into a realloc spiral -- which brings a 64x64
-RGBA icon's peak from ~37 KB of simultaneous heap down to ~31, and every
-patch is marked `OH-EZ-TOUCH` in the source for the day lodepng is updated.
+tile keeps it. The decoder is `main/icons/icon_png.c`, written for this heap.
+lodepng decodes into two blocks the size of the picture: for a 64x64 RGBA
+icon that is 16 KB of inflated scanlines and 16 KB of RGBA, each in one
+piece, and on the ArduiTouch it measured 24.7 KB as the largest block and
+47 KB at its peak. `icon_png.c` inflates into a chain of 2 KB segments
+instead, undoes the row filters in them and downscales from them straight
+into the 4 KB result. Deflate can refer back to any byte decoded so far (the
+`trafficlight` icon that failed on a panel refers back 15 KB), so the chain
+has to hold the whole picture. Its first segments are the unused tail of the
+receive buffer: a server icon rides that buffer like a page, and the PNG of
+two kilobytes leaves ten free behind it. The same icon then needs 10.3 KB of
+heap, in blocks of 4 KB at most. lodepng is kept for the formats `icon_png.c`
+refuses -- 16-bit, fewer than 8 bits, interlaced -- and its patches are
+marked `OH-EZ-TOUCH` in the source.
 
 Two neighbours join in, because a page load is exactly when they compete for
 the same heap. A BLE scan window defers while the panel is being touched and
@@ -353,6 +362,8 @@ What keeps the budget:
 - **One buffer per job, shared where the jobs do not overlap.** The answer
   to the sitemap stream's subscribe is read into the SSE reader's idle line
   buffer; the sitemap list rides the client's receive buffer like a page.
+  A server icon rides it too, and its decode borrows the buffer's free tail
+  until the UI releases the result.
 - **A failed allocation is a dropped event, not a malformed one.** The
   event parsers report `NOMEM` when the heap cannot hold the document, and
   the task fetches the page again or polls, as for an event lost to a full

@@ -20,10 +20,10 @@
       on. Measured task stacks and WiFi buffers, no buffers for features that
       are off, a refused sitemap stream asked again. See
       [The heap budget](architecture.md#the-heap-budget).
-- [ ] openhab_ui: A 64 px server icon that the built-in set does not have
-      (`trafficlight` on one panel) needs about 16 KB in one piece for its
-      decode, and fails on a fragmented heap. Decode row by row, or downscale
-      while decoding.
+- [x] openhab_ui: Decode a server icon without a block of its own size. It
+      is inflated into 2 KB segments, the first ones in the receive buffer,
+      and downscaled from them. See
+      [What a page load allocates](architecture.md#what-a-page-load-allocates).
 - [x] openhab: Keep a ring the heap could not parse. The doorbell reads such
       an event once more as text, without the heap.
 - [x] openhab: Build the event parsers' filters under a lock. The event task

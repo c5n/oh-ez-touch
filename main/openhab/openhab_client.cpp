@@ -87,7 +87,7 @@ static QueueHandle_t results = NULL;
  * time and leaving esp_wifi_init() to fail on a wall panel for want of it.
  *
  * Only perform() touches it, and perform() runs only on the worker below --
- * with one exception: a page or a sitemap list result hands it to the UI for
+ * with one exception: a page, sitemap list or icon result hands it to the UI for
  * as long as that result is unconsumed, which is what payload_static in the
  * result means. rx_result_live is the handshake for that exception: set by
  * the worker when it posts such a result, cleared by
@@ -362,6 +362,8 @@ void openhab_client_result_release(struct openhab_result_s *res)
     res->payload_len = 0;
     res->payload_inline = false;
     res->payload_static = false;
+    res->scratch = NULL;
+    res->scratch_len = 0;
 }
 
 /* How much of a body of each kind will be read. A page and an icon are
@@ -834,13 +836,24 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * every feature on, its 6 KB copy was refused while the web form asked
      * for the list. The UI parses it and releases it in the same call, and a
      * sitemap list request waits for rx_result_live like every other read
-     * into the buffer, so a page result and a list result never overlap. */
-    if (req->type == OPENHAB_REQ_PAGE || req->type == OPENHAB_REQ_SITEMAPS)
+     * into the buffer, so a page result and a list result never overlap.
+     *
+     * A server icon rides it for what is behind it: a PNG of two kilobytes
+     * leaves ten free, and the decode inflates the picture into them instead
+     * of asking the heap for 16 KB (see icons/icon_png.h). */
+    if (   req->type == OPENHAB_REQ_PAGE || req->type == OPENHAB_REQ_SITEMAPS
+        || req->type == OPENHAB_REQ_ICON)
     {
         res->payload = rx_buf;
         res->payload_len = (size_t)read;
         res->payload_static = true;
         res->ok = true;
+
+        if (req->type == OPENHAB_REQ_ICON)
+        {
+            res->scratch = rx_buf + read + 1;
+            res->scratch_len = OPENHAB_CLIENT_PAGE_BUFFER_SIZE - (size_t)read;
+        }
 
         /* Before the result is queued: release orders it against the UI's
          * read of the buffer, the way the queue's own ordering would if the
@@ -896,7 +909,7 @@ static void openhab_client_task(void *parameter)
             continue;
         }
 
-        /* A page or sitemap list result the UI has not released yet still
+        /* A page, sitemap list or icon result the UI has not released yet still
          * holds rx_buf, and every request below but a command and a state
          * reads into it. One
          * spin per loop iteration of the UI is the whole of the wait: the UI

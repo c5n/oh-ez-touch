@@ -51,7 +51,7 @@ Vollständig transparente Pixel erhalten einen eigenen Paletteneintrag und werde
 
 ## Größere Server-Icons
 
-Alles wird in einer Größe von 32 Pixeln gezeichnet, doch ein benutzerdefiniertes Icon unter `$OPENHAB_CONF/icons/classic/` kann 64 oder 128 Pixel groß sein. Statt die integrierten Icons zu vergrößern, wird eine abgerufene PNG-Datei, die nach dem Dekodieren größer als die Satzgröße ist, **in beiden Richtungen halbiert, bis sie hineinpasst**. Dazu wird ein Box-Mittelwert mit vormultipliziertem Alphakanal verwendet, damit ein transparenter Hintergrund nicht in die Striche verschmiert. Die halbierte Kopie wird von der Kachel gespeichert: 4096 Byte für ein 64-Pixel-Icon statt der sechzehn Kilobyte, die bei der Dekodierung entstanden.
+Alles wird in einer Größe von 32 Pixeln gezeichnet, doch ein benutzerdefiniertes Icon unter `$OPENHAB_CONF/icons/classic/` kann 64 oder 128 Pixel groß sein. Statt die integrierten Icons zu vergrößern, wird eine abgerufene PNG-Datei, die nach dem Dekodieren größer als die Satzgröße ist, **in beiden Richtungen halbiert, bis sie hineinpasst**. Dazu wird ein Box-Mittelwert mit vormultipliziertem Alphakanal verwendet, damit ein transparenter Hintergrund nicht in die Striche verschmiert. Dekodieren und Verkleinern sind in `main/icons/icon_png.c` ein Schritt, sodass das Bild in voller Größe nie als RGBA entsteht: Die Kachel behält 4096 Byte für ein 64-Pixel-Icon, und das ist der größte Block, den die Dekodierung anfordert. Wie das entpackte Bild gehalten wird, beschreibt [Architektur](architecture_de.md#speicherbelegung-beim-laden-einer-seite).
 
 ## Was aufgelöst wird und was nicht
 

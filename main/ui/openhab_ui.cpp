@@ -1014,7 +1014,8 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
     {
         unsigned png_width, png_height;
         enum icon_png_e result = icon_png_decode((const uint8_t *)png, png_len,
-                                                 ICON_SET_PIXEL_SIZE, NULL, 0, &pixels,
+                                                 ICON_SET_PIXEL_SIZE, res->scratch,
+                                                 res->scratch_len, &pixels,
                                                  &png_width, &png_height);
 
         /* A memory failure with an icon already on the tile deserves a second
@@ -1031,7 +1032,7 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
             wctx->img_dsc.data = NULL;
 
             result = icon_png_decode((const uint8_t *)png, png_len, ICON_SET_PIXEL_SIZE,
-                                     NULL, 0, &pixels,
+                                     res->scratch, res->scratch_len, &pixels,
                                      &png_width, &png_height);
         }
 

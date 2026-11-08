@@ -93,8 +93,11 @@ Thirty-two is the size everything draws at, but a custom
 built-ins up to meet it, a fetched PNG that decodes larger than the set's size
 is **halved in both directions until it fits** — a premultiplied-alpha box
 average, so a transparent background does not smear into the strokes. The
-halved copy is what the tile keeps: 4096 bytes for a 64-pixel icon instead of
-the sixteen kilobytes its decode produced.
+decode and the downscale are one step in `main/icons/icon_png.c`, so the
+full-size picture never exists as RGBA: the tile keeps 4096 bytes for a
+64-pixel icon, and that is the largest block the decode asks for. See
+[architecture](architecture.md#what-a-page-load-allocates) for how the inflated picture
+is held.
 
 ## What it resolves, and what it does not
 

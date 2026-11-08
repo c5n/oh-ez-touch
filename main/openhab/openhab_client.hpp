@@ -153,6 +153,11 @@ struct openhab_result_s
      * rides the buffer the same way, and the same wait keeps it apart from a
      * page result. */
     bool     payload_static;
+    /* What of rx_buf an icon result does not fill: the consumer may use it as
+     * work memory until it releases the result. NULL for every other result,
+     * and for a built-in icon, which is not in rx_buf. */
+    void    *scratch;
+    size_t   scratch_len;
     char     body[OPENHAB_CLIENT_BODY_LEN];
     /* An image's size; its pixels are the payload, payload_len bytes. */
     uint16_t width;
