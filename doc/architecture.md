@@ -280,7 +280,9 @@ scratch). No per-page body copy, no multi-kilobyte document pool on the heap
 which is what "the back button cannot load the main page" was made of. The
 handshake is one flag: a result whose payload *is* the buffer
 (`payload_static`) keeps the worker out of the buffer until the UI releases
-it, and the UI releases every result it takes. A page that outgrows its tail
+it, and the UI releases every result it takes. The sitemap list rides the
+buffer the same way, so the settings' list of sitemaps costs no 6 KB copy
+either. A page that outgrows its tail
 falls back to a heap-backed document with a log line -- the arena is the fast
 path, not a second way to lose a page. Fleet pages measured through the
 filter peak at 4.9 to 5.8 KB of pool, so a 12 KB body buffer holds body and

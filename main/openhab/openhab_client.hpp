@@ -149,7 +149,9 @@ struct openhab_result_s
      * one, and the UI discards a stale result before it looks at the payload.
      * The worker still waits for the release before it reuses the buffer --
      * the generation rules out a *second* page, not an icon read landing in
-     * the same memory while the UI is still parsing. */
+     * the same memory while the UI is still parsing. A sitemap list result
+     * rides the buffer the same way, and the same wait keeps it apart from a
+     * page result. */
     bool     payload_static;
     char     body[OPENHAB_CLIENT_BODY_LEN];
     /* An image's size; its pixels are the payload, payload_len bytes. */

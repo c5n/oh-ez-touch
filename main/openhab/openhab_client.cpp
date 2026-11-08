@@ -87,16 +87,16 @@ static QueueHandle_t results = NULL;
  * time and leaving esp_wifi_init() to fail on a wall panel for want of it.
  *
  * Only perform() touches it, and perform() runs only on the worker below --
- * with one exception: a page result hands it to the UI for as long as that
- * result is unconsumed, which is what payload_static in the result means.
- * page_result_live is the handshake for that exception: set by the worker
- * when it posts a page result, cleared by openhab_client_result_release() on
- * whichever task releases it. The worker waits for it before the buffer is
- * reused -- the generation rules out a second *page* landing in it while the
- * UI parses, but not an icon read. */
+ * with one exception: a page or a sitemap list result hands it to the UI for
+ * as long as that result is unconsumed, which is what payload_static in the
+ * result means. rx_result_live is the handshake for that exception: set by
+ * the worker when it posts such a result, cleared by
+ * openhab_client_result_release() on whichever task releases it. The worker
+ * waits for it before the buffer is reused -- the generation rules out a
+ * second *page* landing in it while the UI parses, but not an icon read. */
 static char *rx_buf;
 
-static std::atomic<bool> page_result_live{false};
+static std::atomic<bool> rx_result_live{false};
 
 static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
               "the receive buffer is sized on the page, so no class may exceed it");
@@ -351,7 +351,7 @@ void openhab_client_result_release(struct openhab_result_s *res)
         /* The payload is rx_buf, which belongs to the worker -- "released" here
          * means handed back to it. The worker is waiting on this before it
          * reuses the buffer. */
-        page_result_live.store(false, std::memory_order_release);
+        rx_result_live.store(false, std::memory_order_release);
     }
     else if (res->payload_inline == false)
     {
@@ -827,9 +827,15 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * this panel big enough to be refused by a fragmented heap, and the one
      * whose refusal is the page that will not load. The buffer is held
      * permanently anyway, exactly one page result is ever live (the generation
-     * sees to that), and page_result_live keeps the next request's read out of
-     * the buffer until the UI has released this one. */
-    if (req->type == OPENHAB_REQ_PAGE)
+     * sees to that), and rx_result_live keeps the next request's read out of
+     * the buffer until the UI has released this one.
+     *
+     * The sitemap list rides it for the same reason: on an ArduiTouch with
+     * every feature on, its 6 KB copy was refused while the web form asked
+     * for the list. The UI parses it and releases it in the same call, and a
+     * sitemap list request waits for rx_result_live like every other read
+     * into the buffer, so a page result and a list result never overlap. */
+    if (req->type == OPENHAB_REQ_PAGE || req->type == OPENHAB_REQ_SITEMAPS)
     {
         res->payload = rx_buf;
         res->payload_len = (size_t)read;
@@ -839,7 +845,7 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
         /* Before the result is queued: release orders it against the UI's
          * read of the buffer, the way the queue's own ordering would if the
          * flag travelled inside the struct. */
-        page_result_live.store(true, std::memory_order_release);
+        rx_result_live.store(true, std::memory_order_release);
         return;
     }
 
@@ -890,15 +896,16 @@ static void openhab_client_task(void *parameter)
             continue;
         }
 
-        /* A page result the UI has not released yet still holds rx_buf, and
-         * every request below but a command and a state reads into it. One
+        /* A page or sitemap list result the UI has not released yet still
+         * holds rx_buf, and every request below but a command and a state
+         * reads into it. One
          * spin per loop iteration of the UI is the whole of the wait: the UI
          * releases every result it takes, on every path, so this cannot wedge
          * -- it can only pace an icon behind a page parse, which is the order
          * they are wanted in anyway. */
         if (req.type != OPENHAB_REQ_COMMAND && req.type != OPENHAB_REQ_STATE
             && req.type != OPENHAB_REQ_IMAGE)
-            while (page_result_live.load(std::memory_order_acquire) == true)
+            while (rx_result_live.load(std::memory_order_acquire) == true)
                 vTaskDelay(1);
 
         struct openhab_result_s res = {};
