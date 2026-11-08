@@ -14,6 +14,44 @@
 #include <string.h>
 
 /* The third segment of "<root>/items/<name>/...". */
+/* The heap, or for the host tests an allocator that always fails. A failed
+ * deserializeJson() is NoMemory then, which is what an empty heap gives. */
+class FailingAllocator : public ArduinoJson::Allocator
+{
+  public:
+    void *allocate(size_t size) override
+    {
+        (void)size;
+        return NULL;
+    }
+
+    void deallocate(void *ptr) override
+    {
+        (void)ptr;
+    }
+
+    void *reallocate(void *ptr, size_t new_size) override
+    {
+        (void)ptr;
+        (void)new_size;
+        return NULL;
+    }
+};
+
+static FailingAllocator failing_allocator;
+static ArduinoJson::Allocator *document_allocator = NULL;
+
+void openhab_event_parse_fail_allocations(bool fail)
+{
+    document_allocator = (fail == true) ? &failing_allocator : NULL;
+}
+
+static ArduinoJson::Allocator *allocator(void)
+{
+    return (document_allocator != NULL) ? document_allocator
+                                        : ArduinoJson::detail::DefaultAllocator::instance();
+}
+
 static bool topic_item_name(const char *topic, char *name, size_t name_size)
 {
     const char *items = strchr(topic, '/');
@@ -60,10 +98,14 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
         payload_filter["value"] = true;
     }
 
-    JsonDocument event;
+    JsonDocument         event(allocator());
+    DeserializationError error = deserializeJson(event, json, len,
+                                                 DeserializationOption::Filter(event_filter));
 
-    if (deserializeJson(event, json, len, DeserializationOption::Filter(event_filter))
-        != DeserializationError::Ok)
+    if (error == DeserializationError::NoMemory)
+        return OPENHAB_EVENT_NOMEM;
+
+    if (error != DeserializationError::Ok)
         return OPENHAB_EVENT_INVALID;
 
     const char *type = event["type"].as<const char *>();
@@ -90,10 +132,14 @@ enum openhab_event_e openhab_event_parse(const char *json, size_t len,
     if (topic_item_name(topic, name, name_size) == false)
         return OPENHAB_EVENT_INVALID;
 
-    JsonDocument state;
+    JsonDocument state(allocator());
 
-    if (deserializeJson(state, payload, DeserializationOption::Filter(payload_filter))
-        != DeserializationError::Ok)
+    error = deserializeJson(state, payload, DeserializationOption::Filter(payload_filter));
+
+    if (error == DeserializationError::NoMemory)
+        return OPENHAB_EVENT_NOMEM;
+
+    if (error != DeserializationError::Ok)
         return OPENHAB_EVENT_INVALID;
 
     const char *state_value = state["value"].as<const char *>();
@@ -165,11 +211,14 @@ enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_
         filter["item"]["state"] = true;
     }
 
-    JsonDocument event;
+    JsonDocument         event(allocator());
+    DeserializationError error = deserializeJson(event, json, len,
+                                                 DeserializationOption::Filter(filter));
 
-    if (deserializeJson(event, json, len, DeserializationOption::Filter(filter))
-        != DeserializationError::Ok
-        || event.is<JsonObject>() == false)
+    if (error == DeserializationError::NoMemory)
+        return OPENHAB_SITEMAP_EVENT_NOMEM;
+
+    if (error != DeserializationError::Ok || event.is<JsonObject>() == false)
         return OPENHAB_SITEMAP_EVENT_INVALID;
 
     const char *type = event["TYPE"].as<const char *>();

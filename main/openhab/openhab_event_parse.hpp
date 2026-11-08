@@ -54,6 +54,9 @@ enum openhab_event_e
     OPENHAB_EVENT_ALIVE,   /* the server's keepalive, every ten seconds  */
     OPENHAB_EVENT_OTHER,   /* an event, but not an item state change     */
     OPENHAB_EVENT_STATE,   /* name and value are set                     */
+    /* No heap for the parse. Says nothing about the event, which may have been
+     * a state change: the caller treats it as a dropped one. */
+    OPENHAB_EVENT_NOMEM,
 };
 
 /**
@@ -113,6 +116,8 @@ enum openhab_sitemap_event_e
      * or a widget whose "descriptionChanged" says its state description did. */
     OPENHAB_SITEMAP_EVENT_RELOAD,
     OPENHAB_SITEMAP_EVENT_OTHER,   /* a "TYPE" this panel does not know            */
+    /* No heap for the parse, as OPENHAB_EVENT_NOMEM. */
+    OPENHAB_SITEMAP_EVENT_NOMEM,
 };
 
 /**
@@ -121,6 +126,13 @@ enum openhab_sitemap_event_e
  */
 enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_t len,
                                                          struct openhab_widget_event_s *out);
+
+/**
+ * For the host tests: true makes every document allocation of the two event
+ * parsers above fail, as on a panel that is out of heap; false restores the
+ * heap. Call each parser once before, so that its filter is built.
+ */
+void openhab_event_parse_fail_allocations(bool fail);
 
 /**
  * The subscription id out of the answer to POST /rest/sitemaps/events/subscribe:

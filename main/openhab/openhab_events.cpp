@@ -326,6 +326,11 @@ static void on_sitemap_data(const char *data, size_t len, void *ctx)
         ESP_LOGW(TAG, "not an event: %.*s", (int)len, data);
         break;
 
+    case OPENHAB_SITEMAP_EVENT_NOMEM:
+        ESP_LOGW(TAG, "no heap to parse an event; asking for the page again");
+        reload.store(true, std::memory_order_relaxed);
+        break;
+
     default:
         break;
     }
@@ -352,6 +357,11 @@ static void on_data(const char *data, size_t len, void *ctx)
 
     case OPENHAB_EVENT_INVALID:
         ESP_LOGW(TAG, "not an event: %.*s", (int)len, data);
+        break;
+
+    case OPENHAB_EVENT_NOMEM:
+        ESP_LOGW(TAG, "no heap to parse an event; asking for a resync");
+        resync.store(true, std::memory_order_relaxed);
         break;
 
     case OPENHAB_EVENT_ALIVE:

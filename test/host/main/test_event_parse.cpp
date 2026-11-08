@@ -328,6 +328,36 @@ static void test_sitemap_malformed(void)
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_INVALID, sitemap_parse("{\"label\":\"x\"}", &ev));
 }
 
+/* Out of heap is not "not an event": the caller has to know that an event,
+ * maybe a state change, went unread. A keepalive is the line it happened to
+ * on a panel; both parsers, and the item parser's second parse of the
+ * payload, report it. */
+static void test_out_of_heap(void)
+{
+    struct openhab_widget_event_s ev;
+    const char *alive = "{\"TYPE\":\"ALIVE\",\"sitemapName\":\"s\",\"pageId\":\"s\"}";
+    const char *item = "{\"topic\":\"openhab/items/A/statechanged\","
+                       "\"payload\":\"{\\\"type\\\":\\\"OnOff\\\",\\\"value\\\":\\\"ON\\\"}\","
+                       "\"type\":\"ItemStateChangedEvent\"}";
+
+    /* Once with the heap, which also builds the filters. */
+    TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_ALIVE, sitemap_parse(alive, &ev));
+    TEST_ASSERT_EQUAL(OPENHAB_EVENT_STATE, parse(item));
+
+    openhab_event_parse_fail_allocations(true);
+    enum openhab_sitemap_event_e sitemap_result = sitemap_parse(alive, &ev);
+    enum openhab_event_e item_result = parse(item);
+    enum openhab_event_e malformed_result = parse("not json");
+    openhab_event_parse_fail_allocations(false);
+
+    TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_NOMEM, sitemap_result);
+    TEST_ASSERT_EQUAL(OPENHAB_EVENT_NOMEM, item_result);
+    /* Malformed JSON is found before anything is allocated. */
+    TEST_ASSERT_EQUAL(OPENHAB_EVENT_INVALID, malformed_result);
+
+    TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_ALIVE, sitemap_parse(alive, &ev));
+}
+
 /* The label's two halves: a caption that is cut, a value with a ']' of its
  * own, and a label that is all value. */
 static void test_sitemap_label_split(void)
@@ -399,6 +429,7 @@ void test_event_parse_run(void)
     RUN_TEST(test_sitemap_typed_events);
     RUN_TEST(test_sitemap_malformed);
     RUN_TEST(test_sitemap_label_split);
+    RUN_TEST(test_out_of_heap);
     RUN_TEST(test_subscription_id);
     RUN_TEST(test_id_hash);
 }
