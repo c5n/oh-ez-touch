@@ -186,7 +186,8 @@ the task waits on the socket with `select()` in quarter-second slices, so a
 page change is still noticed. The watchdog is 130 s.
 
 **The item stream** is the fallback, for a server that refuses the subscribe
-(404, 401). It is asked once per server. The task keeps
+(404, 401). The task asks such a server again after five minutes, because
+openHAB answers 404 to every request while it starts. The task keeps
 `GET /rest/events?topics=*/items/<name>/statechanged,...` open, with the items
 on screen, tiles and clock items, as the topic list. A changed list costs a
 reconnect. Each event's `value` is the raw state that

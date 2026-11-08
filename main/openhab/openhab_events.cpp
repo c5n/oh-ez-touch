@@ -67,6 +67,12 @@ static_assert(OPENHAB_EVENTS_SUBSCRIBE_BODY_LEN <= SSE_LINE_LEN,
 #define OPENHAB_EVENTS_SUBSCRIPTION_LEN 48
 
 #define OPENHAB_EVENTS_BACKOFF_MIN_MS 5000
+
+/* How long a refused subscribe keeps the task on the item stream before it
+ * asks again. openHAB answers 404 to every request while it starts, so a
+ * refusal is not proof that the server has no sitemap events. A server that
+ * really has none costs one POST and one item stream reconnect per period. */
+#define OPENHAB_EVENTS_SITEMAP_RETRY_MS 300000
 #define OPENHAB_EVENTS_BACKOFF_MAX_MS 60000
 
 /* The request line has to fit esp_http_client's transmit buffer together with
@@ -96,9 +102,11 @@ static esp_http_client_handle_t client;
 static struct sse_reader reader;
 static char url[OPENHAB_EVENTS_URL_LEN];
 
-/* The website whose server refused the sitemap stream, so that it is asked
- * once and not on every reconnect. "" while none has. */
+/* The website whose server refused the sitemap stream, so that it is not
+ * asked on every reconnect. "" while none has. The refusal expires after
+ * OPENHAB_EVENTS_SITEMAP_RETRY_MS, counted from sitemap_refused_ms. */
 static char sitemap_refused[OPENHAB_EVENTS_WEBSITE_LEN];
+static uint64_t sitemap_refused_ms;
 
 /* A sitemap stream for this subscription has been up before: the next one to
  * come up has missed whatever changed in between. */
@@ -363,9 +371,25 @@ enum stream_end_e
     STREAM_FAILED,  /* never opened, or lost: reconnect after the backoff */
 };
 
+/* True when the refusal of the sitemap stream is old enough to ask again.
+ * Only the task touches sitemap_refused, and only the task calls this. */
+static bool sitemap_retry_due(void)
+{
+    return sitemap_refused[0] != '\0'
+        && port_millis() - sitemap_refused_ms >= OPENHAB_EVENTS_SITEMAP_RETRY_MS;
+}
+
 static bool stop_requested(void)
 {
     if (reset_requested.load(std::memory_order_acquire) == true)
+        return true;
+
+    /* An item stream that stands in for a refused sitemap stream ends when
+     * the refusal expires, so that the task asks for the sitemap stream again.
+     * The new item stream that follows a second refusal resyncs by poll. */
+    if (   sitemap_mode.load(std::memory_order_relaxed) == false
+        && sub_active.sitemap[0] != '\0' && sub_active.page[0] != '\0'
+        && sitemap_retry_due() == true)
         return true;
 
     if (sub_changed.load(std::memory_order_acquire) == false)
@@ -730,9 +754,10 @@ static void openhab_events_task(void *parameter)
             continue;
         }
 
-        /* A server that refused the sitemap stream is not asked again; a
-         * different server is. */
-        if (sitemap_refused[0] != '\0' && strcmp(sitemap_refused, sub_active.website) != 0)
+        /* A server that refused the sitemap stream is not asked again until
+         * the refusal expires; a different server is asked at once. */
+        if (   sitemap_refused[0] != '\0'
+            && (strcmp(sitemap_refused, sub_active.website) != 0 || sitemap_retry_due() == true))
             sitemap_refused[0] = '\0';
 
         bool use_sitemap = sub_active.sitemap[0] != '\0' && sub_active.page[0] != '\0'
@@ -760,9 +785,10 @@ static void openhab_events_task(void *parameter)
                 break;
 
             case SUBSCRIBE_REFUSED:
-                ESP_LOGW(TAG, "no sitemap events at %s; following items instead",
-                         sub_active.website);
+                ESP_LOGW(TAG, "no sitemap events at %s; following items for %u s",
+                         sub_active.website, (unsigned)(OPENHAB_EVENTS_SITEMAP_RETRY_MS / 1000));
                 strlcpy(sitemap_refused, sub_active.website, sizeof(sitemap_refused));
+                sitemap_refused_ms = port_millis();
                 /* Not a failure of the server's: on to the item stream now. */
                 continue;
 
