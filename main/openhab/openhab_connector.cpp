@@ -324,6 +324,42 @@ void openhab_format_number(char *out, size_t out_size, float value, float step)
     snprintf(out, out_size, "%.*f", decimals, (double)value);
 }
 
+/* Percent-encode `in` for a query string value: every byte but RFC 3986's
+ * unreserved characters becomes %XX, so a UTF-8 "ü" is "%C3%BC", a space is
+ * "%20" and an "&" is "%26". False if it does not fit. */
+static bool url_encode_value(char *out, size_t out_size, const char *in)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t o = 0;
+
+    for (const unsigned char *c = (const unsigned char *)in; *c != '\0'; c++)
+    {
+        /* Ranges, not isalnum(): that one depends on the locale for bytes
+         * above 127, and every byte of a UTF-8 sequence must be encoded. */
+        if ((*c >= 'A' && *c <= 'Z') || (*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9')
+            || *c == '-' || *c == '.' || *c == '_' || *c == '~')
+        {
+            if (o + 1 >= out_size)
+                return false;
+
+            out[o++] = (char)*c;
+        }
+        else
+        {
+            if (o + 3 >= out_size)
+                return false;
+
+            out[o++] = '%';
+            out[o++] = hex[*c >> 4];
+            out[o++] = hex[*c & 0x0F];
+        }
+    }
+
+    out[o] = '\0';
+
+    return true;
+}
+
 bool Item::iconUrl(const char *website, char *out, size_t out_size) const
 {
     /* No icon name is not a failure to report anywhere -- plenty of widgets
@@ -333,12 +369,28 @@ bool Item::iconUrl(const char *website, char *out, size_t out_size) const
         return false;
 
     /* A static icon is the same picture whatever the state, so the state
-     * stays out of the URL -- which also keeps a state with a space in it
-     * from making the URL one the HTTP client refuses. */
-    int len = static_icon
-                  ? snprintf(out, out_size, "%s/icon/%s?format=png", website, icon_name)
-                  : snprintf(out, out_size, "%s/icon/%s?state=%s&format=png",
-                             website, icon_name, state_text);
+     * stays out of the URL. */
+    if (static_icon)
+    {
+        int len = snprintf(out, out_size, "%s/icon/%s?format=png", website, icon_name);
+
+        return (len > 0 && (size_t)len < out_size);
+    }
+
+    /* Any other state is encoded. esp_http_client refuses a URL with a raw
+     * space or a raw "ü" in it ("Error parse url"), which tore down the
+     * keep-alive and left the tile on its old icon whenever a String item
+     * held "grün"; a raw "&" ended the parameter early. Encoding can triple a
+     * state, and the buffers are not widened for it: at the widest host and
+     * icon name, a state of 31 reserved characters no longer fits, and the
+     * snprintf below refuses it like any other URL that does not fit. */
+    char state[STR_STATE_TEXT_LEN * 3];
+
+    if (url_encode_value(state, sizeof(state), state_text) == false)
+        return false;
+
+    int len = snprintf(out, out_size, "%s/icon/%s?state=%s&format=png",
+                       website, icon_name, state);
 
     return (len > 0 && (size_t)len < out_size);
 }

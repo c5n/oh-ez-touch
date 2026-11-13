@@ -84,8 +84,8 @@ static void test_split_a_url_with_no_query_at_all(void)
     TEST_ASSERT_EQUAL_STRING("", state);
 }
 
-/* A state openHAB sends verbatim: iconUrl() does not percent-encode, so the
- * space survives into the URL and has to survive back out of it. */
+/* A state with a space, as openHAB sends it and as a URL built by hand may
+ * still carry it: it has to survive the split as it is. */
 static void test_split_a_state_with_a_space(void)
 {
     char name[ICON_SET_NAME_MAX];
@@ -95,6 +95,38 @@ static void test_split_a_state_with_a_space(void)
                                     name, sizeof(name), state, sizeof(state)));
     TEST_ASSERT_EQUAL_STRING("text", name);
     TEST_ASSERT_EQUAL_STRING("Hello World", state);
+}
+
+/* iconUrl() percent-encodes the state, and the lookups compare text, so the
+ * split decodes it: "gr%C3%BCn" is looked up as "grün". */
+static void test_split_decodes_an_encoded_state(void)
+{
+    char name[ICON_SET_NAME_MAX];
+    char state[ICON_SET_NAME_MAX];
+
+    TEST_ASSERT_TRUE(icon_url_split(WEBSITE "/icon/trafficlight?state=gr%C3%BCn&format=png",
+                                    name, sizeof(name), state, sizeof(state)));
+    TEST_ASSERT_EQUAL_STRING("trafficlight", name);
+    TEST_ASSERT_EQUAL_STRING("gr\xC3\xBCn", state);
+
+    TEST_ASSERT_TRUE(icon_url_split(WEBSITE "/icon/text?state=a%26b%20c&format=png",
+                                    name, sizeof(name), state, sizeof(state)));
+    TEST_ASSERT_EQUAL_STRING("a&b c", state);
+}
+
+/* A "%" without two hex digits behind it is not an escape and is kept. */
+static void test_split_keeps_a_stray_percent(void)
+{
+    char name[ICON_SET_NAME_MAX];
+    char state[ICON_SET_NAME_MAX];
+
+    TEST_ASSERT_TRUE(icon_url_split(WEBSITE "/icon/text?state=50%&format=png",
+                                    name, sizeof(name), state, sizeof(state)));
+    TEST_ASSERT_EQUAL_STRING("50%", state);
+
+    TEST_ASSERT_TRUE(icon_url_split(WEBSITE "/icon/text?state=%zz&format=png",
+                                    name, sizeof(name), state, sizeof(state)));
+    TEST_ASSERT_EQUAL_STRING("%zz", state);
 }
 
 static void test_a_url_that_is_not_an_icon_url_is_refused(void)
@@ -355,6 +387,8 @@ void test_icon_set_run(void)
     RUN_TEST(test_split_a_url_that_ends_at_the_state);
     RUN_TEST(test_split_a_url_with_no_query_at_all);
     RUN_TEST(test_split_a_state_with_a_space);
+    RUN_TEST(test_split_decodes_an_encoded_state);
+    RUN_TEST(test_split_keeps_a_stray_percent);
     RUN_TEST(test_a_url_that_is_not_an_icon_url_is_refused);
     RUN_TEST(test_an_empty_name_is_refused);
     RUN_TEST(test_a_name_that_does_not_fit_is_refused);

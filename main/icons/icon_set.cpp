@@ -99,13 +99,31 @@ bool icon_url_split(const char *url, char *name, size_t name_size,
         if (state_end == NULL)
             state_end = state_begin + strlen(state_begin);
 
-        size_t state_len = (size_t)(state_end - state_begin);
+        /* iconUrl() percent-encodes the state, and the set and the fixture
+         * look it up by its text, so it is decoded on the way out. A "%" that
+         * is not followed by two hex digits is copied as it is. */
+        size_t o = 0;
 
-        if (state_len >= state_size)
-            return false;
+        for (const char *c = state_begin; c < state_end; c++)
+        {
+            if (o + 1 >= state_size)
+                return false;
 
-        memcpy(state, state_begin, state_len);
-        state[state_len] = '\0';
+            if (*c == '%' && state_end - c >= 3 && isxdigit((unsigned char)c[1])
+                && isxdigit((unsigned char)c[2]))
+            {
+                char hex[3] = {c[1], c[2], '\0'};
+
+                state[o++] = (char)strtoul(hex, NULL, 16);
+                c += 2;
+            }
+            else
+            {
+                state[o++] = *c;
+            }
+        }
+
+        state[o] = '\0';
     }
 
     return true;

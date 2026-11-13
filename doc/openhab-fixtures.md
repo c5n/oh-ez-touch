@@ -239,15 +239,13 @@ bug rather than a fixture artefact.
    whose first three children go to the clock screen instead. `oheznav`'s
    **Framed** page is still the reproduction, and
    `test/host/main/test_sitemap_parse.cpp` pins both cases.
-2. **Icon URLs are not percent-encoded.** `Item::iconUrl()` pastes the state
-   into the query string as-is, and `esp_http_client_set_url()` then refuses the
-   URL outright -- it never reaches the server, and `session_prepare()` turns
-   the refusal into a disconnect, so the cost is a torn-down keep-alive once per
-   icon refresh. A space does it (`NAV_Spaced`) and so does any non-ASCII byte
-   (`NAV_Umlaut` holding `Süd`). Numbers never reach it, because the parser
-   re-prints them through `%f` first. Fixing it means encoding *and* widening
-   `STR_URL_LEN`: a worst-case 32-byte state triples to 93 and pushes the widest
-   legal URL to 276, past the 256 that `test_item_urls.cpp` guarantees fits.
+2. **Icon URLs are percent-encoded, but not widened for it.**
+   `Item::iconUrl()` encodes the state (`NAV_Spaced` asks for `state=Hello%20World`,
+   `NAV_Umlaut` for `state=S%C3%BCd`). Before, `esp_http_client_set_url()`
+   refused such a URL and the keep-alive was torn down once per icon refresh.
+   `STR_URL_LEN` stays 256: a worst-case state of 31 reserved characters
+   triples to 93 bytes, and at the widest host and icon name the URL does not
+   fit. `iconUrl()` then refuses it, and the tile shows no icon.
 3. **openHAB's formatted value is used only by text tiles.** A String,
    DateTime, Location or Contact tile shows the label's `[...]`, kept up to
    date by the sitemap stream. On the item stream it falls back to the raw

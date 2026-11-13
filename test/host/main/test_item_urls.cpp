@@ -149,35 +149,18 @@ static void test_icon_url_at_the_widest_legal_item(void)
     TEST_ASSERT_FALSE(item.iconUrl(website, tight, sizeof(tight)));
 }
 
-/* A state is pasted into the query string exactly as it arrived, with no
- * percent-encoding, and that is a real gap rather than a style point.
+/* A state is percent-encoded into the query string.
  *
- * Driven against openHAB 5.2.1 with a String item holding "Hello World". The
- * request never reaches the server at all: esp_http_client_set_url() refuses
- * the URL, and session_prepare() turns that into a disconnect --
+ * Driven against openHAB 5.2.1: esp_http_client_set_url() refuses a URL with
+ * a raw space or a raw "ü" in it --
  *
- *     E HTTP_CLIENT:  Error parse url http://h:8080/icon/text?state=Hello World&format=png
- *     E openhab_http: cannot set the URL: http://h:8080/icon/text?state=Hello World&format=png
+ *     E HTTP_CLIENT:  Error parse url http://h:8080/icon/trafficlight?state=grün&format=png
  *
- * so the cost is not a wasted request but a torn-down keep-alive, once per
- * icon refresh, plus a counted failure. Encoded, the same URL is fine:
- * /icon/text?state=Hello%20World&format=svg answers 200. An "&" in a state is
- * the quieter version -- the URL parses, the parameter ends early, and "a&b"
- * fetches the icon for "a".
- *
- * Numbers never reach this. The parser re-prints them through "%f" before they
- * are stored, so a Number:Temperature reading "21.5 °C" is already
- * "21.500000" by the time an icon is asked for -- checked on the same server.
- * Any String item whose state has a space in it does reach it, for as long as
- * it holds that value.
- *
- * This pins what the code emits today so the shape is written down somewhere.
- * Encoding is the fix, and it is not free: percent-encoding a worst-case
- * STR_STATE_TEXT_LEN state triples it to 93 bytes and pushes the widest legal
- * URL to 276, past the STR_URL_LEN of 256 that the test above guarantees fits.
- * So the fix is encode *and* widen, which is a sizing decision and not one to
- * take quietly inside a test. */
-static void test_a_state_with_a_space_is_not_encoded(void)
+ * so the request never reached the server, the keep-alive was torn down, and
+ * the tile kept its old icon. Encoded, /icon/text?state=Hello%20World answers
+ * 200. An "&" in a state was the quieter version: the parameter ended early,
+ * and "a&b" fetched the icon for "a". */
+static void test_a_state_with_a_space_is_encoded(void)
 {
     Item item;
     char url[STR_URL_LEN];
@@ -187,7 +170,64 @@ static void test_a_state_with_a_space_is_not_encoded(void)
     item.setStateText("Hello World");
 
     TEST_ASSERT_TRUE(item.iconUrl(WEBSITE, url, sizeof(url)));
-    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/text?state=Hello World&format=png", url);
+    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/text?state=Hello%20World&format=png", url);
+}
+
+/* Every byte of a UTF-8 sequence, the bug as it was seen on the panel. */
+static void test_a_state_with_an_umlaut_is_encoded(void)
+{
+    Item item;
+    char url[STR_URL_LEN];
+
+    item.cleanItem();
+    item.setIconName("trafficlight");
+    item.setStateText("gr\xC3\xBCn");
+
+    TEST_ASSERT_TRUE(item.iconUrl(WEBSITE, url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/trafficlight?state=gr%C3%BCn&format=png", url);
+}
+
+/* The reserved characters of a query string, and the unreserved ones left
+ * alone. */
+static void test_reserved_characters_are_encoded(void)
+{
+    Item item;
+    char url[STR_URL_LEN];
+
+    item.cleanItem();
+    item.setIconName("text");
+    item.setStateText("a&b=c%d+e/f-g.h_i~j");
+
+    TEST_ASSERT_TRUE(item.iconUrl(WEBSITE, url, sizeof(url)));
+    TEST_ASSERT_EQUAL_STRING(WEBSITE "/icon/text?state=a%26b%3Dc%25d%2Be%2Ff-g.h_i~j&format=png",
+                             url);
+}
+
+/* Encoding triples a reserved character, and STR_URL_LEN is not widened for
+ * it: at the widest host and icon name, a state of reserved characters only
+ * does not fit. That must be a refusal, never a truncated URL. */
+static void test_an_encoded_state_that_does_not_fit_is_refused(void)
+{
+    Item item;
+    char url[STR_URL_LEN];
+    char website[128];
+    char name[STR_ICON_NAME_LEN];
+    char state[STR_STATE_TEXT_LEN];
+
+    memset(website, 'w', sizeof(website) - 1);
+    website[sizeof(website) - 1] = '\0';
+
+    memset(name, 'n', sizeof(name) - 1);
+    name[sizeof(name) - 1] = '\0';
+
+    memset(state, ' ', sizeof(state) - 1);
+    state[sizeof(state) - 1] = '\0';
+
+    item.cleanItem();
+    item.setIconName(name);
+    item.setStateText(state);
+
+    TEST_ASSERT_FALSE(item.iconUrl(website, url, sizeof(url)));
 }
 
 /* What the event stream knows an item by. */
@@ -237,6 +277,9 @@ void test_item_urls_run(void)
     RUN_TEST(test_icon_url);
     RUN_TEST(test_icon_url_without_a_name);
     RUN_TEST(test_icon_url_without_a_state);
-    RUN_TEST(test_a_state_with_a_space_is_not_encoded);
+    RUN_TEST(test_a_state_with_a_space_is_encoded);
+    RUN_TEST(test_a_state_with_an_umlaut_is_encoded);
+    RUN_TEST(test_reserved_characters_are_encoded);
+    RUN_TEST(test_an_encoded_state_that_does_not_fit_is_refused);
     RUN_TEST(test_icon_url_at_the_widest_legal_item);
 }
