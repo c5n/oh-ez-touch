@@ -222,6 +222,37 @@ extern "C" void ohez_touch_activity(void)
 static void my_print(lv_log_level_t level, const char *buf)
 {
     LV_UNUSED(level);
+
+    /* At most LVGL_LOG_BURST lines per LVGL_LOG_WINDOW_MS, and a count of the
+     * rest. Every line goes out through the console UART inside the draw that
+     * logged it, and a draw that cannot allocate logs once per glyph: on the
+     * ArduiTouch that was about 20 lines and half a second per frame on the
+     * clock screen, and render_us grew with every one of them. */
+    static const uint32_t LVGL_LOG_WINDOW_MS = 10000;
+    static const unsigned LVGL_LOG_BURST     = 4;
+    static uint32_t window_start;
+    static unsigned printed;
+    static unsigned dropped;
+
+    uint32_t now = port_tick_ms();
+
+    if (now - window_start >= LVGL_LOG_WINDOW_MS)
+    {
+        if (dropped > 0)
+            ESP_LOGI("lvgl", "%u more messages not shown", dropped);
+
+        window_start = now;
+        printed = 0;
+        dropped = 0;
+    }
+
+    if (printed >= LVGL_LOG_BURST)
+    {
+        dropped++;
+        return;
+    }
+
+    printed++;
     ESP_LOGI("lvgl", "%s", buf);
 }
 #endif
