@@ -34,6 +34,12 @@
       an event once more as text, without the heap.
 - [x] openhab: Build the event parsers' filters under a lock. The event task
       and the doorbell task both parse, and either can be first.
+- [x] ui_clock: **High priority.** The digits of the time on the clock
+      screen disappear. First they are fully visible, then parts of them are
+      missing, and at the end only "  :  " is visible. Seen with the Classic
+      theme in its night variant. A digit's glyph buffer (5.2 to 5.7 KB) did
+      not fit the heap during BLE scans; it now borrows the work buffer. See
+      [The heap budget](architecture.md#the-heap-budget).
 - [ ] openhab: The picture has not been fetched on hardware. Measure the
       client task's stack (4 KB, with TJpgDec on it) and the heap during a
       ring, and whether an Image item's page loads on a fragmented heap.

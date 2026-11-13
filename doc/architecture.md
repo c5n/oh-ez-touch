@@ -277,10 +277,11 @@ document bumps its allocations out of (`JsonArenaAlloc` in
 `main/openhab/openhab_connector.cpp`, handed to `Sitemap::parse()` as
 scratch). No per-page body copy, no multi-kilobyte document pool on the heap
 -- the two allocations a fragmented heap always stopped honouring first,
-which is what "the back button cannot load the main page" was made of. The
-handshake is one flag: a result whose payload *is* the buffer
-(`payload_static`) keeps the worker out of the buffer until the UI releases
-it, and the UI releases every result it takes. The sitemap list rides the
+which is what "the back button cannot load the main page" was made of. The buffer
+is the shared work buffer (`main/mem/work_buf.h`): the worker claims it
+before a read and hands it over to the result, and a result whose payload
+*is* the buffer (`payload_static`) keeps every other owner out until the UI
+releases it. The UI releases every result it takes. The sitemap list rides the
 buffer the same way, so the settings' list of sitemaps costs no 6 KB copy
 either. A page that outgrows its tail
 falls back to a heap-backed document with a log line -- the arena is the fast
@@ -364,6 +365,15 @@ What keeps the budget:
   buffer; the sitemap list rides the client's receive buffer like a page.
   A server icon rides it too, and its decode borrows the buffer's free tail
   until the UI releases the result.
+- **Short jobs take turns on the work buffer.** `main/mem/work_buf.h` is one
+  block of 12 KB, allocated once, with one owner at a time. The openHAB
+  client reads into it, and LVGL's glyph buffers borrow it between two reads
+  (`main/ui/ui_glyph_buf.c`). A glyph of the clock screen needs 5.2 to 5.7 KB
+  in one piece on every frame. From the heap, it failed during BLE scans as
+  soon as the largest block fell below that, and the digits went missing.
+  The renderer only uses `work_buf_try_claim()`, which never waits, and takes
+  the heap when the buffer is busy. A read that waits for the buffer is
+  served before the next glyph.
 - **A failed allocation is a dropped event, not a malformed one.** The
   event parsers report `NOMEM` when the heap cannot hold the document, and
   the task fetches the page again or polls, as for an event lost to a full

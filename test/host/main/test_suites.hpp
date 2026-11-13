@@ -19,6 +19,7 @@ void test_config_fields_run(void);
 void test_config_file_run(void);
 void test_event_parse_run(void);
 void test_frame_stats_run(void);
+void test_work_buf_run(void);
 void test_icon_png_run(void);
 void test_icon_set_run(void);
 void test_image_decode_run(void);

@@ -11,6 +11,7 @@
 #include "icons/icon_set.hpp"
 #include "image_decode.h"
 #include "json_squeeze.h"
+#include "mem/work_buf.h"
 #include "openhab_connector.hpp"
 #include "openhab_http.hpp"
 #include "sim/icon_fixture.hpp"
@@ -74,29 +75,21 @@ struct request_s
 static QueueHandle_t requests = NULL;
 static QueueHandle_t results = NULL;
 
-/* The one buffer every body but a state is read into.
+/* The one buffer every body but a state is read into: the shared work buffer
+ * (mem/work_buf.h), which main.cpp allocates before openhab_client_setup().
  *
  * Sized for the largest class and allocated once, because the alternative was
  * a 12 KB malloc and free on every page load -- see the buffer sizes in the
- * header for what that cost on a weak link.
+ * header for what that cost on a weak link. Shared, because between two reads
+ * the 12 KB sat idle, and the LVGL glyph buffers now borrow it then (see
+ * ui/ui_glyph_buf.h).
  *
- * On the heap rather than in BSS, which is the same DRAM taken at a different
- * moment and is deliberately the later one. openhab_client_setup() runs after
- * wlan_setup() and webui_setup(), so a board that cannot spare this says so
- * here, in a log line and a setup that fails, instead of taking it at link
- * time and leaving esp_wifi_init() to fail on a wall panel for want of it.
- *
- * Only perform() touches it, and perform() runs only on the worker below --
- * with one exception: a page, sitemap list or icon result hands it to the UI for
- * as long as that result is unconsumed, which is what payload_static in the
- * result means. rx_result_live is the handshake for that exception: set by
- * the worker when it posts such a result, cleared by
- * openhab_client_result_release() on whichever task releases it. The worker
- * waits for it before the buffer is reused -- the generation rules out a
- * second *page* landing in it while the UI parses, but not an icon read. */
-static char *rx_buf;
-
-static std::atomic<bool> rx_result_live{false};
+ * perform() claims it (WORK_BUF_OPENHAB_READ) right before a read and waits
+ * for it if the UI still holds a result in it or a glyph is being drawn from
+ * it. A page, sitemap list or icon result is handed over in it
+ * (WORK_BUF_OPENHAB_RESULT, payload_static in the result) and stays there
+ * until openhab_client_result_release(), on whichever task releases it. Every
+ * other path gives it back before perform() returns. */
 
 static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
               "the receive buffer is sized on the page, so no class may exceed it");
@@ -206,12 +199,10 @@ bool openhab_client_setup(void)
     }
 
     /* One over, so that a body read into it can be terminated. */
-    rx_buf = (char *)malloc(OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
-
-    if (rx_buf == NULL)
+    if (work_buf_size() < OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1)
     {
-        ESP_LOGE(TAG, "cannot allocate the %u byte receive buffer",
-                 (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
+        ESP_LOGE(TAG, "the work buffer is %u bytes, the client needs %u",
+                 (unsigned)work_buf_size(), (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
         goto fail;
     }
 
@@ -250,9 +241,6 @@ fail:
         vQueueDelete(results);
         results = NULL;
     }
-
-    free(rx_buf);
-    rx_buf = NULL;
 
     return false;
 }
@@ -348,10 +336,8 @@ void openhab_client_result_release(struct openhab_result_s *res)
 {
     if (res->payload_static == true)
     {
-        /* The payload is rx_buf, which belongs to the worker -- "released" here
-         * means handed back to it. The worker is waiting on this before it
-         * reuses the buffer. */
-        rx_result_live.store(false, std::memory_order_release);
+        /* The payload is the work buffer; the next read or glyph may have it. */
+        work_buf_release(WORK_BUF_OPENHAB_RESULT);
     }
     else if (res->payload_inline == false)
     {
@@ -809,15 +795,16 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
         return;
     }
 
-    /* A page, sitemap list or icon result the UI has not released yet still
-     * holds rx_buf. Wait here, right before the read, and not for every
-     * request: a built-in icon, a command, a state and an image do not touch
-     * the buffer, and a built-in icon queued behind a server icon waited
-     * a whole page build (300 ms on the ArduiTouch) for nothing. One spin per
-     * loop iteration of the UI is the whole of the wait: the UI releases every
-     * result it takes, on every path, so this cannot wedge. */
-    while (rx_result_live.load(std::memory_order_acquire) == true)
-        vTaskDelay(1);
+    /* Claimed right before the read, and not for every request: a built-in
+     * icon, a command, a state and an image do not touch the buffer, and a
+     * built-in icon queued behind a server icon waited a whole page build
+     * (300 ms on the ArduiTouch) for nothing. The wait is for the UI to
+     * release a result -- it releases every result it takes, on every path --
+     * or for one label draw to finish with a glyph, so it cannot wedge. */
+    char *rx_buf = (char *)work_buf_claim(WORK_BUF_OPENHAB_READ);
+
+    if (rx_buf == NULL)
+        return;
 
     /* Everything else into the one buffer. It is a ceiling, not a size: the
      * body that arrives is usually a fraction of it. */
@@ -829,6 +816,7 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
     {
         /* openhab_http_get() has already logged the method, the URL and the
          * status; there is nothing to add here that it did not say. */
+        work_buf_release(WORK_BUF_OPENHAB_READ);
         return;
     }
 
@@ -839,14 +827,15 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * this panel big enough to be refused by a fragmented heap, and the one
      * whose refusal is the page that will not load. The buffer is held
      * permanently anyway, exactly one page result is ever live (the generation
-     * sees to that), and rx_result_live keeps the next request's read out of
-     * the buffer until the UI has released this one.
+     * sees to that), and the handover to WORK_BUF_OPENHAB_RESULT keeps the
+     * next request's read out of the buffer until the UI has released this
+     * one.
      *
      * The sitemap list rides it for the same reason: on an ArduiTouch with
      * every feature on, its 6 KB copy was refused while the web form asked
      * for the list. The UI parses it and releases it in the same call, and a
-     * sitemap list request waits for rx_result_live like every other read
-     * into the buffer, so a page result and a list result never overlap.
+     * sitemap list request claims the buffer like every other read into it, so
+     * a page result and a list result never overlap.
      *
      * A server icon rides it for what is behind it: a PNG of two kilobytes
      * leaves ten free, and the decode inflates the picture into them instead
@@ -865,10 +854,9 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
             res->scratch_len = OPENHAB_CLIENT_PAGE_BUFFER_SIZE - (size_t)read;
         }
 
-        /* Before the result is queued: release orders it against the UI's
-         * read of the buffer, the way the queue's own ordering would if the
-         * flag travelled inside the struct. */
-        rx_result_live.store(true, std::memory_order_release);
+        /* Before the result is queued, so that the UI never sees a result in
+         * a buffer the read still holds. */
+        work_buf_handover(WORK_BUF_OPENHAB_READ, WORK_BUF_OPENHAB_RESULT);
         return;
     }
 
@@ -887,10 +875,12 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
     if (payload == NULL)
     {
         ESP_LOGE(TAG, "out of memory for a %u byte payload", (unsigned)read + 1);
+        work_buf_release(WORK_BUF_OPENHAB_READ);
         return;
     }
 
     memcpy(payload, rx_buf, (size_t)read + 1);
+    work_buf_release(WORK_BUF_OPENHAB_READ);
 
     res->payload = payload;
     res->payload_len = (size_t)read;
@@ -919,7 +909,7 @@ static void openhab_client_task(void *parameter)
             continue;
         }
 
-        /* perform() waits for rx_buf itself, and only where it reads into it. */
+        /* perform() claims the work buffer itself, and only where it reads into it. */
         struct openhab_result_s res = {};
 
         res.type = req.type;

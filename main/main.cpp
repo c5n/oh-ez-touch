@@ -37,6 +37,7 @@
 #include "control/backlight_control.hpp"
 #include "control/beeper_control.hpp"
 #include "mqtt/ohez_mqtt.hpp"
+#include "mem/work_buf.h"
 #include "net/wlan.hpp"
 #include "openhab/openhab_client.hpp"
 #include "openhab/openhab_events.hpp"
@@ -53,6 +54,7 @@
 #include "ui/ui_beep.hpp"
 #include "ui/ui_clock.hpp"
 #include "ui/ui_frame_probe.h"
+#include "ui/ui_glyph_buf.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_pin.hpp"
 #include "ui/ui_screen.hpp"
@@ -285,6 +287,11 @@ static void ohez_setup(void)
      * targets read the same monotonic clock. */
     lv_tick_set_cb(port_tick_ms);
 
+    /* Before the first draw: the clock screen's digits need 5.2 to 5.7 KB in
+     * one block on every frame, and a heap that cannot give it drops them.
+     * They borrow the work buffer instead (see ui/ui_glyph_buf.h). */
+    ui_glyph_buf_setup();
+
     beeper_setup();
     beeper_set_volume((uint8_t)config.item.beeper.volume);
     beeper_set_enabled(config.item.beeper.enabled);
@@ -349,6 +356,16 @@ static void ohez_setup(void)
     openhab_ui_setup(&config);
     ui_settings_setup(&config);
     ui_clock_setup(&config);
+
+    /* The shared work buffer (mem/work_buf.h), sized for the openHAB client's
+     * largest body. Here, where the client's receive buffer used to be
+     * allocated, and for the same reason: after wlan_setup() and
+     * webui_setup(), so that a board that cannot spare it says so in a log
+     * line instead of leaving esp_wifi_init() short. */
+    if (work_buf_init(OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1, port_tick_ms,
+                      [] { vTaskDelay(1); }) == false)
+        ESP_LOGE(TAG, "cannot allocate the %u byte work buffer",
+                 (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
 
     /* Before openhab_ui_connect() below, which is the first thing to submit a
      * request. Starting it while the link is still down is harmless -- it

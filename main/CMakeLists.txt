@@ -83,6 +83,8 @@ set(OHEZ_APP_SRCS
     "icons/icon_png.c"
     "icons/icon_set.cpp"
 
+    "mem/work_buf.c"
+
     "ui/openhab_ui.cpp"
     "ui/ui_settings.cpp"
     "ui/ui_calibration.cpp"
@@ -103,6 +105,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_clock.cpp"
     "ui/ui_frame_probe.c"
     "ui/ui_frame_stats.c"
+    "ui/ui_glyph_buf.c"
     "ui/ui_input.c"
     "ui/ui_beep_tables.cpp"
     "ui/ui_beep_tables_seq.cpp"
