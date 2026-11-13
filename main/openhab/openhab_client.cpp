@@ -809,6 +809,16 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
         return;
     }
 
+    /* A page, sitemap list or icon result the UI has not released yet still
+     * holds rx_buf. Wait here, right before the read, and not for every
+     * request: a built-in icon, a command, a state and an image do not touch
+     * the buffer, and a built-in icon queued behind a server icon waited
+     * a whole page build (300 ms on the ArduiTouch) for nothing. One spin per
+     * loop iteration of the UI is the whole of the wait: the UI releases every
+     * result it takes, on every path, so this cannot wedge. */
+    while (rx_result_live.load(std::memory_order_acquire) == true)
+        vTaskDelay(1);
+
     /* Everything else into the one buffer. It is a ceiling, not a size: the
      * body that arrives is usually a fraction of it. */
     ssize_t read = (req->type == OPENHAB_REQ_PAGE)
@@ -909,18 +919,7 @@ static void openhab_client_task(void *parameter)
             continue;
         }
 
-        /* A page, sitemap list or icon result the UI has not released yet still
-         * holds rx_buf, and every request below but a command and a state
-         * reads into it. One
-         * spin per loop iteration of the UI is the whole of the wait: the UI
-         * releases every result it takes, on every path, so this cannot wedge
-         * -- it can only pace an icon behind a page parse, which is the order
-         * they are wanted in anyway. */
-        if (req.type != OPENHAB_REQ_COMMAND && req.type != OPENHAB_REQ_STATE
-            && req.type != OPENHAB_REQ_IMAGE)
-            while (rx_result_live.load(std::memory_order_acquire) == true)
-                vTaskDelay(1);
-
+        /* perform() waits for rx_buf itself, and only where it reads into it. */
         struct openhab_result_s res = {};
 
         res.type = req.type;
