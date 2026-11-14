@@ -104,6 +104,11 @@ const unsigned char *icon_set_get_by_url(const char *url, size_t *size);
 size_t icon_set_count(void);
 size_t icon_set_bytes(void);
 
+/** Whether `p` points into the set's records. The panel draws a built-in
+ *  icon straight from flash, and whoever releases a tile's pixels uses this
+ *  to tell those apart from pixels it has to free(). */
+bool icon_set_contains(const void *p);
+
 /**
  * The whole set by index, for the one place that shows it rather than looks
  * something up in it: the settings screen's Icons page.

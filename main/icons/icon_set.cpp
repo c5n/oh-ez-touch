@@ -335,6 +335,13 @@ size_t icon_set_bytes(void)
     return ICON_SET_BLOB_SIZE;
 }
 
+bool icon_set_contains(const void *p)
+{
+    const unsigned char *c = (const unsigned char *)p;
+
+    return c >= icon_set_blob && c < icon_set_blob + ICON_SET_BLOB_SIZE;
+}
+
 const char *icon_set_name(size_t index)
 {
     return (index < ICON_SET_COUNT) ? icon_set_table[index].name : NULL;
@@ -370,6 +377,12 @@ size_t icon_set_count(void)
 size_t icon_set_bytes(void)
 {
     return 0;
+}
+
+bool icon_set_contains(const void *p)
+{
+    (void)p;
+    return false;
 }
 
 const char *icon_set_name(size_t index)

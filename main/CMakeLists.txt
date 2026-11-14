@@ -81,6 +81,7 @@ set(OHEZ_APP_SRCS
     "config/pin_store.c"
 
     "icons/icon_png.c"
+    "icons/icon_quantize.c"
     "icons/icon_set.cpp"
 
     "mem/work_buf.c"

@@ -108,8 +108,8 @@ before it can draw, and the decode is lodepng's working set plus a 4096-byte
 ARGB8888 held per tile, on a heap that also feeds BLE and MQTT. On panels that
 had been up for days that was "the tiles draw but the icons are placeholders".
 An indexed record is what LVGL's renderer reads palette and pixels from
-directly — no decode, no transient, and the whole RAM cost of an icon is its
-576 bytes.
+directly — no decode and no transient. It costs no RAM either: the tile
+points at the record in flash.
 
 Fully transparent pixels get a palette entry of their own and are never mixed
 into a box during quantization. Without that, transparent black averages into
@@ -123,8 +123,10 @@ built-ins up to meet it, a fetched PNG that decodes larger than the set's size
 is **halved in both directions until it fits** — a premultiplied-alpha box
 average, so a transparent background does not smear into the strokes. The
 decode and the downscale are one step in `main/icons/icon_png.c`, so the
-full-size picture never exists as RGBA: the tile keeps 4096 bytes for a
-64-pixel icon, and that is the largest block the decode asks for. See
+full-size picture never exists as RGBA. The 4096-byte ARGB8888 result is the
+largest block the decode asks for. It is then reduced to the set's own
+format with the generator's median cut (`main/icons/icon_quantize.c`), so the
+tile keeps 576 bytes instead of 4096. See
 [architecture](architecture.md#what-a-page-load-allocates) for how the inflated picture
 is held.
 

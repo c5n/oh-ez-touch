@@ -304,7 +304,9 @@ into the 4 KB result. Deflate can refer back to any byte decoded so far (the
 has to hold the whole picture. Its first segments are the unused tail of the
 receive buffer: a server icon rides that buffer like a page, and the PNG of
 two kilobytes leaves ten free behind it. The same icon then needs 10.3 KB of
-heap, in blocks of 4 KB at most. lodepng is kept for the formats `icon_png.c`
+heap, in blocks of 4 KB at most. The 4 KB result is then reduced to a
+576-byte LVGL I4 image with the icon generator's median cut
+(`main/icons/icon_quantize.c`), which is what the tile keeps. lodepng is kept for the formats `icon_png.c`
 refuses -- 16-bit, fewer than 8 bits, interlaced -- and its patches are
 marked `OH-EZ-TOUCH` in the source.
 

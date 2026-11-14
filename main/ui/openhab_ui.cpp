@@ -2,6 +2,7 @@
 
 #include "openhab_ui.hpp"
 #include "icons/icon_png.h"
+#include "icons/icon_quantize.h"
 #include "icons/icon_set.hpp"
 #include "openhab/openhab_bell.hpp"
 #include "openhab/openhab_client.hpp"
@@ -191,6 +192,12 @@ struct statistics_s statistics;
 void update_state_widget(struct widget_context_s *ctx);
 static void page_request(uint64_t delay_ms);
 static void widget_icon_request(size_t slot);
+static void widget_icon_adopt(struct widget_context_s *wctx, const void *pixels,
+                              lv_color_format_t cf, uint32_t width, uint32_t height,
+                              uint32_t stride, uint32_t data_size);
+static void icon_reduce_to_i4(const struct openhab_result_s *res, unsigned char **pixels,
+                              uint32_t width, uint32_t height, lv_color_format_t *cf,
+                              uint32_t *stride, uint32_t *data_size);
 
 /* Send an item's local state to openHAB.
  *
@@ -689,6 +696,28 @@ static void convert_color_depth(uint8_t *img, uint32_t px_cnt)
     }
 }
 
+/* Give back the pixels behind a descriptor and clear it.
+ *
+ * A built-in icon is not a copy: the descriptor points at the set's record in
+ * flash, which is drawn from there and never freed. Everything else -- a
+ * decoded server icon -- is the descriptor's own heap block. */
+static void icon_pixels_release(lv_image_dsc_t *pdsc)
+{
+    if (pdsc->data == NULL)
+        return;
+
+    /* LVGL v9 caches decoded images by source pointer, so the cache has to let
+     * go before the pixels do -- otherwise a redraw walks freed memory. This
+     * hazard does not exist in v7, which had no such cache. */
+    lv_image_cache_drop(pdsc);
+
+    if (icon_set_contains(pdsc->data) == false)
+        free((void *)pdsc->data);
+
+    pdsc->data = NULL;
+    pdsc->data_size = 0;
+}
+
 /* Release a tile's decoded pixels.
  *
  * The sweep at the end is not paranoia: two tiles showing the same icon share
@@ -707,12 +736,14 @@ void free_icon(lv_image_dsc_t *pdsc)
         return;
     const uint8_t *pref = pdsc->data;
 
-    /* LVGL v9 caches decoded images by source pointer, so the cache has to let
-     * go before the pixels do -- otherwise a redraw walks freed memory. This
-     * hazard does not exist in v7, which had no such cache. */
-    lv_image_cache_drop(pdsc);
+    /* A built-in record is shared by right: every tile with that icon points
+     * at it, and none of them owns it. Only this descriptor lets go. */
+    bool built_in = icon_set_contains(pref);
 
-    free((void *)pdsc->data);
+    icon_pixels_release(pdsc);
+
+    if (built_in == true)
+        return;
 
     // clear all cache references
     for (size_t ref = 0; ref < WIDGET_SLOT_COUNT; ref++)
@@ -841,6 +872,19 @@ static void widget_icon_request(size_t slot)
     if (wctx->item->iconUrl(current_website, url, sizeof(url)) == false)
         return;
 
+    /* An icon of the firmware's own set needs no request: the tile draws the
+     * record straight from flash. No heap block, no copy, and no wait for the
+     * client task. */
+    size_t record_len = 0;
+    const unsigned char *record = icon_set_get_by_url(url, &record_len);
+
+    if (record != NULL && record_len == ICON_SET_RECORD_SIZE)
+    {
+        widget_icon_adopt(wctx, record, LV_COLOR_FORMAT_I4, ICON_SET_PIXEL_SIZE,
+                          ICON_SET_PIXEL_SIZE, ICON_SET_STRIDE, ICON_SET_RECORD_SIZE);
+        return;
+    }
+
     if (openhab_client_request_icon(url, (uint8_t)slot, page_generation) == true)
         wctx->icon_pending = true;
 }
@@ -913,9 +957,7 @@ static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void
 
     if (error == 83 && wctx->img_dsc.data != NULL)
     {
-        lv_image_cache_drop(&wctx->img_dsc);
-        free((void *)wctx->img_dsc.data);
-        wctx->img_dsc.data = NULL;
+        icon_pixels_release(&wctx->img_dsc);
 
         error = lodepng_decode32(&pixels, &png_width, &png_height,
                                  (const unsigned char *)png, png_len);
@@ -964,16 +1006,20 @@ static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void
  *
  * An icon from the firmware's own set is an LVGL indexed image straight from
  * the generator: sixteen palette entries and the packed pixels, laid out
- * exactly as an lv_image_dsc wants them. It is copied, not decoded -- that is
- * the whole point of the set's format: no lodepng, no 4096-byte ARGB8888, no
- * output buffer or inflate state to ask of a heap that has been up for days.
+ * exactly as an lv_image_dsc wants them. widget_icon_request() normally puts
+ * it on the tile straight from flash and never asks the client; one that
+ * arrives here all the same is copied, not decoded -- that is the whole point
+ * of the set's format: no lodepng, no 4096-byte ARGB8888, no output buffer or
+ * inflate state to ask of a heap that has been up for days.
  *
  * Anything else is a PNG that came from the server, and that one does get the
  * decode -- and, if the server serves an icon set larger than the firmware's
  * own, a downscale back to the set's size, so a tile never draws a big custom
  * icon next to small built-in ones. icon_png_decode() does both without a
  * block of the picture's size (see icon_png.h); lodepng is left with the
- * formats it does not take. The decode stays on this
+ * formats it does not take. The result is then reduced to the set's I4
+ * format (icon_reduce_to_i4()), so it costs the tile what a built-in icon
+ * would. The decode stays on this
  * task deliberately. It is single-digit milliseconds against the hundreds the
  * fetch can take, it keeps what is in flight down to the size of the PNG
  * rather than the size of the pixels, and it keeps the malloc and the free of
@@ -1031,9 +1077,7 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
          * better with more heap. */
         if (result == ICON_PNG_NO_MEMORY && wctx->img_dsc.data != NULL)
         {
-            lv_image_cache_drop(&wctx->img_dsc);
-            free((void *)wctx->img_dsc.data);
-            wctx->img_dsc.data = NULL;
+            icon_pixels_release(&wctx->img_dsc);
 
             result = icon_png_decode((const uint8_t *)png, png_len, ICON_SET_PIXEL_SIZE,
                                      res->scratch, res->scratch_len, &pixels,
@@ -1063,17 +1107,81 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
         height = png_height;
         stride = png_width * 4;
         data_size = png_width * png_height * 4;
+
+        icon_reduce_to_i4(res, &pixels, width, height, &cf, &stride, &data_size);
     }
 
-    /* The old pixels go only now that there are new ones to put in their
-     * place. load_icon() freed them up front and so left the tile blank when
-     * the fetch or the decode then failed; a refresh that does not arrive now
-     * leaves the icon that is already there. */
-    if (wctx->img_dsc.data != NULL)
+    widget_icon_adopt(wctx, pixels, cf, width, height, stride, data_size);
+}
+
+/* Reduce a decoded server icon to the built-in set's I4 format, in place.
+ *
+ * 576 bytes instead of 4096 for a 32x32 icon, held for as long as the tile
+ * shows it. The tile then draws it the way it draws a built-in icon, line by
+ * line, with no conversion buffer. The work array comes out of the result's
+ * scratch area when it fits there -- the PNG is in front of it and is no longer
+ * read -- and from the heap otherwise. Any failure keeps the ARGB8888 image,
+ * which is what the tile showed before. */
+static void icon_reduce_to_i4(const struct openhab_result_s *res, unsigned char **pixels,
+                              uint32_t width, uint32_t height, lv_color_format_t *cf,
+                              uint32_t *stride, uint32_t *data_size)
+{
+    if (width % 2 != 0 || (size_t)width * height > 65535u)
+        return;
+
+    size_t work_size = ICON_QUANTIZE_WORK_SIZE(width, height);
+    uint16_t *work = NULL;
+    bool work_on_heap = false;
+
+    if (res->scratch != NULL)
     {
-        lv_image_cache_drop(&wctx->img_dsc);
-        free((void *)wctx->img_dsc.data);
+        uintptr_t start = ((uintptr_t)res->scratch + 1u) & ~(uintptr_t)1u;
+        uintptr_t end = (uintptr_t)res->scratch + res->scratch_len;
+
+        if (start + work_size <= end)
+            work = (uint16_t *)start;
     }
+
+    if (work == NULL)
+    {
+        work = (uint16_t *)malloc(work_size);
+        work_on_heap = true;
+    }
+
+    unsigned char *i4 = NULL;
+
+    if (work != NULL)
+        i4 = (unsigned char *)malloc(ICON_QUANTIZE_I4_SIZE(width, height));
+
+    if (i4 != NULL && icon_quantize_i4(*pixels, width, height, work, i4) == true)
+    {
+        free(*pixels);
+        *pixels = i4;
+        *cf = LV_COLOR_FORMAT_I4;
+        *stride = width / 2;
+        *data_size = (uint32_t)ICON_QUANTIZE_I4_SIZE(width, height);
+    }
+    else
+    {
+        free(i4);
+    }
+
+    if (work_on_heap == true)
+        free(work);
+}
+
+/* Put new pixels on a tile: a heap block the tile now owns, or a built-in
+ * record in flash.
+ *
+ * The old pixels go only now that there are new ones to put in their place.
+ * load_icon() freed them up front and so left the tile blank when the fetch or
+ * the decode then failed; a refresh that does not arrive now leaves the icon
+ * that is already there. */
+static void widget_icon_adopt(struct widget_context_s *wctx, const void *pixels,
+                              lv_color_format_t cf, uint32_t width, uint32_t height,
+                              uint32_t stride, uint32_t data_size)
+{
+    icon_pixels_release(&wctx->img_dsc);
 
     // Initialize an image descriptor for LVGL with the image
     wctx->img_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -1083,7 +1191,7 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
     wctx->img_dsc.header.h = (uint16_t)height;
     wctx->img_dsc.header.stride = stride;
     wctx->img_dsc.data_size = data_size;
-    wctx->img_dsc.data = pixels;
+    wctx->img_dsc.data = (const uint8_t *)pixels;
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("size: %u x %u, data_size %u\n", (unsigned)wctx->img_dsc.header.w,
