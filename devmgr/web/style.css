@@ -70,6 +70,18 @@ button {
 }
 
 button:hover { border-color: var(--accent); }
+
+a.button {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 10px;
+  font-size: .95em;
+  text-decoration: none;
+}
+
+a.button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.subtle { border-color: transparent; color: var(--dim); }
 button:disabled { opacity: .45; cursor: default; }

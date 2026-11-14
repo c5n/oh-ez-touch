@@ -33,6 +33,40 @@ Alles, was der Manager dauerhaft speichert, liegt in `devmgr/data/devmgr.json` (
 
 Direktlinks: `http://localhost:8088/#config=<mac>` öffnet direkt den Einstellungsdialog eines Geräts.
 
+## Das Flottenprotokoll
+
+`http://localhost:8088/fleet` oder die Schaltfläche **Fleet log** zeigt den Verlauf jedes Panels. Es beantwortet Fragen wie „Welches Panel fällt aus, wann und warum?“.
+
+**Aufzeichnung.** Stellen Sie den MQTT-Broker mit der Schaltfläche ⚙ auf dieser Seite ein (Host, Port, Themenpräfix, Prüfintervall). Dann zeichnet der Manager zwei Dinge auf:
+
+* Jeden Wert, den die Panels unter `<prefix>/+/system/#` veröffentlichen, und das Last-Will-Thema `<prefix>/+/status` (siehe [MQTT](mqtt_de.md)). Die Panels senden diese selbst, die Aufzeichnung kostet sie also nichts.
+* In jedem Prüfintervall (standardmäßig 60 s) ein `GET /api/status` und einen Ping pro Panel. Ein Panel, das noch veröffentlicht, aber nicht mehr per HTTP antwortet, ist nur hier sichtbar.
+
+Jeder Datensatz ist eine JSON-Zeile in `devmgr/data/history/JJJJ-MM-TT.jsonl`. Die Dateien werden nie überschrieben oder gelöscht und lassen sich später mit jedem Werkzeug auswerten. `devmgr/data/history/devices.json` listet jedes jemals gesehene Panel mit seiner letzten Adresse, seinem Board, seiner Firmware und seinem Zugangspunkt. Die Seite hält die letzten 3 Tage im Speicher. Ein leerer Broker-Host beendet die Aufzeichnung.
+
+**Die Tabelle** hat eine Zeile pro Panel, die schlechtesten zuerst:
+
+* Status mit einem Wort: `Offline`, `Silent` (5 Minuten keine Nachricht), `No HTTP`, `No ping`, `MQTT down`, `Low heap` (größter freier Block unter 3 KB), `Weak signal` (unter −75 dBm), `Restarted` oder `OK`.
+* Betriebszeit, Neustarts im gewählten Zeitraum, freier Heap, größter freier Block und sein Verlauf.
+* RSSI, Zugangspunkt (nach BSSID nummeriert, mit Kanal), seit dem Start verlorene WLAN-Verbindungen mit dem letzten Reason-Code und Wechsel des Zugangspunkts.
+* MQTT-Offline-Ereignisse, der Anteil beantworteter HTTP-Prüfungen und die Zeit seit der letzten Nachricht.
+
+**Die Detailansicht** (Klick auf eine Zeile): RSSI, Heap (frei und größter Block) und Betriebszeit als Diagramme, Neustarts als gestrichelte Linien, dazu Bänder für den MQTT-Status, die HTTP- und Ping-Prüfungen und den Zugangspunkt. Ein Fadenkreuz bewegt sich über alle Diagramme und zeigt jeden Wert zu diesem Zeitpunkt. Darunter stehen die Ereignisse (Neustarts, Offline, Wechsel des Zugangspunkts, verlorene Verbindungen mit dem Namen des Reason-Codes, Firmware-Wechsel) und die letzte Antwort von `/api/status`.
+
+Damit die Aufzeichnung ständig läuft, starten Sie den Manager als Dienst, zum Beispiel als systemd-Benutzer-Unit:
+
+```ini
+[Unit]
+Description=OhEzTouch device manager and fleet log
+
+[Service]
+ExecStart=/usr/bin/python3 /path/to/oh-ez-touch/devmgr/devmgr.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
 ## Die API des Managers
 
 Die Seite ist ein Client einer kleinen JSON-API, die auch Skripte verwenden können:
@@ -40,7 +74,7 @@ Die Seite ist ein Client einer kleinen JSON-API, die auch Skripte verwenden kön
 | Route | Zweck |
 | ----- | ------- |
 | `GET /api/state` | Einstellungen, Geräte, Scanfortschritt, Updatefortschritt |
-| `POST /api/settings` | Subnetz / Intervall / Aktualisierung / Protokollierungsstufe ändern (wird gespeichert) |
+| `POST /api/settings` | Subnetz / Intervall / Aktualisierung / Protokollierungsstufe ändern, dazu `mqtt_host`, `mqtt_port`, `mqtt_prefix` und `history_probe_s` des Flottenprotokolls (wird gespeichert) |
 | `POST /api/scan` | Hintergrundscan starten: `{"subnet": "192.168.1.0/24"}` |
 | `POST /api/refresh` | Alle Geräte jetzt aktualisieren |
 | `GET /api/log?since=N&level=L` | Konsoleneinträge ab Cursor N |
@@ -55,6 +89,8 @@ Die Seite ist ein Client einer kleinen JSON-API, die auch Skripte verwenden kön
 | `GET /api/update/images` | Pro Ziel verfügbare Images |
 | `POST /api/update/upload` | Eine `.bin` für den nächsten Lauf speichern (roher Inhalt, Header `X-Filename`) |
 | `POST /api/update` | Updates starten: `{"macs": [...], "image": "auto"}` oder `{"image": "upload", "name": "x.bin"}` |
+| `GET /api/fleet?hours=H` | Die Tabelle des Flottenprotokolls: pro Panel die letzten Werte und die Zählungen der letzten H Stunden |
+| `GET /api/fleet/device?dev=<name>&hours=H` | Reihen, Änderungen, HTTP-Prüfungen und Neustarts eines Panels in den letzten H Stunden |
 
 ## Wissenswerte Regeln
 

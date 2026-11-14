@@ -1,0 +1,208 @@
+/* The fleet log page. Builds on style.css: same surfaces, same ink. */
+
+:root {
+  /* Status, fixed: never reused as a series colour, always with a label. */
+  --st-good: #0ca30c;
+  --st-warn: #fab219;
+  --st-serious: #ec835a;
+  --st-critical: #d03b3b;
+
+  /* Categorical slots for access points, dark-surface steps, fixed order. */
+  --ap-0: #3987e5;
+  --ap-1: #d95926;
+  --ap-2: #199e70;
+  --ap-3: #c98500;
+  --ap-4: #d55181;
+  --ap-5: #008300;
+  --ap-6: #9085e9;
+  --ap-7: #e66767;
+
+  /* Series: free heap blue, largest block orange (slots 1 and 2). */
+  --s-1: #3987e5;
+  --s-2: #d95926;
+  --grid: #2a323c;
+}
+
+a.button {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  padding: 5px 10px;
+  text-decoration: none;
+  font-size: .95em;
+}
+
+a.button:hover { border-color: var(--accent); }
+
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: var(--panel-2); }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button.active { background: var(--accent); color: #fff; }
+
+.rec-state { font-size: .85em; white-space: nowrap; }
+
+#rec-panel { width: 320px; }
+#rec-panel input[type=number] { width: 100%; margin-top: 3px; }
+#rec-panel code, .detail-cols code { font-size: .9em; }
+
+/* ------------------------------------------------------------------ tiles */
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 14px 16px 4px;
+}
+
+.stat {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.stat .label { color: var(--dim); font-size: .8em; text-transform: uppercase; letter-spacing: .04em; }
+.stat .value { font-size: 1.6em; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.stat .sub { color: var(--dim); font-size: .82em; }
+
+/* ------------------------------------------------------------------ table */
+
+#fleet {
+  width: calc(100% - 32px);
+  margin: 10px 16px;
+  border-collapse: collapse;
+  font-size: .9em;
+}
+
+#fleet th, #fleet td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+#fleet th {
+  color: var(--dim);
+  font-weight: 500;
+  font-size: .78em;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+#fleet th.num, #fleet td.num { text-align: right; font-variant-numeric: tabular-nums; }
+#fleet th.sortable { cursor: pointer; user-select: none; }
+#fleet th.sortable:hover { color: var(--text); }
+#fleet th.sorted-asc::after { content: " \2191"; color: var(--accent); }
+#fleet th.sorted-desc::after { content: " \2193"; color: var(--accent); }
+
+#fleet tbody tr { cursor: pointer; }
+#fleet tbody tr:hover { background: var(--panel-2); }
+#fleet tbody tr.selected { background: var(--panel-2); box-shadow: inset 3px 0 0 var(--accent); }
+#fleet tr.stale td { color: var(--dim); }
+
+/* A status pill: icon + word, the colour is never the only cue. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .85em;
+}
+
+.pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.pill.good { color: var(--st-good); }
+.pill.warn { color: var(--st-warn); }
+.pill.serious { color: var(--st-serious); }
+.pill.critical { color: var(--st-critical); }
+.pill.none { color: var(--dim); }
+
+td.lvl-warn { color: var(--st-warn); }
+td.lvl-critical { color: var(--st-critical); font-weight: 600; }
+
+.ap-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.ap-chip i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.spark { display: block; }
+
+/* ----------------------------------------------------------------- detail */
+
+#detail {
+  margin: 6px 16px 24px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.detail-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+.detail-head h2 { margin: 0; font-size: 1.1em; }
+
+.chart { margin: 10px 0 2px; }
+.chart-title { display: flex; align-items: baseline; gap: 14px; font-size: .85em; color: var(--dim); }
+.chart-title strong { color: var(--text); font-weight: 600; }
+.legend { display: inline-flex; gap: 12px; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 14px; height: 2px; display: inline-block; }
+.legend i.box { height: 10px; width: 10px; border-radius: 3px; }
+
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart svg text { fill: var(--dim); font-size: 11px; font-family: inherit; }
+.chart svg .grid { stroke: var(--grid); stroke-width: 1; }
+.chart svg .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart svg .reboot { stroke: var(--st-serious); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart svg .cross { stroke: var(--dim); stroke-width: 1; }
+.chart svg .dot { stroke: var(--panel); stroke-width: 2; }
+
+.detail-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+.detail-cols h3 { font-size: .9em; margin: 0 0 6px; color: var(--dim); font-weight: 500; }
+#events { width: 100%; border-collapse: collapse; font-size: .85em; }
+#events td { padding: 3px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+#events td.when { color: var(--dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.status-json {
+  margin: 0;
+  max-height: 340px;
+  overflow: auto;
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 8px;
+  font-size: .8em;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  background: #0f1317;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: .82em;
+  line-height: 1.45;
+  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+  white-space: nowrap;
+}
+
+.tooltip .t { color: var(--dim); margin-bottom: 2px; }
+.tooltip i { display: inline-block; width: 10px; height: 2px; margin-right: 6px; vertical-align: middle; }
+
+@media (max-width: 900px) {
+  .detail-cols { grid-template-columns: 1fr; }
+  #fleet { display: block; overflow-x: auto; }
+}

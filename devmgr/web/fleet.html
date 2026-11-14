@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OhEzTouch Fleet Log</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/fleet.css">
+</head>
+<body>
+
+<header>
+  <h1>OhEzTouch <span class="dim">Fleet Log</span></h1>
+  <div class="header-controls">
+    <span id="rec-state" class="rec-state"></span>
+    <div id="range" class="seg" role="group" aria-label="Time range">
+      <button data-hours="1">1 h</button>
+      <button data-hours="6">6 h</button>
+      <button data-hours="24" class="active">24 h</button>
+      <button data-hours="72">3 d</button>
+    </div>
+    <button id="rec-btn" title="Recording settings">&#9881;</button>
+    <a class="button" href="/">Devices</a>
+  </div>
+</header>
+
+<div id="rec-panel" class="panel hidden">
+  <h2>Recording</h2>
+  <p class="dim small">The panels publish their values to an MQTT broker. The log subscribes to
+    <code>&lt;prefix&gt;/+/system/#</code> and <code>&lt;prefix&gt;/+/status</code>, and checks each panel
+    over HTTP and ping. Empty broker host: not recording.</p>
+  <label>MQTT broker host<br><input id="rec-host" type="text" spellcheck="false"></label>
+  <label>Port<br><input id="rec-port" type="number" min="1" max="65535"></label>
+  <label>Topic prefix<br><input id="rec-prefix" type="text" spellcheck="false"></label>
+  <label>HTTP and ping check every<br>
+    <select id="rec-probe">
+      <option value="30">30 s</option>
+      <option value="60">60 s</option>
+      <option value="120">2 min</option>
+      <option value="300">5 min</option>
+    </select>
+  </label>
+  <button id="rec-save" class="primary">Save</button>
+  <p id="rec-dir" class="dim small"></p>
+</div>
+
+<section id="fleet-stats" class="stats"></section>
+
+<table id="fleet">
+  <thead>
+    <tr>
+      <th class="sortable" data-sort="state">Status</th>
+      <th class="sortable" data-sort="dev">Panel</th>
+      <th class="sortable" data-sort="target">Board</th>
+      <th class="sortable" data-sort="git">Firmware</th>
+      <th class="sortable num" data-sort="uptime">Uptime</th>
+      <th class="sortable num" data-sort="reboots" title="Restarts in the selected range">Restarts</th>
+      <th class="sortable num" data-sort="heap">Heap free</th>
+      <th class="sortable num" data-sort="heapblock" title="Largest free block: what an allocation can get">Largest block</th>
+      <th title="Largest free block over the selected range">Block trend</th>
+      <th class="sortable num" data-sort="rssi">RSSI</th>
+      <th class="sortable" data-sort="ap">AP</th>
+      <th class="sortable num" data-sort="disconnects" title="WLAN connections lost since boot">Lost</th>
+      <th>Last reason</th>
+      <th class="sortable num" data-sort="roams">Roams</th>
+      <th class="sortable num" data-sort="offline_events" title="MQTT offline events in the selected range">Offline</th>
+      <th class="sortable num" data-sort="http_rate" title="Share of HTTP checks answered in the selected range">HTTP</th>
+      <th class="sortable num" data-sort="last_seen">Last seen</th>
+    </tr>
+  </thead>
+  <tbody id="fleet-rows"></tbody>
+</table>
+<p id="fleet-empty" class="dim hidden">Nothing recorded yet. Set the MQTT broker with the &#9881; button.</p>
+
+<section id="detail" class="hidden">
+  <div class="detail-head">
+    <h2 id="detail-title"></h2>
+    <span id="detail-sub" class="dim"></span>
+    <span class="spacer"></span>
+    <button id="detail-close" title="Close">&#10005;</button>
+  </div>
+  <div id="charts"></div>
+  <div class="detail-cols">
+    <div>
+      <h3>Events</h3>
+      <table id="events"><tbody id="event-rows"></tbody></table>
+    </div>
+    <div>
+      <h3>Last <code>/api/status</code></h3>
+      <pre id="detail-status" class="status-json"></pre>
+    </div>
+  </div>
+</section>
+
+<div id="tooltip" class="tooltip hidden" role="status"></div>
+
+<script src="/fleet.js"></script>
+</body>
+</html>

@@ -78,6 +78,62 @@ of the repository by .gitignore, because it contains your real addresses):
 Deep links: `http://localhost:8088/#config=<mac>` opens a device's settings
 dialog directly.
 
+## The fleet log
+
+`http://localhost:8088/fleet`, or the **Fleet log** button, shows the
+history of every panel. It is for questions such as "which panel drops off,
+when, and why?".
+
+**Recording.** Set the MQTT broker with the ⚙ button on that page (host,
+port, topic prefix, check interval). Then the manager records two things:
+
+* Every value the panels publish under `<prefix>/+/system/#` and the
+  last-will topic `<prefix>/+/status` (see [MQTT](mqtt.md)). The panels push
+  these, so recording costs them nothing.
+* Every check interval (60 s by default), one `GET /api/status` and one ping
+  per panel. A panel that still publishes but does not answer HTTP is
+  visible only here.
+
+Each record is one JSON line in `devmgr/data/history/YYYY-MM-DD.jsonl`. The
+files are never rewritten or deleted, so they can be analysed later with any
+tool. `devmgr/data/history/devices.json` lists every panel ever seen, with
+its last address, board, firmware and access point. The page keeps the last
+3 days in memory. An empty broker host stops the recording.
+
+**The table** has one row per panel, worst first:
+
+* Status, with a word: `Offline`, `Silent` (no message for 5 minutes),
+  `No HTTP`, `No ping`, `MQTT down`, `Low heap` (largest free block under
+  3 KB), `Weak signal` (under −75 dBm), `Restarted` or `OK`.
+* Uptime, restarts in the selected range, free heap, largest free block and
+  its trend.
+* RSSI, access point (numbered by BSSID, with the channel), WLAN connections
+  lost since boot with the last reason code, and roams.
+* MQTT offline events, the share of HTTP checks answered, and the time since
+  the last message.
+
+**The detail view** (click a row): RSSI, heap (free and largest block) and
+uptime as charts, with restarts as dashed lines, plus bands for the MQTT
+status, the HTTP and ping checks and the access point. One crosshair moves
+over all charts and shows every value at that time. Below are the events
+(restarts, offline, AP changes, lost connections with the reason name,
+roams, firmware changes) and the last `/api/status` answer.
+
+Run the manager as a service to record all the time, for example as a
+systemd user unit:
+
+```ini
+[Unit]
+Description=OhEzTouch device manager and fleet log
+
+[Service]
+ExecStart=/usr/bin/python3 /path/to/oh-ez-touch/devmgr/devmgr.py
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
+```
+
 ## The manager's own API
 
 The page is a client of a small JSON API, which scripts may use too:
@@ -85,7 +141,7 @@ The page is a client of a small JSON API, which scripts may use too:
 | Route | Purpose |
 | ----- | ------- |
 | `GET /api/state` | Settings, devices, scan progress, update progress |
-| `POST /api/settings` | Change subnet / interval / refresh / log level (persisted) |
+| `POST /api/settings` | Change subnet / interval / refresh / log level, and the fleet log's `mqtt_host`, `mqtt_port`, `mqtt_prefix`, `history_probe_s` (persisted) |
 | `POST /api/scan` | Start a background scan: `{"subnet": "192.168.1.0/24"}` |
 | `POST /api/refresh` | Refresh all devices now |
 | `GET /api/log?since=N&level=L` | Console entries after cursor N |
@@ -100,6 +156,8 @@ The page is a client of a small JSON API, which scripts may use too:
 | `GET /api/update/images` | The images available per target |
 | `POST /api/update/upload` | Store a `.bin` for the next run (raw body, `X-Filename` header) |
 | `POST /api/update` | Start updates: `{"macs": [...], "image": "auto"}` or `{"image": "upload", "name": "x.bin"}` |
+| `GET /api/fleet?hours=H` | The fleet log's table: per panel the last values and the counts over the last H hours |
+| `GET /api/fleet/device?dev=<name>&hours=H` | One panel's series, changes, HTTP checks and restarts over the last H hours |
 
 ## Rules worth knowing
 

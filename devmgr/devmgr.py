@@ -28,6 +28,7 @@ from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import history
 import probe
 import updater
 
@@ -65,6 +66,11 @@ class State:
         # poll a wall of panels forever without someone having chosen that.
         "refresh_enabled": False,
         "log_level": "info",
+        # The fleet log (history.py): empty host = not recording.
+        "mqtt_host": "",
+        "mqtt_port": 1883,
+        "mqtt_prefix": "oheztouch",
+        "history_probe_s": 60,
     }
 
     def __init__(self):
@@ -145,6 +151,9 @@ class State:
 
 
 STATE = State()
+
+# Created in main(), once the log exists: it loads the recorded history.
+RECORDER = None
 
 
 # ------------------------------------------------------------ device records
@@ -453,9 +462,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/":
             return self.serve_static("index.html", "text/html")
-        if path in ("/app.js", "/style.css"):
+        if path == "/fleet":
+            return self.serve_static("fleet.html", "text/html")
+        if path in ("/app.js", "/style.css", "/fleet.js", "/fleet.css"):
             mime = "text/javascript" if path.endswith(".js") else "text/css"
             return self.serve_static(path[1:], mime)
+
+        if path == "/api/fleet":
+            return self.handle_fleet()
+        if path == "/api/fleet/device":
+            return self.handle_fleet_device()
 
         if path == "/api/state":
             return self.handle_state()
@@ -565,10 +581,48 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_error_json("unknown log level")
                 STATE.settings["log_level"] = body["log_level"]
 
+            if "mqtt_host" in body:
+                STATE.settings["mqtt_host"] = str(body["mqtt_host"]).strip()
+
+            if "mqtt_prefix" in body:
+                STATE.settings["mqtt_prefix"] = str(body["mqtt_prefix"]).strip().strip("/") or "oheztouch"
+
+            for key, low, high in (("mqtt_port", 1, 65535), ("history_probe_s", 10, 3600)):
+                if key in body:
+                    try:
+                        value = int(body[key])
+                    except (TypeError, ValueError):
+                        return self.send_error_json("%s must be a number" % key)
+                    if value < low or value > high:
+                        return self.send_error_json("%s out of range (%d..%d)" % (key, low, high))
+                    STATE.settings[key] = value
+
             STATE.save()
             STATE.save_now_if_dirty()
+            RECORDER.configure(STATE.settings)
 
             self.send_json({"settings": STATE.settings})
+
+    # -- API: fleet log --------------------------------------------------
+
+    def query_hours(self):
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        try:
+            hours = float(query.get("hours", ["24"])[0])
+        except ValueError:
+            hours = 24
+        return max(0.25, min(hours, history.RETENTION_S / 3600)), query
+
+    def handle_fleet(self):
+        hours, _ = self.query_hours()
+        self.send_json(RECORDER.summary(hours))
+
+    def handle_fleet_device(self):
+        hours, query = self.query_hours()
+        dev = query.get("dev", [""])[0]
+        if not dev:
+            return self.send_error_json("dev missing")
+        self.send_json(RECORDER.detail(dev, hours))
 
     def handle_log(self):
         since = 0
@@ -862,10 +916,15 @@ def main():
                              "(default 80; the simulator uses 8780)")
     args = parser.parse_args()
 
-    global DEVICE_PORT
+    global DEVICE_PORT, RECORDER
     DEVICE_PORT = args.device_port
 
     stop_event = threading.Event()
+
+    RECORDER = history.Recorder(DATA_DIR, STATE.log, DEVICE_PORT)
+    with STATE.lock:
+        RECORDER.configure(STATE.settings)
+    threading.Thread(target=RECORDER.run, daemon=True).start()
 
     scheduler_thread = threading.Thread(target=scheduler, args=(stop_event,),
                                         daemon=True)
