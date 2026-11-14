@@ -100,6 +100,13 @@ void     openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label,
                                  lv_obj_t *reading);
 void     openhab_ui_clock_detach(void);
 
+/* The text colour, 0xRRGGBB, of the clock items' labels and readings where
+ * the sitemap gives no labelcolor or valuecolor. A sitemap colour wins, as it
+ * does on a tile. Applied at once to the objects lent, and again on every
+ * state update -- which takes local colours off where the item has none and
+ * would otherwise leave the theme's text colour. */
+void     openhab_ui_clock_set_text_color(uint32_t rgb);
+
 /* Whether the configured night mode says the night variant applies right now.
  * For UI_NIGHT_AUTO this reads the clock, so it can change between calls. */
 bool openhab_ui_night_active(Config *config);

@@ -187,6 +187,10 @@ struct widget_context_s widget_context[WIDGET_SLOT_COUNT];
  * the clock screen's cue to rebuild its rows and attach them again. */
 static uint32_t clock_generation;
 
+/* The clock screen's text colour, for the clock slots' text where the
+ * sitemap gives none. OPENHAB_COLOR_NONE until the clock screen sets it. */
+static uint32_t clock_text_rgb = OPENHAB_COLOR_NONE;
+
 struct statistics_s statistics;
 
 void update_state_widget(struct widget_context_s *ctx);
@@ -802,14 +806,24 @@ static void widget_icon_set_bitmap(struct widget_context_s *wctx)
 /* The sitemap's labelcolor, valuecolor and iconcolor on whatever objects the
  * slot has -- a tile's, or the row the clock screen lent it. Local styles on
  * top of the theme's, and taken off again where the item has none: the clock
- * screen's objects outlive the item they are lent to. The icon is tinted
- * whole, which is what line art wants; the placeholder symbol is text, so it
- * takes the same colour as text. */
+ * screen's objects outlive the item they are lent to. Where a clock slot's
+ * item has no text colour, the clock screen's own takes its place, because
+ * there the theme's is not the one on screen. The icon is tinted whole, which
+ * is what line art wants; the placeholder symbol is text, so it takes the
+ * same colour as text. */
 static void widget_apply_colors(struct widget_context_s *wctx)
 {
+    bool     clock_slot = (wctx >= &widget_context[CLOCK_SLOT(0)]);
+    uint32_t text_rgb  = clock_slot ? clock_text_rgb : OPENHAB_COLOR_NONE;
     uint32_t label_rgb = wctx->item->getLabelColor();
     uint32_t value_rgb = wctx->item->getValueColor();
     uint32_t icon_rgb  = wctx->item->getIconColor();
+
+    if (label_rgb == OPENHAB_COLOR_NONE)
+        label_rgb = text_rgb;
+
+    if (value_rgb == OPENHAB_COLOR_NONE)
+        value_rgb = text_rgb;
 
     if (wctx->label != NULL)
     {
@@ -1790,6 +1804,19 @@ void openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label, lv_o
 
     /* Poll at once: what was parsed with the page may be minutes old. */
     wctx->update_timestamp = 0;
+}
+
+void openhab_ui_clock_set_text_color(uint32_t rgb)
+{
+    clock_text_rgb = rgb;
+
+    for (size_t i = 0; i < openhab_ui_clock_item_count(); i++)
+    {
+        struct widget_context_s *wctx = &widget_context[CLOCK_SLOT(i)];
+
+        if (wctx->label != NULL || wctx->state_widget != NULL)
+            widget_apply_colors(wctx);
+    }
 }
 
 void openhab_ui_clock_detach(void)

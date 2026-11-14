@@ -159,17 +159,14 @@ static void clock_colors_apply(bool force)
     clock_text_color(clock_weekday, fg);
     clock_text_color(clock_date, fg);
 
+    /* The items' names and readings through openhab_ui, which colours them
+     * on every state update too: a sitemap labelcolor or valuecolor wins, and
+     * this colour fills in where the item has none. Set here directly, the
+     * colour would be gone after the first update. */
+    openhab_ui_clock_set_text_color(fg);
+
     for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
     {
-        clock_text_color(clock_item_label[i], fg);
-
-        /* The reading is a container of two labels, the value and the unit. */
-        if (clock_item_reading[i] != NULL)
-        {
-            clock_text_color(lv_obj_get_child(clock_item_reading[i], 0), fg);
-            clock_text_color(lv_obj_get_child(clock_item_reading[i], 1), fg);
-        }
-
         if (clock_item_plate[i] != NULL)
             lv_obj_set_style_bg_color(clock_item_plate[i], lv_color_hex(fg), LV_PART_MAIN);
     }

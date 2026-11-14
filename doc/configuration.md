@@ -351,7 +351,9 @@ three items of that frame are shown instead: the name over the value. They
 are not drawn as tiles on the page. With **Show icons of clock items** on,
 each item shows its icon, value and name. The icon keeps its own colours and
 sits on a round plate in the clock text colour, because the icons are drawn
-for a light background.
+for a light background. The name and the value are in the clock text colour.
+A `labelcolor` or `valuecolor` on the item in the sitemap wins, as it does on
+a tile.
 
 ```
 sitemap home label="Home" {
