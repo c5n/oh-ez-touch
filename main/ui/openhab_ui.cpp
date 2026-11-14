@@ -831,6 +831,10 @@ static void widget_icon_request(size_t slot)
     if (wctx->item->getType() == ItemType::type_parent_link)
         return;
 
+    /* The clock items' icons only when the clock screen shows them. */
+    if (slot >= WIDGET_COUNT_MAX && current_config->item.backlight.clock_icons == false)
+        return;
+
     if (wctx->icon_pending == true)
         return;
 
@@ -1655,10 +1659,23 @@ void openhab_ui_clock_attach(size_t index, lv_obj_t *icon, lv_obj_t *label, lv_o
 
     lv_label_set_text(label, wctx->item->getLabel());
 
-    /* The pixels are usually here already -- page_rebuild() asked for them --
-     * and if not, they land on this object when they arrive. */
-    if (wctx->img_dsc.data != NULL)
+    if (icon == NULL)
+    {
+        /* The clock screen shows no icons: give back the pixels of any
+         * fetched while it did. */
+        free_icon(&wctx->img_dsc);
+    }
+    else if (wctx->img_dsc.data != NULL)
+    {
+        /* The pixels are usually here already -- page_rebuild() asked for
+         * them -- and if not, they land on this object when they arrive. */
         widget_icon_set_bitmap(wctx);
+    }
+    else
+    {
+        /* Not fetched while the icons were off. */
+        widget_icon_request(CLOCK_SLOT(index));
+    }
 
     update_state_widget(wctx);
     widget_apply_colors(wctx);

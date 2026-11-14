@@ -297,6 +297,7 @@ only by fallback.
 | Clock text (night) | `#ffffff` | Text colour while the night variant is in effect (see Night mode). |
 | Clock background (night) | `#000000` | Its background colour, by night. |
 | Clock items frame | `Clock` | The label of the `Frame` on the sitemap's home page whose items the clock screen shows. Empty for none. |
+| Show icons of clock items | Off | Show each clock item's icon over its value. Off: the item's name is shown over the value, and the panel does not fetch the clock items' icons. |
 
 When the activity timeout fires, the panel goes back to the sitemap's home
 page. This happens whether or not the clock screen is on. An open item window
@@ -316,9 +317,11 @@ Night mode `auto` the clock screen changes with the schedule.
 
 **Clock items.** Under the time, the clock screen shows the weekday and the
 date. If the home page has a `Frame` with the configured label, the first
-three items of that frame are shown instead: icon, value and name. They are
-not drawn as tiles on the page. Icons from the built-in set take the text
-colour. Icons served by openHAB keep their own colours.
+three items of that frame are shown instead: the name over the value. They
+are not drawn as tiles on the page. With **Show icons of clock items** on,
+each item shows its icon, value and name. The icon keeps its own colours and
+sits on a round plate in the clock text colour, because the icons are drawn
+for a light background.
 
 ```
 sitemap home label="Home" {

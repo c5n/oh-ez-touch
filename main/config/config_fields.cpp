@@ -151,6 +151,11 @@ const struct config_field_s config_fields[] = {
      * reconnects, which reloads the root page. */
     TXT("clock_frame", "Clock items frame", backlight.clock_frame, "backlight",
         "clock_frame", "Clock", 0),
+    /* Live: the clock screen rebuilds its row when this changes. Off by
+     * default: at 32 px on the clock's background an icon is hard to
+     * recognize from across the room, and the item's name is not. */
+    CHK("clock_icons", "Show icons of clock items", backlight.clock_icons,
+        "backlight", "clock_icons", 0, 0),
 
     SEC("Beeper", SETTINGS_TAB_AUDIO),
     CHK("beeper", "Enable beeper", beeper.enabled, "beeper", "enabled", 1, 0),

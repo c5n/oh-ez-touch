@@ -198,6 +198,7 @@ Das Theme wird sofort nach dem Speichern auf dem Bildschirm und im Browser wirks
 | Uhrtext (Nacht) | `#ffffff` | Textfarbe, solange die Nachtvariante aktiv ist (siehe Nachtmodus). |
 | Uhrhintergrund (Nacht) | `#000000` | Hintergrundfarbe bei Nacht. |
 | Rahmen für Uhrelemente | `Clock` | Bezeichnung des `Frame` auf der Sitemap-Startseite, dessen Elemente der Uhrbildschirm anzeigt. Leer bedeutet keine Anzeige. |
+| Symbole der Uhrelemente anzeigen | Off | Das Symbol jedes Uhrelements über seinem Wert anzeigen. Aus: Über dem Wert steht der Name des Elements, und das Panel lädt die Symbole der Uhrelemente nicht. |
 
 Wenn das Inaktivitätszeitlimit abläuft, kehrt das Bedienfeld zur Sitemap-Startseite zurück. Das geschieht unabhängig davon, ob der Uhrbildschirm aktiviert ist. Ein geöffnetes Elementfenster wird geschlossen. Der Einstellungsbildschirm bleibt unverändert.
 
@@ -205,7 +206,7 @@ Bei aktiviertem Uhrbildschirm verläuft das Dimmen über Schwarz. Die Hintergrun
 
 **Farben** haben überall das Format `#rrggbb`: in `config.json`, im Farbwähler des Webformulars, in `/api/config` und in MQTT. Der Einstellungsbildschirm des Bedienfelds bietet eine Palette aus zwölf benannten Farben. Ein anderswo eingestellter Wert, der nicht dazugehört, wird als „Benutzerdefiniert“ angezeigt. Die Tag- und Nacht-Farbpaare folgen der aktiven Theme-Variante. Bei Nachtmodus `auto` ändert sich der Uhrbildschirm also entsprechend dem Zeitplan.
 
-**Uhrelemente.** Unter der Uhrzeit zeigt der Uhrbildschirm den Wochentag und das Datum. Wenn die Startseite einen `Frame` mit der konfigurierten Bezeichnung enthält, werden stattdessen die ersten drei Elemente dieses Rahmens angezeigt: Symbol, Wert und Name. Sie werden nicht als Kacheln auf der Seite dargestellt. Symbole aus dem integrierten Satz übernehmen die Textfarbe. Von openHAB bereitgestellte Symbole behalten ihre eigenen Farben.
+**Uhrelemente.** Unter der Uhrzeit zeigt der Uhrbildschirm den Wochentag und das Datum. Wenn die Startseite einen `Frame` mit der konfigurierten Bezeichnung enthält, werden stattdessen die ersten drei Elemente dieses Rahmens angezeigt: der Name über dem Wert. Sie werden nicht als Kacheln auf der Seite dargestellt. Mit **Symbole der Uhrelemente anzeigen** zeigt jedes Element Symbol, Wert und Name. Das Symbol behält seine eigenen Farben und liegt auf einer runden Fläche in der Textfarbe der Uhr, weil die Symbole für einen hellen Hintergrund gezeichnet sind.
 
 ```
 sitemap home label="Home" {

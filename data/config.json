@@ -33,7 +33,8 @@
         "clock_day_bg":        "#000000",
         "clock_night_fg":      "#ffffff",
         "clock_night_bg":      "#000000",
-        "clock_frame":         "Clock"
+        "clock_frame":         "Clock",
+        "clock_icons":         false
     },
     "beeper":
     {

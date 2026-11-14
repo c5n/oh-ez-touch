@@ -89,10 +89,10 @@ void openhab_ui_request_home(void);
  * page's clock frame (see Sitemap::parse()), polled and iconed by this module
  * like tiles that are not on the page.
  *
- * The clock screen lends each one an image, a label and a ui_reading to draw
- * into, and takes them back before it deletes them. The generation changes
- * whenever a new page rebinds the items -- the objects lent before it are
- * forgotten then, and have to be lent again. 0 items until a home page with a
+ * The clock screen lends each one an image (NULL when it shows no icons), a
+ * label and a ui_reading to draw into, and takes them back before it deletes
+ * them. The generation changes whenever a new page rebinds the items -- the
+ * objects lent before it are forgotten then, and have to be lent again. 0 items until a home page with a
  * clock frame has been parsed. */
 size_t   openhab_ui_clock_item_count(void);
 uint32_t openhab_ui_clock_generation(void);

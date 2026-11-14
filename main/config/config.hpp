@@ -112,6 +112,10 @@ public:
              * three items the clock screen shows under the time, in place of
              * the weekday and the date. See Sitemap::parse(). */
             char clock_frame[32];
+            /* Whether the clock screen shows each clock item's icon over its
+             * reading. Off: the item's name stands over the reading instead,
+             * and the clock items' icons are not fetched. */
+            bool clock_icons;
         } backlight;
         struct
         {

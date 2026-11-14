@@ -185,9 +185,10 @@ Ein Frame auf der **Startseite** der Sitemap hat eine besondere Aufgabe. Wenn
 seine Beschriftung mit der Einstellung **Clock items frame** (standardmäßig
 `Clock`) übereinstimmt, werden seine ersten drei Items statt auf der Seite auf
 dem Uhrenbildschirm angezeigt. Diesen zeigt das Bedienfeld beim Dimmen, wenn
-**Show time and date when dimmed** aktiviert ist. Jedes Item wird als Symbol,
-Wert und Name unter der Uhrzeit angezeigt, dort, wo sonst Wochentag und Datum
-stehen.
+**Show time and date when dimmed** aktiviert ist. Von jedem Item werden Name
+und Wert unter der Uhrzeit angezeigt, dort, wo sonst Wochentag und Datum
+stehen. Die Einstellung **Show icons of clock items** fügt das Symbol jedes
+Items hinzu.
 
 ```
 sitemap home label="Home"

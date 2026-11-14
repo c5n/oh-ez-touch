@@ -31,10 +31,13 @@ static lv_obj_t *clock_time   = NULL;
 static lv_obj_t *clock_weekday = NULL;
 static lv_obj_t *clock_date   = NULL;
 
-/* The lower half in its other form: one column per clock item, each an icon
- * over the reading over the name. All NULL while the date is showing. */
+/* The lower half in its other form: one column per clock item. With the
+ * clock_icons setting on, each is an icon on a round plate over the reading
+ * over the name; with it off, the name over the reading, and the icons and
+ * plates stay NULL. All NULL while the date is showing. */
 static lv_obj_t *clock_row = NULL;
 static lv_obj_t *clock_item_icon[CLOCK_ITEM_COUNT];
+static lv_obj_t *clock_item_plate[CLOCK_ITEM_COUNT];
 static lv_obj_t *clock_item_label[CLOCK_ITEM_COUNT];
 static lv_obj_t *clock_item_reading[CLOCK_ITEM_COUNT];
 
@@ -42,6 +45,7 @@ static lv_obj_t *clock_item_reading[CLOCK_ITEM_COUNT];
  * brought other items -- or none. */
 static size_t   clock_built_count = 0;
 static uint32_t clock_built_generation = 0;
+static bool     clock_built_icons = false;
 
 /* The colours on screen, 0xRRGGBB. Compared every loop against what the
  * settings and the theme variant ask for, so a save or the night schedule
@@ -166,34 +170,8 @@ static void clock_colors_apply(bool force)
             clock_text_color(lv_obj_get_child(clock_item_reading[i], 1), fg);
         }
 
-        if (clock_item_icon[i] != NULL)
-            lv_obj_set_style_image_recolor(clock_item_icon[i], lv_color_hex(fg), LV_PART_MAIN);
-    }
-}
-
-/* Whether each icon wears the text colour, decided by what it is -- and
- * looked at every loop, because the pixels arrive whenever the server
- * answers. The built-in set is single-colour line art drawn for a light tile,
- * which on this screen's background would vanish, so it takes the text colour
- * whole. A server PNG keeps its own colours: a gauge or a weather icon
- * recoloured flat is a disc. */
-static void clock_icons_recolor(void)
-{
-    for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
-    {
-        if (clock_item_icon[i] == NULL)
-            continue;
-
-        const void *src = lv_image_get_src(clock_item_icon[i]);
-        lv_opa_t    want = LV_OPA_TRANSP;
-
-        if (   src != NULL
-            && lv_image_src_get_type(src) == LV_IMAGE_SRC_VARIABLE
-            && ((const lv_image_dsc_t *)src)->header.cf == LV_COLOR_FORMAT_I4)
-            want = LV_OPA_COVER;
-
-        if (lv_obj_get_style_image_recolor_opa(clock_item_icon[i], LV_PART_MAIN) != want)
-            lv_obj_set_style_image_recolor_opa(clock_item_icon[i], want, LV_PART_MAIN);
+        if (clock_item_plate[i] != NULL)
+            lv_obj_set_style_bg_color(clock_item_plate[i], lv_color_hex(fg), LV_PART_MAIN);
     }
 }
 
@@ -220,6 +198,7 @@ static void clock_lower_destroy(void)
     for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
     {
         clock_item_icon[i] = NULL;
+        clock_item_plate[i] = NULL;
         clock_item_label[i] = NULL;
         clock_item_reading[i] = NULL;
     }
@@ -234,6 +213,7 @@ static void clock_lower_build(void)
 
     clock_built_count = openhab_ui_clock_item_count();
     clock_built_generation = openhab_ui_clock_generation();
+    clock_built_icons = clock_config->item.backlight.clock_icons;
 
     if (clock_built_count == 0)
     {
@@ -270,18 +250,40 @@ static void clock_lower_build(void)
                                   LV_FLEX_ALIGN_CENTER);
             lv_obj_set_style_pad_row(column, 2, 0);
 
-            clock_item_icon[i] = lv_image_create(column);
-            lv_obj_set_size(clock_item_icon[i], 32, 32);
+            if (clock_built_icons == true)
+            {
+                /* The icon in its own colours, on a round plate in the text
+                 * colour. The built-in set is line art drawn for a light
+                 * tile: on the clock's dark background its outlines vanish,
+                 * and recoloured flat in the text colour it loses its shape
+                 * (a gauge becomes a disc). The plate gives it the light
+                 * ground it was drawn for. Not scaled up: LVGL's software
+                 * renderer cannot transform the set's indexed format, and a
+                 * scaled icon draws nothing. */
+                clock_item_plate[i] = ui_plain_container(column);
+                lv_obj_set_size(clock_item_plate[i], 44, 44);
+                lv_obj_set_style_radius(clock_item_plate[i], LV_RADIUS_CIRCLE, LV_PART_MAIN);
+                lv_obj_set_style_bg_opa(clock_item_plate[i], LV_OPA_COVER, LV_PART_MAIN);
 
-            clock_item_reading[i] =
-                ui_reading_create(column, &ui_style_label_large, &ui_style_label,
-                                  lv_font_get_line_height(theme->font_large));
+                clock_item_icon[i] = lv_image_create(clock_item_plate[i]);
+                lv_obj_set_size(clock_item_icon[i], 32, 32);
+                lv_obj_center(clock_item_icon[i]);
+            }
 
             clock_item_label[i] = lv_label_create(column);
             lv_obj_add_style(clock_item_label[i], &ui_style_label, LV_PART_MAIN);
             lv_label_set_long_mode(clock_item_label[i], LV_LABEL_LONG_DOT);
             lv_obj_set_width(clock_item_label[i], lv_pct(100));
             lv_obj_set_style_text_align(clock_item_label[i], LV_TEXT_ALIGN_CENTER, 0);
+
+            clock_item_reading[i] =
+                ui_reading_create(column, &ui_style_label_large, &ui_style_label,
+                                  lv_font_get_line_height(theme->font_large));
+
+            /* The name under the reading next to an icon, over it in place
+             * of one. */
+            if (clock_built_icons == true)
+                lv_obj_move_to_index(clock_item_label[i], -1);
 
             openhab_ui_clock_attach(i, clock_item_icon[i], clock_item_label[i],
                                     clock_item_reading[i]);
@@ -357,6 +359,7 @@ static void clock_forget(void)
     for (size_t i = 0; i < CLOCK_ITEM_COUNT; i++)
     {
         clock_item_icon[i] = NULL;
+        clock_item_plate[i] = NULL;
         clock_item_label[i] = NULL;
         clock_item_reading[i] = NULL;
     }
@@ -416,12 +419,12 @@ void ui_clock_loop(void)
 
     /* A new home page, or the first one: the lower half follows it. */
     if (   openhab_ui_clock_generation() != clock_built_generation
-        || openhab_ui_clock_item_count() != clock_built_count)
+        || openhab_ui_clock_item_count() != clock_built_count
+        || clock_config->item.backlight.clock_icons != clock_built_icons)
         clock_lower_build();
 
     /* Every iteration, which costs a few comparisons when nothing changed. */
     clock_colors_apply(false);
-    clock_icons_recolor();
 
     clock_update();
 }

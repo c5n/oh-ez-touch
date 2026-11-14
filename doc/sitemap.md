@@ -169,8 +169,9 @@ One Frame on the sitemap's **home page** has a job of its own. When its label
 matches the **Clock items frame** setting (`Clock` by default), its first
 three items go to the clock screen instead of to the page. The clock screen is
 what the panel shows when it dims, if **Show time and date when dimmed** is
-on. It shows each item as icon, value and name under the time, where the
-weekday and the date would otherwise be.
+on. It shows each item's name and value under the time, where the weekday
+and the date would otherwise be. The setting **Show icons of clock items**
+adds each item's icon.
 
 ```
 sitemap home label="Home"
