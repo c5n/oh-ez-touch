@@ -33,6 +33,11 @@ Jedes Topic beginnt mit `<base topic>/<hostname>`. Mit den Standardwerten ist da
 | `system/bssid` | bei jedem Intervall | Die MAC-Adresse des Zugangspunkts oder, wenn kein Funkmodul vorhanden ist, die eigene |
 | `system/rssi` | bei jedem Intervall | dBm. Fehlt, wenn kein Funkmodul vorhanden ist. |
 | `system/quality` | bei jedem Intervall | Derselbe Wert als Prozentangabe, auf der Skala der Statusleiste |
+| `system/wlan_channel` | bei jedem Intervall | Der Kanal des Zugangspunkts. Fehlt, wenn kein Funkmodul vorhanden ist. |
+| `system/wlan_online` | bei jedem Intervall | Sekunden, die die Station ohne Unterbrechung online ist |
+| `system/wlan_disconnects` | bei jedem Intervall | Wie oft die Station seit dem Start ihren Zugangspunkt verloren hat |
+| `system/wlan_reason` | bei jedem Intervall | Der 802.11-Reason-Code des letzten Verlusts (ESP-IDF `wifi_err_reason_t`), 0, wenn es keinen gab |
+| `system/wlan_roams` | bei jedem Intervall | Wie oft die Station seit dem Start zu einem stärkeren Zugangspunkt gewechselt ist |
 | `ui/night` | bei jedem Intervall | `ON`, solange die Nachtvariante aktiv ist |
 | `ui/backlight` | bei Änderung und bei jedem Intervall | `ON`, wenn das Display aktiviert ist, `OFF`, wenn es gedimmt ist |
 | `ui/brightness` | bei Änderung und bei jedem Intervall | `0` bis `100`, der aktuell geltende Wert |

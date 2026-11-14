@@ -37,6 +37,14 @@ const char *wlan_sta_ssid(void)
     return wlan_sta_ssid_buf;
 }
 
+/* Written by the event handler and the loop, read by the web server: single
+ * aligned words, so a reader sees an old or a new value, never half of one. */
+static volatile uint32_t stat_connects = 0;
+static volatile uint32_t stat_disconnects = 0;
+static volatile uint32_t stat_roams = 0;
+static volatile uint8_t  stat_last_reason = 0;
+static uint64_t          stat_online_since = 0;
+
 #if !CONFIG_IDF_TARGET_LINUX
 
 #include "esp_event.h"
@@ -66,6 +74,24 @@ const char *wlan_sta_ssid(void)
 #define WLAN_AP_TIMEOUT (10 * 60 * 1000)
 #endif
 
+/* Roaming between the access points of one SSID. A site with several APs on
+ * one network name (UniFi, Omada, any mesh) lets a station pick its AP, and
+ * the station keeps that AP until the link drops. The connect already takes
+ * the strongest AP of a full scan. Later, an AP can restart, change channel or
+ * be added, and the panel would stay on a weak one. So every
+ * WLAN_ROAM_INTERVAL, while online, the station scans for its own SSID and
+ * moves to another AP if that one is at least WLAN_ROAM_MARGIN dB stronger.
+ * The margin keeps a wall panel between two equal APs from moving back and
+ * forth on RSSI noise. A move costs a reassociation and a DHCP renewal, a few
+ * seconds offline. */
+#ifndef WLAN_ROAM_INTERVAL
+#define WLAN_ROAM_INTERVAL (5 * 60 * 1000)
+#endif
+
+#ifndef WLAN_ROAM_MARGIN
+#define WLAN_ROAM_MARGIN 8
+#endif
+
 static esp_netif_t *sta_netif = NULL;
 static esp_netif_t *ap_netif = NULL;
 
@@ -81,6 +107,23 @@ static bool wlan_ap_spent = false;
  * replaces the WiFi.status() == WL_CONNECTED test, which asked the driver the
  * same question. */
 static volatile bool sta_has_ip = false;
+
+/* Associated with an AP, whether or not there is an IP yet. Set and cleared by
+ * the event handler; a roam waits for it to go false before it connects to
+ * the new AP. */
+static volatile bool sta_associated = false;
+
+/* The roaming scan: started by the loop, finished by the event handler, read
+ * back by the loop. roam_scan_running filters WIFI_EVENT_SCAN_DONE, which is
+ * also posted for the settings screen's scan (port_net.c). */
+static volatile bool roam_scan_running = false;
+static volatile bool roam_scan_done = false;
+static uint64_t      wlan_roam_deadline = 0;
+
+/* A roam in progress: the AP to connect to once the old one is left. */
+static bool    roam_pending = false;
+static uint8_t roam_bssid[6];
+static uint8_t roam_channel = 0;
 
 static uint64_t wlan_connect_deadline = 0;
 static uint64_t wlan_retry_deadline = 0;
@@ -147,12 +190,36 @@ bool wlan_credentials_import(char *ssid, size_t ssid_size, char *psk, size_t psk
 static void wlan_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg;
-    (void)data;
 
     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP)
+    {
         sta_has_ip = true;
+    }
+    else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_CONNECTED)
+    {
+        sta_associated = true;
+        stat_connects = stat_connects + 1;
+    }
     else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED)
+    {
+        const wifi_event_sta_disconnected_t *ev = (const wifi_event_sta_disconnected_t *)data;
+
+        /* Only the loss of an association counts: a connect attempt that
+         * finds no AP reports a disconnect too. */
+        if (sta_associated == true)
+            stat_disconnects = stat_disconnects + 1;
+
+        if (ev != NULL)
+            stat_last_reason = ev->reason;
+
         sta_has_ip = false;
+        sta_associated = false;
+    }
+    else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE && roam_scan_running == true)
+    {
+        roam_scan_running = false;
+        roam_scan_done = true;
+    }
 }
 
 static void wlan_ap_raise(void)
@@ -204,12 +271,22 @@ static void wlan_ap_drop(void)
 #endif
 }
 
-static void wlan_connect_begin(void)
+/* Connect to the configured SSID. bssid NULL: the strongest AP of a full
+ * scan. Otherwise exactly that AP, on that channel -- a roam, which falls back
+ * to the plain connect if it fails. */
+static void wlan_connect_to(const uint8_t *bssid, uint8_t channel)
 {
     wifi_config_t conf = {};
 
     strlcpy((char *)conf.sta.ssid, wlan_sta_ssid_buf, sizeof(conf.sta.ssid));
     strlcpy((char *)conf.sta.password, wlan_sta_psk_buf, sizeof(conf.sta.password));
+
+    if (bssid != NULL)
+    {
+        memcpy(conf.sta.bssid, bssid, sizeof(conf.sta.bssid));
+        conf.sta.bssid_set = true;
+        conf.sta.channel = channel;
+    }
 
     /* All-channel scan, best signal wins -- not the fast scan the driver
      * defaults to. A site with several access points on one SSID otherwise
@@ -233,6 +310,116 @@ static void wlan_connect_begin(void)
 #if CONFIG_OHEZ_DEBUG_WLAN
     printf("wlan: connecting to '%s'\r\n", wlan_sta_ssid_buf);
 #endif
+}
+
+static void wlan_connect_begin(void)
+{
+    roam_pending = false;
+    wlan_connect_to(NULL, 0);
+}
+
+/* Start a scan for the configured SSID, in the background of the connection.
+ * Quietly skipped when the driver refuses, e.g. because the settings screen
+ * is scanning: the next interval tries again. */
+static void wlan_roam_scan_start(void)
+{
+    wlan_roam_deadline = port_millis() + WLAN_ROAM_INTERVAL;
+
+    /* Not while the setup AP is up: the station is not the only user of the
+     * channel then. */
+    if (wlan_ap_is_up == true || roam_scan_running == true)
+        return;
+
+    wifi_scan_config_t scan = {};
+
+    scan.ssid = (uint8_t *)wlan_sta_ssid_buf;
+    scan.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+    scan.scan_time.active.min = 30;
+    scan.scan_time.active.max = 60;
+    /* Back on the home channel between two scanned channels, so the openHAB
+     * connection keeps moving during the scan; the same with BLE sharing the
+     * radio. */
+    scan.home_chan_dwell_time = 30;
+    scan.coex_background_scan = true;
+
+    roam_scan_done = false;
+    roam_scan_running = true;
+
+    if (esp_wifi_scan_start(&scan, false) != ESP_OK)
+        roam_scan_running = false;
+}
+
+/* The scan is done: find the strongest other AP of the SSID, and move to it
+ * if it is clearly better than the current one. */
+static void wlan_roam_evaluate(void)
+{
+    roam_scan_done = false;
+
+    wifi_ap_record_t current;
+
+    if (esp_wifi_sta_get_ap_info(&current) != ESP_OK)
+    {
+        esp_wifi_clear_ap_list();
+        return;
+    }
+
+    wifi_ap_record_t record;
+    bool             found = false;
+    int8_t           best_rssi = -128;
+    uint8_t          best_bssid[6];
+    uint8_t          best_channel = 0;
+
+    /* One record at a time: the list is the driver's, and a copy of all of it
+     * would be a heap allocation for a few bytes of answer. */
+    while (esp_wifi_scan_get_ap_record(&record) == ESP_OK)
+    {
+        if (strncmp((const char *)record.ssid, wlan_sta_ssid_buf, sizeof(record.ssid)) != 0)
+            continue;
+
+        if (memcmp(record.bssid, current.bssid, sizeof(record.bssid)) == 0)
+            continue;
+
+        if (record.rssi > best_rssi)
+        {
+            found = true;
+            best_rssi = record.rssi;
+            memcpy(best_bssid, record.bssid, sizeof(best_bssid));
+            best_channel = record.primary;
+        }
+    }
+
+    esp_wifi_clear_ap_list();
+
+    if (found == false || best_rssi < current.rssi + WLAN_ROAM_MARGIN)
+    {
+#if CONFIG_OHEZ_DEBUG_WLAN
+        printf("wlan: staying on %02x:%02x:%02x:%02x:%02x:%02x (%d dBm), best other %d dBm\r\n",
+               current.bssid[0], current.bssid[1], current.bssid[2], current.bssid[3],
+               current.bssid[4], current.bssid[5], current.rssi, found ? best_rssi : 0);
+#endif
+        return;
+    }
+
+    /* Rare enough on a wall panel to be worth a line on the console always. */
+    printf("wlan: roaming from %02x:%02x:%02x:%02x:%02x:%02x (%d dBm) to "
+           "%02x:%02x:%02x:%02x:%02x:%02x (%d dBm, channel %u)\r\n",
+           current.bssid[0], current.bssid[1], current.bssid[2], current.bssid[3],
+           current.bssid[4], current.bssid[5], current.rssi,
+           best_bssid[0], best_bssid[1], best_bssid[2], best_bssid[3], best_bssid[4],
+           best_bssid[5], best_rssi, (unsigned)best_channel);
+
+    /* Leave the old AP first and connect once the driver reports it left:
+     * a connect issued while the station is still associated is refused. */
+    memcpy(roam_bssid, best_bssid, sizeof(roam_bssid));
+    roam_channel = best_channel;
+    roam_pending = true;
+    stat_roams = stat_roams + 1;
+
+    sta_has_ip = false;
+    wlan_current = WLAN_CONNECTING;
+    wlan_connect_deadline = port_millis() + WLAN_CONNECT_TIMEOUT;
+
+    esp_wifi_disconnect();
 }
 
 /* Entering an offline episode: start the retry timer, and open the access
@@ -322,10 +509,17 @@ void wlan_loop(void)
     switch (wlan_current)
     {
     case WLAN_CONNECTING:
-        if (sta_has_ip == true)
+        if (roam_pending == true && sta_associated == false)
+        {
+            roam_pending = false;
+            wlan_connect_to(roam_bssid, roam_channel);
+        }
+        else if (sta_has_ip == true)
         {
             wlan_current = WLAN_ONLINE;
+            stat_online_since = port_millis();
             wlan_ap_linger_deadline = port_millis() + WLAN_AP_LINGER;
+            wlan_roam_deadline = port_millis() + WLAN_ROAM_INTERVAL;
             wlan_ap_spent = false;
 
 #if CONFIG_OHEZ_DEBUG_WLAN
@@ -336,6 +530,7 @@ void wlan_loop(void)
         }
         else if (port_millis() >= wlan_connect_deadline)
         {
+            roam_pending = false;
             esp_wifi_disconnect();
             wlan_go_offline();
         }
@@ -343,9 +538,28 @@ void wlan_loop(void)
 
     case WLAN_ONLINE:
         if (sta_has_ip == false)
-            wlan_go_offline();
+        {
+            /* Lost the link: try again at once, on the strongest AP. An AP
+             * that restarts, a controller that moves a client, or a minimum
+             * RSSI that kicks it all end here, and another AP of the SSID is
+             * usually there. Only when this attempt fails too is the panel
+             * offline, with the retry timer and the setup AP. */
+            roam_scan_running = false;
+            roam_scan_done = false;
+            wlan_connect_begin();
+        }
         else if (wlan_ap_is_up == true && port_millis() >= wlan_ap_linger_deadline)
+        {
             wlan_ap_drop();
+        }
+        else if (roam_scan_done == true)
+        {
+            wlan_roam_evaluate();
+        }
+        else if (port_millis() >= wlan_roam_deadline)
+        {
+            wlan_roam_scan_start();
+        }
         break;
 
     case WLAN_RETRY_WAIT:
@@ -397,6 +611,24 @@ const char *wlan_ap_ssid(void)
         return NULL;
 
     return wlan_config->item.general.hostname;
+}
+
+void wlan_stats(struct wlan_stats_s *out)
+{
+    out->connects = stat_connects;
+    out->disconnects = stat_disconnects;
+    out->roams = stat_roams;
+    out->last_reason = stat_last_reason;
+    out->channel = 0;
+    out->online_s = 0;
+
+    wifi_ap_record_t ap;
+
+    if (sta_associated == true && esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+        out->channel = ap.primary;
+
+    if (wlan_current == WLAN_ONLINE)
+        out->online_s = (uint32_t)((port_millis() - stat_online_since) / 1000);
 }
 
 uint32_t wlan_ap_ip(void)
@@ -468,6 +700,12 @@ const char *wlan_ap_ssid(void)
 uint32_t wlan_ap_ip(void)
 {
     return 0;
+}
+
+void wlan_stats(struct wlan_stats_s *out)
+{
+    /* No radio: nothing to count. */
+    memset(out, 0, sizeof(*out));
 }
 
 #endif /* CONFIG_IDF_TARGET_LINUX */

@@ -37,6 +37,22 @@ bool wlan_set_credentials(const char *ssid, const char *psk);
 
 enum wlan_state_e wlan_state(void);
 
+/* Counters for the fleet's status: how often the station associated, lost
+ * its AP and roamed since boot, the 802.11 reason code of the last loss
+ * (wifi_err_reason_t, 0: none yet), the channel it is on (0: not associated)
+ * and how long it has been online in one piece (0: not online). */
+struct wlan_stats_s
+{
+    uint32_t connects;
+    uint32_t disconnects;
+    uint32_t roams;
+    uint8_t  last_reason;
+    uint8_t  channel;
+    uint32_t online_s;
+};
+
+void wlan_stats(struct wlan_stats_s *out);
+
 /* The setup access point, or NULL when it is down. The address is returned
  * raw so that this header does not need IPAddress. */
 const char *wlan_ap_ssid(void);

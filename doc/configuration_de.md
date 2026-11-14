@@ -15,6 +15,22 @@ Ein neues Gerät hat keine WLAN-Zugangsdaten. Es öffnet einen offenen Zugangspu
 
 Ein Gerät mit Zugangsdaten, über die es sein Netzwerk nicht erreichen kann, öffnet denselben Zugangspunkt zehn Minuten lang. Danach versucht es weiterhin unauffällig, eine Verbindung herzustellen. Der Zugangspunkt ist ein offenes Netzwerk und der Firmware-Update-Endpunkt ist nicht authentifiziert. Deshalb bleibt er nicht unbegrenzt aktiv.
 
+### Mehrere Zugangspunkte mit einem Netzwerknamen
+
+Viele Installationen haben mehrere Zugangspunkte mit derselben SSID, zum Beispiel UniFi, Omada oder ein Mesh. Jeder Zugangspunkt hat seine eigene BSSID. Das Panel geht damit so um:
+
+- **Verbinden:** Das Panel durchsucht alle Kanäle und verbindet sich mit dem Zugangspunkt mit dem stärksten Signal.
+- **Alle 5 Minuten, solange es online ist:** Das Panel sucht nach seiner eigenen SSID. Ist ein anderer Zugangspunkt mindestens 8 dB stärker als der aktuelle, wechselt das Panel zu ihm. Der Abstand verhindert, dass ein Panel zwischen zwei gleich starken Zugangspunkten hin und her wechselt. Ein Wechsel kostet etwa 4 Sekunden Verbindung.
+- **Verbindung verloren:** Das Panel verbindet sich sofort erneut, mit dem stärksten Zugangspunkt. Der Einrichtungs-Zugangspunkt und der 60-s-Wiederholungstimer starten erst, wenn auch dieser Versuch scheitert.
+
+`GET /api/status` und die MQTT-Themen `system/wlan_*` zeigen den Kanal, die Zeit online, die Zahl der verlorenen Verbindungen mit dem Reason-Code der letzten und die Zahl der Wechsel.
+
+Wichtige UniFi-Einstellungen:
+
+- **Sicherheit:** WPA2 oder WPA2/WPA3-Mischmodus. Nur WPA3 funktioniert nicht (siehe Hinweis unten).
+- **Fast Roaming (802.11r) und BSS Transition (802.11v):** Das Panel nutzt sie nicht. Beide können eingeschaltet bleiben: Das Panel verbindet sich mit einfachem WPA2-PSK.
+- **Minimum RSSI:** Ein Zugangspunkt trennt einen Client unterhalb dieses Pegels. Das Panel verbindet sich dann sofort erneut mit dem stärksten Zugangspunkt. Stellen Sie den Wert nicht höher ein als das Signal, das das Panel an seinem besten Zugangspunkt hat.
+
 **Ein Gerät ohne WLAN-Zugangsdaten öffnet beim Start auch selbst den Einstellungsbildschirm**, auf der WLAN-Seite. Die gesamte Einrichtung kann am Bedienfeld vorgenommen werden: suchen, Netzwerk auswählen, Passwort eingeben und dann die Seite verlassen. Ein zweites Gerät und ein Browser sind nicht erforderlich.
 
 > **HINWEIS:** Die WLAN-Station unterstützt WPA2, nicht WPA3. `CONFIG_ESP_WIFI_ENABLE_WPA3_SAE` ist in `sdkconfig.defaults.esp32` deaktiviert. Das spart 37 KB Flash-Speicher. Ein Zugangspunkt im WPA2/WPA3-Mischmodus akzeptiert das Bedienfeld als WPA2-Client. Ein Zugangspunkt, der ausschließlich für WPA3 konfiguriert ist, weist das Bedienfeld zurück. Das äußert sich darin, dass das Bedienfeld seinen eigenen Zugangspunkt öffnet und wiederholt Verbindungsversuche unternimmt. Aktivieren Sie die Option und erstellen Sie die Firmware neu, wenn Sie ein solches Netzwerk verwenden.
@@ -124,7 +140,7 @@ Seit Version 0.91 gibt es außerdem eine REST-API. Sie ist für Werkzeuge gedach
 
 | Route | Zweck |
 | --- | --- |
-| `GET /api/status` | Version, Ziel, Betriebszeit, Netzwerk und Heap als JSON. Keine Nebenwirkungen (kein Sitemap-Abruf, kein mDNS-Scan). Kann gefahrlos regelmäßig abgefragt werden. |
+| `GET /api/status` | Version, Ziel, Betriebszeit, Netzwerk, WLAN-Zähler (`wlan`) und Heap als JSON. Keine Nebenwirkungen (kein Sitemap-Abruf, kein mDNS-Scan). Kann gefahrlos regelmäßig abgefragt werden. |
 | `GET /api/config` | Jede Einstellung mit Bezeichnung, Typ, Wert und Wertebereich oder Optionen als JSON. Geheimnisse werden als `***` maskiert. |
 | `POST /api/config` | Ein JSON-Objekt mit geänderten Einstellungen. Nicht angegebene Felder bleiben unverändert. Ein abgelehnter Wert macht die gesamte Anfrage rückgängig. |
 | `GET /api/sounds` | Das Klangverzeichnis des aktiven Themes. |

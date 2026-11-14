@@ -56,6 +56,13 @@ static void test_status_has_the_fleet_fields(void)
     st.ip = "192.168.1.50";
     st.mac = "aa:bb:cc:dd:ee:ff";
     st.free_heap = 123456;
+    st.largest_block = 7424;
+    st.wlan_connects = 3;
+    st.wlan_disconnects = 2;
+    st.wlan_roams = 1;
+    st.wlan_last_reason = 200;
+    st.wlan_channel = 6;
+    st.wlan_online_s = 3600;
 
     size_t need = webui_api_status_json(&st, NULL, 0);
 
@@ -82,6 +89,13 @@ static void test_status_has_the_fleet_fields(void)
     TEST_ASSERT_EQUAL_STRING("192.168.1.50", doc["ip"]);
     TEST_ASSERT_EQUAL_STRING("aa:bb:cc:dd:ee:ff", doc["mac"]);
     TEST_ASSERT_EQUAL(123456, doc["free_heap"]);
+    TEST_ASSERT_EQUAL(7424, doc["largest_block"]);
+    TEST_ASSERT_EQUAL(6, doc["wlan"]["channel"]);
+    TEST_ASSERT_EQUAL(3600, doc["wlan"]["online_s"]);
+    TEST_ASSERT_EQUAL(3, doc["wlan"]["connects"]);
+    TEST_ASSERT_EQUAL(2, doc["wlan"]["disconnects"]);
+    TEST_ASSERT_EQUAL(200, doc["wlan"]["last_reason"]);
+    TEST_ASSERT_EQUAL(1, doc["wlan"]["roams"]);
 }
 
 static void test_status_omits_rssi_when_wired(void)
@@ -107,6 +121,7 @@ static void test_status_omits_rssi_when_wired(void)
 
     TEST_ASSERT_TRUE(doc["wired"]);
     TEST_ASSERT_TRUE(doc["rssi"].isNull());
+    TEST_ASSERT_TRUE(doc["wlan"].isNull());
 }
 
 /* ------------------------------------------------------------------ config */

@@ -42,6 +42,16 @@ struct webui_api_status_s
     const char        *ip;
     const char        *mac;
     unsigned long      free_heap;
+    unsigned long      largest_block; /* biggest free heap block, 0: unknown */
+
+    /* The station's history since boot (net/wlan.hpp), as "wlan". Left out
+     * when wired. */
+    unsigned long wlan_connects;
+    unsigned long wlan_disconnects;
+    unsigned long wlan_roams;
+    unsigned      wlan_last_reason;
+    unsigned      wlan_channel;
+    unsigned long wlan_online_s;
 };
 
 size_t webui_api_status_json(const struct webui_api_status_s *st, char *out, size_t out_size);

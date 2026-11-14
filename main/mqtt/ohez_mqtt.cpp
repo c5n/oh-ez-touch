@@ -27,6 +27,11 @@
  *   <prefix>/system/bssid            the access point's MAC, or the own one
  *   <prefix>/system/rssi             dBm -- absent on a wired host
  *   <prefix>/system/quality          the same as a percentage
+ *   <prefix>/system/wlan_channel     the channel of the AP      -- absent wired
+ *   <prefix>/system/wlan_online      seconds online in one piece
+ *   <prefix>/system/wlan_disconnects APs lost since boot
+ *   <prefix>/system/wlan_reason      802.11 reason of the last loss, 0: none
+ *   <prefix>/system/wlan_roams       moves to a stronger AP since boot
  *   <prefix>/ui/night                ON while the night variant is in effect
  *   <prefix>/ui/backlight            ON awake, OFF while dimmed
  *   <prefix>/ui/brightness           the level in effect now, 0 to 100
@@ -107,6 +112,7 @@
 #include "config/config_fields.hpp"
 #include "control/backlight_control.hpp"
 #include "debug.h"
+#include "net/wlan.hpp"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "ui/openhab_ui.hpp"
@@ -563,6 +569,23 @@ static void publish_system(Config &config)
 
         snprintf(value, sizeof(value), "%u", (unsigned)openhab_ui_signal_quality(net.rssi));
         publish("system/quality", value);
+
+        /* The station's history: what a fleet's dropouts are analysed from.
+         * Same reasoning for skipping them wired as for the RSSI. */
+        struct wlan_stats_s ws;
+
+        wlan_stats(&ws);
+
+        snprintf(value, sizeof(value), "%u", (unsigned)ws.channel);
+        publish("system/wlan_channel", value);
+        snprintf(value, sizeof(value), "%lu", (unsigned long)ws.online_s);
+        publish("system/wlan_online", value);
+        snprintf(value, sizeof(value), "%lu", (unsigned long)ws.disconnects);
+        publish("system/wlan_disconnects", value);
+        snprintf(value, sizeof(value), "%u", (unsigned)ws.last_reason);
+        publish("system/wlan_reason", value);
+        snprintf(value, sizeof(value), "%lu", (unsigned long)ws.roams);
+        publish("system/wlan_roams", value);
     }
 
     /* Not a setting, which is why it is not under config/: with the night mode

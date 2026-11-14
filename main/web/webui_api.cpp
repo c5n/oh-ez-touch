@@ -17,6 +17,7 @@
 #include "webui_transport.h"
 
 #include "config/config_fields.hpp"
+#include "net/wlan.hpp"
 #include "port/port_net.h"
 #include "port/port_sys.h"
 #include "version.h"
@@ -86,6 +87,17 @@ static void webui_api_handle_status(webui_request_t *req)
     status.ip = net.ip;
     status.mac = net.mac;
     status.free_heap = (unsigned long)port_free_heap();
+    status.largest_block = (unsigned long)port_largest_free_block();
+
+    struct wlan_stats_s ws;
+
+    wlan_stats(&ws);
+    status.wlan_connects = ws.connects;
+    status.wlan_disconnects = ws.disconnects;
+    status.wlan_roams = ws.roams;
+    status.wlan_last_reason = ws.last_reason;
+    status.wlan_channel = ws.channel;
+    status.wlan_online_s = ws.online_s;
 
     webui_api_send_json(req, produce_status);
 }

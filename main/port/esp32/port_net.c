@@ -102,6 +102,12 @@ static void scan_done_handler(void *arg, esp_event_base_t base, int32_t id, void
 
     const wifi_event_sta_scan_done_t *done = (const wifi_event_sta_scan_done_t *)data;
 
+    /* The event is posted for every scan, also for the station's roaming scan
+     * (net/wlan_radio.cpp). Fetching the list here would take that scan's
+     * results away from it. */
+    if (scan_running == false)
+        return;
+
     scan_running = false;
 
     if (done == NULL || done->status != 0)

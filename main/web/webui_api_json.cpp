@@ -48,6 +48,19 @@ size_t webui_api_status_json(const struct webui_api_status_s *st, char *out,
     doc["ip"] = st->ip;
     doc["mac"] = st->mac;
     doc["free_heap"] = st->free_heap;
+    doc["largest_block"] = st->largest_block;
+
+    if (st->wired == false)
+    {
+        JsonObject wlan = doc["wlan"].to<JsonObject>();
+
+        wlan["channel"] = st->wlan_channel;
+        wlan["online_s"] = st->wlan_online_s;
+        wlan["connects"] = st->wlan_connects;
+        wlan["disconnects"] = st->wlan_disconnects;
+        wlan["last_reason"] = st->wlan_last_reason;
+        wlan["roams"] = st->wlan_roams;
+    }
 
     return emit(doc, out, out_size);
 }

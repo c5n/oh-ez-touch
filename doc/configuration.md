@@ -25,6 +25,36 @@ point for ten minutes. Then it keeps retrying quietly. The access point is an
 open network and the firmware update endpoint is unauthenticated. That is why
 it does not stay up indefinitely.
 
+### Several access points with one network name
+
+Many sites have several access points with the same SSID, for example a
+UniFi, Omada or mesh installation. Each access point has its own BSSID. The
+panel handles this as follows:
+
+- **Connect:** the panel scans all channels and connects to the access point
+  with the strongest signal.
+- **Every 5 minutes while online:** the panel scans for its own SSID. If
+  another access point is at least 8 dB stronger than the current one, the
+  panel moves to it. The margin stops a panel between two equal access points
+  from moving back and forth. A move takes about 4 seconds offline.
+- **Lost connection:** the panel connects again at once, to the strongest
+  access point. The setup access point and the 60 s retry timer start only
+  when this attempt fails too.
+
+`GET /api/status` and the MQTT topics `system/wlan_*` show the channel, the
+time online, the number of lost connections with the reason code of the last
+one, and the number of moves.
+
+UniFi settings that matter:
+
+- **Security:** WPA2, or WPA2/WPA3 mixed mode. WPA3 only does not work (see
+  the note below).
+- **Fast Roaming (802.11r) and BSS Transition (802.11v):** the panel does not
+  use them. Both can stay on: the panel connects with plain WPA2-PSK.
+- **Minimum RSSI:** an access point disconnects a client below this level.
+  The panel then connects again at once to the strongest access point. Do not
+  set it higher than the signal the panel has at its best access point.
+
 **A device without WLAN credentials also opens the settings screen by itself
 at boot**, on the WLAN page. The full setup can be done on the panel: scan,
 pick the network, type the password, then leave the page. No second device
@@ -209,7 +239,7 @@ Since 0.91 there is also a REST API. It is meant for tooling. The
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/status` | Version, target, uptime, network and heap as JSON. No side effects (no sitemap fetch, no mDNS scan). Safe to poll. |
+| `GET /api/status` | Version, target, uptime, network, WLAN counters (`wlan`) and heap as JSON. No side effects (no sitemap fetch, no mDNS scan). Safe to poll. |
 | `GET /api/config` | Every setting with label, kind, value and range or options as JSON. Secrets are masked as `***`. |
 | `POST /api/config` | A JSON object of changed settings. Absent fields are untouched. One rejected value rolls the whole request back. |
 | `GET /api/sounds` | The sound vocabulary of the theme in force. |

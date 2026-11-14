@@ -38,6 +38,11 @@ second new panel does not publish over the first.
 | `system/bssid` | every interval | The access point's MAC, or the own one where there is no radio |
 | `system/rssi` | every interval | dBm. Absent where there is no radio. |
 | `system/quality` | every interval | The same as a percentage, on the scale the status bar uses |
+| `system/wlan_channel` | every interval | The channel of the access point. Absent where there is no radio. |
+| `system/wlan_online` | every interval | Seconds the station has been online without a break |
+| `system/wlan_disconnects` | every interval | How often the station lost its access point since boot |
+| `system/wlan_reason` | every interval | The 802.11 reason code of the last loss (ESP-IDF `wifi_err_reason_t`), 0 when there was none |
+| `system/wlan_roams` | every interval | How often the station moved to a stronger access point since boot |
 | `ui/night` | every interval | `ON` while the night variant is in effect |
 | `ui/backlight` | on change, and every interval | `ON` while the display is awake, `OFF` while dimmed |
 | `ui/brightness` | on change, and every interval | `0` to `100`, the level in effect now |
