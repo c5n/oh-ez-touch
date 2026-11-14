@@ -850,7 +850,10 @@ function updateLinks(time) {
   const ppos = [];
   for (let i = pulses.length - 1; i >= 0; i--) {
     const pulse = pulses[i];
-    const t = (time - pulse.t0) / pulse.dur;
+    /* time is the frame's requestAnimationFrame stamp, taken when the
+     * frame began; a pulse spawned since then has a later t0. Clamped,
+     * it waits at its start for one frame instead of getting leg -1. */
+    const t = Math.max(0, (time - pulse.t0) / pulse.dur);
     const first = uplinkOf(pulse.from);
     if (t >= 1 || !first) { pulses.splice(i, 1); continue; }
     const second = uplinkOf(first);
