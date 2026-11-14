@@ -87,13 +87,20 @@ def list_icon_names(ref):
 def select(names, wanted):
     """Keep the named icons plus their state variants ("light" -> "light-on").
 
+    A name with a leading "=" keeps that one icon only ("=blinds-20"), which
+    is how a numeric ladder is thinned.
+
     An unknown name is worth stopping for: it is nearly always a typo, and
     silently producing nothing for it is the unhelpful answer.
     """
     selected = []
     for name in wanted:
-        matches = [candidate for candidate in names
-                   if candidate == name or candidate.startswith(name + "-")]
+        if name.startswith("="):
+            name = name[1:]
+            matches = [name] if name in names else []
+        else:
+            matches = [candidate for candidate in names
+                       if candidate == name or candidate.startswith(name + "-")]
         if not matches:
             sys.exit("No icon named %r in the classic icon set." % name)
         selected.extend(matches)

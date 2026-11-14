@@ -1,0 +1,65 @@
+# The icons tools/build_icon_set.py compiles into the firmware by default.
+#
+# Names only, from the openHAB classic icon set; the artwork is fetched at
+# build time (see doc/icon-set.md). A general list for typical home
+# automation sitemaps, not for one installation. An icon that is not here
+# still works: the panel fetches it from the openHAB server over HTTP.
+#
+#   name    the icon and all its state variants (name-on, name-open, name-40)
+#   =name   this one record only, to keep a numeric ladder in steps of 20
+#
+# Keep or drop a family as a whole. The panel takes any built-in match and
+# does not ask the server then: a base icon without its named variants
+# draws the base icon for every state. A thinned ladder must keep its -0.
+#
+# One line or several names per line; text after # is a comment.
+
+# Lighting
+light                         # on/off and 0-100 in tens, kept whole
+lightbulb colorlight colorpicker colorwheel rgb outdoorlight
+=slider =slider-0 =slider-20 =slider-40 =slider-60 =slider-80 =slider-100
+
+# Switches and outlets
+switch wallswitch poweroutlet
+
+# Blinds, rollershutters, garage doors
+rollershutter                 # 0-100 in tens, kept whole
+=blinds =blinds-0 =blinds-20 =blinds-40 =blinds-60 =blinds-80 =blinds-100
+=garagedoor =garagedoor-ajar =garagedoor-closed =garagedoor-open
+=garagedoor-0 =garagedoor-20 =garagedoor-40 =garagedoor-60 =garagedoor-80 =garagedoor-100
+
+# Heating, temperature, air
+temperature temperature_cold temperature_hot
+heating radiator climate
+=humidity =humidity-0 =humidity-20 =humidity-40 =humidity-60 =humidity-80 =humidity-100
+fan fan_ceiling pressure carbondioxide
+
+# Windows, doors, contacts, locks
+window door frontdoor contact lock
+
+# Presence, motion, security
+presence motion siren shield fire
+alarm smoke camera
+
+# Energy, power, battery, utilities
+energy solarplant price gas water
+=battery =battery-0 =battery-20 =battery-40 =battery-60 =battery-80 =battery-100
+=batterylevel =batterylevel-0 =batterylevel-20 =batterylevel-40 =batterylevel-60 =batterylevel-80 =batterylevel-100
+lowbattery
+
+# Media
+player mediacontrol video
+soundvolume soundvolume_mute receiver screen
+
+# Weather and time
+sun sun_clouds rain snow wind moon sunrise sunset calendar time
+
+# Appliances
+washingmachine whitegood
+
+# Rooms and floors
+house groundfloor firstfloor cellar attic garden garage kitchen
+bedroom bath toilet office corridor sofa terrace
+
+# System, network, generic
+network settings status error none text group chart

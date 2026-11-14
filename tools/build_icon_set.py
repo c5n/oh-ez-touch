@@ -30,9 +30,14 @@ has to hold is mostly alpha steps, which is why the quantizer works in RGBA
 rather than RGB and why fully transparent pixels are given a palette entry of
 their own -- averaging them in with the edge is what produces a halo.
 
-    tools/build_icon_set.py                     # the whole set, 32x32
+    tools/build_icon_set.py                     # tools/icon_set.list, 32x32
+    tools/build_icon_set.py --all               # the whole classic set
     tools/build_icon_set.py --size 24
     tools/build_icon_set.py light heating       # just these, with state variants
+
+The default is the curated list in tools/icon_set.list: about half of the
+classic set, chosen for typical sitemaps. The whole set no longer fits the
+app partition next to the rest of the firmware.
 
 The generated header is NOT committed, for the reason the other two icon tools
 give: the classic icon set is copyright the openHAB project and licensed under
@@ -59,6 +64,7 @@ import tempfile
 import zlib
 
 DEFAULT_OUTPUT = os.path.join("main", "icons", "icon_set_data.h")
+DEFAULT_LIST = os.path.join("tools", "icon_set.list")
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -664,12 +670,35 @@ def emit(path, icons, size, source_ref):
     return len(blob)
 
 
+def read_list(path):
+    """The names in an icon list file: whitespace-separated, # comments."""
+    try:
+        with open(path, encoding="utf-8") as list_file:
+            text = list_file.read()
+    except OSError as exc:
+        sys.exit("cannot read the icon list %s: %s" % (path, exc))
+
+    wanted = []
+    for line in text.splitlines():
+        wanted.extend(line.split("#", 1)[0].split())
+
+    if not wanted:
+        sys.exit("the icon list %s names no icons." % path)
+
+    return wanted
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("names", nargs="*", metavar="ICON",
-                        help="icons to include, state variants included "
-                             "(default: the whole set)")
+                        help="icons to include, state variants included; "
+                             "=NAME for that icon only (default: --list)")
+    parser.add_argument("--list", default=DEFAULT_LIST, metavar="FILE",
+                        help="file of icon names, used when no ICON is given "
+                             "(default: %s)" % DEFAULT_LIST)
+    parser.add_argument("--all", action="store_true",
+                        help="the whole classic set, ignoring --list")
     parser.add_argument("--size", type=int, default=32,
                         help="icon edge length in pixels (default: 32, the size "
                              "the firmware draws tile icons at)")
@@ -704,6 +733,8 @@ def main():
 
     if args.names:
         names = fetcher.select(names, args.names)
+    elif not args.all:
+        names = fetcher.select(names, read_list(args.list))
 
     print("fetching %d icon(s) from openhab-webui@%s, rasterizing with %s at %dx%d"
           % (len(names), args.ref, rasterizer_name, args.size, args.size))

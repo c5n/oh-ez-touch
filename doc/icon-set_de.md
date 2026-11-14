@@ -9,7 +9,7 @@ Diese Icons sind jetzt in der Firmware enthalten. Zuerst wird `icon_set_get()` a
 Die Grafiken **sind nicht in diesem Repository enthalten**. Der klassische Icon-Satz von openHAB ist urheberrechtlich Eigentum des openHAB-Projekts und unter EPL-2.0 lizenziert. Diese Lizenz lässt sich nicht mit der GPL-3.0 dieses Projekts vereinbaren, deshalb wird die generierte Datei von Git ignoriert und jede Arbeitskopie erstellt eine eigene:
 
 ```sh
-tools/build_icon_set.py            # the whole set (~400 icons), 32x32
+tools/build_icon_set.py            # tools/icon_set.list (203 icons), 32x32
 idf.py reconfigure                 # usually unnecessary; see below
 ```
 
@@ -23,10 +23,10 @@ Dadurch wird `main/icons/icon_set_data.h` erzeugt. Ohne diese Datei geht nichts 
 Dieselbe Information erscheint beim Start auch auf der Konsole des Panels:
 
 ```
-I (1234) openhab_client: built-in icons: 396, 228096 bytes
+I (1234) openhab_client: built-in icons: 203, 116928 bytes
 ```
 
-Das sind 576 Byte pro Icon. Eine kleinere Summe, etwa `396, 119769 bytes`, stammt von einem Header, der vor der Umstellung auf indizierte Datensätze erzeugt wurde: Er enthält PNGs, und jedes eingebaute Icon kostet dann eine PNG-Dekodierung und eine 4-KB-Kopie in ARGB8888 pro Kachel. Führen Sie `tools/build_icon_set.py` erneut aus. Der vollständige Satz belegt 223 KB Flash; die App-Partition eines ArduiTouch ist damit zu etwa 98 % gefüllt.
+Das sind 576 Byte pro Icon. Eine kleinere Summe, etwa `396, 119769 bytes`, stammt von einem Header, der vor der Umstellung auf indizierte Datensätze erzeugt wurde: Er enthält PNGs, und jedes eingebaute Icon kostet dann eine PNG-Dekodierung und eine 4-KB-Kopie in ARGB8888 pro Kachel. Führen Sie `tools/build_icon_set.py` erneut aus. Die Standardliste belegt 114 KB Flash. Der vollständige klassische Satz (`--all`, 396 Icons) belegt 223 KB; für den Rest der Firmware ist die App-Partition eines ArduiTouch dann zu voll.
 
 `main/CMakeLists.txt` überwacht `main/icons/` über `CMAKE_CONFIGURE_DEPENDS`. Normalerweise reicht es deshalb, den Header zu erstellen; beim nächsten Build wird er mitkompiliert. Das explizite `idf.py reconfigure` ist für den Fall gedacht, dass die Überwachung nicht greift. Der Fehler bleibt unbemerkt – der Build ruft weiterhin Icons über HTTP ab –, daher sollte man die Konfigurationsausgabe prüfen, statt es einfach anzunehmen.
 
@@ -35,11 +35,25 @@ Nützliche Argumente:
 | | |
 |---|---|
 | `tools/build_icon_set.py light heating` | nur diese Icons, einschließlich Zustandsvarianten |
+| `tools/build_icon_set.py =blinds-20` | nur dieses eine Icon, ohne seine Familie |
+| `--list FILE` | die Namen aus einer anderen Listendatei |
+| `--all` | der vollständige klassische Satz |
 | `--size 24` | eine andere Kantenlänge (Standard 32, die Zeichengröße der Kacheln) |
 | `--colors 8` | eine kleinere Palette |
 | `--verify-all` | jedes Icon mit ImageMagick gegenprüfen, nicht nur das erste |
 
-Den Satz zu kürzen ist der entscheidende Hebel für den Flash-Speicher, und bei dieser Firmware macht das viel aus: Der vollständige Satz umfasst 396 Icons und 228 kB Bilddaten. Auf einem 4-MB-Board bleiben in der 1,9-MB-App-Partition damit nur wenige Prozent frei. Ein Panel zeigt nur Icons an, die in seinen eigenen Sitemaps benannt sind; wenn diese explizit angegeben werden, schrumpft der Satz auf wenige kB.
+### Die Standardliste
+
+Der vollständige klassische Satz umfasst 396 Icons und 228 kB Bilddaten. Neben dem Rest der Firmware passt das nicht in die 1,9-MB-App-Partition eines 4-MB-Boards. Standard ist deshalb `tools/icon_set.list`: 203 Icons, 114 kB, ausgewählt für typische Sitemaps der Hausautomation statt für eine einzelne Installation. Die Liste enthält Licht, Schalter und Steckdosen, Jalousien und Rollläden, Heizung und Klima, Fenster, Türen und Schlösser, Anwesenheit und Sicherheit, Energie und Batterie, Medien, Wetter und Zeit, zwei Haushaltsgeräte, Räume und Etagen sowie die allgemeinen Systemsymbole. Weggelassen sind vor allem die Personen-Avatare (`man_*`, `woman_*`, `parents_*`, 67 Icons) und spezielle Stufenreihen (`cistern`, `sewerage`, `cinemascreen`, `dryer`).
+
+Ein Icon, das nicht in der Liste steht, funktioniert trotzdem: Das Panel holt es mit seiner Zustandsvariante vom openHAB-Server. Das kostet eine HTTP-Anfrage pro Kachel und Zustandswechsel und eine PNG-Dekodierung auf dem Heap.
+
+Zwei Regeln für Änderungen an der Liste:
+
+- **Eine Familie ganz behalten oder ganz weglassen.** Die Suche unten nimmt jeden eingebauten Treffer und fragt den Server dann nicht. Ein eingebautes `contact` ohne `contact-open` zeichnet für `OPEN` das einfache `contact`.
+- **Eine ausgedünnte Zahlenreihe behält ihr `-0`.** `=name` behält nur diesen einen Datensatz; so bleiben `blinds`, `garagedoor`, `humidity`, `slider`, `battery` und `batterylevel` in 20er-Schritten erhalten. Ohne `-0` zeichnen Zustände unter der niedrigsten Stufe das einfache Icon. Eine ausgedünnte Stufe liegt bis zu 19 Punkte daneben: `humidity` bei 55 zeichnet `humidity-40`.
+
+Ein Panel zeigt nur Icons an, die in seinen eigenen Sitemaps benannt sind. Werden genau diese auf der Kommandozeile angegeben, schrumpft der Satz auf wenige kB.
 
 ## Warum ein 16-Farben-LVGL-Bild
 

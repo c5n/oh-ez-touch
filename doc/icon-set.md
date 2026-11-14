@@ -17,7 +17,7 @@ project's GPL-3.0 cannot take in, so the generated file is gitignored and every
 working copy makes its own:
 
 ```sh
-tools/build_icon_set.py            # the whole set (~400 icons), 32x32
+tools/build_icon_set.py            # tools/icon_set.list (203 icons), 32x32
 idf.py reconfigure                 # usually unnecessary; see below
 ```
 
@@ -34,14 +34,15 @@ configure time:
 and the panel says the same thing on the console at boot:
 
 ```
-I (1234) openhab_client: built-in icons: 396, 228096 bytes
+I (1234) openhab_client: built-in icons: 203, 116928 bytes
 ```
 
 That is 576 bytes per icon. A smaller total, such as `396, 119769 bytes`,
 is a header generated before the set became indexed records: it holds PNGs,
 and every built-in icon then costs a PNG decode and a 4 KB ARGB8888 copy per
-tile. Run `tools/build_icon_set.py` again. The full set takes 223 KB of
-flash, which leaves an ArduiTouch app partition about 98% full.
+tile. Run `tools/build_icon_set.py` again. The default list takes 114 KB of
+flash. The whole classic set (`--all`, 396 icons) takes 223 KB and leaves an
+ArduiTouch app partition too full for the rest of the firmware.
 
 `main/CMakeLists.txt` watches `main/icons/` with `CMAKE_CONFIGURE_DEPENDS`, so
 creating the header is normally enough to get it compiled in on the next build.
@@ -54,15 +55,43 @@ Useful arguments:
 | | |
 |---|---|
 | `tools/build_icon_set.py light heating` | just these icons, state variants included |
+| `tools/build_icon_set.py =blinds-20` | that one icon only, without its family |
+| `--list FILE` | the names in another list file |
+| `--all` | the whole classic set |
 | `--size 24` | a different edge length (default 32, what the tiles draw at) |
 | `--colors 8` | a smaller palette |
 | `--verify-all` | cross-check every icon against ImageMagick, not just the first |
 
-Trimming the set is the lever that matters for flash, and on this firmware it
-matters a lot: the whole set is 396 icons and 228 kB of blob, which leaves the
-1.9 MB app partition of a 4 MB board with single-digit percent free. A panel
-only ever shows the icons its own sitemaps name, and naming them explicitly
-turns that into a few kB.
+### The default list
+
+The whole classic set is 396 icons and 228 kB of blob. Next to the rest of
+the firmware, that does not fit the 1.9 MB app partition of a 4 MB board.
+So the default is `tools/icon_set.list`: 203 icons, 114 kB, chosen for
+typical home automation sitemaps rather than one installation. It has
+lighting, switches and outlets, blinds and rollershutters, heating and
+climate, windows, doors and locks, presence and security, energy and
+battery, media, weather and time, two appliances, rooms and floors, and the
+generic system icons. Left out are mainly the person avatars (`man_*`,
+`woman_*`, `parents_*`, 67 icons) and niche level ladders (`cistern`,
+`sewerage`, `cinemascreen`, `dryer`).
+
+An icon that is not in the list still works: the panel fetches it from the
+openHAB server, with its state variant. That costs one HTTP request per tile
+and state change, and a PNG decode on the heap.
+
+Two rules for editing the list:
+
+- **Keep or drop a family as a whole.** The lookup below takes any built-in
+  match and does not ask the server then. A built-in `contact` without
+  `contact-open` draws the plain `contact` for `OPEN`.
+- **A thinned numeric ladder keeps its `-0`.** `=name` keeps one record
+  only, which is how `blinds`, `garagedoor`, `humidity`, `slider`,
+  `battery` and `batterylevel` are kept in steps of 20. Without `-0`,
+  states below the lowest step draw the plain icon. A thinned step is up to
+  19 points off: `humidity` at 55 draws `humidity-40`.
+
+A panel only ever shows the icons its own sitemaps name. Naming exactly those
+on the command line makes the set a few kB.
 
 ## Why a 16-colour LVGL image
 
