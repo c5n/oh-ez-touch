@@ -182,7 +182,7 @@ Decisions:
 - A **third view mode**, `space`, next to mesh and topology. Topology
   keeps its 2D pins; the space view has its own, in metres
   (`positions3d`, same keys), and layouts carry both.
-- **three.js, vendored** as one minified ES-module bundle (0.186.1 with
+- **three.js, vendored** as one minified ES-module bundle (0.187.0 with
   OrbitControls, CSS2DRenderer and the bloom chain), built by
   `web/vendor/build.sh` with esbuild. One file to serve from a fixed
   whitelist, no import map, nothing fetched from the internet: the page

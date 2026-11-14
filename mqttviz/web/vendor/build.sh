@@ -8,7 +8,7 @@
 # Needs npm (for `npm pack` and `npx esbuild`) on the machine that
 # rebuilds it, never on the one that runs mqttviz.
 set -eu
-VERSION=${1:-0.186.1}
+VERSION=${1:-0.187.0}
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
