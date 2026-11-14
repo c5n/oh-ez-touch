@@ -85,13 +85,15 @@ FA_FULL="61441,61448,61451,61452,61453,61457,61459,61461,61465,61468,61473,61478
 #         eye   nline plus  minus prev  play  pause stop  next  left  up    down
 FA_LARGE="61550,63650,61543,61544,61512,61515,61516,61517,61521,61523,61559,61560"
 
-# The one Latin-1 letter beyond 0x7F the 36 px faces carry: 0xE4, lowercase a
-# with diaeresis, which "März" in the screensaver's German month names needs
-# (ui_clock.cpp). The 16 px and 22 px faces already have all of 0xA0-0xFF;
-# the large ones never did, because a numeric reading cannot contain an
-# umlaut -- and the app partition is tight enough that the four glyphs of a
-# full äöüß still cost more than the one that is actually spelled.
-FA_UMLAUT="0xE4"
+# The Latin-1 letters beyond 0x7F the 36 px faces carry: the German ones,
+# Ä Ö Ü ß ä ö ü. The 16 px and 22 px faces have all of 0xA0-0xFF. The large
+# faces show the value of a tile or a clock item, and that value is often a
+# String state ("grün"), or "März" in the screensaver's month names
+# (ui_clock.cpp). A missing glyph draws as a box. The rest of 0xA0-0xFF is
+# left out: compressed, it costs 65-80 bytes per glyph and face, about 25 KB
+# for the three faces, and the app partition does not have that to spare.
+# These seven cost about 2 KB.
+FA_UMLAUT="0xC4,0xD6,0xDC,0xDF,0xE4,0xF6,0xFC"
 
 [ -f "$FA" ] || { echo "FontAwesome subset not found: $FA (run 'git submodule update --init' once)" >&2; exit 1; }
 if [ ! -s "$ANTONIO" ]; then
