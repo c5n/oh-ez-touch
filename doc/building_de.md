@@ -152,6 +152,14 @@ Ein Befehl lädt den Bootloader, die Partitionstabelle, die Firmware und das aus
 idf.py -B build/arduitouch -p /dev/ttyUSB0 flash monitor
 ```
 
+`flash` setzt auch die OTA-Daten zurück, und das Panel startet die neue
+Firmware. `idf.py app-flash` und `esptool.py write-flash 0x10000` schreiben
+nur die Firmware, in die erste App-Partition (`app0`). Nach einem
+OTA-Update startet das Panel die zweite (`app1`) und ignoriert, was in
+`app0` geschrieben wurde. Das Boot-Log zeigt dann den alten Build. Löschen
+Sie vor einem solchen Flashen einmal die OTA-Daten:
+`idf.py -B build/arduitouch -p /dev/ttyUSB0 erase-otadata`.
+
 Die ArduiTouch-Boards haben keinen USB-Anschluss. Sie benötigen einen
 UART-Adapter. Siehe [ArduiTouch 2.4 Zoll](hardware/arduitouch_de.md#flashen-mit-einem-uart-adapter).
 

@@ -237,10 +237,12 @@ Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
 
 ## Icon sizes
 
-The classic icons are built into the firmware (see [icon-set](icon-set.md)),
-so the panel does not fetch them from the server, whatever size the server's
-files have. The panel fetches only the icons the built-in set does not have:
-your own icons in `$OPENHAB_CONF/icons/classic/`.
+The firmware has a built-in set of classic icons (see
+[icon-set](icon-set.md)), so the panel does not fetch them from the server,
+whatever size the server's files have. The panel fetches only the icons the
+built-in set does not have: your own icons in `$OPENHAB_CONF/icons/classic/`,
+and the classic icons that are not in the set. The default set holds 203 of
+the 396 classic icons.
 
 For such an icon:
 
@@ -252,6 +254,9 @@ For such an icon:
   file leaves more of the buffer to the decode, and the decode then needs
   less heap. A 64x64 RGBA icon of 2 KB needs about 10 KB of heap; the same
   picture in a file of 12 KB needs about 20 KB.
+- The tile keeps the icon with 16 colours, in the format of the built-in set
+  (576 bytes). Line art keeps its look. A photo or a smooth gradient loses
+  colours.
 
 So keep your own icons small. A 32x32 icon is the cheapest. Remove metadata
 such as colour profiles with ImageMagick:

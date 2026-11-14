@@ -353,6 +353,18 @@ first LVGL draw that finds no memory writes through a NULL pointer
 way there, lwIP refuses to send (`errno=12`), web requests time out and
 icons stay placeholders.
 
+Measured at runtime on the same panel, after setup:
+
+| What | Heap |
+| --- | --- |
+| MQTT client, its connection and its task | about 12 KB |
+| A home page with 36 LVGL objects and 113 style entries | 13 KB |
+| Each server icon on a tile | 576 bytes |
+| Each built-in icon on a tile | none |
+
+With these, the panel settles at about 16 KB free, and the largest free
+block stays above 14 KB.
+
 What keeps the budget:
 
 - **Measure stacks, do not guess them.** `sdkconfig.defaults.esp32` sets
@@ -388,6 +400,11 @@ What keeps the budget:
   10 KB free" hides the shortage instead of fixing it: on a short panel it
   turns a feature off for good, and the crash comes back as soon as the
   check is gone.
+- **No copy of an icon.** A tile draws a built-in icon from its record in
+  flash. A server icon is reduced to the same 16-colour format after the
+  decode (`main/icons/icon_quantize.c`), 576 bytes instead of a 4 KB
+  ARGB8888 image. Before that change, a panel with three server icons on
+  its home page settled at 8 to 12 KB free, and later icon decodes failed.
 - **Keep the built-in icon set current.** A `main/icons/icon_set_data.h`
   generated before the set became indexed records holds PNGs, and every
   built-in icon then costs a decode and 4 KB per tile. See

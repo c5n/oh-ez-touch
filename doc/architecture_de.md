@@ -159,6 +159,17 @@ Ein ESP32 ohne PSRAM hat etwa 205 KB Heap, und jede Funktion nimmt beim Start ih
 
 Mit den Einstellungen unten endet der Start mit 48 KB statt 30 KB freiem Heap. Der Rest wird zur Laufzeit belegt: die TCP-Verbindungen zu openHAB und zum MQTT-Broker, die Kacheln der Seite, ihre Icons und die Anfragen an die Weboberfläche. Ein Panel, das sich bei 15 bis 20 KB frei einpendelt, funktioniert. Ein Panel, das sich bei 6 KB einpendelt, funktioniert nicht, und der Fehler nennt die Ursache nicht: Die erste LVGL-Zeichenoperation, die keinen Speicher bekommt, schreibt über einen NULL-Zeiger (`StoreProhibited` in `lv_draw_add_task`), und das Panel startet neu. Vorher verweigert lwIP das Senden (`errno=12`), Webanfragen laufen in eine Zeitüberschreitung, und Icons bleiben Platzhalter.
 
+Zur Laufzeit gemessen, auf demselben Panel nach dem Start:
+
+| Was | Heap |
+| --- | --- |
+| MQTT-Client, seine Verbindung und sein Task | etwa 12 KB |
+| Eine Startseite mit 36 LVGL-Objekten und 113 Style-Einträgen | 13 KB |
+| Jedes Server-Icon auf einer Kachel | 576 Byte |
+| Jedes eingebaute Icon auf einer Kachel | nichts |
+
+Damit pendelt sich das Panel bei etwa 16 KB frei ein, und der größte freie Block bleibt über 14 KB.
+
 Was das Budget einhält:
 
 - **Stacks messen, nicht schätzen.** `sdkconfig.defaults.esp32` setzt die Stacks der Tasks für MQTT, esp_timer und den NimBLE-Host auf den Verbrauch eines belasteten Panels plus Reserve, und sechs statt zehn statische WLAN-RX-Puffer. Zusammen sind das 11 KB. Gemessen wird mit `uxTaskGetStackHighWaterMark()` pro Task, mit allen Funktionen eingeschaltet und benutzter Weboberfläche.
@@ -167,6 +178,7 @@ Was das Budget einhält:
 - **Kurze Aufgaben wechseln sich am Arbeitspuffer ab.** `main/mem/work_buf.h` ist ein Block von 12 KB, einmal alloziert, mit genau einem Besitzer zur selben Zeit. Der openHAB-Client liest hinein, und die Glyphenpuffer von LVGL leihen ihn zwischen zwei Lesevorgängen (`main/ui/ui_glyph_buf.c`). Eine Glyphe des Uhrbildschirms braucht in jedem Frame 5,2 bis 5,7 KB am Stück. Vom Heap scheiterte das während BLE-Scans, sobald der größte freie Block darunter fiel, und die Ziffern fehlten. Der Renderer verwendet nur `work_buf_try_claim()`, das nie wartet, und nimmt den Heap, wenn der Puffer belegt ist. Ein Lesevorgang, der auf den Puffer wartet, kommt vor der nächsten Glyphe an die Reihe.
 - **Eine fehlgeschlagene Allokation ist ein verworfenes Ereignis, kein fehlerhaftes.** Die Ereignisparser melden `NOMEM`, wenn der Heap das Dokument nicht aufnehmen kann. Der Task lädt dann die Seite neu oder fragt ab, wie bei einem Ereignis, das an einer vollen Queue verloren ging. Die Türklingel kann nichts abfragen, denn ein Klingeln ist die Änderung und nicht der Zustand. Sie liest ein solches Ereignis noch einmal als Text (`openhab_event_scan_state()`), und das braucht keinen Heap. Die Filter der Parser entstehen beim ersten Aufruf unter einer Sperre; ein Aufbau, dem der Heap ausging, wird beim nächsten Aufruf wiederholt.
 - **Keine Arbeit anhand einer Heap-Schwelle auslassen.** Eine Prüfung wie „kein Icon unter 10 KB frei“ verdeckt den Mangel, statt ihn zu beheben: Auf einem knappen Panel schaltet sie eine Funktion dauerhaft ab, und der Absturz kehrt zurück, sobald die Prüfung entfernt ist.
+- **Keine Kopie eines Icons.** Eine Kachel zeichnet ein eingebautes Icon aus seinem Datensatz im Flash. Ein Server-Icon wird nach der Dekodierung auf dasselbe 16-Farben-Format reduziert (`main/icons/icon_quantize.c`), 576 Byte statt eines 4-KB-ARGB8888-Bildes. Vor dieser Änderung pendelte sich ein Panel mit drei Server-Icons auf der Startseite bei 8 bis 12 KB frei ein, und spätere Icon-Dekodierungen scheiterten.
 - **Den eingebauten Icon-Satz aktuell halten.** Ein `main/icons/icon_set_data.h`, das vor der Umstellung auf indizierte Datensätze erzeugt wurde, enthält PNGs. Jedes eingebaute Icon kostet dann eine Dekodierung und 4 KB pro Kachel. Siehe [icon-set](icon-set_de.md).
 
 `LV_MEM_SIZE` in `lv_conf.h` hat keine Wirkung: LVGL alloziert über die C-Bibliothek (`LV_STDLIB_CLIB`) aus demselben Heap wie alles andere.

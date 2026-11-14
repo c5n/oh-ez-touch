@@ -40,6 +40,16 @@
       theme in its night variant. A digit's glyph buffer (5.2 to 5.7 KB) did
       not fit the heap during BLE scans; it now borrows the work buffer. See
       [The heap budget](architecture.md#the-heap-budget).
+- [x] openhab_ui, icons: Keep no copy of an icon. A tile draws a built-in
+      icon from flash, and a server icon is reduced to 576 bytes with 16
+      colours. The ArduiTouch panels settle at about 16 KB free instead of
+      8 to 12 KB. See [The heap budget](architecture.md#the-heap-budget).
+- [x] ui_clock: With night mode on, a clock item turned white when its value
+      changed. It now keeps the clock text colour.
+- [ ] main, ble: Give more heap back on the ArduiTouch. Not measured yet:
+      NimBLE sized for a scan only (fewer event buffers, no security, no
+      GATT client) and the stacks with the most slack. The display draw
+      buffers are one of the display levers below.
 - [ ] openhab: The picture has not been fetched on hardware. Measure the
       client task's stack (4 KB, with TJpgDec on it) and the heap during a
       ring, and whether an Image item's page loads on a fragmented heap.

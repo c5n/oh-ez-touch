@@ -257,13 +257,14 @@ Rollershutter   OHEZTOUCH_Rollershutter "Rollershutter"     <blinds>
 
 ## Symbolgrößen
 
-Die klassischen Symbole sind in die Firmware eingebaut (siehe [Icon-Satz](icon-set_de.md)). Das Panel holt sie deshalb nicht vom Server, egal wie groß die Dateien dort sind. Das Panel holt nur die Symbole, die der eingebaute Satz nicht enthält: Ihre eigenen Symbole in `$OPENHAB_CONF/icons/classic/`.
+Die Firmware enthält einen eingebauten Satz klassischer Symbole (siehe [Icon-Satz](icon-set_de.md)). Das Panel holt diese deshalb nicht vom Server, egal wie groß die Dateien dort sind. Das Panel holt nur die Symbole, die der eingebaute Satz nicht enthält: Ihre eigenen Symbole in `$OPENHAB_CONF/icons/classic/` und die klassischen Symbole, die nicht im Satz sind. Der Standardsatz enthält 203 der 396 klassischen Symbole.
 
 Für ein solches Symbol gilt:
 
 - Die PNG-Datei darf bis zu 12288 Byte groß sein. Eine größere Datei wird abgelehnt, und die Kachel zeigt kein Symbol.
 - Das Bild darf jede Größe haben. Das Panel halbiert es bis auf 32 px, solange beide Seiten gerade sind.
 - Das PNG wird im Empfangspuffer dekodiert, hinter der Datei selbst. Eine kleine Datei lässt der Dekodierung mehr vom Puffer, und die Dekodierung braucht dann weniger Heap. Ein 64x64-RGBA-Symbol von 2 KB braucht etwa 10 KB Heap; dasselbe Bild in einer Datei von 12 KB braucht etwa 20 KB.
+- Die Kachel behält das Symbol mit 16 Farben, im Format des eingebauten Satzes (576 Byte). Strichzeichnungen behalten ihr Aussehen. Ein Foto oder ein weicher Verlauf verliert Farben.
 
 Halten Sie Ihre eigenen Symbole deshalb klein. Ein 32x32-Symbol ist am günstigsten. Entfernen Sie Metadaten wie Farbprofile mit ImageMagick:
 

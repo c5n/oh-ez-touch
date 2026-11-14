@@ -140,6 +140,13 @@ filesystem image built from `data/`:
 idf.py -B build/arduitouch -p /dev/ttyUSB0 flash monitor
 ```
 
+`flash` also resets the OTA data, so the panel boots the new firmware.
+`idf.py app-flash` and `esptool.py write-flash 0x10000` write only the
+firmware, to the first app partition (`app0`). After an OTA update, the
+panel boots the second one (`app1`) and ignores what was written to `app0`.
+The boot log then shows the old build. Erase the OTA data once before such
+a flash: `idf.py -B build/arduitouch -p /dev/ttyUSB0 erase-otadata`.
+
 The ArduiTouch boards have no USB port. They need a UART adapter. See
 [ArduiTouch 2.4 inch](hardware/arduitouch.md#flashing-with-a-uart-adapter).
 
