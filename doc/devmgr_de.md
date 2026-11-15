@@ -39,10 +39,17 @@ Direktlinks: `http://localhost:8088/#config=<mac>` öffnet direkt den Einstellun
 
 **Aufzeichnung.** Stellen Sie den MQTT-Broker mit der Schaltfläche ⚙ auf dieser Seite ein (Host, Port, Themenpräfix, Prüfintervall). Dann zeichnet der Manager zwei Dinge auf:
 
-* Jeden Wert, den die Panels unter `<prefix>/+/system/#` veröffentlichen, und das Last-Will-Thema `<prefix>/+/status` (siehe [MQTT](mqtt_de.md)). Die Panels senden diese selbst, die Aufzeichnung kostet sie also nichts.
+* Jede Nachricht, die die Panels unter `<prefix>/#` veröffentlichen: die Systemwerte, das Last-Will-Thema `<prefix>/+/status` und außerdem `ui/`, `config/`, Sensoren, BLE und Relais (siehe [MQTT](mqtt_de.md)). Alles landet in den Dateien. Die Seite hält die numerischen Systemwerte als Reihen und von allem anderen die Änderungen. Die Panels senden diese selbst, die Aufzeichnung kostet sie also nichts.
 * In jedem Prüfintervall (standardmäßig 60 s) ein `GET /api/status` und einen Ping pro Panel. Ein Panel, das noch veröffentlicht, aber nicht mehr per HTTP antwortet, ist nur hier sichtbar.
 
 Jeder Datensatz ist eine JSON-Zeile in `devmgr/data/history/JJJJ-MM-TT.jsonl`. Die Dateien werden nie überschrieben oder gelöscht und lassen sich später mit jedem Werkzeug auswerten. `devmgr/data/history/devices.json` listet jedes jemals gesehene Panel mit seiner letzten Adresse, seinem Board, seiner Firmware und seinem Zugangspunkt. Die Seite hält die letzten 3 Tage im Speicher. Ein leerer Broker-Host beendet die Aufzeichnung.
+
+**Die Übersicht** zeigt alle Panels gleichzeitig, in vier Ansichten. Ein Klick auf ein Panel öffnet seine Detailansicht. `#ov=heap`, `#ov=wlan` oder `#ov=perf` in der Adresse öffnet die Seite mit dieser Ansicht.
+
+* **Timeline:** eine Zeile pro Panel auf einer gemeinsamen Zeitachse. Der Balken ist der MQTT-Status: grün online, rot offline. Orange und rote Markierungen darüber sind HTTP-Prüfungen ohne Antwort (orange: der Ping antwortet noch). Marker zeigen Neustarts (rote Linie), Firmware-Wechsel (blaue Raute), verlorene WLAN-Verbindungen (gelber Punkt, Reason-Code im Tooltip) und Wechsel des Zugangspunkts.
+* **Heap:** ein kleines Diagramm pro Panel, alle mit derselben Skala: freier Heap und größter freier Block, die 3-KB-Grenze als gestrichelte Linie. Die Quelle ist wählbar. Standard ist *HTTP /api/status*: Diese Werte werden außerhalb jeder Anfrage gemessen. Der MQTT-Wert `heapblock` wird während des Publish gemessen und ist zu niedrig.
+* **WLAN:** RSSI pro Panel, verlorene Verbindungen und Wechsel des Zugangspunkts als Linien, der Zugangspunkt als Band darunter.
+* **Performance:** fps, Renderzeit oder Wartezeit pro Panel, mit derselben Skala.
 
 **Die Tabelle** hat eine Zeile pro Panel, die schlechtesten zuerst:
 
@@ -91,6 +98,7 @@ Die Seite ist ein Client einer kleinen JSON-API, die auch Skripte verwenden kön
 | `POST /api/update` | Updates starten: `{"macs": [...], "image": "auto"}` oder `{"image": "upload", "name": "x.bin"}` |
 | `GET /api/fleet?hours=H` | Die Tabelle des Flottenprotokolls: pro Panel die letzten Werte und die Zählungen der letzten H Stunden |
 | `GET /api/fleet/device?dev=<name>&hours=H` | Reihen, Änderungen, HTTP-Prüfungen und Neustarts eines Panels in den letzten H Stunden |
+| `GET /api/fleet/overview?hours=H` | Jedes in den letzten H Stunden gesehene Panel, für die Übersicht: Reihen für Heap, RSSI und Performance (je 240 Punkte), Änderungen von Status, Firmware und Zugangspunkt, Neustarts, HTTP-Prüfläufe, verlorene WLAN-Verbindungen und Wechsel des Zugangspunkts |
 
 ## Wissenswerte Regeln
 

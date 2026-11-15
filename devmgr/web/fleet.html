@@ -27,7 +27,7 @@
 <div id="rec-panel" class="panel hidden">
   <h2>Recording</h2>
   <p class="dim small">The panels publish their values to an MQTT broker. The log subscribes to
-    <code>&lt;prefix&gt;/+/system/#</code> and <code>&lt;prefix&gt;/+/status</code>, and checks each panel
+    everything under <code>&lt;prefix&gt;/#</code>, and checks each panel
     over HTTP and ping. Empty broker host: not recording.</p>
   <label>MQTT broker host<br><input id="rec-host" type="text" spellcheck="false"></label>
   <label>Port<br><input id="rec-port" type="number" min="1" max="65535"></label>
@@ -45,6 +45,23 @@
 </div>
 
 <section id="fleet-stats" class="stats"></section>
+
+<section id="overview">
+  <div class="ov-head">
+    <h2>Overview</h2>
+    <div id="ov-tabs" class="seg" role="tablist" aria-label="Overview view">
+      <button data-view="timeline" class="active">Timeline</button>
+      <button data-view="heap">Heap</button>
+      <button data-view="wlan">WLAN</button>
+      <button data-view="perf">Performance</button>
+    </div>
+    <div id="ov-metric" class="seg" role="group" aria-label="Measure"></div>
+    <span id="ov-legend" class="legend"></span>
+    <span class="spacer"></span>
+    <span class="dim small">Click a panel for its details.</span>
+  </div>
+  <div id="ov-body"></div>
+</section>
 
 <table id="fleet">
   <thead>

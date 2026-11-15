@@ -472,6 +472,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.handle_fleet()
         if path == "/api/fleet/device":
             return self.handle_fleet_device()
+        if path == "/api/fleet/overview":
+            return self.handle_fleet_overview()
 
         if path == "/api/state":
             return self.handle_state()
@@ -623,6 +625,10 @@ class Handler(BaseHTTPRequestHandler):
         if not dev:
             return self.send_error_json("dev missing")
         self.send_json(RECORDER.detail(dev, hours))
+
+    def handle_fleet_overview(self):
+        hours, _ = self.query_hours()
+        self.send_json(RECORDER.overview(hours))
 
     def handle_log(self):
         since = 0

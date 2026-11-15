@@ -14,6 +14,13 @@ const fleet = {
   summary: null,
   detail: null,
   hoverT: null,
+  ov: {
+    view: "timeline",
+    heapSource: "http",
+    perf: "system/fps",
+    data: null,
+    cells: {},
+  },
 };
 
 function $(id) { return document.getElementById(id); }
@@ -228,6 +235,9 @@ function lineChart(opts) {
   const all = series.flatMap(s => s.points.map(p => p[1]));
   let lo = all.length ? Math.min(...all) : 0, hi = all.length ? Math.max(...all) : 1;
   if (floor != null) lo = Math.min(lo, floor);
+  // A shared scale, so that small multiples compare at a glance.
+  if (opts.lo != null) lo = opts.lo;
+  if (opts.hi != null) hi = opts.hi;
   if (lo === hi) { lo -= 1; hi += 1; }
   const yt = niceTicks(lo, hi, 4);
   lo = Math.min(lo, yt[0]); hi = Math.max(hi, yt[yt.length - 1]);
@@ -244,6 +254,10 @@ function lineChart(opts) {
     svg += `<text x="${x(t)}" y="${height - 4}" text-anchor="middle">${fmtClock(t).slice(0, 5)}</text>`;
   for (const t of reboots || [])
     svg += `<line class="reboot" x1="${x(t)}" x2="${x(t)}" y1="${PAD.t}" y2="${PAD.t + ih}"><title>restart ${fmtClock(t, true)}</title></line>`;
+  for (const m of opts.markers || [])
+    svg += `<line class="${m.cls}" x1="${x(m.t)}" x2="${x(m.t)}" y1="${PAD.t}" y2="${PAD.t + ih}"><title>${esc(m.title)}</title></line>`;
+  if (opts.hline != null && opts.hline >= lo && opts.hline <= hi)
+    svg += `<line class="hline" x1="${PAD.l}" x2="${width - PAD.r}" y1="${y(opts.hline)}" y2="${y(opts.hline)}"/>`;
   for (const s of series) {
     // A gap longer than five samples' worth breaks the line: no data is
     // not a straight line between two readings.
@@ -272,7 +286,8 @@ function bandChart(opts) {
     const a = x(s.t0), b = x(s.t1);
     if (b - a < 0.5) continue;
     svg += `<rect x="${a.toFixed(1)}" y="3" width="${Math.max(1, b - a - 1).toFixed(1)}" height="16" rx="2" fill="${s.color}"><title>${esc(s.label)} ${fmtClock(s.t0, true)} – ${fmtClock(s.t1, true)}</title></rect>`;
-    if (b - a > 70)
+    // A label only where it fits: about 6.5 px per character at 11 px.
+    if (b - a > String(s.label).length * 6.5 + 12)
       svg += `<text x="${a + 6}" y="15" style="fill:#fff">${esc(s.label)}</text>`;
   }
   svg += `<line class="cross hidden" x1="0" x2="0" y1="0" y2="${height}"/></svg>`;
@@ -462,6 +477,257 @@ function hideTooltip() {
   document.querySelectorAll("#charts .cross").forEach(c => c.classList.add("hidden"));
 }
 
+/* ----------------------------------------------------------- overview */
+
+/* The time axis of the overview starts at the first recorded value of any
+ * panel, as the detail charts do. */
+function overviewRange(data) {
+  let first = Infinity;
+  for (const d of data.devices) {
+    for (const p of Object.values(d.series)) if (p.length) first = Math.min(first, p[0][0]);
+    for (const c of Object.values(d.changes)) if (c.length) first = Math.min(first, c[0][0]);
+    if (d.http.length) first = Math.min(first, d.http[0][0]);
+  }
+  const t1 = data.t1;
+  const t0 = isFinite(first) ? Math.max(data.t0, first - (t1 - first) * 0.02) : data.t0;
+  return { t0, t1 };
+}
+
+/* One row per panel on one time axis: MQTT status as the bar, failed HTTP
+ * checks over it, and markers for restarts, firmware changes, WLAN losses
+ * and roams. */
+function timelineChart(data, width) {
+  const { t0, t1 } = overviewRange(data);
+  const rowH = 24, top = 4, labelW = 190, axisH = 18;
+  const devs = data.devices;
+  const height = top + devs.length * rowH + axisH;
+  const iw = width - labelW - PAD.r;
+  const x = t => labelW + (Math.max(t0, Math.min(t1, t)) - t0) / (t1 - t0) * iw;
+  const { ticks } = timeTicks(t0, t1, iw);
+
+  let svg = `<svg class="ov-timeline" viewBox="0 0 ${width} ${height}" height="${height}" data-t0="${t0}" data-t1="${t1}" data-pl="${labelW}" data-iw="${iw}">`;
+  for (const t of ticks)
+    svg += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${height - axisH}"/>` +
+           `<text x="${x(t)}" y="${height - 4}" text-anchor="middle">${fmtClock(t).slice(0, 5)}</text>`;
+
+  devs.forEach((d, i) => {
+    const y = top + i * rowH, barY = y + 6, barH = 12, mid = barY + barH / 2;
+    svg += `<g class="row" data-dev="${esc(d.dev)}">`;
+    svg += `<text class="row-label" x="0" y="${mid + 4}">${esc(d.dev)}</text>`;
+    svg += `<rect class="row-bg" x="${labelW}" y="${barY}" width="${iw}" height="${barH}" rx="2"><title>no data</title></rect>`;
+
+    const status = toSegments(d.changes["status"] || [], t0, t1, v =>
+      v === "online" ? { color: "var(--st-good)", label: "MQTT online" }
+                     : { color: "var(--st-critical)", label: `MQTT ${v || "?"}` });
+    for (const sg of status) {
+      const a = x(sg.t0), b = x(sg.t1);
+      if (b - a < 0.3) continue;
+      svg += `<rect x="${a.toFixed(1)}" y="${barY}" width="${Math.max(0.6, b - a).toFixed(1)}" height="${barH}" fill="${sg.color}" opacity=".75"><title>${esc(sg.label)} ${fmtClock(sg.t0, true)} – ${fmtClock(sg.t1, true)}</title></rect>`;
+    }
+    for (const [a0, b0, state] of d.http) {
+      if (state === "ok") continue;
+      const a = x(a0), b = x(b0);
+      const color = state === "ping" ? "var(--st-serious)" : "var(--st-critical)";
+      const label = state === "ping" ? "HTTP silent, ping answers" : "no HTTP, no ping";
+      svg += `<rect x="${a.toFixed(1)}" y="${barY + 3}" width="${Math.max(1.5, b - a).toFixed(1)}" height="${barH - 6}" fill="${color}"><title>${label} ${fmtClock(a0, true)} – ${fmtClock(b0, true)}</title></rect>`;
+    }
+    for (const t of d.reboots)
+      svg += `<line class="tl-reboot" x1="${x(t)}" x2="${x(t)}" y1="${y + 2}" y2="${y + rowH - 2}"><title>restart ${fmtClock(t, true)}</title></line>`;
+    const git = d.changes["system/git"] || [];
+    for (let k = 1; k < git.length; k++) {
+      if (git[k][0] < t0) continue;
+      const gx = x(git[k][0]);
+      svg += `<path class="tl-fw" d="M${gx},${y + 1} l4,4 l-4,4 l-4,-4 z"><title>firmware ${esc(git[k][1].slice(0, 7))} at ${fmtClock(git[k][0], true)}</title></path>`;
+    }
+    for (const [t, code] of d.wlan_lost)
+      svg += `<circle class="tl-lost" cx="${x(t)}" cy="${barY + barH + 3}" r="3"><title>WLAN lost ${fmtClock(t, true)}${code ? `: ${esc(data.reasons[code] || "?")} (${code})` : ""}</title></circle>`;
+    for (const t of d.roams)
+      svg += `<circle class="tl-roam" cx="${x(t)}" cy="${barY - 3}" r="2.5"><title>roamed ${fmtClock(t, true)}</title></circle>`;
+    svg += `</g>`;
+  });
+  svg += `<line class="cross hidden" x1="0" x2="0" y1="${top}" y2="${height - axisH}"/></svg>`;
+  return svg;
+}
+
+const HEAP_SOURCES = {
+  http: { label: "HTTP /api/status", free: "http/free_heap", block: "http/largest_block" },
+  mqtt: { label: "MQTT", free: "system/heap", block: "system/heapblock" },
+};
+
+const PERF_METRICS = {
+  "system/fps": { label: "fps", fmt: v => v.toFixed(1), scale: 1, unit: "fps" },
+  "system/render_us": { label: "render", fmt: v => `${v.toFixed(1)} ms`, scale: 1 / 1000, unit: "ms" },
+  "system/wait_us": { label: "wait", fmt: v => `${v.toFixed(1)} ms`, scale: 1 / 1000, unit: "ms" },
+};
+
+/* The series each small multiple draws, for the selected view. */
+function cellSeries(d) {
+  const ov = fleet.ov;
+  if (ov.view === "heap") {
+    const src = HEAP_SOURCES[ov.heapSource];
+    return [
+      { name: "Free", color: "var(--s-1)", points: d.series[src.free] || [], fmt: fmtBytes },
+      { name: "Largest block", color: "var(--s-2)", points: d.series[src.block] || [], fmt: fmtBytes },
+    ];
+  }
+  if (ov.view === "wlan")
+    return [{ name: "RSSI", color: "var(--s-1)", points: d.series["system/rssi"] || [], fmt: v => `${Math.round(v)} dBm` }];
+  const m = PERF_METRICS[ov.perf];
+  return [{ name: m.label, color: "var(--s-1)",
+            points: (d.series[ov.perf] || []).map(p => [p[0], p[1] * m.scale]), fmt: m.fmt }];
+}
+
+/* One small chart per panel, all on one scale. */
+function smallMultiples(data, width) {
+  const { t0, t1 } = overviewRange(data);
+  const ov = fleet.ov;
+  const cols = width >= 1300 ? 4 : width >= 950 ? 3 : width >= 560 ? 2 : 1;
+  const gap = 14;
+  const cw = Math.floor((width - gap * (cols - 1)) / cols) - 8;
+  const perDev = data.devices.map(d => ({ d, series: cellSeries(d) }));
+  const values = perDev.flatMap(c => c.series.flatMap(s => s.points.map(p => p[1])));
+  let lo = values.length ? Math.min(...values) : 0, hi = values.length ? Math.max(...values) : 1;
+  if (ov.view === "heap" || ov.view === "perf") lo = 0;
+  if (lo === hi) hi = lo + 1;
+
+  const fmtAxis = ov.view === "heap" ? (v => v >= 1024 ? `${Math.round(v / 1024)}K` : Math.round(v))
+                : ov.view === "wlan" ? (v => Math.round(v))
+                : (v => +v.toFixed(1));
+  fleet.ov.cells = {};
+
+  const cells = perDev.map(({ d, series }) => {
+    fleet.ov.cells[d.dev] = series;
+    const markers = ov.view === "wlan"
+      ? [...d.wlan_lost.map(([t, code]) => ({ t, cls: "mark-lost",
+             title: `WLAN lost ${fmtClock(t, true)}${code ? `: ${data.reasons[code] || "?"} (${code})` : ""}` })),
+         ...d.roams.map(t => ({ t, cls: "mark-roam", title: `roamed ${fmtClock(t, true)}` }))]
+      : [];
+    let svg = lineChart({ width: cw, height: 110, t0, t1, series, lo, hi, fmt: fmtAxis,
+                          reboots: d.reboots, markers,
+                          hline: ov.view === "heap" ? LOW_BLOCK : null });
+    if (ov.view === "wlan") {
+      const apSegs = toSegments(d.changes["system/bssid"] || [], t0, t1, v => {
+        const i = data.aps[v];
+        return v ? { color: apColor(i), label: `${apLabel(i)} ${v}` } : null;
+      });
+      svg += bandChart({ width: cw, t0, t1, segments: apSegs });
+    }
+
+    // The latest value, and for the heap the lowest largest block in range.
+    const main = series[series.length - 1];
+    const lastP = main.points[main.points.length - 1];
+    let note = lastP ? main.fmt(lastP[1]) : "no data";
+    let bad = false;
+    if (ov.view === "heap" && main.points.length) {
+      const min = Math.min(...main.points.map(p => p[1]));
+      note = `now ${main.fmt(lastP[1])} · min ${main.fmt(min)}`;
+      bad = min < LOW_BLOCK;
+    }
+    if (ov.view === "wlan") note += ` · lost ${d.wlan_lost.length} · roams ${d.roams.length}`;
+    return `<div class="ov-cell" data-dev="${esc(d.dev)}">
+      <div class="ov-cell-title"><b title="${esc(d.target)} ${esc(d.git)}">${esc(d.dev)}</b><span class="${bad ? "bad" : ""}">${esc(note)}</span></div>
+      ${svg}</div>`;
+  });
+  return `<div class="ov-grid" style="grid-template-columns: repeat(${cols}, minmax(0, 1fr))">${cells.join("")}</div>`;
+}
+
+function renderOverviewControls() {
+  const ov = fleet.ov;
+  document.querySelectorAll("#ov-tabs button").forEach(b =>
+    b.classList.toggle("active", b.dataset.view === ov.view));
+  const metric = $("ov-metric");
+  if (ov.view === "heap") {
+    metric.innerHTML = Object.entries(HEAP_SOURCES).map(([k, v]) =>
+      `<button data-heap="${k}" class="${k === ov.heapSource ? "active" : ""}">${v.label}</button>`).join("");
+  } else if (ov.view === "perf") {
+    metric.innerHTML = Object.entries(PERF_METRICS).map(([k, v]) =>
+      `<button data-perf="${k}" class="${k === ov.perf ? "active" : ""}">${v.label}</button>`).join("");
+  } else {
+    metric.innerHTML = "";
+  }
+  metric.classList.toggle("hidden", !metric.innerHTML);
+
+  const legends = {
+    timeline: `<span><i class="box" style="background:var(--st-good)"></i>MQTT online</span>
+      <span><i class="box" style="background:var(--st-critical)"></i>offline / no answer</span>
+      <span><i class="box" style="background:var(--st-serious)"></i>HTTP silent, ping answers</span>
+      <span><i class="tick" style="background:var(--st-critical)"></i>restart</span>
+      <span><i class="box" style="background:var(--accent);transform:rotate(45deg)"></i>firmware</span>
+      <span><i class="dot" style="background:var(--st-warn)"></i>WLAN lost</span>
+      <span><i class="dot" style="border:1.5px solid var(--ap-6)"></i>roam</span>`,
+    heap: `<span><i style="background:var(--s-1)"></i>Free</span><span><i style="background:var(--s-2)"></i>Largest block</span>
+      <span><i style="background:var(--st-critical)"></i>${LOW_BLOCK} B</span><span>dashed: restart</span>
+      ${ov.heapSource === "mqtt" ? "<span>MQTT block is sampled during the publish and reads low</span>" : ""}`,
+    wlan: `<span><i style="background:var(--s-1)"></i>RSSI</span><span><i class="tick" style="background:var(--st-warn)"></i>WLAN lost</span>
+      <span><i class="tick" style="background:var(--ap-6)"></i>roam</span><span>band: access point</span>`,
+    perf: `<span>${PERF_METRICS[ov.perf].label} per panel, one scale</span><span>dashed: restart</span>`,
+  };
+  $("ov-legend").innerHTML = legends[ov.view];
+}
+
+function renderOverview() {
+  const data = fleet.ov.data;
+  renderOverviewControls();
+  if (!data) return;
+  const body = $("ov-body");
+  if (!data.devices.length) {
+    body.innerHTML = `<p class="dim">Nothing recorded in this range.</p>`;
+    return;
+  }
+  const width = Math.max(480, body.clientWidth || 1000);
+  body.innerHTML = fleet.ov.view === "timeline" ? timelineChart(data, width) : smallMultiples(data, width);
+}
+
+/* One crosshair over every overview chart, and the hovered panel's values. */
+function onOverviewMove(event) {
+  const svg = event.target.closest("svg");
+  if (!svg || !fleet.ov.data) return hideOverviewCross();
+  const rect = svg.getBoundingClientRect();
+  const scale = rect.width / svg.viewBox.baseVal.width;
+  const pl = +svg.dataset.pl, iw = +svg.dataset.iw;
+  const xIn = (event.clientX - rect.left) / scale;
+  if (xIn < pl || xIn > pl + iw) return hideOverviewCross();
+  const t0 = +svg.dataset.t0, t1 = +svg.dataset.t1;
+  const t = t0 + (xIn - pl) / iw * (t1 - t0);
+
+  document.querySelectorAll("#ov-body svg").forEach(s => {
+    const cross = s.querySelector(".cross");
+    if (!cross) return;
+    const x = +s.dataset.pl + (t - +s.dataset.t0) / (+s.dataset.t1 - +s.dataset.t0) * +s.dataset.iw;
+    cross.setAttribute("x1", x); cross.setAttribute("x2", x);
+    cross.classList.remove("hidden");
+  });
+
+  if (fleet.ov.view === "timeline") return;   // the bars carry their own titles
+  const cell = event.target.closest(".ov-cell");
+  const series = cell ? fleet.ov.cells[cell.dataset.dev] || [] : [];
+  const lines = [];
+  for (const s of series) {
+    const p = nearest(s.points, t);
+    if (p && Math.abs(p[0] - t) < Math.max(180, (t1 - t0) / 120))
+      lines.push(`<div><i style="background:${s.color}"></i>${s.name}: <b>${s.fmt(p[1])}</b></div>`);
+  }
+  const tip = $("tooltip");
+  tip.innerHTML = `<div class="t">${esc(cell ? cell.dataset.dev : "")} · ${fmtClock(t, true)}</div>${lines.join("") || "<div class='dim'>no data</div>"}`;
+  tip.classList.remove("hidden");
+  tip.style.left = `${Math.min(window.innerWidth - tip.offsetWidth - 12, event.clientX + 14)}px`;
+  tip.style.top = `${event.clientY + 14}px`;
+}
+
+function hideOverviewCross() {
+  $("tooltip").classList.add("hidden");
+  document.querySelectorAll("#ov-body .cross").forEach(c => c.classList.add("hidden"));
+}
+
+async function loadOverview() {
+  try {
+    fleet.ov.data = await api(`/api/fleet/overview?hours=${fleet.hours}`);
+    renderOverview();
+  } catch (error) {
+    $("ov-body").innerHTML = `<p class="dim">Could not load the overview: ${esc(error.message)}</p>`;
+  }
+}
+
 /* ------------------------------------------------------------ loading */
 
 async function loadSummary() {
@@ -512,7 +778,28 @@ function wire() {
     fleet.hours = +b.dataset.hours;
     document.querySelectorAll("#range button").forEach(x => x.classList.toggle("active", x === b));
     loadSummary().then(loadDetail);
+    loadOverview();
   });
+
+  $("ov-tabs").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    fleet.ov.view = b.dataset.view;
+    renderOverview();
+  });
+  $("ov-metric").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.heap) fleet.ov.heapSource = b.dataset.heap;
+    if (b.dataset.perf) fleet.ov.perf = b.dataset.perf;
+    renderOverview();
+  });
+  $("ov-body").addEventListener("click", e => {
+    const target = e.target.closest("[data-dev]");
+    if (target) select(target.dataset.dev);
+  });
+  $("ov-body").addEventListener("mousemove", onOverviewMove);
+  $("ov-body").addEventListener("mouseleave", hideOverviewCross);
 
   document.querySelectorAll("#fleet th.sortable").forEach(th => th.addEventListener("click", () => {
     if (fleet.sort === th.dataset.sort) fleet.dir = -fleet.dir;
@@ -548,12 +835,17 @@ function wire() {
   let resizeTimer = null;
   window.addEventListener("resize", () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(renderDetail, 150);
+    resizeTimer = setTimeout(() => { renderDetail(); renderOverview(); }, 150);
   });
 }
 
 wire();
 const fromHash = /dev=([^&]+)/.exec(location.hash);
+// #ov=heap (or timeline, wlan, perf) opens the overview on that view.
+const viewFromHash = /ov=(timeline|heap|wlan|perf)/.exec(location.hash);
+if (viewFromHash) fleet.ov.view = viewFromHash[1];
 loadSummary().then(() => { if (fromHash) select(decodeURIComponent(fromHash[1])); });
+loadOverview();
 setInterval(loadSummary, 15000);
+setInterval(loadOverview, 60000);
 setInterval(loadDetail, 30000);

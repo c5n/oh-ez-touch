@@ -87,9 +87,12 @@ when, and why?".
 **Recording.** Set the MQTT broker with the ⚙ button on that page (host,
 port, topic prefix, check interval). Then the manager records two things:
 
-* Every value the panels publish under `<prefix>/+/system/#` and the
-  last-will topic `<prefix>/+/status` (see [MQTT](mqtt.md)). The panels push
-  these, so recording costs them nothing.
+* Every message the panels publish under `<prefix>/#`: the system values,
+  the last-will topic `<prefix>/+/status`, and also `ui/`, `config/`,
+  sensors, BLE and relays (see [MQTT](mqtt.md)). All of it goes to the
+  files. The page keeps the numeric system values as series and the changes
+  of everything else. The panels push these, so recording costs them
+  nothing.
 * Every check interval (60 s by default), one `GET /api/status` and one ping
   per panel. A panel that still publishes but does not answer HTTP is
   visible only here.
@@ -99,6 +102,24 @@ files are never rewritten or deleted, so they can be analysed later with any
 tool. `devmgr/data/history/devices.json` lists every panel ever seen, with
 its last address, board, firmware and access point. The page keeps the last
 3 days in memory. An empty broker host stops the recording.
+
+**The overview** shows all panels at once, in four views. A click on a
+panel opens its detail view. `#ov=heap`, `#ov=wlan` or `#ov=perf` in the
+address opens the page on that view.
+
+* **Timeline:** one row per panel on one time axis. The bar is the MQTT
+  status: green online, red offline. Orange and red marks over it are HTTP
+  checks without an answer (orange: the ping still answers). Markers show
+  restarts (red line), firmware changes (blue diamond), lost WLAN
+  connections (yellow dot, the reason code in the tooltip) and roams.
+* **Heap:** one small chart per panel, all on one scale: free heap and
+  largest free block, with the 3 KB limit as a dashed line. The source is
+  selectable. *HTTP /api/status* is the default: those values are taken
+  outside any request. The MQTT `heapblock` value is taken during the
+  publish and reads low.
+* **WLAN:** RSSI per panel, with lost connections and roams as lines, and
+  the access point as a band below.
+* **Performance:** fps, render time or wait time per panel, on one scale.
 
 **The table** has one row per panel, worst first:
 
@@ -158,6 +179,7 @@ The page is a client of a small JSON API, which scripts may use too:
 | `POST /api/update` | Start updates: `{"macs": [...], "image": "auto"}` or `{"image": "upload", "name": "x.bin"}` |
 | `GET /api/fleet?hours=H` | The fleet log's table: per panel the last values and the counts over the last H hours |
 | `GET /api/fleet/device?dev=<name>&hours=H` | One panel's series, changes, HTTP checks and restarts over the last H hours |
+| `GET /api/fleet/overview?hours=H` | Every panel seen in the last H hours, for the overview: heap, RSSI and performance series (240 points each), status, firmware and access point changes, restarts, HTTP check runs, lost WLAN connections and roams |
 
 ## Rules worth knowing
 

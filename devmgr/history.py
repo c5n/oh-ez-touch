@@ -2,10 +2,12 @@
 
 Two recorders feed one store:
 
-* MQTT. Every panel publishes its system values and a last-will status
-  under <prefix>/<hostname>/ (see doc/mqtt.md). A minimal MQTT 3.1.1
-  subscriber, QoS 0 only, takes <prefix>/+/system/# and <prefix>/+/status.
-  The panels push, so recording costs them nothing.
+* MQTT. Every panel publishes its system values, a last-will status and
+  everything else (ui/, config/, sensors, relays) under <prefix>/<hostname>/
+  (see doc/mqtt.md). A minimal MQTT 3.1.1 subscriber, QoS 0 only, takes all
+  of <prefix>/#. Every message goes to the files; the store keeps the
+  numeric series below and the changes of everything else. The panels
+  push, so recording costs them nothing.
 * HTTP and ping. Every probe interval, each panel known from MQTT gets one
   GET /api/status and one ICMP echo. That is the view from outside: a
   panel that still publishes but no longer answers, which is what a starved
@@ -49,8 +51,20 @@ NUMERIC = {
     "system/wlan_reason", "system/wlan_roams",
 }
 
+# Values of each panel's /api/status answer, kept as series as well. The
+# HTTP heap figures are taken outside any request; the MQTT heapblock sample
+# is taken during the publish and so reads low.
+HTTP_SERIES = {"free_heap": "http/free_heap", "largest_block": "http/largest_block"}
+
 # Series whose dips matter more than their mean: downsampled by minimum.
-MIN_BUCKET = {"system/heap", "system/heapblock", "system/rssi"}
+MIN_BUCKET = {"system/heap", "system/heapblock", "system/rssi",
+              "http/free_heap", "http/largest_block"}
+
+# What the overview page draws for every panel at once.
+OVERVIEW_SERIES = ("system/heap", "system/heapblock", "http/free_heap",
+                   "http/largest_block", "system/rssi", "system/fps",
+                   "system/render_us", "system/wait_us")
+OVERVIEW_CHANGES = ("status", "system/git", "system/bssid")
 
 # The 802.11 reason codes as ESP-IDF names them (wifi_err_reason_t).
 WIFI_REASONS = {
@@ -100,6 +114,10 @@ class Store:
                                        rec.get("ping")))
                 if rec.get("ok") and isinstance(rec.get("status"), dict):
                     self.http_status[dev] = (t, rec["status"])
+                    for key, topic in HTTP_SERIES.items():
+                        value = rec["status"].get(key)
+                        if isinstance(value, (int, float)):
+                            self.series[dev][topic].append((t, float(value)))
                 return
 
             topic = rec.get("topic", "")
@@ -403,7 +421,7 @@ class Recorder:
                 prefix = wanted["prefix"]
                 self.mqtt = MqttSubscriber(
                     wanted["host"], wanted["port"],
-                    ["%s/+/system/#" % prefix, "%s/+/status" % prefix],
+                    ["%s/#" % prefix],
                     self._on_message, self._on_mqtt_state)
                 self.mqtt_thread = threading.Thread(target=self.mqtt.run, daemon=True)
                 self.mqtt_thread.start()
@@ -553,6 +571,74 @@ class Recorder:
                 "lines_written": self.lines_written,
                 "dir": self.dir,
             },
+        }
+
+    def overview(self, hours, buckets=240):
+        """Every panel seen in the range, for the overview charts: the
+        OVERVIEW_SERIES downsampled to `buckets` points, the status, firmware
+        and access point changes, restarts, the HTTP checks merged into runs
+        of one state, and the WLAN losses and roams."""
+        now = time.time()
+        t0 = now - hours * 3600
+        probe = self.config.get("probe_s", 60)
+        out = []
+        with self.store.lock:
+            for dev in sorted(self.store.last_seen):
+                if self.store.last_seen[dev] < t0:
+                    continue
+                last = self.store.last.get(dev, {})
+                per_series = self.store.series.get(dev, {})
+                series = {topic: downsample(list(per_series.get(topic, ())), t0, now,
+                                            buckets, topic in MIN_BUCKET)
+                          for topic in OVERVIEW_SERIES}
+
+                changes = {}
+                for topic in OVERVIEW_CHANGES:
+                    points = list(self.store.changes.get(dev, {}).get(topic, ()))
+                    before = [p for p in points if p[0] < t0][-1:]
+                    changes[topic] = [[round(t, 1), v] for t, v in
+                                      before + [p for p in points if p[0] >= t0]]
+
+                # The checks as runs: [start, end, "ok" | "ping" | "down"].
+                runs = []
+                for t, ok, _ms, ping in self.store.http.get(dev, ()):
+                    if t < t0:
+                        continue
+                    state = "ok" if ok else "ping" if ping else "down"
+                    end = min(now, t + probe * 1.5)
+                    if runs and runs[-1][2] == state and t - runs[-1][1] <= probe * 1.5:
+                        runs[-1][1] = round(end, 1)
+                    else:
+                        runs.append([round(t, 1), round(end, 1), state])
+
+                def increments(topic):
+                    points = list(per_series.get(topic, ()))
+                    return [p[0] for i, p in enumerate(points)
+                            if i and p[0] >= t0 and p[1] > points[i - 1][1]]
+
+                reasons = list(per_series.get("system/wlan_reason", ()))
+
+                def reason_at(t):
+                    best = min(reasons, key=lambda p: abs(p[0] - t), default=None)
+                    return int(best[1]) if best else 0
+
+                out.append({
+                    "dev": dev,
+                    "target": last.get("system/target", (0, ""))[1],
+                    "git": last.get("system/git", (0, ""))[1][:7],
+                    "series": series,
+                    "changes": changes,
+                    "reboots": [round(t, 1) for t in self.store.reboots.get(dev, ()) if t >= t0],
+                    "http": runs,
+                    "wlan_lost": [[round(t, 1), reason_at(t)]
+                                  for t in increments("system/wlan_disconnects")],
+                    "roams": [round(t, 1) for t in increments("system/wlan_roams")],
+                })
+        return {
+            "t0": t0, "t1": now, "probe_s": probe,
+            "devices": out,
+            "aps": self.ap_label_map(),
+            "reasons": {str(k): v for k, v in WIFI_REASONS.items()},
         }
 
     def detail(self, dev, hours):
