@@ -335,6 +335,13 @@ static void lcars_decorate_tile(lv_obj_t *tile, enum ItemType type, uint8_t slot
     }
 
     lv_obj_set_style_bg_color(tile, fill, 0);
+
+    /* Narrower side padding than the shared tile style's PAD_TILE: the 6 px
+     * marker on the left already insets the content, and it has the colour
+     * of the fill, so the tile looks wider than its content area is. At 5 px
+     * a navigation tile's name such as "AMBIENTE" wrapped its last letter.
+     * Local is safe because the tiles are created anew for every page. */
+    lv_obj_set_style_pad_hor(tile, 2, 0);
 }
 
 /* Black on a colour block, like everything else in this family: the severity
