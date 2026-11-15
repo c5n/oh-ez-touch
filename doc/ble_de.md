@@ -30,7 +30,7 @@ des Advertisers in kleingeschriebenem Hexadezimalformat ohne Trennzeichen.
 | `<addr>/service` | bei Erkennung | Servicedaten als Hexadezimalwert (zuerst die UUID), sofern das Gerät welche sendet, die nicht zu Eddystone gehören |
 | `<addr>/power` | bei Erkennung | dBm: die vom Beacon angegebene Leistung in einem Meter Entfernung oder die Sendeleistung eines normalen Geräts |
 | `<addr>/rssi` | in jedem Zeitfenster | dBm, über das Zeitfenster gemittelt |
-| `<addr>/distance` | in jedem Zeitfenster | Geschätzte Entfernung in Metern. Nur bei Beacons. Siehe unten. |
+| `<addr>/distance` | in jedem Zeitfenster | Geschätzte Entfernung in Metern. Nur bei Beacons. Siehe unten. Ohne kalibrierte Leistung wird das Topic einmal gelöscht, nicht in jedem Zeitfenster. |
 | `<addr>/battery` | in jedem Zeitfenster | mV, nur Eddystone-TLM |
 | `<addr>/temperature` | in jedem Zeitfenster | Grad Celsius, nur Eddystone-TLM |
 

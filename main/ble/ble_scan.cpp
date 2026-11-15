@@ -138,6 +138,13 @@ struct entry_s
     /* Whether anything of this entry is on the broker, which decides whether
      * there is anything to clear when it expires or stops qualifying. */
     bool on_broker;
+
+    /* Whether the broker may hold a `distance` for this entry. Without a
+     * calibrated power there is none to publish, and the retained one is
+     * cleared once rather than on every window. Starts out true, as does every
+     * new session: a retained value from an earlier boot or session may still
+     * be there. */
+    bool distance_on_broker;
 };
 
 static struct entry_s entries[BLE_SCAN_MAX];
@@ -158,13 +165,13 @@ static bool publish_leaf(const char *key, const char *leaf, const char *value)
     return ohez_mqtt_publish_value(suffix, value);
 }
 
-static void clear_leaf(const char *key, const char *leaf)
+static bool clear_leaf(const char *key, const char *leaf)
 {
     char suffix[BLE_TOPIC_MAX];
 
     snprintf(suffix, sizeof(suffix), "ble/%s/%s", key, leaf);
 
-    ohez_mqtt_clear_value(suffix);
+    return ohez_mqtt_clear_value(suffix);
 }
 
 /* An advertised name is UTF-8 from a device nobody here wrote, and it goes
@@ -283,6 +290,7 @@ static struct entry_s *entry_for(const char *key, enum ble_beacon_kind_e kind, i
     free_slot->used = true;
     strlcpy(free_slot->key, key, sizeof(free_slot->key));
     free_slot->identity_dirty = true;
+    free_slot->distance_on_broker = true;
 
     /* Not the zero a memset leaves: zero dBm is a legal power, and an entry
      * that starts out claiming one would publish it and derive a distance from
@@ -477,11 +485,13 @@ static void publish_readings(struct entry_s *e)
         /* One decimal. The model is not good for two, and publishing three
          * would invite someone to believe them. */
         snprintf(value, sizeof(value), "%.1f", distance);
-        publish_leaf(e->key, "distance", value);
+        if (publish_leaf(e->key, "distance", value) == true)
+            e->distance_on_broker = true;
     }
-    else
+    else if (e->distance_on_broker == true)
     {
-        clear_leaf(e->key, "distance");
+        if (clear_leaf(e->key, "distance") == true)
+            e->distance_on_broker = false;
     }
 
     if (e->beacon.have_telemetry == true)
@@ -599,7 +609,10 @@ void ble_scan_loop(Config &config)
 
     if (connected == true && was_connected == false)
         for (size_t i = 0; i < BLE_SCAN_MAX; i++)
+        {
             entries[i].identity_published = false;
+            entries[i].distance_on_broker = true;
+        }
 
     was_connected = connected;
 

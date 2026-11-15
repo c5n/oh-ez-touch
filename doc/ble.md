@@ -28,7 +28,7 @@ address, lower case hex, no separators.
 | `<addr>/service` | on discovery | Service data as hex (UUID first), when the device sends any that is not Eddystone |
 | `<addr>/power` | on discovery | dBm: the power at one metre a beacon declares, or a plain device's transmit power |
 | `<addr>/rssi` | every window | dBm, averaged over the window |
-| `<addr>/distance` | every window | Metres, estimated. Beacons only. See below. |
+| `<addr>/distance` | every window | Metres, estimated. Beacons only. See below. Without a calibrated power the topic is cleared once, not in every window. |
 | `<addr>/battery` | every window | mV, Eddystone-TLM only |
 | `<addr>/temperature` | every window | Degrees Celsius, Eddystone-TLM only |
 
