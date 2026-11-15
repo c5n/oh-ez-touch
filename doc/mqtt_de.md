@@ -16,7 +16,7 @@ Jedes Topic beginnt mit `<base topic>/<hostname>`. Mit den Standardwerten ist da
 
 | Topic | Veröffentlichungszeitpunkt | Wert |
 | --- | --- | --- |
-| `status` | bei Verbindung | `online`, und `offline` als Last Will |
+| `status` | bei Verbindung | `online`, und `offline` als Last Will und beim Abschalten des Clients. Immer beibehalten. |
 | `system/name` | bei Verbindung | Der Hostname |
 | `system/target` | bei Verbindung | Für welches Board diese Firmware vorgesehen ist, z. B. `ArduiTouch` |
 | `system/version` | bei Verbindung | z. B. `0.20` |
@@ -50,7 +50,7 @@ Jedes Topic beginnt mit `<base topic>/<hostname>`. Mit den Standardwerten ist da
 | `led/<name>` | bei Änderung und bei Verbindung | `0` bis `100`. Nur auf Boards mit LEDs. |
 | `ble/...` | bei Erkennung und in jedem Scanfenster | Eine Gruppe Topics pro BLE-Sender in Reichweite. Siehe [Bluetooth-LE-Beacons](ble_de.md). Erfordert, dass **Nach BLE-Beacons suchen** aktiviert ist. |
 
-Alles wird mit QoS 0 veröffentlicht. Alles wird beibehalten, sofern **Veröffentlichte Werte beibehalten** nicht deaktiviert ist. Jedes Topic enthält den aktuellen Wert eines Zustands. Ein Subscriber, der eine Aktualisierung verpasst hat, benötigt den neuesten Wert, nicht den verpassten. Dafür dient Retain.
+Alles wird mit QoS 0 veröffentlicht. Alles wird beibehalten, sofern **Veröffentlichte Werte beibehalten** nicht deaktiviert ist. Jedes Topic enthält den aktuellen Wert eines Zustands. Ein Subscriber, der eine Aktualisierung verpasst hat, benötigt den neuesten Wert, nicht den verpassten. Dafür dient Retain. Das Topic `status` wird immer beibehalten, unabhängig von der Einstellung. Sein Last Will `offline` ist beibehalten. Ein nicht beibehaltenes `online` würde daher für jeden später verbundenen Subscriber `offline` auf dem Broker stehen lassen.
 
 Für die Sensortopics muss **BME280-Sensor verwenden** aktiviert sein. Nur dorthin werden die Messwerte gesendet. Die Relais- und LED-Topics setzen die entsprechende Hardware voraus. Siehe [Relais und LEDs](#relais-und-leds).
 

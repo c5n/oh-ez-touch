@@ -302,7 +302,7 @@ Wie das Bild abgerufen und dargestellt wird, ist unter [Bild](sitemap_de.md#bild
 | --- | --- | --- |
 | Basis-Topic | oheztouch | Erstes Segment jedes Topics. Danach folgt der Hostname. |
 | Veröffentlichungsintervall | 60 | Sekunden zwischen zwei Runden mit Systeminformationen. |
-| Veröffentlichte Werte beibehalten | On | Mit gesetztem Retain-Flag veröffentlichen. Ein später verbundener Subscriber sieht die aktuellen Werte sofort. |
+| Veröffentlichte Werte beibehalten | On | Mit gesetztem Retain-Flag veröffentlichen. Ein später verbundener Subscriber sieht die aktuellen Werte sofort. Das Topic `status` wird immer beibehalten. |
 
 Die MQTT-Einstellungen werden sofort nach dem Speichern wirksam. Der Client verbindet sich selbst erneut, und zwar nur, wenn sich eine von ihm verwendete Einstellung geändert hat.
 

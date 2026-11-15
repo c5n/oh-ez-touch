@@ -21,7 +21,7 @@ second new panel does not publish over the first.
 
 | Topic | Published | Value |
 | --- | --- | --- |
-| `status` | on connect | `online`, and `offline` as the last will |
+| `status` | on connect | `online`, and `offline` as the last will and when the client is switched off. Always retained. |
 | `system/name` | on connect | The hostname |
 | `system/target` | on connect | Which board this firmware is for, e.g. `ArduiTouch` |
 | `system/version` | on connect | e.g. `0.20` |
@@ -58,7 +58,10 @@ second new panel does not publish over the first.
 Everything is published at QoS 0. Everything is retained unless **Retain
 published values** is turned off. Every topic carries the current value of
 something. A subscriber that missed an update wants the newest value, not the
-missed one. That is what retain gives it.
+missed one. That is what retain gives it. The `status` topic is always
+retained, whatever the setting says. Its last will `offline` is retained,
+so an unretained `online` would leave `offline` on the broker for every
+subscriber that connects later.
 
 The sensor topics need **Use BME280 sensor** turned on. They are the only
 place a reading goes. The relay and LED topics need a board that has the

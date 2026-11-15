@@ -478,7 +478,7 @@ try it on: see [the Door page](openHAB/README.md#door-a-doorbells-picture).
 | --- | --- | --- |
 | Base topic | oheztouch | First segment of every topic. The hostname follows it. |
 | Publish interval | 60 | Seconds between two rounds of system information. |
-| Retain published values | On | Publish with the retain flag. A subscriber that connects later sees the current values at once. |
+| Retain published values | On | Publish with the retain flag. A subscriber that connects later sees the current values at once. The `status` topic is always retained. |
 
 The MQTT settings take effect as soon as they are saved. The client
 reconnects itself, and only when something it uses changed.

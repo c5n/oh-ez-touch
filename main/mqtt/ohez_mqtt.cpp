@@ -364,7 +364,8 @@ static void subscribe_one(esp_mqtt_client_handle_t client,
 
 /* ---------------------------------------------------------------- publishing */
 
-/* QoS 0 throughout, and retained when the setting says so.
+/* QoS 0 throughout, and retained when the setting says so (the status topic
+ * always is -- see publish_status()).
  *
  * Nothing published here is a command or an event: every topic carries the
  * current value of something, so a subscriber that missed an update wants the
@@ -403,6 +404,14 @@ static void publish(const char *suffix, const char *value)
     publish_raw(suffix, value, applied.mqtt.retain);
 }
 
+/* The status topic is retained whatever the retain setting says, because the
+ * last will is: an unretained "online" would leave the will's retained
+ * "offline" on the broker for every later subscriber to read. */
+static void publish_status(const char *value)
+{
+    publish_raw("status", value, true);
+}
+
 /* The settings, as the browser and the panel show them. Secrets excluded --
  * see SETTINGS_F_SECRET. */
 static void publish_config(const config_item_t &item)
@@ -428,7 +437,7 @@ static void publish_identity(const config_item_t &item)
 {
     char value[MQTT_VALUE_MAX];
 
-    publish("status", "online");
+    publish_status("online");
     publish("system/name", item.general.hostname);
     publish("system/target", TARGET_NAME);
 
@@ -898,7 +907,7 @@ static void client_stop(void)
     /* A clean disconnect does not fire the last will, so the status topic would
      * otherwise stay "online" after the client was switched off on purpose. */
     if (mqtt_online == true)
-        publish("status", "offline");
+        publish_status("offline");
 
     esp_mqtt_client_stop(mqtt_client);
     esp_mqtt_client_destroy(mqtt_client);
