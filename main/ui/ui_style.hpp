@@ -126,14 +126,21 @@ struct ui_theme_s
     uint32_t info_warning_bg; /* ui_style_info_warning */
     uint32_t info_error_bg;   /* ui_style_info_error   */
 
-    /* The openHAB icons are dark line-art PNGs fetched at runtime and drawn as
-     * a watermark behind the tile's caption and state line. On a dark variant
-     * they vanish, so image_recolor is the only lever short of shipping our
-     * own -- but a bright recolour destroys the caption's contrast, so these
-     * are chosen against the composite, not against the tile alone. */
+    /* The openHAB icons are dark line-art PNGs fetched at runtime and drawn in
+     * the band between the tile's caption and its state line. On a dark
+     * variant they vanish, so image_recolor is the only lever short of
+     * shipping our own. A day variant leaves the PNG's colours alone: an
+     * icon that changes with the state (a lamp that lights up) says so in
+     * colour.
+     *
+     * icon_opa is for that band, where no text covers the icon, and is meant
+     * to be read on a TFT whose contrast falls off with the viewing angle.
+     * A link tile has no state line and centres its caption on the icon, so
+     * there the icon stays a watermark at icon_watermark_opa. */
     uint32_t icon_recolor;
     uint8_t  icon_recolor_opa; /* 0 leaves the PNG's own colours alone */
     uint8_t  icon_opa;
+    uint8_t  icon_watermark_opa;
     uint8_t  symbol_opa;     /* the parent-link arrow  */
     uint8_t  symbol_dim_opa; /* the no-icon eye        */
 

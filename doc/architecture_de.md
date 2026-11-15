@@ -82,7 +82,7 @@ Programmatische Einstiege verwenden die Zugangssperre nicht. Dazu gehören das a
 
 Zum Erzeugen der UI muss openHAB abgefragt werden: eine Sitemap-Seite pro Navigationsebene, ein Icon pro Kachel und ein Elementstatus pro Kachel, sobald er sich ändert – siehe „Der Ereignisstream“ weiter unten.
 
-Alle Anfragen warten auf einen eigenen Task (`main/openhab/openhab_client.cpp`). Die UI übermittelt eine URL und zeichnet weiter. Die Antwort kommt über eine Queue zurück. `openhab_ui_loop()` nimmt pro Iteration ein Ergebnis aus der Queue. Eine Seite erscheint, sobald ihr JSON geparst ist. Jede Kachel zeigt zunächst ihre Beschriftung, ihren Status und ein Platzhalter-Wasserzeichen. Die Icons werden in den folgenden Frames ergänzt. Die Uhr läuft weiter und die Touchbedienung reagiert, auch wenn openHAB nicht erreichbar ist.
+Alle Anfragen warten auf einen eigenen Task (`main/openhab/openhab_client.cpp`). Die UI übermittelt eine URL und zeichnet weiter. Die Antwort kommt über eine Queue zurück. `openhab_ui_loop()` nimmt pro Iteration ein Ergebnis aus der Queue. Eine Seite erscheint, sobald ihr JSON geparst ist. Jede Kachel zeigt zunächst ihre Beschriftung, ihren Status und ein Platzhalter-Icon. Die Icons werden in den folgenden Frames ergänzt. Die Uhr läuft weiter und die Touchbedienung reagiert, auch wenn openHAB nicht erreichbar ist.
 
 Der Worker ruft keine `lv_*`-Funktion auf. Er liest weder `Item`, `Sitemap` noch `Config`. URLs gehen hinein und Bytes kommen zurück. Jede Entscheidung darüber, was ein Body bedeutet, und jeder LVGL-Aufruf bleiben auf dem Task, dem der Bildschirm gehört. `main/openhab/openhab_connector.cpp` ist ein Modell und ein Parser ohne Wissen um ein Netzwerk. Dadurch können die Host-Tests den Parser abdecken.
 

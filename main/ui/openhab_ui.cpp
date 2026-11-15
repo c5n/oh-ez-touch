@@ -1530,9 +1530,8 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
     // Create center image object
     wctx->img_obj = lv_image_create(wctx->container);
 
-    /* The watermark's opacity and recolour are the theme's: a dark theme has to
-     * lift these dark line-art PNGs off the tile without drowning the caption
-     * and state line that sit in front of them. */
+    /* The icon's opacity and recolour are the theme's: a dark theme has to
+     * lift these dark line-art PNGs off the tile. */
     lv_obj_add_style(wctx->img_obj, &ui_style_icon, LV_PART_MAIN);
 
     /* A tile is created before its icon is asked for, so the placeholder is
@@ -1544,12 +1543,24 @@ void widget_create(lv_obj_t *parent, struct widget_context_s *wctx, uint8_t slot
         widget_icon_set_fallback(wctx);
 
     lv_obj_move_background(wctx->img_obj);
-    lv_obj_align(wctx->img_obj, LV_ALIGN_CENTER, 0, 0);
+
+    /* Centred in the band between the caption and the state line, not in the
+     * tile: the reading is a size larger than the caption, so the tile's
+     * centre puts the bottom of a 32 px icon under the reading -- which an
+     * icon drawn nearly opaque would show. A link tile, which has no state
+     * line, re-centres it below. */
+    lv_obj_align(wctx->img_obj, LV_ALIGN_CENTER, 0,
+                 (lv_font_get_line_height(ui_style_theme()->font_small)
+                  - lv_font_get_line_height(ui_style_theme()->font_normal)) / 2);
 
     // Define bottom label and button border style
     if (   wctx->item->getType() == ItemType::type_parent_link
         || wctx->item->getType() == ItemType::type_link)
     {
+        /* The caption lies across the icon here, so the icon steps back to a
+         * watermark the caption can be read over. */
+        lv_obj_align(wctx->img_obj, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_image_opa(wctx->img_obj, ui_style_theme()->icon_watermark_opa, 0);
         lv_obj_add_style(wctx->container, &ui_style_tile_link, LV_PART_MAIN);
         lv_obj_add_style(wctx->label, &ui_style_label_state, LV_PART_MAIN);
         /* A navigation tile has no reading to protect, so its name is welcome

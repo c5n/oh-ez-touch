@@ -125,7 +125,7 @@ All requests wait on a task of their own
 (`main/openhab/openhab_client.cpp`). The UI submits a URL and carries on
 drawing. The answer arrives on a queue. `openhab_ui_loop()` takes one result
 from the queue per iteration. A page appears as soon as its JSON parses.
-Every tile shows its label, its state and a placeholder watermark first. The
+Every tile shows its label, its state and a placeholder icon first. The
 icons fill in over the next few frames. The clock keeps ticking and the touch
 keeps responding, also while openHAB is unreachable.
 
