@@ -134,6 +134,12 @@ Anders als die übrigen Überschreibungen werden diese nicht nur auf den Arbeits
 
 Auch im Simulator öffnet eine Berührung der Statusleiste den Einstellungsbildschirm. Auf dem Host gibt es kein Funkmodul, das konfiguriert werden könnte; daher öffnet sich der Bildschirm nie von selbst wie bei einem neuen Gerät.
 
+`OHEZ_ICON_OOM=<n>` lässt die ersten n Icon-Dekodierungen so scheitern, als wäre der Heap erschöpft. Auf dem Panel fragt eine Kachel ihr Icon dann nach 2, 4, 8, 16 und 32 s erneut an und behält nach dem fünften Versuch den Platzhalter. Der Heap des Hosts geht nicht aus, deshalb lassen sich die Wiederholungen nur so beobachten. Es zählen nur Icons, die das Panel dekodiert: Im Offline-Modus kommen alle Icons aus dem eingebauten Satz. Verwende deshalb einen echten openHAB-Server (siehe unten):
+
+```bash
+OHEZ_OPENHAB_HOST=openhab.local OHEZ_ICON_OOM=3 ./build/linux/oh-ez-touch.elf
+```
+
 ## Ein Panel, das nicht existiert
 
 Bei der Touchscreen-Kalibrierung werden vier Ecken berührt, die vom Panel gemeldeten Werte ausgelesen und Ursprung und Spannweite berechnet, mit denen der Zeiger umgerechnet wird. Ein Desktop hat weder Panel noch ADC. Der Simulator modelliert eines.

@@ -234,6 +234,17 @@ Touching the status bar opens the settings screen in the simulator too. On
 the host there is no radio to configure, so the screen never opens on its own
 as it does on a new device.
 
+`OHEZ_ICON_OOM=<n>` fails the first n icon decodes as if the heap had run
+out. On the panel, a tile then asks for its icon again after 2, 4, 8, 16 and
+32 s, and keeps the placeholder after the fifth retry. The host heap does not
+run out, so this is the way to watch the retries. Only icons that the panel
+decodes count: in offline mode all icons come from the built-in set, so use a
+real openHAB server (see below):
+
+```bash
+OHEZ_OPENHAB_HOST=openhab.local OHEZ_ICON_OOM=3 ./build/linux/oh-ez-touch.elf
+```
+
 ## A panel that is not there
 
 The touchscreen calibration takes four corner presses, reads what the panel

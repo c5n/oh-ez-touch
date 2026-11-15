@@ -65,6 +65,20 @@
 #define GET_SITEMAP_RETRY_INTERVAL 5000
 #endif
 
+/* An icon that did not decode for want of heap is asked for again: first
+ * after ICON_RETRY_DELAY, then after twice the previous wait, at most
+ * ICON_RETRY_MAX times. The shortage is mostly transient -- a BLE scan or an
+ * MQTT publish holds blocks for a moment and fragments the heap -- so a
+ * later attempt usually finds the blocks the decode needs. 2 + 4 + 8 + 16 +
+ * 32 s: after about a minute the tile keeps its placeholder. */
+#ifndef ICON_RETRY_DELAY
+#define ICON_RETRY_DELAY 2000
+#endif
+
+#ifndef ICON_RETRY_MAX
+#define ICON_RETRY_MAX 5
+#endif
+
 /* How long a submitted page fetch is waited for before it is written off and
  * asked for again.
  *
@@ -152,6 +166,12 @@ struct widget_context_s
      * request in the queue every five seconds for a tile that already has one
      * outstanding. */
     bool state_pending = false;
+    /* When to ask for the icon again after a decode ran out of heap, or 0 for
+     * no retry due; and how many retries this icon has had. Not cleared by
+     * widget_destroy() either: a theme change keeps the retry going. A page
+     * change clears both, with icon_pending. */
+    uint64_t icon_retry_at = 0;
+    uint8_t icon_retries = 0;
     lv_obj_t *container = NULL;
     lv_obj_t *label = NULL;
     lv_obj_t *img_obj = NULL;
@@ -960,7 +980,8 @@ static unsigned char *icon_downscale_2x(const unsigned char *src, unsigned width
  * swap to LVGL's byte order, and the halvings down to the set's size. */
 static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void *png,
                                        size_t png_len, unsigned char **out,
-                                       unsigned *out_width, unsigned *out_height)
+                                       unsigned *out_width, unsigned *out_height,
+                                       bool *no_memory)
 {
     unsigned char *pixels;
     /* unsigned, not uint32_t: lodepng_decode32() takes unsigned *, and the
@@ -976,6 +997,9 @@ static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void
         error = lodepng_decode32(&pixels, &png_width, &png_height,
                                  (const unsigned char *)png, png_len);
     }
+
+    /* lodepng's error 83 is a failed allocation. */
+    *no_memory = (error == 83);
 
     if (error)
     {
@@ -1039,6 +1063,55 @@ static bool widget_icon_decode_lodepng(struct widget_context_s *wctx, const void
  * rather than the size of the pixels, and it keeps the malloc and the free of
  * a block LVGL will hold a pointer to on one task.
  */
+/* Plan another request for this tile's icon after a decode that ran out of
+ * heap. The retry itself is sent from icon_retries_due(), in the loop. */
+static void widget_icon_retry_later(struct widget_context_s *wctx)
+{
+    if (wctx->icon_retries >= ICON_RETRY_MAX)
+    {
+        printf("widget_icon: %s: no retry left\n",
+               wctx->item != NULL ? wctx->item->getIconName() : "?");
+        wctx->icon_retry_at = 0;
+        return;
+    }
+
+    uint64_t delay = (uint64_t)ICON_RETRY_DELAY << wctx->icon_retries;
+
+    wctx->icon_retries++;
+    wctx->icon_retry_at = port_millis() + delay;
+
+    printf("widget_icon: %s: retry %u in %u ms\n",
+           wctx->item != NULL ? wctx->item->getIconName() : "?",
+           (unsigned)wctx->icon_retries, (unsigned)delay);
+}
+
+#if CONFIG_IDF_TARGET_LINUX
+/* OHEZ_ICON_OOM=<n>: the simulator fails the first n icon decodes as if the
+ * heap had run out, so that the retry can be watched. The panel's heap
+ * shortage cannot be reproduced on the host. */
+static bool icon_oom_forced(void)
+{
+    static long remaining = -1;
+
+    if (remaining < 0)
+    {
+        const char *env = getenv("OHEZ_ICON_OOM");
+
+        remaining = (env != NULL) ? strtol(env, NULL, 10) : 0;
+
+        if (remaining < 0)
+            remaining = 0;
+    }
+
+    if (remaining == 0)
+        return false;
+
+    remaining--;
+
+    return true;
+}
+#endif
+
 static void widget_icon_decode_and_show(struct widget_context_s *wctx,
                                         struct openhab_result_s *res)
 {
@@ -1050,6 +1123,16 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
 
 #if CONFIG_OHEZ_DEBUG_OPENHAB_UI
     printf("widget_icon: %s ", wctx->item != NULL ? wctx->item->getIconName() : "?");
+#endif
+
+#if CONFIG_IDF_TARGET_LINUX
+    if (icon_oom_forced() == true)
+    {
+        printf("widget_icon: %s out of memory (forced by OHEZ_ICON_OOM)\n",
+               wctx->item != NULL ? wctx->item->getIconName() : "?");
+        widget_icon_retry_later(wctx);
+        return;
+    }
 #endif
 
     if (png_len == ICON_SET_RECORD_SIZE && ((const unsigned char *)png)[0] != 0x89)
@@ -1064,6 +1147,7 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
         if (pixels == NULL)
         {
             printf("no %u bytes for a built-in icon\n", (unsigned)ICON_SET_RECORD_SIZE);
+            widget_icon_retry_later(wctx);
             return;
         }
 
@@ -1102,9 +1186,15 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
          * the picture's size, and the halving after it. */
         if (result == ICON_PNG_UNSUPPORTED)
         {
+            bool no_memory = false;
+
             if (widget_icon_decode_lodepng(wctx, png, png_len, &pixels, &png_width,
-                                           &png_height) == false)
+                                           &png_height, &no_memory) == false)
+            {
+                if (no_memory == true)
+                    widget_icon_retry_later(wctx);
                 return;
+            }
         }
         else if (result != ICON_PNG_OK)
         {
@@ -1113,6 +1203,9 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
                    result == ICON_PNG_NO_MEMORY ? "out of memory" : "broken",
                    (unsigned)png_len, (unsigned)port_free_heap(),
                    (unsigned)port_largest_free_block());
+
+            if (result == ICON_PNG_NO_MEMORY)
+                widget_icon_retry_later(wctx);
             return;
         }
 
@@ -1126,6 +1219,15 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
     }
 
     widget_icon_adopt(wctx, pixels, cf, width, height, stride, data_size);
+
+    /* The icon is on the tile: a later shortage starts its own count. */
+    if (wctx->icon_retries > 0)
+        printf("widget_icon: %s decoded on retry %u\n",
+               wctx->item != NULL ? wctx->item->getIconName() : "?",
+               (unsigned)wctx->icon_retries);
+
+    wctx->icon_retries = 0;
+    wctx->icon_retry_at = 0;
 }
 
 /* Reduce a decoded server icon to the built-in set's I4 format, in place.
@@ -1986,6 +2088,29 @@ static void page_submit_if_due(void)
     {
         widget_context[i].icon_pending = false;
         widget_context[i].state_pending = false;
+        widget_context[i].icon_retry_at = 0;
+        widget_context[i].icon_retries = 0;
+    }
+}
+
+/* Send the icon retries that are due. widget_icon_request() skips a tile
+ * whose icon is already in flight -- a state change can have asked for it
+ * in the meantime -- and then the retry is simply not needed. */
+static void icon_retries_due(void)
+{
+    uint64_t now = port_millis();
+
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
+    {
+        struct widget_context_s *wctx = &widget_context[i];
+
+        if (wctx->icon_retry_at == 0 || now < wctx->icon_retry_at)
+            continue;
+
+        wctx->icon_retry_at = 0;
+
+        if (wctx->item != NULL)
+            widget_icon_request(i);
     }
 }
 
@@ -2596,6 +2721,8 @@ void openhab_ui_loop(void)
 
     if (page_state == PAGE_READY)
     {
+        icon_retries_due();
+
         bool resync = openhab_events_take_resync();
         uint64_t interval = openhab_events_streaming() ? ITEM_UPDATE_INTERVAL_STREAMING
                                                        : ITEM_UPDATE_INTERVAL;
