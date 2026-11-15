@@ -124,6 +124,15 @@ build directory) and run `set-target` again. This applies to the heap
 settings in `sdkconfig.defaults.esp32` too: a build directory configured
 before them keeps the old task stacks and WiFi buffers.
 
+A build directory records the absolute path of the project. After you move
+or rename the checkout, `idf.py` refuses the old build directories with
+"configured for project ... not ...". Run `idf.py -B <dir> fullclean` and
+configure the build again with `set-target`. Save the build's `sdkconfig`
+first if it has settings that are not in the defaults files: `fullclean`
+deletes it. In ESP-IDF v6, `fullclean` also deletes the project's
+`managed_components/`. The next configure of any build downloads the
+components again, at the versions in `dependencies.lock`.
+
 `idf.py -B build/arduitouch menuconfig` gives access to everything else: the
 board choice, the beeper engine, the JTAG pin remap and the per-module debug
 output under **OhEzTouch**.
@@ -146,6 +155,18 @@ firmware, to the first app partition (`app0`). After an OTA update, the
 panel boots the second one (`app1`) and ignores what was written to `app0`.
 The boot log then shows the old build. Erase the OTA data once before such
 a flash: `idf.py -B build/arduitouch -p /dev/ttyUSB0 erase-otadata`.
+
+`flash` also writes the filesystem image, which replaces the panel's
+`config.json` with the default one from `data/`. To update a configured
+panel and keep its configuration, write only the OTA data and the firmware.
+This boots `app0` in every case and does not change the NVS or the
+filesystem:
+
+```bash
+esptool.py -p /dev/ttyUSB0 write-flash \
+    0xe000 build/arduitouch/ota_data_initial.bin \
+    0x10000 build/arduitouch/oh-ez-touch.bin
+```
 
 The ArduiTouch boards have no USB port. They need a UART adapter. See
 [ArduiTouch 2.4 inch](hardware/arduitouch.md#flashing-with-a-uart-adapter).

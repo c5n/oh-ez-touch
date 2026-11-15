@@ -135,6 +135,17 @@ gilt auch für die Heap-Einstellungen in `sdkconfig.defaults.esp32`: Ein
 Build-Verzeichnis, das vorher konfiguriert wurde, behält die alten Task-Stacks
 und WLAN-Puffer.
 
+Ein Build-Verzeichnis speichert den absoluten Pfad des Projekts. Nachdem Sie
+den Checkout verschoben oder umbenannt haben, lehnt `idf.py` die alten
+Build-Verzeichnisse mit „configured for project ... not ...“ ab. Führen Sie
+`idf.py -B <Verzeichnis> fullclean` aus und konfigurieren Sie den Build mit
+`set-target` neu. Sichern Sie vorher die `sdkconfig` des Builds, wenn sie
+Einstellungen enthält, die nicht in den Defaults-Dateien stehen:
+`fullclean` löscht sie. Unter ESP-IDF v6 löscht `fullclean` außerdem das
+Verzeichnis `managed_components/` des Projekts. Die nächste Konfiguration
+eines beliebigen Builds lädt die Komponenten erneut, in den Versionen aus
+`dependencies.lock`.
+
 Mit `idf.py -B build/arduitouch menuconfig` erhalten Sie Zugriff auf alle
 weiteren Einstellungen: die Board-Auswahl, die Signalgeber-Engine, die
 JTAG-Pin-Neuzuordnung und die Debug-Ausgabe der einzelnen Module unter
@@ -159,6 +170,18 @@ OTA-Update startet das Panel die zweite (`app1`) und ignoriert, was in
 `app0` geschrieben wurde. Das Boot-Log zeigt dann den alten Build. Löschen
 Sie vor einem solchen Flashen einmal die OTA-Daten:
 `idf.py -B build/arduitouch -p /dev/ttyUSB0 erase-otadata`.
+
+`flash` schreibt auch das Dateisystem-Image. Es ersetzt die `config.json`
+des Panels durch die Standarddatei aus `data/`. Um ein konfiguriertes Panel
+zu aktualisieren und seine Konfiguration zu behalten, schreiben Sie nur die
+OTA-Daten und die Firmware. Das Panel startet dann in jedem Fall `app0`;
+NVS und Dateisystem bleiben unverändert:
+
+```bash
+esptool.py -p /dev/ttyUSB0 write-flash \
+    0xe000 build/arduitouch/ota_data_initial.bin \
+    0x10000 build/arduitouch/oh-ez-touch.bin
+```
 
 Die ArduiTouch-Boards haben keinen USB-Anschluss. Sie benötigen einen
 UART-Adapter. Siehe [ArduiTouch 2.4 Zoll](hardware/arduitouch_de.md#flashen-mit-einem-uart-adapter).
