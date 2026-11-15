@@ -130,7 +130,8 @@ of them:
 - [ArduinoJson](https://arduinojson.org/)
 - [LodePNG](https://lodev.org/lodepng/)
 - [TJpgDec](https://elm-chan.org/fsw/tjpgd/) by ChaN
-- Embedded fonts: [Barlow, Rajdhani and Antonio](https://fonts.google.com/)
+- Embedded fonts: [Barlow, Barlow Condensed and Rajdhani](https://fonts.google.com/);
+  LCARS font [LCARS GTJ3 by GTJLCARS.de](https://www.gtjlcars.de)
   (SIL OFL 1.1)
 
 No longer used, but this project was built on them for a long time:

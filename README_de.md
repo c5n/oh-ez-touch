@@ -132,7 +132,8 @@ Vielen Dank an alle Beteiligten:
 - [ArduinoJson](https://arduinojson.org/)
 - [LodePNG](https://lodev.org/lodepng/)
 - [TJpgDec](https://elm-chan.org/fsw/tjpgd/) von ChaN
-- Eingebettete Schriftarten: [Barlow, Rajdhani und Antonio](https://fonts.google.com/)
+- Eingebettete Schriftarten: [Barlow, Barlow Condensed und Rajdhani](https://fonts.google.com/);
+  LCARS-Schrift [LCARS GTJ3 von GTJLCARS.de](https://www.gtjlcars.de)
   (SIL OFL 1.1)
 
 Diese Projekte werden nicht mehr verwendet, bildeten aber lange Zeit die

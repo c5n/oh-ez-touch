@@ -2678,8 +2678,8 @@ static void info_sensors_page(lv_obj_t *rows)
 
 /* The Systeminfo screen: four pages turned by the footer's arrows, each one
  * few enough lines to fit between the bar and the footer without scrolling
- * -- the budget is Antonio's, the family that runs tallest: a 16 px line at
- * 23 px, six of them in the 140 px the chrome leaves of a 240 px panel, and
+ * -- the budget is the tallest small face's: a small line of up to 23 px,
+ * six of them in the 140 px the chrome leaves of a 240 px panel, and
  * screen_show_section() drops the frame padding for this tab. What one page
  * cannot carry goes on the next one rather than below the fold, which is
  * the whole answer to what the scrolling table this replaced was asked.
@@ -2721,13 +2721,16 @@ static const struct
     const lv_font_t *small;
     const lv_font_t *normal;
     const lv_font_t *large;
+    uint8_t          px[3]; /* the generated sizes, for the specimen lines */
 } font_faces[] = {
-    {"Barlow (Material, Classic)", &custom_font_ui_16,   &custom_font_ui_22,
-     &custom_font_ui_36},
-    {"Rajdhani (JARVIS)",          &custom_font_hud_16,  &custom_font_hud_22,
-     &custom_font_hud_36},
-    {"Antonio (LCARS)",            &custom_font_lcars_16, &custom_font_lcars_22,
-     &custom_font_lcars_36},
+    {"Barlow Condensed (Material, Classic)", &custom_font_ui_16,    &custom_font_ui_22,
+     &custom_font_ui_36, {16, 22, 36}},
+    {"Rajdhani (JARVIS)",                    &custom_font_hud_16,   &custom_font_hud_22,
+     &custom_font_hud_36, {16, 22, 36}},
+    /* Larger sizes for the same roles: LCARS GTJ3's capitals are lower than
+     * the other faces' at the same size -- see tools/build_fonts.sh. */
+    {"LCARS GTJ3 (LCARS)",                   &custom_font_lcars_19, &custom_font_lcars_26,
+     &custom_font_lcars_43, {19, 26, 43}},
 };
 
 #define FONT_FACE_COUNT (sizeof(font_faces) / sizeof(font_faces[0]))
@@ -2772,8 +2775,9 @@ static void fonts_page_event(lv_event_t *e)
  * height -- at LV_SIZE_CONTENT nothing ever does, the line simply wraps --
  * so the height is pinned to one line of the line's own face. The footer's
  * status label does the same for the same reason (see screen_show_section).
- * The fullest page, Antonio's, measures 141 of the 144 px between bar and
- * footer, so no page scrolls. */
+ * The fullest page, LCARS GTJ3's (line heights 21 + 30 + 49 px under a
+ * heading), must stay within the 144 px between bar and footer, so that no
+ * page scrolls. */
 static void fonts_tab_build(lv_obj_t *rows)
 {
     lv_obj_t *heading = lv_label_create(rows);
@@ -2787,13 +2791,11 @@ static void fonts_tab_build(lv_obj_t *rows)
 
     const lv_font_t *fonts[] = {font_faces[fonts_page].small, font_faces[fonts_page].normal,
                                 font_faces[fonts_page].large};
-    static const uint8_t sizes[] = {16, 22, 36};
-
     for (size_t i = 0; i < sizeof(fonts) / sizeof(fonts[0]); i++)
     {
         char text[40];
 
-        snprintf(text, sizeof(text), "%u px: The quick brown fox", (unsigned)sizes[i]);
+        snprintf(text, sizeof(text), "%u px: The quick brown fox", (unsigned)font_faces[fonts_page].px[i]);
 
         lv_obj_t *sample = lv_label_create(rows);
 

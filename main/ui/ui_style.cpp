@@ -44,17 +44,18 @@ lv_style_t ui_style_info_error;
 #define PAD_TILE     (LV_DPI_DEF / 20)
 #define PAD_BTN      (LV_DPI_DEF / 12)
 
-/* The LCARS variants are the only reason a second font family is compiled in.
- * Antonio is a tall condensed face; see tools/build_fonts.sh. */
-#define FONT_UI_SMALL     (&custom_font_ui_16)     /* Barlow Regular   */
-#define FONT_UI_NORMAL    (&custom_font_ui_22)     /* Barlow Medium    */
-#define FONT_UI_LARGE     (&custom_font_ui_36)     /* Barlow SemiBold  */
+/* The ui faces are condensed because a tile is narrow and its state line has
+ * to fit. LCARS GTJ3 has capitals only, which is the LCARS look; see
+ * tools/build_fonts.sh. */
+#define FONT_UI_SMALL     (&custom_font_ui_16)     /* Barlow Condensed Regular  */
+#define FONT_UI_NORMAL    (&custom_font_ui_22)     /* Barlow Condensed Medium   */
+#define FONT_UI_LARGE     (&custom_font_ui_36)     /* Barlow Condensed SemiBold */
 #define FONT_HUD_SMALL    (&custom_font_hud_16)    /* Rajdhani Regular */
 #define FONT_HUD_NORMAL   (&custom_font_hud_22)    /* Rajdhani Medium  */
 #define FONT_HUD_LARGE    (&custom_font_hud_36)    /* Rajdhani SemiBold*/
-#define FONT_LCARS_SMALL  (&custom_font_lcars_16)  /* Antonio          */
-#define FONT_LCARS_NORMAL (&custom_font_lcars_22)
-#define FONT_LCARS_LARGE  (&custom_font_lcars_36)
+#define FONT_LCARS_SMALL  (&custom_font_lcars_19)  /* LCARS GTJ3       */
+#define FONT_LCARS_NORMAL (&custom_font_lcars_26)
+#define FONT_LCARS_LARGE  (&custom_font_lcars_43)
 
 /* Shorthand, so that a table row fits on a line and the six variants can be
  * read against each other. Undefined again below the table. */
@@ -342,8 +343,8 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
      *
      * One thing is a recreation rather than a restoration, and it is the face.
      * The original was set in Roboto, which left the tree when Barlow and
-     * Rajdhani replaced it; FONT_UI_* is Barlow, a humanist sans in the same
-     * register. Restoring Roboto would cost a fourth font family -- about 86 KB
+     * Rajdhani replaced it; FONT_UI_* is Barlow Condensed, a humanist sans in
+     * the same register, condensed so that the state lines fit the tiles. Restoring Roboto would cost a fourth font family -- about 86 KB
      * of a partition with 139 KB free -- for letterforms almost nobody would
      * name. */
     {

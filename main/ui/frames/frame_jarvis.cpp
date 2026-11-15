@@ -255,8 +255,8 @@ static void jarvis_set_clock(const char *text)
      * a blinking separator makes the minutes hop a pixel sideways once a
      * second. Reticle already has a second hand -- the scan dot on the bottom
      * rail -- and it is the one this family designed for the job. (LCARS keeps
-     * its blink: Antonio's colon and space differ by 1/16 px, which never
-     * crosses a pixel boundary.) */
+     * its blink: in LCARS GTJ3 the colon and the space have the same
+     * width.) */
     char steady[8];
 
     ui_frame_clock_steady(steady, sizeof(steady), text);

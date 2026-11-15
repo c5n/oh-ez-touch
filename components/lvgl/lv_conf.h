@@ -757,10 +757,12 @@
  *  #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)
  *  @endcode
  */
-/* Three families, one per theme: Barlow ("ui") for Slate, Rajdhani ("hud") for
- * Reticle, and the condensed Antonio ("lcars") for LCARS. Each size is a
- * different static weight of its face, so a caption, a label and a reading
- * differ in weight as well as in size. Regenerate with tools/build_fonts.sh.
+/* Three families, one per theme: Barlow Condensed ("ui") for Material and
+ * Classic, Rajdhani ("hud") for JARVIS, and LCARS GTJ3 ("lcars") for LCARS.
+ * In "ui" and "hud" each size is a different static weight of its face, so a
+ * caption, a label and a reading differ in weight as well as in size. LCARS
+ * GTJ3 has one weight and is generated at 19/26/43 px, because its capitals
+ * are lower than the others' at the same size. Regenerate with tools/build_fonts.sh.
  *
  * The 100 px face is not one of the roles: only the screensaver's time line
  * uses it, and nothing in the theme table points at it.
@@ -773,9 +775,9 @@
                                LV_FONT_DECLARE(custom_font_hud_16) \
                                LV_FONT_DECLARE(custom_font_hud_22) \
                                LV_FONT_DECLARE(custom_font_hud_36) \
-                               LV_FONT_DECLARE(custom_font_lcars_16) \
-                               LV_FONT_DECLARE(custom_font_lcars_22) \
-                               LV_FONT_DECLARE(custom_font_lcars_36) \
+                               LV_FONT_DECLARE(custom_font_lcars_19) \
+                               LV_FONT_DECLARE(custom_font_lcars_26) \
+                               LV_FONT_DECLARE(custom_font_lcars_43) \
                                LV_FONT_DECLARE(custom_font_clock_117)
 
 /** Always set a default font */
