@@ -154,7 +154,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x4A4E57, 4, FULLO, BOT),
         /* active       */ MARK(0x0B7A75, 4, FULLO, BOT),
         /* info warn/err*/ 0xB4531F, 0xB3261E,
-        /* icon         */ 0x000000, 0, 255, 80, 140, 50,
+        /* icon         */ 0x000000, 0, 255, 80, false, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
@@ -179,7 +179,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x5A616B, 4, FULLO, BOT),
         /* active       */ MARK(0x48C0B0, 4, FULLO, BOT),
         /* info warn/err*/ 0xC4832E, 0xD9584C,
-        /* icon         */ 0xE8E4DC, 255, 220, 110, 150, 55,
+        /* icon         */ 0xE8E4DC, 0, 230, 110, true, 150, 55,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
         /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
@@ -224,7 +224,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x99CCFF, 6, FULLO, LEFT),
         /* active       */ MARK(0xFF9900, 6, FULLO, LEFT),
         /* info warn/err*/ 0xFFCC66, 0xCC6699,
-        /* icon         */ 0x000000, 255, 230, 90, 200, 70,
+        /* icon         */ 0x000000, 0, 255, 90, false, 200, 70,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
@@ -249,7 +249,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x4A6A8A, 6, FULLO, LEFT),
         /* active       */ MARK(0xB37300, 6, FULLO, LEFT),
         /* info warn/err*/ 0x8A6A1E, 0x8A2A44,
-        /* icon         */ 0xCC7700, 255, 200, 70, 160, 60,
+        /* icon         */ 0xCC7700, 110, 230, 70, true, 160, 60,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_LCARS_SMALL, FONT_LCARS_NORMAL, FONT_LCARS_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_FADE, UI_EASE_STEP, 16, 240, 48, 0,
@@ -293,7 +293,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x35D6FF, 2, FULLO, EK),
         /* active       */ MARK(0xFFA23A, 2, FULLO, EK),
         /* info warn/err*/ 0xFFA23A, 0xFF5A4A,
-        /* icon         */ 0x35D6FF, 255, 220, 110, 180, 60,
+        /* icon         */ 0x35D6FF, 110, 230, 110, true, 180, 60,
         /* glow         */ 0x35D6FF, 8, 70,
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
@@ -318,7 +318,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0xB3762A, 2, FULLO, EK),
         /* active       */ MARK(0xE0A860, 2, FULLO, EK),
         /* info warn/err*/ 0x8A6A1E, 0x8A3A22,
-        /* icon         */ 0xB3762A, 255, 220, 90, 160, 55,
+        /* icon         */ 0xB3762A, 120, 230, 90, true, 160, 55,
         /* glow         */ 0xB3762A, 6, 50,
         /* fonts        */ FONT_HUD_SMALL, FONT_HUD_NORMAL, FONT_HUD_LARGE, 1,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_EXPO, 240, 240, 80, -6,
@@ -365,7 +365,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x2196F3, 4, FULLO, EK),
         /* active       */ MARK(CK, 4, MK, EK),
         /* info warn/err*/ 0xFFEB3B, 0xF44336,
-        /* icon         */ 0x000000, 0, 255, 80, 140, 50,
+        /* icon         */ 0x000000, 0, 255, 80, false, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
@@ -390,7 +390,7 @@ static const struct ui_theme_s ui_themes[UI_THEME_COUNT] = {
         /* link         */ MARK(0x4A90B8, 4, FULLO, EK),
         /* active       */ MARK(0x8A8276, 4, FULLO, EK),
         /* info warn/err*/ 0x8A6A1E, 0x8A2A22,
-        /* icon         */ 0xB8B0A4, 255, 230, 110, 140, 50,
+        /* icon         */ 0xB8B0A4, 0, 230, 110, true, 140, 50,
         /* glow         */ 0x000000, 0, 0,
         /* fonts        */ FONT_UI_SMALL, FONT_UI_NORMAL, FONT_UI_LARGE, 0,
     /* motion       */ MOTION(UI_ENTRY_RISE, UI_EASE_OUT_CUBIC, 192, 240, 64, 10,
@@ -688,7 +688,9 @@ void ui_style_init(void)
      * the only way to keep them visible on a dark variant. They sit between
      * the caption and the state line, clear of both, so they are drawn nearly
      * opaque; widget_create() lowers a link tile's icon to
-     * icon_watermark_opa, where the caption lies on top of it. */
+     * icon_watermark_opa, where the caption lies on top of it. A dark variant
+     * with icon_night gets its grey parts flipped as well; that is a flag on
+     * the image, set by widget_icon_set_bitmap(), not a style property. */
     lv_style_set_image_opa(&ui_style_icon, theme->icon_opa);
 
     if (theme->icon_recolor_opa != 0)

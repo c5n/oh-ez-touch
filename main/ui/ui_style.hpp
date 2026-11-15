@@ -136,11 +136,18 @@ struct ui_theme_s
      * icon_opa is for that band, where no text covers the icon, and is meant
      * to be read on a TFT whose contrast falls off with the viewing angle.
      * A link tile has no state line and centres its caption on the icon, so
-     * there the icon stays a watermark at icon_watermark_opa. */
+     * there the icon stays a watermark at icon_watermark_opa.
+     *
+     * A variant with dark tiles sets icon_night: the grey parts of the icon
+     * are flipped as it is drawn (ui/ui_icon_night.h), so the outlines turn
+     * light and the fills dark. A full recolour alone would fill the white
+     * areas in as well and leave a silhouette. The recolour on top of that
+     * is a partial tint toward the theme's colour, not a replacement. */
     uint32_t icon_recolor;
     uint8_t  icon_recolor_opa; /* 0 leaves the PNG's own colours alone */
     uint8_t  icon_opa;
     uint8_t  icon_watermark_opa;
+    bool     icon_night;
     uint8_t  symbol_opa;     /* the parent-link arrow  */
     uint8_t  symbol_dim_opa; /* the no-icon eye        */
 

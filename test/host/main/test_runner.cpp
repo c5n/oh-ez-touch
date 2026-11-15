@@ -34,6 +34,7 @@ extern "C" void app_main(void)
     test_event_parse_run();
     test_frame_stats_run();
     test_work_buf_run();
+    test_icon_night_run();
     test_icon_png_run();
     test_icon_quantize_run();
     test_icon_set_run();

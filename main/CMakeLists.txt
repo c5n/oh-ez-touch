@@ -80,6 +80,7 @@ set(OHEZ_APP_SRCS
     "config/pin_code.c"
     "config/pin_store.c"
 
+    "icons/icon_night.c"
     "icons/icon_png.c"
     "icons/icon_quantize.c"
     "icons/icon_set.cpp"
@@ -107,6 +108,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_frame_probe.c"
     "ui/ui_frame_stats.c"
     "ui/ui_glyph_buf.c"
+    "ui/ui_icon_night.c"
     "ui/ui_input.c"
     "ui/ui_beep_tables.cpp"
     "ui/ui_beep_tables_seq.cpp"

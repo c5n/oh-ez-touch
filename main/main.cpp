@@ -55,6 +55,7 @@
 #include "ui/ui_clock.hpp"
 #include "ui/ui_frame_probe.h"
 #include "ui/ui_glyph_buf.h"
+#include "ui/ui_icon_night.h"
 #include "ui/ui_messagebox.hpp"
 #include "ui/ui_pin.hpp"
 #include "ui/ui_screen.hpp"
@@ -322,6 +323,10 @@ static void ohez_setup(void)
      * one block on every frame, and a heap that cannot give it drops them.
      * They borrow the work buffer instead (see ui/ui_glyph_buf.h). */
     ui_glyph_buf_setup();
+
+    /* The dark themes' tile icons: grey parts flipped, as each line is drawn
+     * (see ui/ui_icon_night.h). */
+    ui_icon_night_setup();
 
     beeper_setup();
     beeper_set_volume((uint8_t)config.item.beeper.volume);

@@ -21,6 +21,7 @@
 #include "ui_style.hpp"
 #include "ui_widgets.hpp"
 #include "ui_activity.h"
+#include "ui_icon_night.h"
 
 #include "lodepng/lodepng.h"
 #include "time.h"
@@ -815,6 +816,14 @@ static void widget_icon_set_bitmap(struct widget_context_s *wctx)
 {
     lv_obj_remove_style(wctx->img_obj, &ui_style_label_large, LV_PART_MAIN);
     lv_obj_remove_local_style_prop(wctx->img_obj, LV_STYLE_TEXT_OPA, 0);
+
+    /* The descriptor is the tile's own even where the pixels are shared, and
+     * a theme change comes through here again, so the flag always matches the
+     * theme in effect. */
+    if (ui_style_theme()->icon_night == true)
+        wctx->img_dsc.header.flags |= UI_ICON_NIGHT_FLAG;
+    else
+        wctx->img_dsc.header.flags &= (uint16_t)~UI_ICON_NIGHT_FLAG;
 
     /* Clearing the source first is not redundant: LVGL compares the src
      * pointer and would skip the update, since the descriptor is reused with
