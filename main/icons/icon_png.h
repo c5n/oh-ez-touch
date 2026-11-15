@@ -33,12 +33,17 @@
 extern "C" {
 #endif
 
-/* The largest block the decode asks for, apart from the result. */
-#define ICON_PNG_SEGMENT_SIZE 2048
+/* The largest block the decode asks for, apart from the result. 1 KB rather
+ * than 2 KB: on a panel that has been up for a while the heap often has the
+ * total free but in pieces below 2 KB, and the decode then failed. Smaller
+ * segments also fill more of the scratch area: 9 instead of 4 for a 64x64
+ * RGBA icon in the receive buffer's tail. */
+#define ICON_PNG_SEGMENT_SIZE 1024
 
 /* An icon whose inflated scanlines need more segments than this is refused as
- * unsupported: 80 KB, a 128x128 RGBA icon with room to spare. */
-#define ICON_PNG_MAX_SEGMENTS 40
+ * unsupported: 80 KB, a 128x128 RGBA icon with room to spare. The segment
+ * pointers are on the caller's stack, 4 bytes each. */
+#define ICON_PNG_MAX_SEGMENTS 80
 
 enum icon_png_e
 {

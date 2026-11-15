@@ -144,7 +144,7 @@ static void test_rgba_dynamic(void)
     check_matches_lodepng("icon_rgba64_dynamic.png", 32, 32);
 }
 
-/* The same with the receive buffer's tail lent: the first five of nine
+/* The same with the receive buffer's tail lent: the first ten of seventeen
  * segments are in it, the rest on the heap. Then one that holds them all. */
 static void test_rgba_with_scratch(void)
 {
