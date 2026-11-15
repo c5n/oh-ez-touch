@@ -221,7 +221,18 @@ class MqttSubscriber:
         return data
 
     def _read_packet(self):
+        # Only the wait for a packet's first byte may time out. A timeout in
+        # the middle of a packet would lose its first part and desynchronise
+        # the stream, so the rest is read with a long timeout.
         header = self._recv_exact(1)[0]
+        timeout = self.sock.gettimeout()
+        self.sock.settimeout(self.KEEPALIVE_S)
+        try:
+            return header, self._read_rest()
+        finally:
+            self.sock.settimeout(timeout)
+
+    def _read_rest(self):
         multiplier, length = 1, 0
         while True:
             byte = self._recv_exact(1)[0]
@@ -229,7 +240,7 @@ class MqttSubscriber:
             if not byte & 0x80:
                 break
             multiplier *= 128
-        return header, self._recv_exact(length) if length else b""
+        return self._recv_exact(length) if length else b""
 
     def _session(self):
         self.sock = socket.create_connection((self.host, self.port), timeout=10)
@@ -248,13 +259,21 @@ class MqttSubscriber:
         self.sock.sendall(self._packet(0x82, payload))
 
         self.on_state(True)
-        self.sock.settimeout(self.KEEPALIVE_S / 2)
+        # PINGREQ on a timer. The keepalive asks the *client* to send
+        # something within KEEPALIVE_S; receiving does not count. With a
+        # busy broker the read never times out, so a ping sent only on a
+        # read timeout never went out, and the broker dropped the session
+        # after 1.5 x KEEPALIVE_S -- a gap in the log every few minutes.
+        self.sock.settimeout(5)
+        last_sent = time.monotonic()
 
         while not self.stop_event.is_set():
+            if time.monotonic() - last_sent >= self.KEEPALIVE_S / 2:
+                self.sock.sendall(b"\xc0\x00")
+                last_sent = time.monotonic()
             try:
                 header, body = self._read_packet()
             except socket.timeout:
-                self.sock.sendall(b"\xc0\x00")
                 continue
 
             if header >> 4 != 3:
@@ -270,9 +289,9 @@ class MqttSubscriber:
     def run(self):
         backoff = 2
         while not self.stop_event.is_set():
+            started = time.monotonic()
             try:
                 self._session()
-                backoff = 2
             except Exception:                               # noqa: BLE001 - any failure reconnects
                 pass
             finally:
@@ -283,6 +302,10 @@ class MqttSubscriber:
                     except OSError:
                         pass
                     self.sock = None
+            # A session that ran for a while was a working connection: the
+            # next attempt starts with the short wait again.
+            if time.monotonic() - started > self.KEEPALIVE_S:
+                backoff = 2
             self.stop_event.wait(backoff)
             backoff = min(backoff * 2, 60)
 
