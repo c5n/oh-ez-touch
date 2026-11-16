@@ -310,6 +310,22 @@ heap, in blocks of 4 KB at most. The 4 KB result is then reduced to a
 refuses -- 16-bit, fewer than 8 bits, interlaced -- and its patches are
 marked `OH-EZ-TOUCH` in the source.
 
+**Icons on dark tiles.** Most openHAB icons are a dark drawing on a
+transparent background, made for a light page. A theme variant with dark
+tiles sets `icon_night` in its row in `main/ui/ui_style.cpp`. The tile then
+marks its I4 image with `UI_ICON_NIGHT_FLAG`. The image decoder
+`ohez-night` (`main/ui/ui_icon_night.c`) accepts only images with that
+flag. It reads them like LVGL's own decoder and then makes grey pixels light,
+one line at a time, with `icon_night_invert()` (`main/icons/icon_night.c`):
+black becomes white, white becomes a dark grey (87), and alpha does not
+change. The inversion fades out with the pixel's chroma, so the coloured
+parts of an icon keep their colour, for example a lamp's yellow or a traffic
+light's red. An icon that arrives as ARGB8888 (the lodepng fallback) has no
+flag and keeps its day look. The opacity is set per theme too: `icon_opa`
+for the icon of an item tile, which sits between caption and state line,
+and the lower `icon_watermark_opa` for a link tile, whose caption covers the
+icon.
+
 Two neighbours join in, because a page load is exactly when they compete for
 the same heap. A BLE scan window defers while the panel is being touched and
 stops early if it is open ([ble.md](ble.md) has the duty cycle). And a fade
