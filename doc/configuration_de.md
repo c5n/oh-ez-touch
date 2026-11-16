@@ -270,6 +270,23 @@ Elementzustände erreichen das Bedienfeld ohne Abfragen. Das Bedienfeld hält `G
 
 Auf dem Bedienfeld wird die Sitemap-Liste vom Host und Port abgerufen, während diese bearbeitet werden. Das Webformular fragt den gespeicherten Endpunkt ab. Dort ist die Reihenfolge: Server auswählen, **Speichern**, dann eine Sitemap von der neu geladenen Seite auswählen.
 
+### Home Assistant
+
+Nur in einem Home-Assistant-Build (siehe
+[Bauen](building_de.md#builds-für-home-assistant)). Dieser Abschnitt ersetzt
+**openHAB-Server** und **Türklingel**. `config.json` speichert ihn unter
+`homeassistant`.
+
+| Einstellung | Standardwert | Beschreibung |
+| --- | --- | --- |
+| Host | homeassistant | Hostname des Home-Assistant-Servers. |
+| Port | 8123 | Port. Nur unverschlüsseltes HTTP. |
+| Access token | (leer) | Ein langlebiges Zugriffstoken. Erstellen Sie es in Home Assistant auf der Seite Ihres Benutzerprofils. |
+| Dashboard | (leer) | Der `url_path` des Dashboards, das das Panel zeigt. Leer: das Standard-Dashboard. |
+
+Der Home-Assistant-Connector ist derzeit ein Platzhalter. Das Panel speichert
+diese Einstellungen, lädt aber noch keine Seite.
+
 ### Türklingel
 
 | Einstellung | Standardwert | Beschreibung |

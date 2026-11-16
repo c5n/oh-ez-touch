@@ -222,7 +222,7 @@ bool openhab_event_scan_state(const char *json, size_t len, const char *item,
                               char *value, size_t value_size)
 {
     /* "/items/<item>/", so that "A" is not found in "openhab/items/AB/...". */
-    char topic[OPENHAB_EVENT_NAME_LEN + 16];
+    char topic[CONNECTOR_EVENT_NAME_LEN + 16];
 
     if (item == NULL || item[0] == '\0' || value_size == 0)
         return false;
@@ -297,7 +297,7 @@ static void label_split(const char *label, char *caption, size_t caption_size,
 }
 
 enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_t len,
-                                                         struct openhab_widget_event_s *out)
+                                                         struct connector_widget_event_s *out)
 {
     if (filters_ready() == false)
         return OPENHAB_SITEMAP_EVENT_NOMEM;
@@ -333,8 +333,8 @@ enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_
     if (event["descriptionChanged"].as<bool>() == true)
         return OPENHAB_SITEMAP_EVENT_RELOAD;
 
-    out->widget = openhab_id_hash(widget_id);
-    out->page = openhab_id_hash(event["pageId"].as<const char *>());
+    out->widget = connector_id_hash(widget_id);
+    out->page = connector_id_hash(event["pageId"].as<const char *>());
 
     const char *state = event["item"]["state"].as<const char *>();
 

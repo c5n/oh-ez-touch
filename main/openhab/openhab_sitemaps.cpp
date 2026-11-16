@@ -145,7 +145,7 @@ void openhab_sitemaps_loop(void)
     publish(OPENHAB_SITEMAPS_FETCHING);
 }
 
-void openhab_sitemaps_apply(const struct openhab_result_s *res)
+void openhab_sitemaps_apply(const struct connector_result_s *res)
 {
     /* Applied whatever the state is, including after this fetch was given up
      * on: a late answer is still this server's answer, and the alternative is

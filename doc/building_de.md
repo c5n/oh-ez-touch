@@ -154,6 +154,38 @@ JTAG-Pin-Neuzuordnung und die Debug-Ausgabe der einzelnen Module unter
 Um alle Boards auf einmal zu bauen, verwenden Sie `tools/build_release.py`.
 Siehe [Update-Tool](update_de.md#release-builds).
 
+### Builds für Home Assistant
+
+Ein Build enthält genau einen Server-Connector: openHAB oder Home Assistant.
+Der Connector ist eine Build-Option (`CONFIG_OHEZ_CONNECTOR`), keine
+Einstellung. Ohne weitere Angaben entsteht ein openHAB-Build.
+
+Für einen Home-Assistant-Build hängen Sie `sdkconfig.defaults.homeassistant`
+hinter die Defaults-Datei des Boards. Verwenden Sie ein eigenes
+Build-Verzeichnis mit dem Namen des Boards und der Endung `_ha`:
+
+```bash
+idf.py -B build/arduitouch_ha -DSDKCONFIG=build/arduitouch_ha/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch;sdkconfig.defaults.homeassistant" \
+       set-target esp32
+idf.py -B build/arduitouch_ha build
+```
+
+Für die anderen Boards gilt dasselbe: `build/arduitouch28_ha`,
+`build/lanbon_ha` und `build/cyd_ha`. Der Home-Assistant-Build des Simulators
+ist `build/linux_ha` mit
+`-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linux;sdkconfig.defaults.homeassistant"`.
+
+Ein Home-Assistant-Build meldet seinen Target-Namen mit der Endung `-HA`,
+zum Beispiel `ArduiTouch-HA`. `tools/batchupdate.py` und der Gerätemanager
+vergleichen diesen Namen vor einem Update. Sie spielen kein
+Home-Assistant-Image auf ein Panel, das openHAB verwendet, und umgekehrt.
+
+Der Home-Assistant-Connector ist derzeit ein Platzhalter. Build,
+Einstellungen und Target-Name sind vorhanden. Das Panel lädt noch keine
+Seite: Es zeigt „SITEMAP ACCESS FAILED“ und versucht es erneut.
+`tools/build_release.py` baut die `_ha`-Targets nur, wenn `-t` sie nennt.
+
 ## Flashen
 
 Ein Befehl lädt den Bootloader, die Partitionstabelle, die Firmware und das aus

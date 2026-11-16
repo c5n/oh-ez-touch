@@ -12,7 +12,7 @@
  * RAM, where this one stays in flash. Same reasoning as the uint32_t colours in
  * ui_style.hpp. */
 #define OFF(path) ((uint16_t)offsetof(config_item_t, path))
-#define SZ(path) ((uint8_t)sizeof(((config_item_t *)0)->path))
+#define SZ(path) ((uint16_t)sizeof(((config_item_t *)0)->path))
 
 /* Shorthand, so that a row fits on one line and the table can be read against
  * the settings tables in README.md. Only SEC() names a tab; the rows under it
@@ -164,6 +164,23 @@ const struct config_field_s config_fields[] = {
      * SETTINGS_F_RESTART -- the task reads it per note. */
     UINT("beeper_vol", "Volume", "%", beeper.volume, "beeper", "volume", 25, 0, 100),
 
+#if CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT
+    SEC("Home Assistant", SETTINGS_TAB_OPENHAB),
+    /* The settings tab keeps its enum name: it is the server's tab, and in a
+     * Home Assistant build that server is Home Assistant. SETTINGS_FIELD_HOST
+     * and _PORT name the same two rows in both builds. */
+    TXT(SETTINGS_FIELD_HOST, "Host", homeassistant.hostname, "homeassistant", "hostname",
+        "homeassistant", SETTINGS_F_HOSTCHARS),
+    SINT(SETTINGS_FIELD_PORT, "Port", NULL, homeassistant.port, "homeassistant", "port", 8123,
+         1, 65535),
+    /* Secret: the web form shows it as a password field and the REST API does
+     * not echo it, the same as the MQTT password. */
+    TXT("ha_token", "Access token", homeassistant.token, "homeassistant", "token", "",
+        SETTINGS_F_SECRET),
+    TXT("ha_dashboard", "Dashboard (empty: default)", homeassistant.dashboard,
+        "homeassistant", "dashboard", "", SETTINGS_F_HOSTCHARS),
+
+#else
     SEC("OpenHAB Server", SETTINGS_TAB_OPENHAB),
     /* The two an mDNS scan fills in. SETTINGS_FIELD_HOST and _PORT are how
      * both front ends find these rows to hang that list off. */
@@ -188,6 +205,7 @@ const struct config_field_s config_fields[] = {
         "doorbell_image", "", SETTINGS_F_HOSTCHARS),
     UINT("bell_show", "Show picture for", "s", openhab.doorbell_show, "openhab",
          "doorbell_show", 30, 0, 600),
+#endif
 
     SEC("MQTT Broker", SETTINGS_TAB_MQTT),
     /* Off by default: a device that has never been told about a broker must

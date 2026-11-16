@@ -44,11 +44,11 @@ static const char *TAG = "openhab_bell";
 #define BELL_BACKOFF_MAX_MS  60000
 
 #define BELL_ITEM_LEN 48
-#define BELL_URL_LEN  (OPENHAB_EVENTS_WEBSITE_LEN + 64 + BELL_ITEM_LEN)
+#define BELL_URL_LEN  (CONNECTOR_EVENTS_WEBSITE_LEN + 64 + BELL_ITEM_LEN)
 
 struct target_s
 {
-    char website[OPENHAB_EVENTS_WEBSITE_LEN];
+    char website[CONNECTOR_EVENTS_WEBSITE_LEN];
     char item[BELL_ITEM_LEN];
 };
 
@@ -71,8 +71,8 @@ static char url[BELL_URL_LEN];
 static void on_data(const char *data, size_t len, void *ctx)
 {
     uint64_t *last_data = (uint64_t *)ctx;
-    char name[OPENHAB_EVENT_NAME_LEN];
-    char value[OPENHAB_EVENTS_VALUE_LEN];
+    char name[CONNECTOR_EVENT_NAME_LEN];
+    char value[CONNECTOR_EVENTS_VALUE_LEN];
 
     *last_data = port_millis();
 

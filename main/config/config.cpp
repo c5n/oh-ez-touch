@@ -144,9 +144,16 @@ static const struct
     {"OHEZ_NIGHT_FROM", "night_from"},
     {"OHEZ_NIGHT_TO", "night_to"},
     {"OHEZ_ORIENTATION", "orientation"},
+#if CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT
+    {"OHEZ_HA_HOST", "oh_host"},
+    {"OHEZ_HA_PORT", "oh_port"},
+    {"OHEZ_HA_TOKEN", "ha_token"},
+    {"OHEZ_HA_DASHBOARD", "ha_dashboard"},
+#else
     {"OHEZ_OPENHAB_HOST", "oh_host"},
     {"OHEZ_OPENHAB_PORT", "oh_port"},
     {"OHEZ_SITEMAP", "oh_sitemap"},
+#endif
     {"OHEZ_MQTT", "mqtt_use"},
     {"OHEZ_MQTT_HOST", "mqtt_host"},
     {"OHEZ_MQTT_PORT", "mqtt_port"},

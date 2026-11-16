@@ -28,14 +28,11 @@
 #ifndef OPENHAB_EVENT_PARSE_HPP
 #define OPENHAB_EVENT_PARSE_HPP
 
+#include "connector/connector_types.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-
-/* Item names are [A-Za-z0-9_]; openHAB sets no limit, the panel does. A name
- * that does not fit cannot be matched to a tile, so it is refused rather than
- * truncated into somebody else's name. */
-#define OPENHAB_EVENT_NAME_LEN 64
 
 /* One "data:" line. An item event is two to three hundred bytes; the largest
  * are HSB and DateTime states, which still fit with room to spare. A sitemap
@@ -44,9 +41,6 @@
  * with three options on openHAB 5.2.1. A longer line is dropped whole, and the
  * reader says so: see sse_reader_take_overflow(). */
 #define SSE_LINE_LEN 2048
-
-/* The width of a state, and of the two halves of a widget's label. */
-#define OPENHAB_EVENT_TEXT_LEN 32
 
 enum openhab_event_e
 {
@@ -105,24 +99,9 @@ bool openhab_event_scan_state(const char *json, size_t len, const char *item,
  * its rules give the new state. A colour is absent, not empty, when no rule
  * applies any more, so absent means "the theme's".
  *
- * Widgets and pages are known by a hash of their id -- see openhab_id_hash()
- * -- so an Item can carry one in four bytes. */
-struct openhab_widget_event_s
-{
-    uint32_t widget;
-    uint32_t page;
-    /* The item's raw state, the one /state answers; "" for a widget with no
-     * item, like a Frame. */
-    char     state[OPENHAB_EVENT_TEXT_LEN];
-    /* The label before its "[...]", and what is inside it ("" for none). */
-    char     caption[OPENHAB_EVENT_TEXT_LEN];
-    char     display[OPENHAB_EVENT_TEXT_LEN];
-    uint32_t label_color;  /* 0xRRGGBB or OPENHAB_COLOR_NONE */
-    uint32_t value_color;
-    uint32_t icon_color;
-    bool     has_state;
-    bool     visible;
-};
+ * Widgets and pages are known by a hash of their id -- see connector_id_hash()
+ * -- so an Item can carry one in four bytes. The fields are struct
+ * connector_widget_event_s, in connector/connector_types.h. */
 
 enum openhab_sitemap_event_e
 {
@@ -142,7 +121,7 @@ enum openhab_sitemap_event_e
  * filtered down to its state.
  */
 enum openhab_sitemap_event_e openhab_sitemap_event_parse(const char *json, size_t len,
-                                                         struct openhab_widget_event_s *out);
+                                                         struct connector_widget_event_s *out);
 
 /**
  * For the host tests: true makes every document allocation of the two event
@@ -164,25 +143,6 @@ void openhab_event_parse_fail_allocations(bool fail);
  * @return false for a body without one, or an id that does not fit.
  */
 bool openhab_sitemap_subscription_id(const char *json, size_t len, char *id, size_t id_size);
-
-/* FNV-1a over a widget or page id: "1_0", "1_50", or on a group's generated
- * page the member's item name. 0 is kept for "none", so an id that hashes to
- * it is moved to 1 -- one more collision, out of four billion. */
-static inline uint32_t openhab_id_hash(const char *id)
-{
-    uint32_t hash = 2166136261u;
-
-    if (id == NULL || id[0] == '\0')
-        return 0;
-
-    for (; *id != '\0'; id++)
-    {
-        hash ^= (uint8_t)*id;
-        hash *= 16777619u;
-    }
-
-    return (hash == 0) ? 1 : hash;
-}
 
 /**
  * The line splitter.

@@ -33,8 +33,10 @@
 #include "config/config_fields.hpp"
 #include "config/pin_store.h"
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 #include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
+#endif
 #include "ui/openhab_ui.hpp"
 #include "ui/ui_frame_stats.h"
 #include "ui/ui_pin.hpp"
@@ -55,10 +57,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
-/* Widest destination in Config::item is the char[64] MQTT password; the rest is
- * headroom so that an over-long submission is truncated here rather than
- * rejected. */
-#define WEBUI_VALUE_MAX 80
+/* Widest destination in Config::item is the char[256] Home Assistant access
+ * token (the char[64] MQTT password in an openHAB build); the rest is headroom
+ * so that an over-long submission is truncated here rather than rejected. */
+#define WEBUI_VALUE_MAX 272
 
 /* No HTTP authentication, which is what AutoConnect was configured for too
  * (auth = AC_AUTH_NONE, and the OTA endpoint never had any). Worth knowing
@@ -114,6 +116,8 @@ static const char webui_page_head[] =
     "p.n,span.n{font-size:.8em;color:#666}"
     "</style></head><body><div class='w'><h1>OhEzTouch</h1>";
 
+/* openHAB only: the sitemap list and the server scan. */
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 /* Fills the sitemap field's datalist from /sitemaps, and says where it got to.
  *
  * The one piece of script in this interface, and it earns its place: the list
@@ -178,6 +182,7 @@ static const char webui_servers_script[] =
     "s.textContent=d.state=='failed'?'Scan failed':''"
     "}).catch(function(){var s=document.getElementById('servers-state');"
     "if(s)s.textContent=''})};p()})();</script>";
+#endif
 
 static const char webui_page_tail[] = "</div></body></html>";
 
@@ -284,6 +289,19 @@ static void webui_send_status(struct webui_out_s *o)
     webui_put(o, "</table></fieldset>");
 }
 
+/* The attributes that hang the openHAB sitemap list off its text row, "" for
+ * every other row and in a Home Assistant build. */
+static const char *webui_input_list(const struct config_field_s *f)
+{
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
+    if (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
+        return " list='sitemaps' autocomplete='off'";
+#else
+    (void)f;
+#endif
+    return "";
+}
+
 static void webui_send_form(struct webui_out_s *o, const Config *config)
 {
     bool open = false;
@@ -329,11 +347,11 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
                         * sitemaps the server offers are suggestions, and a
                         * name can still be typed when the server is not up or
                         * has more sitemaps than the panel keeps. */
-                       (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
-                           ? " list='sitemaps' autocomplete='off'" : "");
+                       webui_input_list(f));
             webui_put_escaped(o, config_field_text(f, &config->item));
             webui_put(o, "'>");
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
             if (strcmp(f->name, SETTINGS_FIELD_SITEMAP) == 0)
                 webui_put(o, "<datalist id='sitemaps'></datalist>"
                              "<span class='n' id='sitemaps-state'>Loading...</span>");
@@ -343,6 +361,7 @@ static void webui_send_form(struct webui_out_s *o, const Config *config)
             else if (strcmp(f->name, SETTINGS_FIELD_HOST) == 0)
                 webui_put(o, "<span class='n' id='servers-state'>"
                              "Searching...</span><div id='servers'></div>");
+#endif
             break;
 
         case SETTINGS_BOOL:
@@ -493,12 +512,14 @@ static void webui_handle_root(webui_request_t *req)
         webui_put(&out, "<fieldset><legend>WLAN</legend>"
                         "<p class='n'>Credentials stored, connecting.</p></fieldset>");
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     /* Opening the page is the request, the same way opening the panel's
      * openHAB settings is: by the time the scripts below ask for the two
      * lists, the panel is usually already waiting on the answers. */
     openhab_sitemaps_request(webui_config->item.openhab.hostname,
                              (uint16_t)webui_config->item.openhab.port);
     openhab_discover_request();
+#endif
 
     webui_send_status(&out);
     webui_send_wlan_form(&out);
@@ -511,8 +532,10 @@ static void webui_handle_root(webui_request_t *req)
                     "<form method='post' action='/restart'>"
                     "<button type='submit'>Restart</button></form>");
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     webui_put(&out, webui_page_script);
     webui_put(&out, webui_servers_script);
+#endif
 
     webui_end_page(&out);
 }
@@ -529,7 +552,10 @@ static void webui_handle_save(webui_request_t *req)
     for (size_t i = 0; i < config_field_count; i++)
     {
         const struct config_field_s *f = &config_fields[i];
-        char                           value[WEBUI_VALUE_MAX];
+        /* Static rather than on the server task's stack, which is sized by
+         * measurement (see the heap budget in doc/architecture.md). One save
+         * at a time: the server has one task, and the Config lock is held. */
+        static char                    value[WEBUI_VALUE_MAX];
 
         if (f->kind == SETTINGS_SECTION)
             continue;
@@ -594,6 +620,7 @@ static void webui_handle_save(webui_request_t *req)
     webui_redirect(req, 303, "/?saved=1");
 }
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 /* The list of sitemaps, as JSON, for the script above.
  *
  * Reading, not refreshing. The page handler is what asks for a fresh list, and
@@ -712,6 +739,7 @@ static void webui_handle_servers(webui_request_t *req)
     webui_flush(&out);
     webui_end_chunked(req);
 }
+#endif
 
 static void webui_handle_wifi(webui_request_t *req)
 {
@@ -795,8 +823,10 @@ void webui_setup(Config *config)
     webui_transport_route("/save", WEBUI_POST, webui_handle_save);
     webui_transport_route("/wifi", WEBUI_POST, webui_handle_wifi);
     webui_transport_route("/pin/clear", WEBUI_POST, webui_handle_pin_clear);
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     webui_transport_route("/sitemaps", WEBUI_GET, webui_handle_sitemaps);
     webui_transport_route("/servers", WEBUI_GET, webui_handle_servers);
+#endif
     webui_transport_route("/restart", WEBUI_POST, webui_handle_restart);
     webui_transport_route("/restart", WEBUI_GET, webui_handle_restart);
 

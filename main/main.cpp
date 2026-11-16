@@ -39,11 +39,7 @@
 #include "mqtt/ohez_mqtt.hpp"
 #include "mem/work_buf.h"
 #include "net/wlan.hpp"
-#include "openhab/openhab_client.hpp"
-#include "openhab/openhab_events.hpp"
-#include "openhab/openhab_discover.hpp"
-#include "openhab/openhab_http.hpp"
-#include "openhab/openhab_sitemaps.hpp"
+#include "connector/connector.hpp"
 #include "peripherals/led.hpp"
 #include "peripherals/relay.hpp"
 #include "peripherals/sensor_main.hpp"
@@ -148,8 +144,9 @@ void settings_apply_live(Config *config)
     /* A request, not a call: this is reached from the web handler, which runs
      * on the server's task, and openhab_ui_connect() rewrites the page URL that
      * the UI task may be fetching from at that moment. */
-    openhab_ui_request_connect(config->item.openhab.hostname, config->item.openhab.port,
-                               config->item.openhab.sitemap);
+    struct connector_server_s server = connector_server(config);
+
+    openhab_ui_request_connect(server.host, server.port, server.root);
 
     tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
     tft_backlight.setNormalBrightness(config->item.backlight.normal_brightness);
@@ -398,21 +395,16 @@ static void ohez_setup(void)
      * allocated, and for the same reason: after wlan_setup() and
      * webui_setup(), so that a board that cannot spare it says so in a log
      * line instead of leaving esp_wifi_init() short. */
-    if (work_buf_init(OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1, port_tick_ms,
+    if (work_buf_init(CONNECTOR_PAGE_BUFFER_SIZE + 1, port_tick_ms,
                       [] { vTaskDelay(1); }) == false)
         ESP_LOGE(TAG, "cannot allocate the %u byte work buffer",
-                 (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
+                 (unsigned)CONNECTOR_PAGE_BUFFER_SIZE + 1);
 
     /* Before openhab_ui_connect() below, which is the first thing to submit a
      * request. Starting it while the link is still down is harmless -- it
-     * blocks on an empty queue until there is something to fetch. */
-    if (openhab_client_setup() == false)
-        ESP_LOGE(TAG, "no openHAB client task; the panel will not reach openHAB");
-
-    /* Idle until the UI has a page to listen for. Without it the panel polls,
-     * as it always did. */
-    if (openhab_events_setup() == false)
-        ESP_LOGE(TAG, "no openHAB event task; item states are polled only");
+     * blocks on an empty queue until there is something to fetch. The
+     * connector logs what did not start. */
+    connector_setup();
 
     sensor_main_setup(config);
 
@@ -443,8 +435,9 @@ static void ohez_setup(void)
     if (wlan_state() == WLAN_ONLINE)
     {
         openhab_ui_set_wifi_state(true);
-        openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
-                           config.item.openhab.sitemap);
+        struct connector_server_s server = connector_server(&config);
+
+        openhab_ui_connect(server.host, server.port, server.root);
     }
 
 #if CONFIG_IDF_TARGET_LINUX
@@ -539,17 +532,12 @@ static void ohez_loop(void)
      * access point scan has to keep running while the station is offline. */
     ui_settings_loop();
 
-    /* And with it, for the same reason turned around: the list of sitemaps is
-     * fetched because somebody opened the openHAB settings, and on a panel
-     * that cannot reach its server that has to end in a failure the screen can
-     * report rather than in a request nothing ever times out. */
-    openhab_sitemaps_loop();
-
-    /* And the scan that finds the server those sitemaps come from, for the
-     * same reason again: it is asked for from the settings screen, which is
-     * reachable on a panel that has no openHAB and no network worth the
-     * name. */
-    openhab_discover_loop();
+    /* And with it, for the same reason turned around: what the connector
+     * fetches for the settings screen -- the list of sitemaps, the server
+     * scan -- has to end in a failure the screen can report on a panel that
+     * cannot reach its server, rather than in a request nothing ever times
+     * out. */
+    connector_loop();
     ui_screen_loop();
 
     /* After ui_screen_loop() and outside the online guard below: the
@@ -597,15 +585,15 @@ static void ohez_loop(void)
          * once. On a weak link that is a five second penalty on every
          * episode, and the request paying it is the page load the user is
          * waiting for. */
-        openhab_http_reset();
-        openhab_events_reset();
+        connector_link_reset();
 
         if (reported == WLAN_ONLINE)
         {
             messagebox.destroy();
             openhab_ui_set_wifi_state(true);
-            openhab_ui_connect(config.item.openhab.hostname, config.item.openhab.port,
-                               config.item.openhab.sitemap);
+            struct connector_server_s server = connector_server(&config);
+
+            openhab_ui_connect(server.host, server.port, server.root);
             messagebox.create(messagebox.INFO, "WLAN", "CONNECTED!", 3);
         }
         else if (was_online == true || reported == WLAN_RETRY_WAIT)

@@ -197,7 +197,9 @@ step waits for the page the one before it asked for -- so follow it with
 `settings` takes the names `OHEZ_SETTINGS` takes: a section (`wlan`, `openhab`,
 `mqtt`, `sensors`, `device`, `touch`, `time`, `theme`, `audio`, `info`) or a
 menu (`settings`, also spelled `index`, and `system`). With no argument it
-closes the screen, so a script can bracket a visit.
+closes the screen, so a script can bracket a visit. `server` opens the
+server's section in either build; a Home Assistant build also takes
+`homeassistant`.
 
 `settings <page>` goes straight to the page, **past the System PIN**: like
 `OHEZ_SETTINGS` it is a programmatic entry, and a script that wants to test the

@@ -1,7 +1,7 @@
 #ifndef UI_FRAME_HPP
 #define UI_FRAME_HPP
 
-#include "openhab/openhab_connector.hpp"
+#include "model/page_model.hpp"
 
 #include <lvgl.h>
 #include <stddef.h>

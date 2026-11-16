@@ -7,14 +7,14 @@
 #ifndef ITEM_IMAGE_HPP
 #define ITEM_IMAGE_HPP
 
-#include "openhab/openhab_client.hpp"
+#include "connector/connector.hpp"
 
 #include <stdint.h>
 
-/* An OPENHAB_REQ_IMAGE result. Takes the pixels when they are for the screen
+/* An CONNECTOR_REQ_IMAGE result. Takes the pixels when they are for the screen
  * that is up, by setting res->payload to NULL; the caller releases the result
  * either way. */
-void item_image_apply_result(struct openhab_result_s *res);
+void item_image_apply_result(struct connector_result_s *res);
 
 /* Show `item_name`'s picture from whatever page is on screen, and close again
  * after `close_after_ms` unless somebody touches it (0: stay). A second call

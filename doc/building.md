@@ -140,6 +140,39 @@ output under **OhEzTouch**.
 To build all boards at once, use `tools/build_release.py`. See
 [Update tool](update.md#release-builds).
 
+### Home Assistant builds
+
+A build contains exactly one server connector: openHAB or Home Assistant.
+The connector is a build option (`CONFIG_OHEZ_CONNECTOR`), not a setting.
+Without further options, a build is an openHAB build.
+
+For a Home Assistant build, add `sdkconfig.defaults.homeassistant` after the
+board's defaults file. Use a build directory of its own, named after the
+board with `_ha` appended:
+
+```bash
+idf.py -B build/arduitouch_ha -DSDKCONFIG=build/arduitouch_ha/sdkconfig \
+       -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch;sdkconfig.defaults.homeassistant" \
+       set-target esp32
+idf.py -B build/arduitouch_ha build
+```
+
+The same applies to the other boards: `build/arduitouch28_ha`,
+`build/lanbon_ha` and `build/cyd_ha`. The simulator's Home Assistant build
+is `build/linux_ha`, with
+`-DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linux;sdkconfig.defaults.homeassistant"`.
+
+A Home Assistant build reports its target name with `-HA` appended, for
+example `ArduiTouch-HA`. `tools/batchupdate.py` and the device manager
+compare this name before an update. They do not put a Home Assistant image
+on a panel that runs openHAB, or the reverse.
+
+The Home Assistant connector is a placeholder at the moment. The build, the
+settings and the target name are in place. The panel does not load a page
+yet: it shows "SITEMAP ACCESS FAILED" and retries.
+`tools/build_release.py` builds the `_ha` targets only when `-t` names
+them.
+
 ## Flash
 
 One command uploads the bootloader, the partition table, the firmware and the

@@ -19,7 +19,7 @@
 
 #include "item_screen.hpp"
 
-#include "openhab/openhab_client.hpp"
+#include "connector/connector.hpp"
 #include "port/port_sys.h"
 #include "ui/ui_style.hpp"
 
@@ -119,7 +119,7 @@ static void request(void)
         max_h = (uint16_t)(max_h * 3 / 4);
     }
 
-    if (openhab_client_request_image(url, max_w, max_h, ++pic.tag) == false)
+    if (connector_request_image(url, max_w, max_h, ++pic.tag) == false)
     {
         status_set("Busy");
         return;
@@ -236,7 +236,7 @@ static void destroy(struct item_view_s *v)
 const struct item_screen_dsc_s item_screen_image = {
     ItemType::type_image, build, refresh, destroy, false};
 
-void item_image_apply_result(struct openhab_result_s *res)
+void item_image_apply_result(struct connector_result_s *res)
 {
     if (pic.view == NULL || res->slot != pic.tag)
         return;
@@ -304,7 +304,7 @@ void item_image_popup(const char *website, const char *item_name, const char *la
     popup_item.setLink(link);
     popup_item.setLabel((label != NULL && label[0] != '\0') ? label : item_name);
 
-    item_screen_open(&popup_item, OPENHAB_CLIENT_SLOT_NONE);
+    item_screen_open(&popup_item, CONNECTOR_SLOT_NONE);
 
     if (close_after_ms > 0 && pic.view != NULL)
         pic.close_timer = lv_timer_create(close_timer_cb, close_after_ms, NULL);

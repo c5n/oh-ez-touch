@@ -52,7 +52,9 @@ headless run is driven over the control interface, or not at all.
 
 - **openHAB**: set the server with the config file, or with
   `OHEZ_OPENHAB_HOST`, `OHEZ_OPENHAB_PORT` and `OHEZ_SITEMAP`. Operating a
-  widget POSTs a command, as on the panel.
+  widget POSTs a command, as on the panel. The Home Assistant build
+  (`build/linux_ha`) takes `OHEZ_HA_HOST`, `OHEZ_HA_PORT`, `OHEZ_HA_TOKEN`
+  and `OHEZ_HA_DASHBOARD` instead.
 - **Web interface**: the simulator uses port 8780, not port 80. An
   unprivileged process cannot bind port 80. `OHEZ_WEBUI_PORT` overrides the
   port.

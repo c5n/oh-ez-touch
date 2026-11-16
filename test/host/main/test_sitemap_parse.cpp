@@ -704,21 +704,21 @@ static void test_page_and_widget_ids(void)
     TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
     TEST_ASSERT_EQUAL_STRING("1_5", sitemap.getPageId());
     TEST_ASSERT_EQUAL_UINT(2, sitemap.getItemCount());
-    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("1_50"), sitemap.getItem(0)->getWidgetHash());
-    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("1_520"), sitemap.getItem(1)->getWidgetHash());
+    TEST_ASSERT_EQUAL_HEX32(connector_id_hash("1_50"), sitemap.getItem(0)->getWidgetHash());
+    TEST_ASSERT_EQUAL_HEX32(connector_id_hash("1_520"), sitemap.getItem(1)->getWidgetHash());
 
-    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_50")));
-    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_51")));
-    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_52")));
-    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_520")));
-    TEST_ASSERT_FALSE(sitemap.knowsWidget(openhab_id_hash("1_53")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(connector_id_hash("1_50")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(connector_id_hash("1_51")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(connector_id_hash("1_52")));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(connector_id_hash("1_520")));
+    TEST_ASSERT_FALSE(sitemap.knowsWidget(connector_id_hash("1_53")));
 
-    sitemap.ignoreWidget(openhab_id_hash("1_53"));
-    TEST_ASSERT_TRUE(sitemap.knowsWidget(openhab_id_hash("1_53")));
+    sitemap.ignoreWidget(connector_id_hash("1_53"));
+    TEST_ASSERT_TRUE(sitemap.knowsWidget(connector_id_hash("1_53")));
 
     /* Until the next page. */
     TEST_ASSERT_EQUAL_INT(0, sitemap.parse(page, sizeof(page) - 1));
-    TEST_ASSERT_FALSE(sitemap.knowsWidget(openhab_id_hash("1_53")));
+    TEST_ASSERT_FALSE(sitemap.knowsWidget(connector_id_hash("1_53")));
 }
 
 static void test_a_null_state_arrives_as_text(void)

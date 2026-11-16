@@ -69,14 +69,14 @@ void openhab_sitemaps_request(const char *host, uint16_t port);
 void openhab_sitemaps_loop(void);
 
 /**
- * Fold a finished OPENHAB_REQ_SITEMAPS result into the cache.
+ * Fold a finished CONNECTOR_REQ_SITEMAPS result into the cache.
  *
  * Called from the one place that drains the client's result queue -- there is
  * a single queue and openhab_ui.cpp owns it -- and only for results of that
  * type. The payload is not released here; the caller does that as it does for
  * every other result.
  */
-void openhab_sitemaps_apply(const struct openhab_result_s *res);
+void openhab_sitemaps_apply(const struct connector_result_s *res);
 
 enum openhab_sitemaps_state_e openhab_sitemaps_state(void);
 

@@ -11,6 +11,11 @@
 # decide what every tile on the panel is had never been covered, because
 # covering them would have meant a network.
 #
+# model/page_model.cpp came out of it when the connector boundary was drawn
+# (connector/connector.hpp): the half of the page model that is not openHAB's
+# -- what an Item does with a state, what a Sitemap remembers of its widgets.
+# The tests here cover it through the openHAB parser as before.
+#
 # peripherals/relay.cpp and peripherals/led.cpp joined them for the same
 # reason: the pin is behind port_relay.h and port_led.h, the broker is behind
 # ohez_mqtt.hpp, and what is left is the part that decides what a payload
@@ -190,6 +195,7 @@ idf_component_register(SRCS "test_runner.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/config/config_fields.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/port_storage_stdio.c"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/port/linux/port_storage.c"
+                            "${CMAKE_CURRENT_LIST_DIR}/../../../main/model/page_model.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_connector.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_event_parse.cpp"
                             "${CMAKE_CURRENT_LIST_DIR}/../../../main/openhab/openhab_color.c"

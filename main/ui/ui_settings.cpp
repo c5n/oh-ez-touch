@@ -26,8 +26,10 @@
 #include "icons/icon_set.hpp"
 #include "openhab_ui.hpp"
 #include "config/config_fields.hpp"
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 #include "openhab/openhab_discover.hpp"
 #include "openhab/openhab_sitemaps.hpp"
+#endif
 #include "control/beeper_control.hpp"
 #include "peripherals/relay.hpp"
 #include "peripherals/sensor_bme280.hpp"
@@ -148,6 +150,15 @@ static const char *const info_page_names[INFO_PAGE_COUNT] = {
  * *shows* -- field_edit_open() prefills the keyboard from it, so a value too
  * long for it would be truncated on the way in and then saved truncated. */
 #define VALUE_BUFFER_LEN 80
+
+/* Whether the server's section is openHAB's two lists (servers found over
+ * mDNS, sitemaps they serve) with the fields behind a Manual button, or, in a
+ * Home Assistant build, the fields alone. */
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
+#define SERVER_LISTS 1
+#else
+#define SERVER_LISTS 0
+#endif
 
 /* More than a home has, and a hard bound on what a scan may return. */
 #define SCAN_RESULT_MAX 16
@@ -278,6 +289,7 @@ static uint64_t wlan_state_refresh_deadline = 0;
  * away a half-typed hostname's page. */
 static bool openhab_manual = false;
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 static lv_obj_t *host_field_row = NULL;
 static lv_obj_t *port_field_row = NULL;
 static lv_obj_t *sitemap_field_row = NULL;
@@ -301,6 +313,7 @@ static uint32_t  servers_drawn = 0;
  * was merely shown is a panel that chimes at nothing. */
 static bool sitemaps_announce = false;
 static bool servers_announce = false;
+#endif
 
 /* A theme change asked for while an overlay is up. See ui_settings_rebuild(). */
 static bool rebuild_pending = false;
@@ -493,6 +506,7 @@ static void widget_refs_clear(void)
     }
 
     audio_demo_button = NULL;
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     host_field_row = NULL;
     port_field_row = NULL;
     server_list_obj = NULL;
@@ -505,6 +519,7 @@ static void widget_refs_clear(void)
      * builds its list from whatever the cache holds by then, which is not
      * necessarily a newer revision than this one showed. */
     sitemaps_drawn = 0;
+#endif
     wlan_state_label = NULL;
     wlan_ssid_row = NULL;
     wlan_psk_row = NULL;
@@ -1411,9 +1426,13 @@ static void field_edit_open(lv_obj_t *row, const struct config_field_s *f)
          * how it is corrected, and a field that empties itself every time it is
          * opened cannot be edited, only retyped. The WLAN passphrase does
          * withhold, but that one is not a Config field and is not stored here
-         * -- buffer_edit_open() is its path. */
-        snprintf(buffer, sizeof(buffer), "%s", config_field_text(f, &draft));
-        keyboard_open(f->label, buffer, f->size - 1, false, secret);
+         * -- buffer_edit_open() is its path.
+         *
+         * Straight from the draft, not through `buffer`: a field can be wider
+         * than VALUE_BUFFER_LEN (the Home Assistant access token is 255
+         * characters), and a prefill cut short would be saved cut short by
+         * an OK that changed nothing. */
+        keyboard_open(f->label, config_field_text(f, &draft), f->size - 1, false, secret);
     }
     else
     {
@@ -1704,6 +1723,11 @@ static void scan_event(lv_event_t *e)
     LV_UNUSED(e);
     scan_start();
 }
+
+/* The two lists below are openHAB's: the servers that announce themselves
+ * over mDNS, and the sitemaps the chosen one serves. A Home Assistant build
+ * shows the server's rows as plain fields instead. */
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 
 /* -------------------------------------------------- the list of servers */
 
@@ -2115,6 +2139,8 @@ static void openhab_scan_event(lv_event_t *e)
      * button says. */
     BEEPER_EVENT_ACCEPT();
 }
+
+#endif
 
 /* ------------------------------------------------------------------- save */
 
@@ -3152,6 +3178,7 @@ static void field_row_build(lv_obj_t *rows, const struct config_field_s *f)
 
     row_refresh(row, f);
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     /* Kept so that a choice made in one of the lists below can refresh the
      * row that now holds it. */
     if (f == host_field())
@@ -3160,6 +3187,7 @@ static void field_row_build(lv_obj_t *rows, const struct config_field_s *f)
         port_field_row = row;
     else if (f == sitemap_field())
         sitemap_field_row = row;
+#endif
 }
 
 /* Walk a tab's rows, packing them into pages and building the one showing.
@@ -3245,6 +3273,7 @@ static void field_rows_build(uint8_t tab)
     field_pages_walk(tab, true);
 }
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 /* The servers half of the openHAB page. */
 static void server_rows_build(lv_obj_t *rows)
 {
@@ -3319,6 +3348,15 @@ static void openhab_tab_build(lv_obj_t *rows)
     server_list_rebuild();
     servers_status_update();
 }
+#else
+/* A Home Assistant build: the server's rows, like any other section. */
+static void openhab_tab_build(lv_obj_t *rows)
+{
+    LV_UNUSED(rows);
+
+    field_rows_build(SETTINGS_TAB_OPENHAB);
+}
+#endif
 
 /* The bar across the top of every settings screen, and all of it is the way
  * back -- the same affordance the item screens use, for the same reason. From
@@ -3781,6 +3819,7 @@ static void screen_show_section(uint8_t tab)
             if (pages > 1)
                 footer_pager(tab, footer, icons_page_event, icons_page, pages);
         }
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
         else if (tab == SETTINGS_TAB_OPENHAB && openhab_manual == false)
         {
             /* Scan is the counterpart of the WLAN page's, and there for the
@@ -3793,6 +3832,7 @@ static void screen_show_section(uint8_t tab)
             lv_obj_add_event_cb(ui_themed_button(footer, "Manual"), openhab_manual_event,
                                 LV_EVENT_CLICKED, NULL);
         }
+#endif
 
         /* The pager, for the tabs whose rows come off the shared table and
          * did not fit on one page -- one logical group per page, turned by
@@ -3804,7 +3844,7 @@ static void screen_show_section(uint8_t tab)
          * rebuild settles -- the nearest page, not the first, because a
          * theme change is not a navigation. */
         if (tab != SETTINGS_TAB_WLAN && tab != SETTINGS_TAB_ICONS &&
-            (tab != SETTINGS_TAB_OPENHAB || openhab_manual == true))
+            (tab != SETTINGS_TAB_OPENHAB || openhab_manual == true || SERVER_LISTS == 0))
         {
             field_pages[tab] = field_pages_walk(tab, false);
 
@@ -4019,6 +4059,19 @@ bool ui_settings_open_by_name(const char *name)
     if (name == NULL)
         return false;
 
+    /* The server's section by a name that does not depend on the connector,
+     * and in a Home Assistant build by one without the space its title has:
+     * a script's argument cannot carry one. */
+    if (   strcasecmp(name, "server") == 0
+#if CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT
+        || strcasecmp(name, "homeassistant") == 0
+#endif
+       )
+    {
+        ui_settings_open(SETTINGS_TAB_OPENHAB);
+        return true;
+    }
+
     for (uint8_t i = 0; i < SETTINGS_TAB_COUNT; i++)
     {
         if (strcasecmp(name, tab_title[i]) != 0)
@@ -4075,8 +4128,10 @@ void ui_settings_loop(void)
         ui_settings_rebuild();
 
     scan_poll();
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     sitemaps_poll();
     servers_poll();
+#endif
 
     /* The tune ends without an event. Only does anything on the Audio page,
      * where the button exists at all. */

@@ -19,6 +19,8 @@
 - [ ] openhab: Das Bild wurde auf der Hardware noch nicht abgerufen. Den Stack des Client-Tasks (4 KB, mit TJpgDec darauf) und den Heap während eines Klingelvorgangs messen sowie prüfen, ob die Seite eines Image-Elements auf einem fragmentierten Heap lädt.
 - [ ] openhab_ui: Progressive JPEGs oder PNGs anzeigen. TJpgDec liest nur Baseline-JPEGs, und eine PNG müsste vollständig dekodiert werden.
 - [ ] openhab: Ein API-Token senden. Das Panel sendet keines; daher müssen `/rest/events`, `/rest/sitemaps/events`, die Sitemap und die Elementzustände für anonyme Clients zugänglich sein.
+- [x] build: Build-Targets für Home Assistant. Ein Build enthält genau einen Connector, openHAB oder Home Assistant, hinter `connector/connector.hpp`. Siehe [Builds für Home Assistant](building_de.md#builds-für-home-assistant) und [Die Connector-Grenze](architecture_de.md#die-connector-grenze).
+- [ ] homeassistant: Den Connector implementieren; derzeit ist er ein Platzhalter. Seiten aus einem Lovelace-Dashboard (`lovelace/config` über die WebSocket-API), Elementzustände über `subscribe_entities`, Befehle über `call_service`, mit dem Zugriffstoken. Zuerst zu messen: die Größe eines Dashboards im Vergleich zum 12-KB-Empfangspuffer, die Größe der Statusnachrichten und der Heap-Bedarf eines WebSocket-Clients auf beiden Targets. Kein TLS.
 - [x] openhab: Auch Änderungen an Sitemaps verfolgen. `/rest/sitemaps/events` übermittelt formatierte Beschriftungen, Farben und Sichtbarkeit, die `/rest/events` nicht enthält. Siehe [Der Ereignisstrom](architecture_de.md#der-ereignisstream).
 - [x] ac: OTA-Firmware-Update verbessern --> batchupdate.py. Siehe [Geräte aktualisieren](update_de.md).
 - [x] main: Symbol für aktives Portal anzeigen.

@@ -28,40 +28,18 @@
 #ifndef OPENHAB_CLIENT_HPP
 #define OPENHAB_CLIENT_HPP
 
+#include "connector/connector_types.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-/* Every URL this client carries, at one width. Matches STR_URL_LEN in
- * openhab_connector.hpp, which is where the URLs are built; the two are
- * checked against each other in openhab_client.cpp rather than by including a
- * header full of ArduinoJson here. */
-#define OPENHAB_CLIENT_URL_LEN 256
-
-/* A command body is an item state, which is the widest thing ever posted. */
-#define OPENHAB_CLIENT_BODY_LEN 32
-
-/* The largest sitemap page and the largest icon that will be read. Both were
- * previously sized at their point of use -- SITEMAP_PAGE_BUFFER_SIZE in the
- * connector, ICON_PNG_BUFFER_SIZE in the UI -- and both are the worker's
- * business now, because it is the worker that reads into them.
- *
- * They are ceilings on one buffer the worker allocates once and keeps, not on
- * an allocation per request. A 12 KB block asked for and given back on every
- * page load is the one allocation on this panel large enough to need a
- * contiguous run of heap it may not get: the WiFi driver's dynamic transmit
- * buffers are held for as long as a frame is being retried, so on a weak link
- * the largest free block is at its smallest exactly when the page fetch that
- * needs it is retrying. The symptom was a panel whose tiles kept updating --
- * a state poll needs 32 bytes -- while every sub page it navigated to failed
- * with SITEMAP ACCESS FAILED and never came back. */
-#define OPENHAB_CLIENT_PAGE_BUFFER_SIZE 12288
 /* An icon is read into the same buffer as a page and is decoded from there
  * (see icons/icon_png.h), so it may fill all of it: there is no copy of the
  * size of the body any more. What a large PNG costs instead is scratch -- the
  * decode takes its first segments from what the PNG leaves free in the
  * buffer, and asks the heap for the rest. */
-#define OPENHAB_CLIENT_ICON_BUFFER_SIZE OPENHAB_CLIENT_PAGE_BUFFER_SIZE
+#define OPENHAB_CLIENT_ICON_BUFFER_SIZE CONNECTOR_PAGE_BUFFER_SIZE
 
 /* And the list of sitemaps. A real openHAB 5.2.1 sends about 210 bytes per
  * sitemap there -- a link, a homepage object with a link and two flags, the
@@ -82,92 +60,6 @@
  * worker blocks rather than dropping when it is full, which is the whole of
  * the back-pressure. */
 #define OPENHAB_CLIENT_RESULT_QUEUE_DEPTH 4
-
-/* For a request that belongs to no particular widget. */
-#define OPENHAB_CLIENT_SLOT_NONE 0xFFu
-
-/* The generation that never goes stale. Commands carry it: a command the user
- * asked for is still worth delivering after they have navigated away from the
- * tile they tapped. */
-#define OPENHAB_CLIENT_GENERATION_ALWAYS 0u
-
-enum openhab_request_e
-{
-    OPENHAB_REQ_PAGE,     /* GET a sitemap page, as JSON */
-    OPENHAB_REQ_ICON,     /* GET a widget icon, as PNG */
-    OPENHAB_REQ_STATE,    /* GET one item's state, as text */
-    OPENHAB_REQ_COMMAND,  /* POST text/plain, nothing wanted back */
-    OPENHAB_REQ_SITEMAPS, /* GET the list of sitemaps, as JSON */
-    OPENHAB_REQ_IMAGE,    /* GET an Image item's picture, decoded to RGB565 */
-};
-
-/**
- * A finished request.
- *
- * `payload` is on the heap and belongs to whoever took the result off the
- * queue -- including code that decides to drop it. Release it with
- * openhab_client_result_release() on every path.
- *
- * `ok == true` with `payload == NULL` means "nothing to apply, and that is not
- * an error". A command reports success that way, and so does offline mode for
- * a state poll: the fixtures carry a fixed state per item, so leaving the item
- * alone is what makes a switch toggled locally look like it worked.
- */
-struct openhab_result_s
-{
-    enum openhab_request_e type;
-    uint32_t generation;
-    uint8_t  slot;        /* the widget it was issued for, or _SLOT_NONE */
-    bool     ok;
-    int      status;      /* HTTP status where there was one, else 0 */
-    char    *payload;     /* NUL-terminated at [payload_len], or NULL */
-    size_t   payload_len;
-    /* An item state rides in the result rather than on the heap, and
-     * `payload` points at it.
-     *
-     * Six tiles polled every five seconds is some four thousand malloc/free
-     * pairs an hour, each for at most 31 bytes, interleaved with the page and
-     * icon bodies that do need the heap -- which is the churn that leaves a
-     * long-running panel with plenty of free heap and no large block left in
-     * it. The struct already travels through the queue by value, so carrying
-     * the state inside it costs nothing but these 32 bytes.
-     *
-     * It is not a second ownership rule for callers: they still release every
-     * result exactly once, and openhab_client_result_release() is where the
-     * distinction lives. */
-    bool     payload_inline;
-    /* A page result points at the worker's own receive buffer rather than at
-     * an allocation of its own, and this flag says so -- the other half of the
-     * rx_buf design the header comment above describes.
-     *
-     * The point is what it removes: the per-page malloc of up to twelve
-     * kilobytes, which is the one allocation on this panel big enough to be
-     * refused by a fragmented heap. Panels that ran all day with BLE and MQTT
-     * on ended up with kilobytes free and no four-kilobyte block left, and
-     * from then on every page turn failed at that malloc -- SITEMAP ACCESS
-     * FAILED, worst on the *main* page, because it is the biggest. The buffer
-     * is already held permanently for exactly this body, so the copy out of it
-     * bought nothing.
-     *
-     * What makes one buffer enough is the generation: at most one page result
-     * is ever live, because submitting the next page fetch stales the last
-     * one, and the UI discards a stale result before it looks at the payload.
-     * The worker still waits for the release before it reuses the buffer --
-     * the generation rules out a *second* page, not an icon read landing in
-     * the same memory while the UI is still parsing. A sitemap list result
-     * rides the buffer the same way, and the same wait keeps it apart from a
-     * page result. */
-    bool     payload_static;
-    /* What of rx_buf an icon result does not fill: the consumer may use it as
-     * work memory until it releases the result. NULL for every other result,
-     * and for a built-in icon, which is not in rx_buf. */
-    void    *scratch;
-    size_t   scratch_len;
-    char     body[OPENHAB_CLIENT_BODY_LEN];
-    /* An image's size; its pixels are the payload, payload_len bytes. */
-    uint16_t width;
-    uint16_t height;
-};
 
 /**
  * Create the queues and start the worker.
@@ -216,7 +108,7 @@ bool openhab_client_command(const char *url, const char *body);
 /**
  * Fetch the list of sitemaps a server offers -- GET /rest/sitemaps.
  *
- * Carries OPENHAB_CLIENT_GENERATION_ALWAYS, like a command and unlike
+ * Carries CONNECTOR_GENERATION_ALWAYS, like a command and unlike
  * everything else here: this belongs to the settings screen and the web form,
  * not to the tile page, so navigating to another page while the answer is in
  * flight must not throw it away.
@@ -242,7 +134,7 @@ bool openhab_client_request_image(const char *url, uint16_t max_w, uint16_t max_
  * @return false when there is none. Never blocks -- the only caller is the
  *   task that draws.
  */
-bool openhab_client_poll(struct openhab_result_s *out);
+bool openhab_client_poll(struct connector_result_s *out);
 
 /**
  * Free a result's payload and blank it. Idempotent, so a path that is not sure
@@ -251,6 +143,6 @@ bool openhab_client_poll(struct openhab_result_s *out);
  * A payload that rode inside the result is not freed, only forgotten -- see
  * `payload_inline`. Every caller releases the same way either way.
  */
-void openhab_client_result_release(struct openhab_result_s *res);
+void openhab_client_result_release(struct connector_result_s *res);
 
 #endif /* OPENHAB_CLIENT_HPP */

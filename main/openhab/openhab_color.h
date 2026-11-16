@@ -11,6 +11,8 @@
 #ifndef OPENHAB_COLOR_H
 #define OPENHAB_COLOR_H
 
+#include "model/page_color.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -18,8 +20,9 @@
 extern "C" {
 #endif
 
-/* No colour: the theme's own. Outside 24 bits, so no real colour is it. */
-#define OPENHAB_COLOR_NONE 0xFFFFFFFFu
+/* No colour: the theme's own. The page model's value, under the name this
+ * file and the sitemap parser have always used. */
+#define OPENHAB_COLOR_NONE PAGE_COLOR_NONE
 
 /**
  * Read one colour.

@@ -150,7 +150,7 @@ Diese Angaben sollte man zur Hand haben, wenn eine Seite erstellt wird, die in d
 | Einträge in einer Selection | 10 | `ITEM_SELECTION_COUNT_MAX` |
 | Beschriftung | 32 Byte | `STR_LABEL_LEN` |
 | Statustext | 32 Byte | `STR_STATE_TEXT_LEN` |
-| Body einer Sitemap-Seite | 12288 Byte, nach dem Kürzen von Strings über 512 Byte | `OPENHAB_CLIENT_PAGE_BUFFER_SIZE`, `JSON_SQUEEZE_STRING_MAX` |
+| Body einer Sitemap-Seite | 12288 Byte, nach dem Kürzen von Strings über 512 Byte | `CONNECTOR_PAGE_BUFFER_SIZE`, `JSON_SQUEEZE_STRING_MAX` |
 | Bild nach dem Dekodieren | höchstens halbe Bildschirmbreite und -höhe | `main/ui/items/item_image.cpp` |
 | Icon-Body | 12288 Byte, der Empfangspuffer | `OPENHAB_CLIENT_ICON_BUFFER_SIZE` |
 | Body von `/rest/sitemaps` | 8192 Byte | `OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE` |

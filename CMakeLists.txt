@@ -15,6 +15,15 @@
 # else: the board-independent OTA recovery firmware, one image for all boards
 # (see CONFIG_OHEZ_MINIMAL in main/Kconfig.projbuild).
 #
+# A Home Assistant build appends sdkconfig.defaults.homeassistant to the list
+# and uses a build directory of its own, by convention <board>_ha:
+#   idf.py -B build/arduitouch_ha -DSDKCONFIG=build/arduitouch_ha/sdkconfig \
+#          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch;sdkconfig.defaults.homeassistant" \
+#          set-target esp32
+# (see CONFIG_OHEZ_CONNECTOR in main/Kconfig.projbuild). The simulator's is
+# build/linux_ha, with "sdkconfig.defaults;sdkconfig.defaults.linux;
+# sdkconfig.defaults.homeassistant".
+#
 # Build the host simulator:
 #   idf.py -B build/linux -DSDKCONFIG=build/linux/sdkconfig \
 #          -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linux" \
@@ -83,6 +92,13 @@ elseif(CONFIG_OHEZ_ARDUITOUCH_JTAG_PINS)
     set(OHEZ_TARGET_NAME "ArduiTouchJTAG")
 else()
     set(OHEZ_TARGET_NAME "ArduiTouch")
+endif()
+# A Home Assistant build is another target, not another board: the same panel
+# with the other connector (CONFIG_OHEZ_CONNECTOR in main/Kconfig.projbuild).
+# The suffix is what lets tools/batchupdate.py and devmgr refuse to put one
+# connector's image on a panel that runs the other.
+if(CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT)
+    string(APPEND OHEZ_TARGET_NAME "-HA")
 endif()
 idf_build_set_property(COMPILE_DEFINITIONS "TARGET_NAME=\"${OHEZ_TARGET_NAME}\"" APPEND)
 

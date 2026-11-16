@@ -87,7 +87,7 @@ static SemaphoreHandle_t sub_lock = NULL;
 static TaskHandle_t task = NULL;
 
 /* Written by subscribe() under sub_lock, copied out by the task under it. */
-static struct openhab_events_subscription_s sub_wanted;
+static struct connector_subscription_s sub_wanted;
 static std::atomic<bool> sub_changed{false};
 static std::atomic<bool> reset_requested{false};
 
@@ -97,7 +97,7 @@ static std::atomic<bool> reload{false};
 static std::atomic<bool> sitemap_mode{false};
 
 /* The task's own copy, and everything else only it touches. */
-static struct openhab_events_subscription_s sub_active;
+static struct connector_subscription_s sub_active;
 static esp_http_client_handle_t client;
 static struct sse_reader reader;
 static char url[OPENHAB_EVENTS_URL_LEN];
@@ -105,7 +105,7 @@ static char url[OPENHAB_EVENTS_URL_LEN];
 /* The website whose server refused the sitemap stream, so that it is not
  * asked on every reconnect. "" while none has. The refusal expires after
  * OPENHAB_EVENTS_SITEMAP_RETRY_MS, counted from sitemap_refused_ms. */
-static char sitemap_refused[OPENHAB_EVENTS_WEBSITE_LEN];
+static char sitemap_refused[CONNECTOR_EVENTS_WEBSITE_LEN];
 static uint64_t sitemap_refused_ms;
 
 /* A sitemap stream for this subscription has been up before: the next one to
@@ -119,7 +119,7 @@ bool openhab_events_setup(void)
     if (task != NULL)
         return true;
 
-    events = xQueueCreate(OPENHAB_EVENTS_QUEUE_DEPTH, sizeof(struct openhab_event_s));
+    events = xQueueCreate(OPENHAB_EVENTS_QUEUE_DEPTH, sizeof(struct connector_event_s));
     sub_lock = xSemaphoreCreateMutex();
 
     if (events == NULL || sub_lock == NULL)
@@ -155,15 +155,15 @@ fail:
 }
 
 /* The part of a subscription the sitemap stream is opened for. */
-static bool subscription_page_equal(const struct openhab_events_subscription_s *a,
-                                    const struct openhab_events_subscription_s *b)
+static bool subscription_page_equal(const struct connector_subscription_s *a,
+                                    const struct connector_subscription_s *b)
 {
     return strcmp(a->website, b->website) == 0 && strcmp(a->sitemap, b->sitemap) == 0
         && strcmp(a->page, b->page) == 0;
 }
 
-static bool subscription_equal(const struct openhab_events_subscription_s *a,
-                               const struct openhab_events_subscription_s *b)
+static bool subscription_equal(const struct connector_subscription_s *a,
+                               const struct connector_subscription_s *b)
 {
     if (a->count != b->count || subscription_page_equal(a, b) == false)
         return false;
@@ -176,7 +176,7 @@ static bool subscription_equal(const struct openhab_events_subscription_s *a,
     return true;
 }
 
-void openhab_events_subscribe(const struct openhab_events_subscription_s *sub)
+void openhab_events_subscribe(const struct connector_subscription_s *sub)
 {
     if (task == NULL)
         return;
@@ -189,8 +189,8 @@ void openhab_events_subscribe(const struct openhab_events_subscription_s *sub)
     {
         sub_wanted = *sub;
 
-        if (sub_wanted.count > OPENHAB_EVENTS_ITEM_MAX)
-            sub_wanted.count = OPENHAB_EVENTS_ITEM_MAX;
+        if (sub_wanted.count > CONNECTOR_EVENTS_ITEM_MAX)
+            sub_wanted.count = CONNECTOR_EVENTS_ITEM_MAX;
 
         changed = true;
     }
@@ -228,7 +228,7 @@ bool openhab_events_take_reload(void)
     return reload.exchange(false, std::memory_order_relaxed);
 }
 
-bool openhab_events_poll(struct openhab_event_s *out)
+bool openhab_events_poll(struct connector_event_s *out)
 {
     if (events == NULL)
         return false;
@@ -287,14 +287,14 @@ static void url_build(void)
  * a burst the UI has not caught up with yet -- and the cure for a dropped
  * change is the poll a resync brings, or on the sitemap stream the page
  * fetched again, not a stream that stops being read. */
-static void event_queue(const struct openhab_event_s *ev)
+static void event_queue(const struct connector_event_s *ev)
 {
     if (xQueueSend(events, ev, 0) == pdTRUE)
         return;
 
     ESP_LOGW(TAG, "queue full; dropping an event and asking for a resync");
 
-    if (ev->kind == OPENHAB_EVENT_KIND_WIDGET)
+    if (ev->kind == CONNECTOR_EVENT_KIND_WIDGET)
         reload.store(true, std::memory_order_relaxed);
     else
         resync.store(true, std::memory_order_relaxed);
@@ -303,9 +303,9 @@ static void event_queue(const struct openhab_event_s *ev)
 static void on_sitemap_data(const char *data, size_t len, void *ctx)
 {
     uint64_t *last_data = (uint64_t *)ctx;
-    struct openhab_event_s ev;
+    struct connector_event_s ev;
 
-    ev.kind = OPENHAB_EVENT_KIND_WIDGET;
+    ev.kind = CONNECTOR_EVENT_KIND_WIDGET;
 
     switch (openhab_sitemap_event_parse(data, len, &ev.widget))
     {
@@ -341,9 +341,9 @@ static void on_sitemap_data(const char *data, size_t len, void *ctx)
 static void on_data(const char *data, size_t len, void *ctx)
 {
     uint64_t *last_data = (uint64_t *)ctx;
-    struct openhab_event_s ev;
+    struct connector_event_s ev;
 
-    ev.kind = OPENHAB_EVENT_KIND_ITEM;
+    ev.kind = CONNECTOR_EVENT_KIND_ITEM;
 
     switch (openhab_event_parse(data, len, ev.item.name, sizeof(ev.item.name),
                                 ev.item.value, sizeof(ev.item.value)))

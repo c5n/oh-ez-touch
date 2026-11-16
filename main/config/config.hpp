@@ -1,6 +1,8 @@
 #ifndef CONFIG_HPP
 #define CONFIG_HPP
 
+#include "sdkconfig.h"
+
 #include "ui/ui_orientation.hpp"
 #include "ui/ui_theme.hpp"
 
@@ -175,6 +177,22 @@ public:
              * topics nobody asked for. */
             bool publish_all;
         } ble;
+#if CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT
+        /* The Home Assistant server, in a Home Assistant build only (see
+         * CONFIG_OHEZ_CONNECTOR). Its own section of config.json, so a panel
+         * moved from one connector to the other starts from defaults rather
+         * than from the other server's host. */
+        struct
+        {
+            char hostname[32];
+            int port;
+            /* A long-lived access token, created on the user's profile page
+             * in Home Assistant. They are about 180 characters long. */
+            char token[256];
+            /* The dashboard's url_path, "" for the default dashboard. */
+            char dashboard[32];
+        } homeassistant;
+#else
         struct
         {
             char hostname[32];
@@ -188,6 +206,7 @@ public:
             char doorbell_image[48];
             unsigned int doorbell_show;
         } openhab;
+#endif
         /* Not under openhab: a reading is published to the MQTT broker and
          * nowhere else, so the sensors owe openHAB nothing. An installation
          * that wants the values as items subscribes to the topics through its

@@ -31,7 +31,7 @@ Nicht verfügbar sind Maus und Tastatur: Es gibt kein Fenster, in das geklickt w
 
 ## Unterschiede zum Panel
 
-- **openHAB**: Lege den Server in der Konfigurationsdatei oder mit `OHEZ_OPENHAB_HOST`, `OHEZ_OPENHAB_PORT` und `OHEZ_SITEMAP` fest. Die Bedienung eines Widgets sendet wie auf dem Panel einen Befehl per POST.
+- **openHAB**: Lege den Server in der Konfigurationsdatei oder mit `OHEZ_OPENHAB_HOST`, `OHEZ_OPENHAB_PORT` und `OHEZ_SITEMAP` fest. Die Bedienung eines Widgets sendet wie auf dem Panel einen Befehl per POST. Der Home-Assistant-Build (`build/linux_ha`) nimmt stattdessen `OHEZ_HA_HOST`, `OHEZ_HA_PORT`, `OHEZ_HA_TOKEN` und `OHEZ_HA_DASHBOARD` an.
 - **Weboberfläche**: Der Simulator verwendet Port 8780 statt Port 80. Ein nicht privilegierter Prozess kann Port 80 nicht binden. `OHEZ_WEBUI_PORT` überschreibt den Port.
 - **Einstellungen**: Gespeichert unter `$XDG_CONFIG_HOME/oh-ez-touch/config.json` (oder `~/.config/oh-ez-touch/config.json`). Die Datei kann von Hand bearbeitet werden. `OHEZ_CONFIG_DIR` verschiebt sie.
 - **WLAN-Zugangsdaten**: Gespeichert in einem emulierten NVS-Abbild unter `$XDG_STATE_HOME/oh-ez-touch/flash.bin`. `OHEZ_STATE_DIR` verschiebt es. Zwei Simulatorinstanzen können sich ein Abbild nicht teilen. Die zweite Instanz meldet den Konflikt, statt das Abbild zu beschädigen.

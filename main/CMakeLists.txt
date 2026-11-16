@@ -119,17 +119,7 @@ set(OHEZ_APP_SRCS
     "ui/ui_style.cpp"
     "ui/ui_widgets.cpp"
 
-    "openhab/openhab_bell.cpp"
-    "openhab/openhab_client.cpp"
-    "openhab/image_decode.c"
-    "openhab/json_squeeze.c"
-    "openhab/openhab_color.c"
-    "openhab/openhab_discover.cpp"
-    "openhab/openhab_event_parse.cpp"
-    "openhab/openhab_events.cpp"
-    "openhab/openhab_connector.cpp"
-    "openhab/openhab_http.cpp"
-    "openhab/openhab_sitemaps.cpp"
+    "model/page_model.cpp"
 
     "peripherals/sensor_bme280.cpp"
     "peripherals/sensor_main.cpp"
@@ -154,16 +144,43 @@ set(OHEZ_APP_SRCS
     "net/wlan.cpp"
     "net/wlan_radio.cpp"
 
-    "sim/icon_fixture.cpp"
-    "sim/image_fixture.cpp"
-    "sim/sim_offline.cpp"
-    "sim/sitemap_fixture.cpp"
-
     "testif/testif.cpp"
     "testif/testif_parse.c"
     "testif/testif_report.cpp"
     "testif/testif_shot.cpp"
     "testif/testif_touch.cpp")
+
+# The server connector: exactly one per build (CONFIG_OHEZ_CONNECTOR in
+# Kconfig.projbuild), behind connector/connector.hpp. Like the port layer, a
+# function the chosen connector does not provide is a link error.
+#
+# In the early requirements-expansion pass CONFIG_* is unset, so that pass
+# takes the openHAB list. It only computes the REQUIRES graph, which is the
+# same for both connectors. The simulator's offline fixtures are openHAB
+# sitemaps and openHAB icons, so they belong to that connector.
+if(CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT)
+    set(OHEZ_CONNECTOR_SRCS
+        "homeassistant/connector_ha.cpp")
+else()
+    set(OHEZ_CONNECTOR_SRCS
+        "openhab/connector_openhab.cpp"
+        "openhab/openhab_bell.cpp"
+        "openhab/openhab_client.cpp"
+        "openhab/image_decode.c"
+        "openhab/json_squeeze.c"
+        "openhab/openhab_color.c"
+        "openhab/openhab_discover.cpp"
+        "openhab/openhab_event_parse.cpp"
+        "openhab/openhab_events.cpp"
+        "openhab/openhab_connector.cpp"
+        "openhab/openhab_http.cpp"
+        "openhab/openhab_sitemaps.cpp"
+
+        "sim/icon_fixture.cpp"
+        "sim/image_fixture.cpp"
+        "sim/sim_offline.cpp"
+        "sim/sitemap_fixture.cpp")
+endif()
 
 # The minimal recovery firmware (CONFIG_OHEZ_MINIMAL): just enough to reach
 # /update over WLAN -- the config (for the hostname), the radio, the
@@ -189,6 +206,7 @@ if(CONFIG_OHEZ_MINIMAL)
         "web/webui_transport_esp32.cpp")
 
     set(OHEZ_CONTROL_SRCS "")
+    set(OHEZ_CONNECTOR_SRCS "")
 
     # port_storage stays: the hostname lives in config.json on SPIFFS, and
     # it is how the fleet addresses the device for the full-image upload
@@ -199,7 +217,7 @@ if(CONFIG_OHEZ_MINIMAL)
         "port/esp32/port_flash.c")
 endif()
 
-set(OHEZ_SRCS ${OHEZ_APP_SRCS})
+set(OHEZ_SRCS ${OHEZ_APP_SRCS} ${OHEZ_CONNECTOR_SRCS})
 
 # The built-in icon set is a generated file that may or may not be there, and
 # icons/icon_set.cpp picks it up with __has_include. That alone would not

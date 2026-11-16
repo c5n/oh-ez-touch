@@ -1,0 +1,385 @@
+/**
+ * @file page_model.hpp
+ *
+ * The page model both connectors fill and the UI draws: a page of at most
+ * ITEM_COUNT_MAX tiles (Sitemap), each one an Item.
+ *
+ * The model is shared, the way the server's answers become it is not. Four
+ * members are declared here and defined by the active connector (see
+ * connector/connector.hpp): Sitemap::parse(), Item::stateUrl(),
+ * Item::iconUrl() and Item::name(). Everything else is in page_model.cpp and
+ * includes libc only, so the host tests reach it without a network.
+ *
+ * The names (Sitemap, "page link", "widget") are openHAB's, because openHAB
+ * was the first server. A Home Assistant dashboard view is a Sitemap page
+ * here too.
+ */
+#ifndef PAGE_MODEL_HPP
+#define PAGE_MODEL_HPP
+
+#include "page_color.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ITEM_COUNT_MAX 6
+
+/* The items the clock screen shows under the time: the first this many
+ * children of the root page's clock frame. See Sitemap::parse(). */
+#define CLOCK_ITEM_COUNT 3
+
+#define ITEM_SELECTION_COUNT_MAX 10
+#define ITEM_SELECTION_COMMAND_LEN_MAX 20
+#define ITEM_SELECTION_LABEL_LEN_MAX 20
+
+#define STR_LABEL_LEN 32
+#define STR_ICON_NAME_LEN 32
+#define STR_STATE_TEXT_LEN 32
+#define STR_TRANSFORMEDSTATE_TEXT_LEN 32
+#define STR_PATTERN_LEN 16
+#define STR_LINK_LEN 128
+#define STR_TITLE_LEN 32
+
+/* A page id: "1_5", or on a group's generated page the group's item name. */
+#define STR_PAGE_ID_LEN 64
+
+/* How many widget ids of one page are remembered. A page that shows six tiles
+ * rarely has more than a dozen widgets; see Sitemap::widget_ids. */
+#define PAGE_WIDGET_IDS_MAX 32
+
+/* Every URL this client builds, at one width.
+ *
+ * The widest of the three is the icon:
+ *   <website>/icon/<icon_name>?state=<state_text>&format=png
+ * which with the fields above needs 128 + 6 + 32 + 7 + 32 + 12 = 217. It used
+ * to be built into a STR_LINK_LEN buffer, so a long host and a long state
+ * truncated it silently -- and a truncated URL fails every request, which the
+ * connection-error statistics then count. */
+#define STR_URL_LEN 256
+
+
+/* `value` printed as a command, in as many decimals as `step` has: "50" for
+ * a step of 1, "21.5" for 0.5, never the "50.000000" an Item keeps a number's
+ * state as. Three decimals at most. */
+void openhab_format_number(char *out, size_t out_size, float value, float step);
+
+enum ItemType
+{
+    type_unknown,
+    type_parent_link,
+    type_link,
+    type_group,
+    type_number,
+    type_string,
+    type_setpoint,
+    type_slider,
+    type_selection,
+    type_colorpicker,
+    type_switch,
+    type_rollershutter,
+    type_player,
+    /* An Image widget on an Image item: a doorbell's or a camera's snapshot.
+     * Its state is the picture itself, which the tile never shows; a tap
+     * fetches it from stateUrl(). See item_image.cpp. */
+    type_image
+};
+
+/* The setters of Item and Sitemap copy strings of unknown length straight out
+ * of the sitemap JSON, so they use strlcpy(): it truncates like strncpy() but,
+ * unlike it, always terminates the destination. */
+class Item
+{
+private:
+    char label[STR_LABEL_LEN];
+    char icon_name[STR_ICON_NAME_LEN];
+    enum ItemType type = type_unknown;
+    char state_text[STR_STATE_TEXT_LEN];
+    char transformedstate_text[STR_TRANSFORMEDSTATE_TEXT_LEN];
+    char pattern[STR_PATTERN_LEN];
+    float min_val = 0.0f;
+    float max_val = 0.0f;
+    float step_val = 1.0f;
+    char selection_command[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_COMMAND_LEN_MAX] = {};
+    char selection_label[ITEM_SELECTION_COUNT_MAX][ITEM_SELECTION_LABEL_LEN_MAX] = {};
+    size_t mapping_count = 0;
+    char link[STR_LINK_LEN];
+    char page_link[STR_LINK_LEN];
+    /* The item carries PIN_ITEM_TAG in openHAB: a tap on its tile asks for
+     * the Item PIN first. See ui_pin.hpp. */
+    bool pin_protected = false;
+    /* openHAB's stateDescription.readOnly: a sensor. Its tile shows the
+     * state and a tap does nothing, whatever widget the sitemap put it in. */
+    bool read_only = false;
+    /* The sitemap's labelcolor, valuecolor and iconcolor, as openHAB
+     * evaluated them for the state the page was sent with: 0xRRGGBB, or
+     * PAGE_COLOR_NONE for the theme's own. */
+    uint32_t label_color = PAGE_COLOR_NONE;
+    uint32_t value_color = PAGE_COLOR_NONE;
+    uint32_t icon_color = PAGE_COLOR_NONE;
+    /* The widget's staticIcon: the icon does not follow the state, so it is
+     * asked for without one, and once. */
+    bool static_icon = false;
+    /* connector_id_hash() of the widget's "widgetId", which is what a sitemap
+     * event names it by. 0 for none. */
+    uint32_t widget_hash = 0;
+    /* Which Frame of the page the widget sat in: 1 for the page's first
+     * Frame, 2 for its second, and 0 for a widget outside any Frame. Frames
+     * are flattened into the page, so this is all that is left of them, and
+     * it is what lets a player find the title and volume tiles that belong to
+     * it. See item_player.cpp. */
+    uint8_t frame = 0;
+    /* The Image widget's refresh=, in milliseconds: how often an open
+     * picture is fetched again. 0 for never. */
+    uint32_t refresh_ms = 0;
+
+public:
+    /* The two URLs an item is asked for, built from its own fields rather than
+     * from arguments the caller has to remember to pass. Both return false
+     * when there is nothing to build or when the result did not fit, so a
+     * doomed request is never made in the first place.
+     *
+     * const because they only read: it is what lets a caller hold the item by
+     * const pointer and still address it. */
+    bool stateUrl(char *out, size_t out_size) const;
+    bool iconUrl(const char *website, char *out, size_t out_size) const;
+
+    /* The item's name, which is what openHAB's event stream knows it by: the
+     * last segment of its link, ".../rest/items/<name>". false when there is
+     * no link, or when the name does not fit. */
+    bool name(char *out, size_t out_size) const;
+
+    /* Fold the body of a "<link>/state" GET into state_text.
+     *
+     * The second half of update(), split out so that the half that waits on a
+     * network and the half that decides what changed can run on different
+     * tasks.
+     *
+     * @param len is explicit because a body straight off the network is not
+     *   terminated. Over-long states are truncated, which is what
+     *   HTTPClient::getString() plus strlcpy() did.
+     * @return 1 if the state changed, 0 if it did not. There is no error
+     *   return: a request that failed never reaches here.
+     */
+    int applyState(const char *text, size_t len);
+
+    void cleanItem()
+    {
+        label[0] = 0;
+        icon_name[0] = 0;
+        type = type_unknown;
+        state_text[0] = 0;
+        transformedstate_text[0] = 0;
+        link[0] = 0;
+        /* Left behind before this line, which mattered because a widget only
+         * assigns it when openHAB sends a "linkedPage": a Group rendered
+         * inline, or a link that lost its target, kept the slot's page link
+         * from the page before and navigated to it when tapped. */
+        page_link[0] = 0;
+        /* And the same for the mappings, which parse_selection() only writes
+         * when the widget carries some: a Selection that arrives without them
+         * offered the options of whatever last held the slot. */
+        mapping_count = 0;
+        /* Like page_link: only ever set by a tag that is there, so a slot must
+         * not carry the last occupant's protection onto an untagged item --
+         * nor, worse, lose it the other way round. */
+        pin_protected = false;
+        read_only = false;
+        label_color = PAGE_COLOR_NONE;
+        value_color = PAGE_COLOR_NONE;
+        icon_color = PAGE_COLOR_NONE;
+        static_icon = false;
+        widget_hash = 0;
+        frame = 0;
+        refresh_ms = 0;
+    }
+
+    void setLabel(const char* newlabel) { strlcpy(label, newlabel, sizeof(label)); }
+    const char* getLabel() { return label; }
+
+    void setIconName(const char* newiconname) { strlcpy(icon_name, newiconname, sizeof(icon_name)); }
+    const char* getIconName() { return icon_name; }
+
+    void setLink(const char * newlink) { strlcpy(link, newlink, sizeof(link)); }
+    const char * getLink() { return link; }
+    bool hasLink() { return (strlen(link) > 0); }
+
+    void setPageLink(const char * newlink) { strlcpy(page_link, newlink, sizeof(page_link)); }
+    const char * getPageLink() { return page_link; }
+    bool hasPageLink() { return (strlen(page_link) > 0); }
+
+    bool isPinProtected() const { return pin_protected; }
+    void setPinProtected(bool on) { pin_protected = on; }
+
+    bool isReadOnly() const { return read_only; }
+    void setReadOnly(bool on) { read_only = on; }
+
+    uint32_t getLabelColor() const { return label_color; }
+    void setLabelColor(uint32_t rgb) { label_color = rgb; }
+    uint32_t getValueColor() const { return value_color; }
+    void setValueColor(uint32_t rgb) { value_color = rgb; }
+    uint32_t getIconColor() const { return icon_color; }
+    void setIconColor(uint32_t rgb) { icon_color = rgb; }
+
+    bool isStaticIcon() const { return static_icon; }
+    void setStaticIcon(bool on) { static_icon = on; }
+
+    uint32_t getWidgetHash() const { return widget_hash; }
+    void setWidgetHash(uint32_t hash) { widget_hash = hash; }
+
+    uint8_t getFrame() const { return frame; }
+    void setFrame(uint8_t index) { frame = index; }
+
+    enum ItemType getType() { return type; }
+
+    void setRefreshMs(uint32_t ms) { refresh_ms = ms; }
+    uint32_t getRefreshMs() const { return refresh_ms; }
+    void setType(enum ItemType newtype) { type = newtype; }
+
+    const char* getStateText() { return state_text; }
+    void setStateText(const char* newtext) { strlcpy(state_text, newtext, sizeof(state_text)); }
+
+    const char* getTransformedStateText() { return transformedstate_text; }
+    void setTransformedStateText(const char* newtranstext) { strlcpy(transformedstate_text, newtranstext, sizeof(transformedstate_text)); }
+
+    float getStateNumber() { return strtof(state_text, NULL); }
+    void setStateNumber(float newnumber) { snprintf(state_text, sizeof(state_text), "%f", newnumber); }
+
+    /* A colorpicker's state, which openHAB sends as "h,s,v" -- degrees, then
+     * two percents.
+     *
+     * Here rather than in the two UI files that draw a colour, because both of
+     * them had a copy and both copies read past the end of the state: they ran
+     * strtol() and then restarted at endptr + 1 without checking that endptr
+     * was not already the terminator. The read stays inside state_text, which
+     * is a fixed char[32], so this was never memory-unsafe -- it picked up
+     * whatever digits a *previous, longer* state had left in the field. A
+     * colorpicker showing "NULL", "UNDEF" or "" -- which is what openHAB sends
+     * for an item it has no value for -- therefore got its colour out of the
+     * item that last held the slot.
+     *
+     * @return false when the state is not three numbers, in which case the
+     *   outputs are set to black rather than left undefined -- every caller
+     *   paints something with them.
+     */
+    bool getStateHsv(uint16_t *h, uint8_t *s, uint8_t *v) const;
+
+    bool stateIsNumber()
+    {
+        char * next;
+        strtod(state_text, &next);
+        return ((next != state_text) && (*next == '\0'));
+    }
+
+    const char* getNumberPattern() { return pattern; }
+    void setNumberPattern(const char* newpattern) { strlcpy(pattern, newpattern, sizeof(pattern)); }
+    bool hasNumberPattern() { return (strlen(pattern) > 1); }
+
+    float getMinVal() { return min_val; }
+    void setMinVal(float newval) { min_val = newval; }
+
+    float getMaxVal() { return max_val; }
+    void setMaxVal(float newval) { max_val = newval; }
+
+    float getStep() { return step_val; }
+    void setStep(float newval) { step_val = newval; }
+
+    char *getSelectionCommand(size_t index) { return selection_command[index]; }
+    void setSelectionCommand(size_t index, const char *command)
+    {
+        strlcpy(selection_command[index], command, sizeof(selection_command[index]));
+    }
+    void setSelectionLabel(size_t index, const char *label)
+    {
+        strlcpy(selection_label[index], label, sizeof(selection_label[index]));
+    }
+    char *getSelectionLabel(size_t index) { return selection_label[index]; }
+
+    /* The label the selection list gives the current state -- "Off" for a
+     * state of "0" -- or NULL when it gives none. Exact text first, then as
+     * numbers when both sides are one, because a number's state is stored
+     * re-printed ("0.000000"). */
+    const char *mappedLabel() const;
+    size_t getSelectionCount() { return mapping_count; }
+    void setSelectionCount(size_t new_count) { mapping_count = new_count; }
+};
+
+class Sitemap
+{
+private:
+    char title[STR_TITLE_LEN];
+    size_t item_count;
+    Item item_array[ITEM_COUNT_MAX];
+
+    /* The root page's clock frame, which is not on the page: these are never
+     * tiles. Empty on every sub page and on a root page without the frame. */
+    size_t clock_item_count = 0;
+    Item clock_items[CLOCK_ITEM_COUNT];
+
+    /* The label that names the clock frame, "" for none. */
+    char clock_frame[STR_LABEL_LEN] = "";
+
+    /* The page's own "id": the sitemap's name on the root page, the linking
+     * widget's id below it. It is what a sitemap event subscription is opened
+     * for. */
+    char page_id[STR_PAGE_ID_LEN] = "";
+
+    /* connector_id_hash() of every widget id the page carried, tile or not --
+     * Frames, widgets the panel cannot draw, widgets past the sixth. A sitemap
+     * event for a widget in here that is no tile is nothing to act on; one for
+     * a widget that is not in here is one openHAB left off the page because a
+     * visibility rule hid it, and is now showing. Past PAGE_WIDGET_IDS_MAX the
+     * set is "everything", so an unknown widget never reloads the page. */
+    uint32_t widget_ids[PAGE_WIDGET_IDS_MAX];
+    size_t   widget_id_count = 0;
+    bool     widget_ids_full = false;
+
+    void rememberWidget(uint32_t hash);
+
+public:
+    /* Turn a page already in memory into the title and the item array.
+     *
+     * `payload` need not be terminated -- a body off the network is not -- and
+     * has to stay alive for the duration of the call. It does not have to
+     * survive the return: every field extracted goes through one of Item's
+     * strlcpy() setters, so no Item ends up holding a pointer into the page.
+     *
+     * `scratch`/`scratch_size` is where the document's pool goes. On the
+     * panel the caller passes the unused tail of the buffer the page body
+     * occupies, and the parse then makes no heap allocation at all -- the
+     * reason is at the arena in openhab/openhab_connector.cpp. With NULL the pool
+     * comes off the heap, which is what the host tests do.
+     *
+     * @return 0, or -1 for a page that did not parse, that ran the scratch
+     *         out of room, or that carries an openHAB error object instead of
+     *         widgets.
+     */
+    int parse(const char *payload, size_t payload_len, char *scratch = NULL,
+              size_t scratch_size = 0);
+
+    const char* getPageName() { return title; }
+    const char* getPageId() const { return page_id; }
+
+    /* Whether the page as parsed carried this widget; see widget_ids. */
+    bool knowsWidget(uint32_t hash) const;
+
+    /* Count a widget the page did not carry as one it did, until the next
+     * parse: a widget that reports itself shown and still has no place. */
+    void ignoreWidget(uint32_t hash) { rememberWidget(hash); }
+    size_t getItemCount() { return item_count; }
+    Item* getItem(size_t index) { return &item_array[index]; }
+
+    /* Which Frame on the root page is the clock frame. Read at the next
+     * parse(), so a change shows with the next page load. Compared with the
+     * Frame's label as the panel draws labels -- with any "[...]" part
+     * trimmed -- and case-sensitively, like everything else a sitemap
+     * names. */
+    void setClockFrame(const char *label) { strlcpy(clock_frame, label, sizeof(clock_frame)); }
+    size_t getClockItemCount() { return clock_item_count; }
+    Item* getClockItem(size_t index) { return &clock_items[index]; }
+};
+
+#endif /* PAGE_MODEL_HPP */

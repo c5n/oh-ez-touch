@@ -4,11 +4,11 @@
 #include "icons/icon_png.h"
 #include "icons/icon_quantize.h"
 #include "icons/icon_set.hpp"
+#include "connector/connector.hpp"
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 #include "openhab/openhab_bell.hpp"
-#include "openhab/openhab_client.hpp"
-#include "openhab/openhab_connector.hpp"
-#include "openhab/openhab_events.hpp"
 #include "openhab/openhab_sitemaps.hpp"
+#endif
 #include "ui_messagebox.hpp"
 #include "ui_beep.hpp"
 #include "ui_settings.hpp"
@@ -209,8 +209,8 @@ struct widget_context_s widget_context[WIDGET_SLOT_COUNT];
 static uint32_t clock_generation;
 
 /* The clock screen's text colour, for the clock slots' text where the
- * sitemap gives none. OPENHAB_COLOR_NONE until the clock screen sets it. */
-static uint32_t clock_text_rgb = OPENHAB_COLOR_NONE;
+ * sitemap gives none. PAGE_COLOR_NONE until the clock screen sets it. */
+static uint32_t clock_text_rgb = PAGE_COLOR_NONE;
 
 struct statistics_s statistics;
 
@@ -220,7 +220,7 @@ static void widget_icon_request(size_t slot);
 static void widget_icon_adopt(struct widget_context_s *wctx, const void *pixels,
                               lv_color_format_t cf, uint32_t width, uint32_t height,
                               uint32_t stride, uint32_t data_size);
-static void icon_reduce_to_i4(const struct openhab_result_s *res, unsigned char **pixels,
+static void icon_reduce_to_i4(const struct connector_result_s *res, unsigned char **pixels,
                               uint32_t width, uint32_t height, lv_color_format_t *cf,
                               uint32_t *stride, uint32_t *data_size);
 
@@ -237,7 +237,7 @@ static void icon_reduce_to_i4(const struct openhab_result_s *res, unsigned char 
  */
 static void item_publish(struct widget_context_s *ctx)
 {
-    if (openhab_client_command(ctx->item->getLink(), ctx->item->getStateText()) == true)
+    if (connector_command(ctx->item->getLink(), ctx->item->getStateText()) == true)
         return;
 
     /* The queue would not take it, which on a slow link is reachable: six
@@ -263,9 +263,9 @@ static_assert(WIDGET_COUNT_MAX <= ITEM_COUNT_MAX, "WIDGET_COUNT_MAX exceeds ITEM
 
 /* Every polled slot is also listened for, and a pushed state is as wide as a
  * polled one. */
-static_assert(WIDGET_SLOT_COUNT <= OPENHAB_EVENTS_ITEM_MAX, "the event stream cannot listen for every slot");
-static_assert(OPENHAB_EVENTS_VALUE_LEN == STR_STATE_TEXT_LEN, "an event value is not an item state wide");
-static_assert(STR_WEBSITE_LEN <= OPENHAB_EVENTS_WEBSITE_LEN, "the event stream cannot hold the website");
+static_assert(WIDGET_SLOT_COUNT <= CONNECTOR_EVENTS_ITEM_MAX, "the event stream cannot listen for every slot");
+static_assert(CONNECTOR_EVENTS_VALUE_LEN == STR_STATE_TEXT_LEN, "an event value is not an item state wide");
+static_assert(STR_WEBSITE_LEN <= CONNECTOR_EVENTS_WEBSITE_LEN, "the event stream cannot hold the website");
 
 /* Where the tile page is in the cycle of asking for a sitemap and getting one.
  *
@@ -291,7 +291,7 @@ enum page_state_e
 static enum page_state_e page_state;
 /* Stamped on every icon and state request, so that the answers can be told
  * apart from the answers to a page that has since been navigated away from.
- * Handed out by openhab_client_request_page(). */
+ * Handed out by connector_request_page(). */
 static uint32_t page_generation;
 /* When a submitted page fetch is written off. The worker answers every request
  * it does not drop, so reaching this means something is wrong that a retry has
@@ -843,20 +843,20 @@ static void widget_icon_set_bitmap(struct widget_context_s *wctx)
 static void widget_apply_colors(struct widget_context_s *wctx)
 {
     bool     clock_slot = (wctx >= &widget_context[CLOCK_SLOT(0)]);
-    uint32_t text_rgb  = clock_slot ? clock_text_rgb : OPENHAB_COLOR_NONE;
+    uint32_t text_rgb  = clock_slot ? clock_text_rgb : PAGE_COLOR_NONE;
     uint32_t label_rgb = wctx->item->getLabelColor();
     uint32_t value_rgb = wctx->item->getValueColor();
     uint32_t icon_rgb  = wctx->item->getIconColor();
 
-    if (label_rgb == OPENHAB_COLOR_NONE)
+    if (label_rgb == PAGE_COLOR_NONE)
         label_rgb = text_rgb;
 
-    if (value_rgb == OPENHAB_COLOR_NONE)
+    if (value_rgb == PAGE_COLOR_NONE)
         value_rgb = text_rgb;
 
     if (wctx->label != NULL)
     {
-        if (label_rgb != OPENHAB_COLOR_NONE)
+        if (label_rgb != PAGE_COLOR_NONE)
             lv_obj_set_style_text_color(wctx->label, lv_color_hex(label_rgb), 0);
         else
             lv_obj_remove_local_style_prop(wctx->label, LV_STYLE_TEXT_COLOR, 0);
@@ -865,11 +865,11 @@ static void widget_apply_colors(struct widget_context_s *wctx)
     /* Not the colour picker's swatch, which is the value's colour already. */
     if (wctx->state_widget != NULL && wctx->item->getType() != ItemType::type_colorpicker)
         ui_reading_set_color(wctx->state_widget, lv_color_hex(value_rgb),
-                             value_rgb != OPENHAB_COLOR_NONE);
+                             value_rgb != PAGE_COLOR_NONE);
 
     if (wctx->img_obj != NULL)
     {
-        if (icon_rgb != OPENHAB_COLOR_NONE)
+        if (icon_rgb != PAGE_COLOR_NONE)
         {
             lv_obj_set_style_image_recolor(wctx->img_obj, lv_color_hex(icon_rgb), 0);
             lv_obj_set_style_image_recolor_opa(wctx->img_obj, LV_OPA_COVER, 0);
@@ -928,7 +928,7 @@ static void widget_icon_request(size_t slot)
         return;
     }
 
-    if (openhab_client_request_icon(url, (uint8_t)slot, page_generation) == true)
+    if (connector_request_icon(url, (uint8_t)slot, page_generation) == true)
         wctx->icon_pending = true;
 }
 
@@ -1122,7 +1122,7 @@ static bool icon_oom_forced(void)
 #endif
 
 static void widget_icon_decode_and_show(struct widget_context_s *wctx,
-                                        struct openhab_result_s *res)
+                                        struct connector_result_s *res)
 {
     const void *png = res->payload;
     size_t png_len = res->payload_len;
@@ -1247,7 +1247,7 @@ static void widget_icon_decode_and_show(struct widget_context_s *wctx,
  * scratch area when it fits there -- the PNG is in front of it and is no longer
  * read -- and from the heap otherwise. Any failure keeps the ARGB8888 image,
  * which is what the tile showed before. */
-static void icon_reduce_to_i4(const struct openhab_result_s *res, unsigned char **pixels,
+static void icon_reduce_to_i4(const struct connector_result_s *res, unsigned char **pixels,
                               uint32_t width, uint32_t height, lv_color_format_t *cf,
                               uint32_t *stride, uint32_t *data_size)
 {
@@ -2044,13 +2044,11 @@ void openhab_ui_connect(const char *host, uint16_t port, const char *sitemap)
 
     snprintf(current_website, sizeof(current_website), "http://%s:%u", host, port);
 
-    int page_len = snprintf(current_page, sizeof(current_page), "%s/rest/sitemaps/%s/%s?type=json", current_website, sitemap, sitemap);
-
-    if (page_len < 0 || (size_t)page_len >= sizeof(current_page))
+    if (connector_root_ref(current_page, sizeof(current_page), current_website, sitemap) == false)
     {
         // Truncated URLs fail every request, and the resulting error statistics
         // reboot the device, so report the actual cause.
-        printf("openhab_ui_connect: sitemap URL truncated to %u bytes: %s\r\n",
+        printf("openhab_ui_connect: root page reference truncated to %u bytes: %s\r\n",
                (unsigned)sizeof(current_page), current_page);
     }
 
@@ -2077,7 +2075,7 @@ static void page_submit_if_due(void)
     if (page_state != PAGE_REQUEST || port_millis() < page_retry_timeout)
         return;
 
-    uint32_t generation = openhab_client_request_page(current_page);
+    uint32_t generation = connector_request_page(current_page);
 
     if (generation == 0)
     {
@@ -2251,10 +2249,10 @@ static int page_parse(const char *payload, size_t payload_len, char *scratch,
             sizeof(parsed_clock_frame));
     sitemap.setClockFrame(parsed_clock_frame);
 
-    return sitemap.parse(payload, payload_len, scratch, scratch_size);
+    return connector_page_parse(&sitemap, payload, payload_len, scratch, scratch_size);
 }
 
-static void page_result_apply(struct openhab_result_s *res)
+static void page_result_apply(struct connector_result_s *res)
 {
     /* The scratch for the parse's document pool. A payload that rode the
      * client's receive buffer (payload_static) holds the body at its front
@@ -2270,10 +2268,10 @@ static void page_result_apply(struct openhab_result_s *res)
     {
         size_t body = (res->payload_len + 1 + 3) & ~(size_t)3;
 
-        if (body < OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1)
+        if (body < CONNECTOR_PAGE_BUFFER_SIZE + 1)
         {
             scratch      = res->payload + body;
-            scratch_size = OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1 - body;
+            scratch_size = CONNECTOR_PAGE_BUFFER_SIZE + 1 - body;
         }
     }
 
@@ -2285,7 +2283,7 @@ static void page_result_apply(struct openhab_result_s *res)
          * is up to 12 KB, show() is about to create six widgets and decode six
          * icons, and the parse has already copied everything it needed out of
          * it. */
-        openhab_client_result_release(res);
+        connector_result_release(res);
 
         page_state = PAGE_READY;
 
@@ -2395,7 +2393,7 @@ static bool slot_is_polled(size_t i)
 }
 
 /* Tell the event stream which items are on screen: the polled ones, exactly.
- * openhab_events_subscribe() ignores a set it already has. */
+ * connector_events_subscribe() ignores a set it already has. */
 static void events_subscribe_if_due(void)
 {
     static uint64_t next_timestamp;
@@ -2410,7 +2408,7 @@ static void events_subscribe_if_due(void)
     if (page_state != PAGE_READY)
         return;
 
-    static struct openhab_events_subscription_s sub;
+    static struct connector_subscription_s sub;
 
     sub.count = 0;
     strlcpy(sub.website, current_website, sizeof(sub.website));
@@ -2420,7 +2418,7 @@ static void events_subscribe_if_due(void)
     strlcpy(sub.sitemap, connect_current_sitemap, sizeof(sub.sitemap));
     strlcpy(sub.page, sitemap.getPageId(), sizeof(sub.page));
 
-    for (size_t i = 0; i < WIDGET_SLOT_COUNT && sub.count < OPENHAB_EVENTS_ITEM_MAX; ++i)
+    for (size_t i = 0; i < WIDGET_SLOT_COUNT && sub.count < CONNECTOR_EVENTS_ITEM_MAX; ++i)
     {
         if (slot_is_polled(i) == false)
             continue;
@@ -2442,7 +2440,7 @@ static void events_subscribe_if_due(void)
         sub.count++;
     }
 
-    openhab_events_subscribe(&sub);
+    connector_events_subscribe(&sub);
 }
 
 static void page_reload_request(uint32_t widget)
@@ -2465,10 +2463,10 @@ static void page_reload_if_due(void)
 
 /* One sitemap event onto every slot showing that widget: the state, the
  * value openHAB formatted, the caption and the colours its rules chose. */
-static void events_apply_widget(const struct openhab_widget_event_s *ev)
+static void events_apply_widget(const struct connector_widget_event_s *ev)
 {
     /* A page the stream has since been moved off. */
-    if (ev->page != openhab_id_hash(sitemap.getPageId()))
+    if (ev->page != connector_id_hash(sitemap.getPageId()))
         return;
 
     bool shown = false;
@@ -2536,15 +2534,15 @@ static void events_apply_widget(const struct openhab_widget_event_s *ev)
  * nothing. One per call, for the reason results_apply_one() gives. */
 static void events_apply_one(void)
 {
-    struct openhab_event_s ev;
+    struct connector_event_s ev;
 
-    if (openhab_events_poll(&ev) == false)
+    if (connector_events_poll(&ev) == false)
         return;
 
     if (page_state != PAGE_READY)
         return;
 
-    if (ev.kind == OPENHAB_EVENT_KIND_WIDGET)
+    if (ev.kind == CONNECTOR_EVENT_KIND_WIDGET)
     {
         events_apply_widget(&ev.widget);
         return;
@@ -2552,7 +2550,7 @@ static void events_apply_one(void)
 
     for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
     {
-        char name[OPENHAB_EVENT_NAME_LEN];
+        char name[CONNECTOR_EVENT_NAME_LEN];
 
         if (   slot_is_polled(i) == false
             || widget_context[i].item->name(name, sizeof(name)) == false
@@ -2573,19 +2571,19 @@ static void events_apply_one(void)
  * the stutter this whole change exists to remove, just moved. */
 static void results_apply_one(void)
 {
-    struct openhab_result_s res;
+    struct connector_result_s res;
 
-    if (openhab_client_poll(&res) == false)
+    if (connector_poll(&res) == false)
         return;
 
     /* Every request but a command is scoped to the page it was issued for. One
      * that outlived its page has nowhere to go: its slot may hold a different
      * item now, and free_icon() may already have released the pixels behind
      * it. So this is checked before anything below reads widget_context[]. */
-    if (   res.generation != OPENHAB_CLIENT_GENERATION_ALWAYS
+    if (   res.generation != CONNECTOR_GENERATION_ALWAYS
         && res.generation != page_generation)
     {
-        openhab_client_result_release(&res);
+        connector_result_release(&res);
         return;
     }
 
@@ -2598,20 +2596,20 @@ static void results_apply_one(void)
      * do not: a request added later belongs to no widget far more often than
      * it belongs to one, and the list of exceptions was one such request away
      * from silently dropping it. */
-    if ((res.type == OPENHAB_REQ_ICON || res.type == OPENHAB_REQ_STATE)
+    if ((res.type == CONNECTOR_REQ_ICON || res.type == CONNECTOR_REQ_STATE)
         && res.slot >= WIDGET_SLOT_COUNT)
     {
-        openhab_client_result_release(&res);
+        connector_result_release(&res);
         return;
     }
 
     switch (res.type)
     {
-    case OPENHAB_REQ_PAGE:
+    case CONNECTOR_REQ_PAGE:
         page_result_apply(&res);
         break;
 
-    case OPENHAB_REQ_ICON:
+    case CONNECTOR_REQ_ICON:
         widget_context[res.slot].icon_pending = false;
 
         /* A failed or missing icon is not counted, and never was: getIcon()
@@ -2621,7 +2619,7 @@ static void results_apply_one(void)
             widget_icon_decode_and_show(&widget_context[res.slot], &res);
         break;
 
-    case OPENHAB_REQ_STATE:
+    case CONNECTOR_REQ_STATE:
     {
         struct widget_context_s *wctx = &widget_context[res.slot];
 
@@ -2646,20 +2644,22 @@ static void results_apply_one(void)
         break;
     }
 
-    case OPENHAB_REQ_IMAGE:
+    case CONNECTOR_REQ_IMAGE:
         /* The picture screen's, and only while it is up; nothing on the
          * page holds a picture. */
         item_image_apply_result(&res);
         break;
 
-    case OPENHAB_REQ_SITEMAPS:
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
+    case CONNECTOR_REQ_SITEMAPS:
         /* Straight on to the module that owns the list. It is not the tile
          * page's business: nothing here changes, and the answer is for
          * whoever is looking at the settings. */
         openhab_sitemaps_apply(&res);
         break;
+#endif
 
-    case OPENHAB_REQ_COMMAND:
+    case CONNECTOR_REQ_COMMAND:
     default:
         /* The commands move in the commit after this one. */
         break;
@@ -2667,11 +2667,13 @@ static void results_apply_one(void)
 
     /* Idempotent, so the page arm above having already let go of a 12 KB
      * payload before creating the tiles is not a double free. */
-    openhab_client_result_release(&res);
+    connector_result_release(&res);
 }
 
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
 /* The doorbell: follow the ring item, and when it rings show the picture item
- * from whatever is on screen.
+ * from whatever is on screen. openHAB only, so far: the ring is an openHAB
+ * item followed on an event stream of its own (openhab/openhab_bell.cpp).
  *
  * Not opened in the same turn as the ring when the clock screen is up. Waking
  * the backlight is what takes the clock down -- ui_clock_loop() does it on its
@@ -2711,6 +2713,7 @@ static void doorbell_loop(void)
     item_image_popup(current_website, image, "Doorbell",
                      current_config->item.openhab.doorbell_show * 1000u);
 }
+#endif /* CONFIG_OHEZ_CONNECTOR_OPENHAB */
 
 void openhab_ui_loop(void)
 {
@@ -2725,7 +2728,9 @@ void openhab_ui_loop(void)
     results_apply_one();
     events_apply_one();
     events_subscribe_if_due();
+#if CONFIG_OHEZ_CONNECTOR_OPENHAB
     doorbell_loop();
+#endif
     page_submit_if_due();
     page_timeout_check();
 
@@ -2734,7 +2739,7 @@ void openhab_ui_loop(void)
      * task. */
     ui_beep_loop();
 
-    if (openhab_events_take_reload() == true)
+    if (connector_events_take_reload() == true)
         page_reload_request(0);
 
     page_reload_if_due();
@@ -2743,8 +2748,8 @@ void openhab_ui_loop(void)
     {
         icon_retries_due();
 
-        bool resync = openhab_events_take_resync();
-        uint64_t interval = openhab_events_streaming() ? ITEM_UPDATE_INTERVAL_STREAMING
+        bool resync = connector_events_take_resync();
+        uint64_t interval = connector_events_streaming() ? ITEM_UPDATE_INTERVAL_STREAMING
                                                        : ITEM_UPDATE_INTERVAL;
 
         for (size_t i = 0; i < WIDGET_SLOT_COUNT; ++i)
@@ -2794,7 +2799,7 @@ void openhab_ui_loop(void)
                     widget_context[i].refresh_request = false;
 
                     if (   widget_context[i].item->stateUrl(url, sizeof(url)) == false
-                        || openhab_client_request_state(url, (uint8_t)i, page_generation) == false)
+                        || connector_request_state(url, (uint8_t)i, page_generation) == false)
                     {
                         /* A URL that would not build, or a queue that would
                          * not take it. Counted here rather than nowhere: every

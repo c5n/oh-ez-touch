@@ -15,6 +15,7 @@ files, and the firmware is built. The images land in release/<version>/:
     tools/build_release.py                       # the default hardware targets
     tools/build_release.py --full                # plus the optional ones
     tools/build_release.py -t arduitouch lanbon  # a subset
+    tools/build_release.py -t arduitouch_ha      # Home Assistant, only by name
     tools/build_release.py --dirty               # incremental, no cleaning
 
 On a terminal the run keeps a display on screen: a progress bar, and a
@@ -77,9 +78,29 @@ MINIMAL = "minimal"
 # oh-ez-touch-<version>-minimal.bin.
 ALL_TARGETS = sorted(TARGETS) + [MINIMAL]
 
+# A Home Assistant target is a board name with this suffix: the board's
+# defaults file plus sdkconfig.defaults.homeassistant (CONFIG_OHEZ_CONNECTOR).
+HA_SUFFIX = "_ha"
+
+# The Home Assistant connector is a placeholder so far, so its images are
+# built only when -t names them -- not by a default run and not by --full,
+# which would put a panel that shows nothing into a release.
+EXPERIMENTAL_TARGETS = {t for t in TARGETS if t.endswith(HA_SUFFIX)}
+
 # What a full run (--full) adds; without it these need -t to be built.
 OPTIONAL_TARGETS = {"arduitouch_jtag", "cyd", MINIMAL}
-DEFAULT_TARGETS = [t for t in sorted(TARGETS) if t not in OPTIONAL_TARGETS]
+DEFAULT_TARGETS = [t for t in sorted(TARGETS)
+                   if t not in OPTIONAL_TARGETS and t not in EXPERIMENTAL_TARGETS]
+FULL_TARGETS = [t for t in ALL_TARGETS if t not in EXPERIMENTAL_TARGETS]
+
+
+def defaults_files(target):
+    """The defaults files after sdkconfig.defaults and sdkconfig.defaults.esp32,
+    without their "sdkconfig.defaults." prefix: the board's, or for a Home
+    Assistant target the board's and the connector's."""
+    if target.endswith(HA_SUFFIX):
+        return [target[:-len(HA_SUFFIX)], "homeassistant"]
+    return [target]
 
 
 def format_duration(seconds):
@@ -316,8 +337,8 @@ def build_target(target, dirty, ui, log):
             build_dir,
             log,
             "-DSDKCONFIG=%s" % sdkconfig,
-            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;"
-            "sdkconfig.defaults.esp32;sdkconfig.defaults.%s" % target,
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.esp32;"
+            + ";".join("sdkconfig.defaults.%s" % f for f in defaults_files(target)),
             "set-target", "esp32") == 0
 
     if not configured:
@@ -380,10 +401,11 @@ def main():
                     "in release/<version>/.")
     parser.add_argument("-t", "--targets", nargs="+", choices=ALL_TARGETS,
                         metavar="TARGET",
-                        help="build only these (default: %s, or all of them "
-                             "with --full: %s)"
+                        help="build only these (default: %s; with --full: "
+                             "%s; Home Assistant only when named: %s)"
                              % (", ".join(DEFAULT_TARGETS),
-                                ", ".join(ALL_TARGETS)))
+                                ", ".join(FULL_TARGETS),
+                                ", ".join(sorted(EXPERIMENTAL_TARGETS))))
     parser.add_argument("--full", action="store_true",
                         help="build the optional targets too: %s"
                              % ", ".join(sorted(OPTIONAL_TARGETS)))
@@ -405,7 +427,7 @@ def main():
     version = expected_version_default()
     outdir = (Path(args.outdir) if args.outdir
               else REPO_ROOT / "release" / version)
-    targets = args.targets or (ALL_TARGETS if args.full
+    targets = args.targets or (FULL_TARGETS if args.full
                                else DEFAULT_TARGETS)
 
     # The display needs a terminal that can hold it; anything else (a

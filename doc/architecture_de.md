@@ -35,10 +35,14 @@ main/ui/              the LVGL user interface: the openHAB page, the settings
 main/ui/frames/       one per theme family: the chrome it draws around the
                       tiles, and where it lets them sit
 main/ui/items/        one per openHAB item type: the screen its tile opens
-main/openhab/         the openHAB client: the task every request waits on,
-                      the sitemap model and parser it feeds, and the caches of
-                      which servers are on the network and which sitemaps they
+main/connector/       the boundary between the panel and its server: one
+                      header, implemented by the connector the build has
+main/model/           the page model both connectors fill: Item and Sitemap
+main/openhab/         the openHAB connector: the task every request waits on,
+                      the sitemap parser it feeds, and the caches of which
+                      servers are on the network and which sitemaps they
                       offer
+main/homeassistant/   the Home Assistant connector (a placeholder so far)
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -59,6 +63,47 @@ components/           LVGL and ArduinoJson as submodules, lodepng and TJpgDec
                       vendored
 test/host/            the unit tests, as an IDF project of their own
 ```
+
+## Die Connector-Grenze
+
+Ein Build enthält genau einen Server-Connector, ausgewählt über
+`CONFIG_OHEZ_CONNECTOR` in `main/Kconfig.projbuild`: openHAB (`main/openhab/`)
+oder Home Assistant (`main/homeassistant/`). `main/CMakeLists.txt` übersetzt
+das gewählte Verzeichnis und nichts vom anderen. Ein Home-Assistant-Build
+meldet seinen Target-Namen mit der Endung `-HA`, siehe
+[Bauen](building_de.md#builds-für-home-assistant).
+
+`main/connector/connector.hpp` ist die Grenze. Sie funktioniert wie die
+Port-Schicht: ein Header, und der aktive Connector implementiert jede Funktion
+darin. Fehlt eine Funktion, scheitert das Linken. Die UI
+(`main/ui/openhab_ui.cpp`) und `main.cpp` erreichen den Server nur über diese
+Grenze:
+
+- Anfragen für eine Seite, ein Icon, einen Status, ein Bild und Befehle; die
+  Ergebnisse kommen über eine Queue (`connector_poll()`),
+- das Parsen eines Seitenergebnisses in das Seitenmodell
+  (`connector_page_parse()`),
+- übertragene Änderungen (`connector_events_*()`),
+- Setup, der Reset nach einem Wechsel der Verbindung und die Schleife für die
+  Arbeit, die auch ohne WLAN-Verbindung läuft.
+
+Eine Referenz ist ein undurchsichtiger String: bei openHAB eine URL, bei Home
+Assistant das, was sein Connector in einem Item speichert. Die Typen, die die
+Grenze überqueren, stehen in `main/connector/connector_types.h`. So können die
+Parser und die Host-Tests sie ohne die Header für Config und Seitenmodell
+verwenden.
+
+Das Seitenmodell (`main/model/page_model.hpp`: `Item`, `Sitemap`) ist
+gemeinsam. Vier seiner Member definiert der aktive Connector:
+`Sitemap::parse()`, `Item::stateUrl()`, `Item::iconUrl()` und `Item::name()`.
+Die Namen stammen von openHAB, weil openHAB der erste Server war.
+
+Was nur openHAB hat, ist an der Stelle der Verwendung mit
+`CONFIG_OHEZ_CONNECTOR_OPENHAB` geschützt: die Serversuche und die
+Sitemap-Liste im Einstellungsbildschirm und im Webformular sowie die
+Türklingel. In einem Home-Assistant-Build besteht der Einstellungsabschnitt
+des Servers aus einfachen Feldern, und `config.json` hat einen Abschnitt
+`homeassistant` statt `openhab`.
 
 ## Die Einstellungstabelle
 
@@ -84,7 +129,7 @@ Zum Erzeugen der UI muss openHAB abgefragt werden: eine Sitemap-Seite pro Naviga
 
 Alle Anfragen warten auf einen eigenen Task (`main/openhab/openhab_client.cpp`). Die UI übermittelt eine URL und zeichnet weiter. Die Antwort kommt über eine Queue zurück. `openhab_ui_loop()` nimmt pro Iteration ein Ergebnis aus der Queue. Eine Seite erscheint, sobald ihr JSON geparst ist. Jede Kachel zeigt zunächst ihre Beschriftung, ihren Status und ein Platzhalter-Icon. Die Icons werden in den folgenden Frames ergänzt. Die Uhr läuft weiter und die Touchbedienung reagiert, auch wenn openHAB nicht erreichbar ist.
 
-Der Worker ruft keine `lv_*`-Funktion auf. Er liest weder `Item`, `Sitemap` noch `Config`. URLs gehen hinein und Bytes kommen zurück. Jede Entscheidung darüber, was ein Body bedeutet, und jeder LVGL-Aufruf bleiben auf dem Task, dem der Bildschirm gehört. `main/openhab/openhab_connector.cpp` ist ein Modell und ein Parser ohne Wissen um ein Netzwerk. Dadurch können die Host-Tests den Parser abdecken.
+Der Worker ruft keine `lv_*`-Funktion auf. Er liest weder `Item`, `Sitemap` noch `Config`. URLs gehen hinein und Bytes kommen zurück. Jede Entscheidung darüber, was ein Body bedeutet, und jeder LVGL-Aufruf bleiben auf dem Task, dem der Bildschirm gehört. `main/openhab/openhab_connector.cpp` (der Sitemap-Parser) und `main/model/page_model.cpp` (das Seitenmodell) wissen nichts von einem Netzwerk. Dadurch können die Host-Tests den Parser abdecken.
 
 Der Parser benennt die Schlüssel, die er benötigt; alles andere wird bereits beim Parsen verworfen, statt gespeichert und später übersprungen zu werden. Eine Seite enthält einiges, wofür das Panel keine Verwendung hat – Quellen von Beschriftungen, Einheiten, Elementkategorien, Gruppenmitglieder, Zeitstempel. Das Speichern kostete mehr als das Speichern der tatsächlich gelesenen Daten: Auf der Demo-Seite mit sechs Widgets waren es 5892 Byte Dokument gegenüber 3136 mit dem Filter und 188 Allokationen gegenüber 103. Element-Tags standen auf dieser Liste, bis die Element-PIN hinzukam; sie werden jetzt gelesen und sind bei den meisten Elementen ein leeres Array. Das bedeutet auch, dass zukünftige Felder, die openHAB hinzufügt, das Panel nichts kosten. Der Preis dafür: Ein vom Parser gelesenes Feld muss auch im Filter benannt sein; andernfalls wird es als null gelesen.
 

@@ -59,6 +59,38 @@ config OHEZ_MINIMAL
         The board choice above is irrelevant to this build and left at
         whatever it is; nothing reads it.
 
+choice OHEZ_CONNECTOR
+    prompt "Server connector"
+    default OHEZ_CONNECTOR_OPENHAB
+    depends on !OHEZ_MINIMAL
+    help
+        Which server the panel shows. A build contains exactly one
+        connector; there is no switch at runtime. The connector is the
+        whole of what talks to the server: main/openhab/ or
+        main/homeassistant/, behind connector/connector.hpp.
+
+        Compile-time, like the board: a panel is installed for one
+        server, and two connectors in one image would cost flash and heap
+        for a choice nobody changes on a running device. The Home
+        Assistant builds report a target name with "-HA" appended, so the
+        OTA tools refuse to put one connector's image on a panel that runs
+        the other.
+
+        sdkconfig.defaults.homeassistant selects Home Assistant; without
+        it a build is an openHAB build.
+
+config OHEZ_CONNECTOR_OPENHAB
+    bool "openHAB"
+
+config OHEZ_CONNECTOR_HOMEASSISTANT
+    bool "Home Assistant (not functional yet)"
+    help
+        The Home Assistant connector is a placeholder so far: the build,
+        the settings and the target name are in place, and the panel
+        reports that the server is not reachable.
+
+endchoice
+
 config OHEZ_TESTIF
     bool "Control interface on the network (bench use only)"
     depends on !IDF_TARGET_LINUX

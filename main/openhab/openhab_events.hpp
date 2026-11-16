@@ -36,71 +36,16 @@
 #ifndef OPENHAB_EVENTS_HPP
 #define OPENHAB_EVENTS_HPP
 
+#include "connector/connector_types.h"
 #include "openhab_event_parse.hpp"
 
 #include <stdbool.h>
 #include <stddef.h>
 
-/* The tiles and the clock items, with room to spare. */
-#define OPENHAB_EVENTS_ITEM_MAX 12
-
-/* The width of an item state; checked against STR_STATE_TEXT_LEN where both
- * are in scope, in openhab_ui.cpp. */
-#define OPENHAB_EVENTS_VALUE_LEN 32
-
-/* "http://host:port", which is what openhab_ui.cpp calls the website. */
-#define OPENHAB_EVENTS_WEBSITE_LEN 128
-
 /* Deep enough for a scene switching every tile at once, plus the clock items.
  * An event that does not fit is dropped and a resync asked for instead, so
  * the depth bounds latency under a burst rather than correctness. */
 #define OPENHAB_EVENTS_QUEUE_DEPTH 8
-
-/* A sitemap name, at the width Config stores it, and a page id. */
-#define OPENHAB_EVENTS_SITEMAP_LEN 32
-#define OPENHAB_EVENTS_PAGE_LEN 64
-
-/* What to listen for. Built by the UI, copied whole by subscribe(). */
-struct openhab_events_subscription_s
-{
-    char   website[OPENHAB_EVENTS_WEBSITE_LEN];
-    /* The page on screen, for the sitemap stream. Either one "" falls back to
-     * the items below at once. */
-    char   sitemap[OPENHAB_EVENTS_SITEMAP_LEN];
-    char   page[OPENHAB_EVENTS_PAGE_LEN];
-    /* The items on screen, for the item stream. */
-    size_t count;
-    struct
-    {
-        char name[OPENHAB_EVENT_NAME_LEN];
-        /* A group's own state changes arrive on
-         * "items/<group>/<member>/statechanged", which a topic for
-         * "items/<group>/statechanged" does not match. */
-        bool group;
-    } item[OPENHAB_EVENTS_ITEM_MAX];
-};
-
-enum openhab_event_kind_e
-{
-    OPENHAB_EVENT_KIND_ITEM,   /* `item`: an item stream's state change      */
-    OPENHAB_EVENT_KIND_WIDGET, /* `widget`: a sitemap stream's widget change */
-};
-
-struct openhab_event_s
-{
-    enum openhab_event_kind_e kind;
-
-    union
-    {
-        struct
-        {
-            char name[OPENHAB_EVENT_NAME_LEN];
-            char value[OPENHAB_EVENTS_VALUE_LEN];
-        } item;
-
-        struct openhab_widget_event_s widget;
-    };
-};
 
 /**
  * Create the queue and start the task. Idle until the first subscribe().
@@ -118,7 +63,7 @@ bool openhab_events_setup(void);
  * the stream and opens a new one, since a topic filter is fixed for the life
  * of a stream. A `count` of 0 closes it and leaves it closed.
  */
-void openhab_events_subscribe(const struct openhab_events_subscription_s *sub);
+void openhab_events_subscribe(const struct connector_subscription_s *sub);
 
 /**
  * Close the stream and open it again, for the reason openhab_http_reset()
@@ -147,6 +92,6 @@ bool openhab_events_take_resync(void);
 bool openhab_events_take_reload(void);
 
 /** Take at most one event. Never blocks. */
-bool openhab_events_poll(struct openhab_event_s *out);
+bool openhab_events_poll(struct connector_event_s *out);
 
 #endif /* OPENHAB_EVENTS_HPP */

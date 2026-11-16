@@ -40,10 +40,14 @@ main/ui/              the LVGL user interface: the openHAB page, the settings
 main/ui/frames/       one per theme family: the chrome it draws around the
                       tiles, and where it lets them sit
 main/ui/items/        one per openHAB item type: the screen its tile opens
-main/openhab/         the openHAB client: the task every request waits on,
-                      the sitemap model and parser it feeds, and the caches of
-                      which servers are on the network and which sitemaps they
+main/connector/       the boundary between the panel and its server: one
+                      header, implemented by the connector the build has
+main/model/           the page model both connectors fill: Item and Sitemap
+main/openhab/         the openHAB connector: the task every request waits on,
+                      the sitemap parser it feeds, and the caches of which
+                      servers are on the network and which sitemaps they
                       offer
+main/homeassistant/   the Home Assistant connector (a placeholder so far)
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -64,6 +68,42 @@ components/           LVGL and ArduinoJson as submodules, lodepng and TJpgDec
                       vendored
 test/host/            the unit tests, as an IDF project of their own
 ```
+
+## The connector boundary
+
+A build contains exactly one server connector, chosen by
+`CONFIG_OHEZ_CONNECTOR` in `main/Kconfig.projbuild`: openHAB (`main/openhab/`)
+or Home Assistant (`main/homeassistant/`). `main/CMakeLists.txt` compiles the
+chosen directory and nothing of the other. A Home Assistant build reports its
+target name with `-HA` appended, see [Building](building.md#home-assistant-builds).
+
+`main/connector/connector.hpp` is the boundary, and it works like the port
+layer: one header, and the active connector implements every function in it.
+A function the connector does not provide is a link error. The UI
+(`main/ui/openhab_ui.cpp`) and `main.cpp` reach the server only through it:
+
+- requests for a page, an icon, a state, a picture, and commands, with the
+  results on a queue (`connector_poll()`),
+- the parse of a page result into the page model (`connector_page_parse()`),
+- pushed changes (`connector_events_*()`),
+- setup, the reset after a link change, and the loop for the work that runs
+  while the station is offline.
+
+A reference is an opaque string: for openHAB a URL, for Home Assistant what
+its connector stores in an Item. The types that cross the boundary are in
+`main/connector/connector_types.h`, so the parsers and the host tests can use
+them without the Config and page model headers.
+
+The page model (`main/model/page_model.hpp`: `Item`, `Sitemap`) is shared.
+Four of its members are defined by the active connector: `Sitemap::parse()`,
+`Item::stateUrl()`, `Item::iconUrl()` and `Item::name()`. The names are
+openHAB's, because openHAB was the first server.
+
+What only openHAB has is guarded with `CONFIG_OHEZ_CONNECTOR_OPENHAB` where it
+is used: the server scan and the sitemap list in the settings screen and the
+web form, and the doorbell. In a Home Assistant build the server's settings
+section is a section of plain fields, and `config.json` has a
+`homeassistant` section instead of `openhab`.
 
 ## The settings table
 
@@ -132,8 +172,9 @@ keeps responding, also while openHAB is unreachable.
 The worker calls no `lv_*` function. It reads no `Item`, `Sitemap` or
 `Config`. URLs go in and bytes come back. Every decision about what a body
 means, and every LVGL call, stays on the task that owns the screen.
-`main/openhab/openhab_connector.cpp` is a model and a parser with no idea
-that a network exists. That is what lets the host tests cover the parser.
+`main/openhab/openhab_connector.cpp` (the sitemap parser) and
+`main/model/page_model.cpp` (the page model) have no idea that a network
+exists. That is what lets the host tests cover the parser.
 
 The parser names the keys it wants and the rest is dropped at the parser
 rather than stored and stepped over. A page carries a good deal the panel has

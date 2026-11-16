@@ -6,7 +6,7 @@
  */
 #include "item_screen.hpp"
 
-#include "openhab/openhab_client.hpp"
+#include "connector/connector.hpp"
 #include "ui/ui_beep.hpp"
 #include "ui/ui_motion.hpp"
 #include "ui/ui_screen.hpp"
@@ -73,7 +73,7 @@ static void send(Item *item, uint8_t slot, const char *text)
      * depth -- and a command dropped there looks from the glass like one that
      * was sent: the control has already moved, and the next poll quietly puts
      * it back. The same line item_publish() prints for a tap on a tile. */
-    if (openhab_client_command(item->getLink(), text) == false)
+    if (connector_command(item->getLink(), text) == false)
         printf("item_screen: command queue full; \"%s\" not sent to %s\r\n",
                text, item->getLink());
 

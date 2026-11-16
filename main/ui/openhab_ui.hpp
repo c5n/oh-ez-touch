@@ -3,7 +3,7 @@
 #define OPENHAB_UI_H
 
 #include "config/config.hpp"
-#include "openhab/openhab_connector.hpp"
+#include "model/page_model.hpp"
 #include "ui_theme.hpp"
 #include <lvgl.h>
 #include <stdint.h>

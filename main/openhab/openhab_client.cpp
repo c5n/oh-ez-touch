@@ -36,10 +36,10 @@ static const char *TAG = "openhab_client";
  * the width they are carried at have to agree. Checked rather than shared,
  * because openhab_client.hpp is included by code that has no business pulling
  * in ArduinoJson. */
-static_assert(OPENHAB_CLIENT_URL_LEN >= STR_URL_LEN,
-              "OPENHAB_CLIENT_URL_LEN is narrower than the URLs Item builds");
-static_assert(OPENHAB_CLIENT_BODY_LEN >= STR_STATE_TEXT_LEN,
-              "OPENHAB_CLIENT_BODY_LEN cannot hold an item state");
+static_assert(CONNECTOR_URL_LEN >= STR_URL_LEN,
+              "CONNECTOR_URL_LEN is narrower than the URLs Item builds");
+static_assert(CONNECTOR_BODY_LEN >= STR_STATE_TEXT_LEN,
+              "CONNECTOR_BODY_LEN cannot hold an item state");
 
 /* A host pthread doing libc and socket work needs far more than a device task
  * does, for the reason sdkconfig.defaults.linux gives twice already: a
@@ -65,11 +65,11 @@ static_assert(OPENHAB_CLIENT_BODY_LEN >= STR_STATE_TEXT_LEN,
  * dropped unmade. The same shape beeper_control.cpp uses. */
 struct request_s
 {
-    enum openhab_request_e type;
+    enum connector_request_e type;
     uint32_t generation;
     uint8_t  slot;
-    char     url[OPENHAB_CLIENT_URL_LEN];
-    char     body[OPENHAB_CLIENT_BODY_LEN];
+    char     url[CONNECTOR_URL_LEN];
+    char     body[CONNECTOR_BODY_LEN];
 };
 
 static QueueHandle_t requests = NULL;
@@ -91,9 +91,9 @@ static QueueHandle_t results = NULL;
  * until openhab_client_result_release(), on whichever task releases it. Every
  * other path gives it back before perform() returns. */
 
-static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
+static_assert(CONNECTOR_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_ICON_BUFFER_SIZE,
               "the receive buffer is sized on the page, so no class may exceed it");
-static_assert(OPENHAB_CLIENT_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE,
+static_assert(CONNECTOR_PAGE_BUFFER_SIZE >= OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE,
               "the receive buffer is sized on the page, so no class may exceed it");
 
 /* Written only by openhab_client_request_page(), on the UI task; read by the
@@ -110,13 +110,13 @@ static void openhab_client_task(void *parameter);
  * fetched or displayed. Commands are exempt. */
 static bool is_stale(uint32_t request_generation)
 {
-    if (request_generation == OPENHAB_CLIENT_GENERATION_ALWAYS)
+    if (request_generation == CONNECTOR_GENERATION_ALWAYS)
         return false;
 
     return (request_generation != generation.load(std::memory_order_relaxed));
 }
 
-static bool submit(enum openhab_request_e type, const char *url, const char *body,
+static bool submit(enum connector_request_e type, const char *url, const char *body,
                    uint8_t slot, uint32_t request_generation)
 {
     if (requests == NULL)
@@ -166,7 +166,7 @@ static bool submit(enum openhab_request_e type, const char *url, const char *bod
      * queue this deep is only full when something is already badly wrong -- in
      * which case the caller counting a failure is more use than the screen
      * stopping. */
-    BaseType_t sent = (type == OPENHAB_REQ_PAGE)
+    BaseType_t sent = (type == CONNECTOR_REQ_PAGE)
                         ? xQueueSendToFront(requests, &req, 0)
                         : xQueueSend(requests, &req, 0);
 
@@ -190,7 +190,7 @@ bool openhab_client_setup(void)
         return true;
 
     requests = xQueueCreate(OPENHAB_CLIENT_REQUEST_QUEUE_DEPTH, sizeof(struct request_s));
-    results = xQueueCreate(OPENHAB_CLIENT_RESULT_QUEUE_DEPTH, sizeof(struct openhab_result_s));
+    results = xQueueCreate(OPENHAB_CLIENT_RESULT_QUEUE_DEPTH, sizeof(struct connector_result_s));
 
     if (requests == NULL || results == NULL)
     {
@@ -199,10 +199,10 @@ bool openhab_client_setup(void)
     }
 
     /* One over, so that a body read into it can be terminated. */
-    if (work_buf_size() < OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1)
+    if (work_buf_size() < CONNECTOR_PAGE_BUFFER_SIZE + 1)
     {
         ESP_LOGE(TAG, "the work buffer is %u bytes, the client needs %u",
-                 (unsigned)work_buf_size(), (unsigned)OPENHAB_CLIENT_PAGE_BUFFER_SIZE + 1);
+                 (unsigned)work_buf_size(), (unsigned)CONNECTOR_PAGE_BUFFER_SIZE + 1);
         goto fail;
     }
 
@@ -257,12 +257,12 @@ uint32_t openhab_client_request_page(const char *url)
     /* Zero is reserved for the commands that never go stale, so skip it on the
      * wrap. Four billion page loads is not reachable, but a counter that has
      * one forbidden value should say what it does at it. */
-    if (next == OPENHAB_CLIENT_GENERATION_ALWAYS)
+    if (next == CONNECTOR_GENERATION_ALWAYS)
         next = 1;
 
     generation.store(next, std::memory_order_relaxed);
 
-    if (submit(OPENHAB_REQ_PAGE, url, NULL, OPENHAB_CLIENT_SLOT_NONE, next) == false)
+    if (submit(CONNECTOR_REQ_PAGE, url, NULL, CONNECTOR_SLOT_NONE, next) == false)
     {
         /* Put it back. Nothing was queued, so nothing was superseded -- and a
          * generation left ahead of the one the UI holds staled every request
@@ -281,18 +281,18 @@ uint32_t openhab_client_request_page(const char *url)
 
 bool openhab_client_request_icon(const char *url, uint8_t slot, uint32_t request_generation)
 {
-    return submit(OPENHAB_REQ_ICON, url, NULL, slot, request_generation);
+    return submit(CONNECTOR_REQ_ICON, url, NULL, slot, request_generation);
 }
 
 bool openhab_client_request_state(const char *url, uint8_t slot, uint32_t request_generation)
 {
-    return submit(OPENHAB_REQ_STATE, url, NULL, slot, request_generation);
+    return submit(CONNECTOR_REQ_STATE, url, NULL, slot, request_generation);
 }
 
 bool openhab_client_command(const char *url, const char *body)
 {
-    return submit(OPENHAB_REQ_COMMAND, url, body, OPENHAB_CLIENT_SLOT_NONE,
-                  OPENHAB_CLIENT_GENERATION_ALWAYS);
+    return submit(CONNECTOR_REQ_COMMAND, url, body, CONNECTOR_SLOT_NONE,
+                  CONNECTOR_GENERATION_ALWAYS);
 }
 
 bool openhab_client_request_sitemaps(const char *url)
@@ -301,20 +301,20 @@ bool openhab_client_request_sitemaps(const char *url)
      * with this request, and a page load while it is in flight -- which is
      * exactly what a save from the settings screen causes -- must not cancel
      * it. */
-    return submit(OPENHAB_REQ_SITEMAPS, url, NULL, OPENHAB_CLIENT_SLOT_NONE,
-                  OPENHAB_CLIENT_GENERATION_ALWAYS);
+    return submit(CONNECTOR_REQ_SITEMAPS, url, NULL, CONNECTOR_SLOT_NONE,
+                  CONNECTOR_GENERATION_ALWAYS);
 }
 
 bool openhab_client_request_image(const char *url, uint16_t max_w, uint16_t max_h, uint8_t tag)
 {
-    char box[OPENHAB_CLIENT_BODY_LEN];
+    char box[CONNECTOR_BODY_LEN];
 
     snprintf(box, sizeof(box), "%ux%u", (unsigned)max_w, (unsigned)max_h);
 
-    return submit(OPENHAB_REQ_IMAGE, url, box, tag, OPENHAB_CLIENT_GENERATION_ALWAYS);
+    return submit(CONNECTOR_REQ_IMAGE, url, box, tag, CONNECTOR_GENERATION_ALWAYS);
 }
 
-bool openhab_client_poll(struct openhab_result_s *out)
+bool openhab_client_poll(struct connector_result_s *out)
 {
     if (results == NULL)
         return false;
@@ -332,7 +332,7 @@ bool openhab_client_poll(struct openhab_result_s *out)
     return true;
 }
 
-void openhab_client_result_release(struct openhab_result_s *res)
+void openhab_client_result_release(struct connector_result_s *res)
 {
     if (res->payload_static == true)
     {
@@ -360,23 +360,23 @@ void openhab_client_result_release(struct openhab_result_s *res)
  * "Does not fit" means the body is longer than this, and nothing else. A body
  * the network cut short is a failure for every kind, including the truncated
  * one; openhab_http.cpp is where the two are told apart. */
-static size_t body_capacity(enum openhab_request_e type, bool *truncate)
+static size_t body_capacity(enum connector_request_e type, bool *truncate)
 {
     switch (type)
     {
-    case OPENHAB_REQ_PAGE:
+    case CONNECTOR_REQ_PAGE:
         *truncate = false;
-        return OPENHAB_CLIENT_PAGE_BUFFER_SIZE;
+        return CONNECTOR_PAGE_BUFFER_SIZE;
 
-    case OPENHAB_REQ_ICON:
+    case CONNECTOR_REQ_ICON:
         *truncate = false;
         return OPENHAB_CLIENT_ICON_BUFFER_SIZE;
 
-    case OPENHAB_REQ_SITEMAPS:
+    case CONNECTOR_REQ_SITEMAPS:
         *truncate = false;
         return OPENHAB_CLIENT_SITEMAPS_BUFFER_SIZE;
 
-    case OPENHAB_REQ_STATE:
+    case CONNECTOR_REQ_STATE:
     default:
         *truncate = true;
         return STR_STATE_TEXT_LEN - 1;
@@ -398,7 +398,7 @@ static void image_box(const struct request_s *req, uint16_t *max_w, uint16_t *ma
     *max_h = (uint16_t)h;
 }
 
-static void image_result(const struct image_decode_s *img, struct openhab_result_s *res)
+static void image_result(const struct image_decode_s *img, struct connector_result_s *res)
 {
     res->payload = (char *)img->pixels;
     res->payload_len = (size_t)img->width * img->height * sizeof(uint16_t);
@@ -443,7 +443,7 @@ static size_t fixture_read(void *ctx, uint8_t *buf, size_t len)
 }
 
 /* Offline, every Image item shows the one picture compiled in. */
-static void perform_image_offline(const struct request_s *req, struct openhab_result_s *res)
+static void perform_image_offline(const struct request_s *req, struct connector_result_s *res)
 {
     struct fixture_stream_s f = {};
     struct image_decode_s img;
@@ -468,7 +468,7 @@ static void perform_image_offline(const struct request_s *req, struct openhab_re
  * Here rather than at the four call sites it used to be at, so that offline
  * mode and a real server are one code path from the UI's point of view: the
  * same submit, the same queue, the same result. */
-static void perform_offline(const struct request_s *req, struct openhab_result_s *res)
+static void perform_offline(const struct request_s *req, struct connector_result_s *res)
 {
     const char *page = NULL;
     const unsigned char *icon = NULL;
@@ -476,7 +476,7 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
 
     switch (req->type)
     {
-    case OPENHAB_REQ_PAGE:
+    case CONNECTOR_REQ_PAGE:
         page = sim_sitemap_fixture_get(req->url);
 
         if (page == NULL)
@@ -488,7 +488,7 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
         len = strlen(page);
         break;
 
-    case OPENHAB_REQ_ICON:
+    case CONNECTOR_REQ_ICON:
         icon = sim_icon_fixture_get_by_url(req->url, &len);
 
         /* Not an error, and reported as the success it is: until
@@ -504,7 +504,7 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
         page = (const char *)icon;
         break;
 
-    case OPENHAB_REQ_SITEMAPS:
+    case CONNECTOR_REQ_SITEMAPS:
         page = sim_sitemap_fixture_list();
 
         if (page == NULL)
@@ -516,12 +516,12 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
         len = strlen(page);
         break;
 
-    case OPENHAB_REQ_IMAGE:
+    case CONNECTOR_REQ_IMAGE:
         perform_image_offline(req, res);
         return;
 
-    case OPENHAB_REQ_STATE:
-    case OPENHAB_REQ_COMMAND:
+    case CONNECTOR_REQ_STATE:
+    case CONNECTOR_REQ_COMMAND:
     default:
         /* Nowhere to send it, and nothing that would come back changed. The
          * fixture pages carry a fixed state per item, so leaving the item as
@@ -557,7 +557,7 @@ static void perform_offline(const struct request_s *req, struct openhab_result_s
  * does not have and an allocation that failed; the caller then makes the
  * request it would have made anyway.
  */
-static bool perform_builtin_icon(const struct request_s *req, struct openhab_result_s *res)
+static bool perform_builtin_icon(const struct request_s *req, struct connector_result_s *res)
 {
     size_t len = 0;
     const unsigned char *icon = icon_set_get_by_url(req->url, &len);
@@ -644,7 +644,7 @@ static void http_drain(void)
  * makes openHAB send the bytes rather than the data: URI the item's state is
  * stored as -- which is four thirds the size and would need a base64 decoder
  * in front. Checked against openHAB 5.2.1. */
-static void perform_image(const struct request_s *req, struct openhab_result_s *res)
+static void perform_image(const struct request_s *req, struct connector_result_s *res)
 {
     struct image_decode_s img;
     uint16_t max_w, max_h;
@@ -737,7 +737,7 @@ static ssize_t page_get(const char *url, char *buf, size_t capacity)
     return (ssize_t)len;
 }
 
-static void perform(const struct request_s *req, struct openhab_result_s *res)
+static void perform(const struct request_s *req, struct connector_result_s *res)
 {
     /* The icons the firmware has beat the ones the server would serve, and they
      * beat them before anything else is decided -- including offline mode,
@@ -752,7 +752,7 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * A miss falls through to the network, which is what keeps a custom icon
      * working: $OPENHAB_CONF/icons/classic/ is a per-server thing that no
      * firmware can have been built with. */
-    if (req->type == OPENHAB_REQ_ICON && perform_builtin_icon(req, res) == true)
+    if (req->type == CONNECTOR_REQ_ICON && perform_builtin_icon(req, res) == true)
         return;
 
     if (sim_offline())
@@ -761,13 +761,13 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
         return;
     }
 
-    if (req->type == OPENHAB_REQ_COMMAND)
+    if (req->type == CONNECTOR_REQ_COMMAND)
     {
         res->ok = (openhab_http_post_text(req->url, req->body) == 0);
         return;
     }
 
-    if (req->type == OPENHAB_REQ_IMAGE)
+    if (req->type == CONNECTOR_REQ_IMAGE)
     {
         perform_image(req, res);
         return;
@@ -780,7 +780,7 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * body_capacity() returns one less than the field is wide -- the
      * static_assert at the top of this file is what keeps that true -- so the
      * terminator below is inside it. */
-    if (req->type == OPENHAB_REQ_STATE)
+    if (req->type == CONNECTOR_REQ_STATE)
     {
         ssize_t read = openhab_http_get(req->url, res->body, capacity, truncate);
 
@@ -808,7 +808,7 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
 
     /* Everything else into the one buffer. It is a ceiling, not a size: the
      * body that arrives is usually a fraction of it. */
-    ssize_t read = (req->type == OPENHAB_REQ_PAGE)
+    ssize_t read = (req->type == CONNECTOR_REQ_PAGE)
                      ? page_get(req->url, rx_buf, capacity)
                      : openhab_http_get(req->url, rx_buf, capacity, truncate);
 
@@ -840,18 +840,18 @@ static void perform(const struct request_s *req, struct openhab_result_s *res)
      * A server icon rides it for what is behind it: a PNG of two kilobytes
      * leaves ten free, and the decode inflates the picture into them instead
      * of asking the heap for 16 KB (see icons/icon_png.h). */
-    if (   req->type == OPENHAB_REQ_PAGE || req->type == OPENHAB_REQ_SITEMAPS
-        || req->type == OPENHAB_REQ_ICON)
+    if (   req->type == CONNECTOR_REQ_PAGE || req->type == CONNECTOR_REQ_SITEMAPS
+        || req->type == CONNECTOR_REQ_ICON)
     {
         res->payload = rx_buf;
         res->payload_len = (size_t)read;
         res->payload_static = true;
         res->ok = true;
 
-        if (req->type == OPENHAB_REQ_ICON)
+        if (req->type == CONNECTOR_REQ_ICON)
         {
             res->scratch = rx_buf + read + 1;
-            res->scratch_len = OPENHAB_CLIENT_PAGE_BUFFER_SIZE - (size_t)read;
+            res->scratch_len = CONNECTOR_PAGE_BUFFER_SIZE - (size_t)read;
         }
 
         /* Before the result is queued, so that the UI never sees a result in
@@ -910,7 +910,7 @@ static void openhab_client_task(void *parameter)
         }
 
         /* perform() claims the work buffer itself, and only where it reads into it. */
-        struct openhab_result_s res = {};
+        struct connector_result_s res = {};
 
         res.type = req.type;
         res.generation = req.generation;

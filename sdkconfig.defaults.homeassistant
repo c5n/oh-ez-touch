@@ -1,0 +1,7 @@
+# Home Assistant instead of openHAB. Layered after the board's defaults file,
+# for a device:
+#   -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.esp32;sdkconfig.defaults.arduitouch;sdkconfig.defaults.homeassistant"
+# and for the simulator:
+#   -DSDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.linux;sdkconfig.defaults.homeassistant"
+# See CONFIG_OHEZ_CONNECTOR in main/Kconfig.projbuild.
+CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT=y

@@ -1,7 +1,7 @@
 #ifndef ITEM_SCREEN_HPP
 #define ITEM_SCREEN_HPP
 
-#include "openhab/openhab_connector.hpp"
+#include "model/page_model.hpp"
 #include "ui/ui_widgets.hpp"
 
 #include <lvgl.h>

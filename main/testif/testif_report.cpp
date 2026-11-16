@@ -28,7 +28,8 @@
 #include "control/backlight_control.hpp"
 #include "mqtt/ohez_mqtt.hpp"
 #include "net/wlan.hpp"
-#include "openhab/openhab_connector.hpp"
+#include "connector/connector.hpp"
+#include "model/page_model.hpp"
 #include "port/ohez_port.h"
 #include "ui/items/item_screen.hpp"
 #include "ui/openhab_ui.hpp"
@@ -320,9 +321,15 @@ const char *testif_cmd_status(const testif_cmd_t *cmd, char *out, size_t out_siz
 
     JsonObject openhab = doc["openhab"].to<JsonObject>();
 
-    openhab["host"]    = config.item.openhab.hostname;
-    openhab["port"]    = config.item.openhab.port;
-    openhab["sitemap"] = config.item.openhab.sitemap;
+    /* Under "openhab" in either build, so the scripts that read it keep
+     * working; "connector" says which server it is. "sitemap" is the page
+     * set: the dashboard in a Home Assistant build. */
+    struct connector_server_s server = connector_server(&config);
+
+    openhab["connector"] = connector_name();
+    openhab["host"]      = server.host;
+    openhab["port"]      = server.port;
+    openhab["sitemap"]   = server.root;
     openhab["page"]    = openhab_ui_page_state_name();
 
     doc["mqtt"]["connected"] = ohez_mqtt_connected();

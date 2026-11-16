@@ -36,6 +36,13 @@ TARGETS = {
     "lanbon": "Lanbon",
     "cyd": "CYD",
     "arduitouch_jtag": "ArduiTouchJTAG",
+    # The same boards with the Home Assistant connector (CONFIG_OHEZ_CONNECTOR,
+    # sdkconfig.defaults.homeassistant). The firmware appends "-HA" to its
+    # target name, so an update never swaps the connector on a panel.
+    "arduitouch_ha": "ArduiTouch-HA",
+    "arduitouch28_ha": "ArduiTouch28-HA",
+    "lanbon_ha": "Lanbon-HA",
+    "cyd_ha": "CYD-HA",
 }
 
 UPLOAD_TIMEOUT_S = 30

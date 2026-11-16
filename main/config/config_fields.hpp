@@ -75,7 +75,12 @@ enum settings_tab_e
  * a section's tab now (webui_api_json.cpp), and a second copy there would
  * drift from the touch screen's -- the drift this header exists to stop. */
 static const char *const settings_tab_names[SETTINGS_TAB_COUNT] = {
+#if CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT
+    /* SETTINGS_TAB_OPENHAB is the server's tab in either build. */
+    "WLAN",    "Home Assistant", "MQTT",
+#else
     "WLAN",    "openHAB", "MQTT",
+#endif
     "Sensors", "Device",  "Touch",
     "Time",    "Theme",   "Audio",
     "Systeminfo", "Fonts", "Icons"
@@ -136,7 +141,9 @@ struct config_field_s
     int32_t            min;
     int32_t            max;
     uint8_t            kind;
-    uint8_t            size;   /* SETTINGS_TEXT: sizeof the destination     */
+    /* SETTINGS_TEXT: sizeof the destination. 16 bits, because the Home
+     * Assistant access token is a char[256]: in 8 bits it read as 0. */
+    uint16_t           size;
     uint8_t            count;  /* SETTINGS_ENUM: number of options          */
     uint8_t            flags;
     uint8_t            tab;    /* SETTINGS_SECTION only (enum settings_tab_e) */

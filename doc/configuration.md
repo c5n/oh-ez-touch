@@ -435,6 +435,23 @@ On the panel the sitemap list is fetched from the host and port *as they are
 being edited*. The web form fetches from the saved endpoint. There the order
 is: pick a server, **Save**, then pick a sitemap from the reloaded page.
 
+### Home Assistant
+
+Only in a Home Assistant build (see
+[Building](building.md#home-assistant-builds)). This section replaces
+**openHAB Server** and **Doorbell**. `config.json` stores it under
+`homeassistant`.
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| Host | homeassistant | Hostname of the Home Assistant server. |
+| Port | 8123 | Port. Plain HTTP only. |
+| Access token | (empty) | A long-lived access token. Create it on your user profile page in Home Assistant. |
+| Dashboard | (empty) | The `url_path` of the dashboard the panel shows. Empty: the default dashboard. |
+
+The Home Assistant connector is a placeholder at the moment. The panel stores
+these settings, but it does not load a page yet.
+
 ### Doorbell
 
 | Setting | Default | Description |

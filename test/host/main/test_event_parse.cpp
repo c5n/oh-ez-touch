@@ -13,7 +13,7 @@
 
 #include <string.h>
 
-static char name[OPENHAB_EVENT_NAME_LEN];
+static char name[CONNECTOR_EVENT_NAME_LEN];
 static char value[32];
 
 static enum openhab_event_e parse(const char *json)
@@ -256,7 +256,7 @@ static const char widget_event[] =
     "\"descriptionChanged\":false,\"sitemapName\":\"ohezevents\",\"pageId\":\"ohezevents\"}";
 
 static enum openhab_sitemap_event_e sitemap_parse(const char *json,
-                                                  struct openhab_widget_event_s *ev)
+                                                  struct connector_widget_event_s *ev)
 {
     memset(ev, 0x5a, sizeof(*ev));
 
@@ -265,11 +265,11 @@ static enum openhab_sitemap_event_e sitemap_parse(const char *json,
 
 static void test_sitemap_widget_event(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
 
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_WIDGET, sitemap_parse(widget_event, &ev));
-    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("1_0"), ev.widget);
-    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("ohezevents"), ev.page);
+    TEST_ASSERT_EQUAL_HEX32(connector_id_hash("1_0"), ev.widget);
+    TEST_ASSERT_EQUAL_HEX32(connector_id_hash("ohezevents"), ev.page);
     TEST_ASSERT_TRUE(ev.has_state);
     TEST_ASSERT_EQUAL_STRING("30 \xc2\xb0" "C", ev.state);
     TEST_ASSERT_EQUAL_STRING("Temperature", ev.caption);
@@ -284,7 +284,7 @@ static void test_sitemap_widget_event(void)
  * with no item -- a Frame -- has no state to report. */
 static void test_sitemap_hidden_and_stateless(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
 
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_WIDGET, sitemap_parse(
         "{\"widgetId\":\"1_5\",\"label\":\"Window [OPEN]\",\"visibility\":false,"
@@ -305,7 +305,7 @@ static void test_sitemap_hidden_and_stateless(void)
 
 static void test_sitemap_typed_events(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
 
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_ALIVE, sitemap_parse(
         "{\"TYPE\":\"ALIVE\",\"sitemapName\":\"ohezevents\",\"pageId\":\"ohezevents\"}", &ev));
@@ -320,7 +320,7 @@ static void test_sitemap_typed_events(void)
 
 static void test_sitemap_malformed(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
 
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_INVALID, sitemap_parse("", &ev));
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_INVALID, sitemap_parse("{\"widgetId\":", &ev));
@@ -334,7 +334,7 @@ static void test_sitemap_malformed(void)
  * payload, report it. */
 static void test_out_of_heap(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
     const char *alive = "{\"TYPE\":\"ALIVE\",\"sitemapName\":\"s\",\"pageId\":\"s\"}";
     const char *item = "{\"topic\":\"openhab/items/A/statechanged\","
                        "\"payload\":\"{\\\"type\\\":\\\"OnOff\\\",\\\"value\\\":\\\"ON\\\"}\","
@@ -406,7 +406,7 @@ static void test_scan_state(void)
  * own, and a label that is all value. */
 static void test_sitemap_label_split(void)
 {
-    struct openhab_widget_event_s ev;
+    struct connector_widget_event_s ev;
 
     TEST_ASSERT_EQUAL(OPENHAB_SITEMAP_EVENT_WIDGET, sitemap_parse(
         "{\"widgetId\":\"w\",\"label\":\"A very long caption that will not fit [a]b]\","
@@ -447,10 +447,10 @@ static void test_subscription_id(void)
 
 static void test_id_hash(void)
 {
-    TEST_ASSERT_EQUAL_HEX32(0, openhab_id_hash(""));
-    TEST_ASSERT_EQUAL_HEX32(0, openhab_id_hash(NULL));
-    TEST_ASSERT_NOT_EQUAL(openhab_id_hash("1_5"), openhab_id_hash("1_50"));
-    TEST_ASSERT_EQUAL_HEX32(openhab_id_hash("NAV_Light_Desk"), openhab_id_hash("NAV_Light_Desk"));
+    TEST_ASSERT_EQUAL_HEX32(0, connector_id_hash(""));
+    TEST_ASSERT_EQUAL_HEX32(0, connector_id_hash(NULL));
+    TEST_ASSERT_NOT_EQUAL(connector_id_hash("1_5"), connector_id_hash("1_50"));
+    TEST_ASSERT_EQUAL_HEX32(connector_id_hash("NAV_Light_Desk"), connector_id_hash("NAV_Light_Desk"));
 }
 
 void test_event_parse_run(void)
