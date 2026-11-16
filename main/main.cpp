@@ -146,6 +146,7 @@ void settings_apply_live(Config *config)
      * the UI task may be fetching from at that moment. */
     struct connector_server_s server = connector_server(config);
 
+    connector_configure(config);
     openhab_ui_request_connect(server.host, server.port, server.root);
 
     tft_backlight.setDimTimeout(config->item.backlight.activity_timeout);
@@ -404,6 +405,7 @@ static void ohez_setup(void)
      * request. Starting it while the link is still down is harmless -- it
      * blocks on an empty queue until there is something to fetch. The
      * connector logs what did not start. */
+    connector_configure(&config);
     connector_setup();
 
     sensor_main_setup(config);

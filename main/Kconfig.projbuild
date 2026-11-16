@@ -83,11 +83,11 @@ config OHEZ_CONNECTOR_OPENHAB
     bool "openHAB"
 
 config OHEZ_CONNECTOR_HOMEASSISTANT
-    bool "Home Assistant (not functional yet)"
+    bool "Home Assistant"
     help
-        The Home Assistant connector is a placeholder so far: the build,
-        the settings and the target name are in place, and the panel
-        reports that the server is not reachable.
+        The panel shows a Lovelace dashboard of Home Assistant, over the
+        WebSocket API with a long-lived access token. Plain HTTP only.
+        See doc/homeassistant.md.
 
 endchoice
 

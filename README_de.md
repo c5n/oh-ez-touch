@@ -7,11 +7,14 @@
 OhEzTouch ist ein ständig aktives Touch-Bedienfeld für Hausautomationssysteme,
 die von [openHAB](https://www.openhab.org/) gesteuert werden. Das Bedienfeld
 läuft auf einem ESP32. Es erstellt seine Touch-Schaltflächen und Grafiken
-dynamisch anhand einer openHAB-Sitemap auf dem Server.
+dynamisch anhand einer openHAB-Sitemap auf dem Server. Ein eigener Build zeigt
+stattdessen ein Dashboard von [Home Assistant](https://www.home-assistant.io/)
+(siehe [doc/homeassistant_de.md](doc/homeassistant_de.md)).
 
 ## Funktionen
 
-- Dynamische Benutzeroberfläche auf Grundlage einer openHAB-Sitemap
+- Dynamische Benutzeroberfläche auf Grundlage einer openHAB-Sitemap, im
+  Home-Assistant-Build auf Grundlage eines Lovelace-Dashboards
 - Zustandsänderungen von Items werden von openHAB übertragen; ersatzweise werden sie regelmäßig abgefragt
 - Türklingel und Kamerabilder: Das Bild eines Image-Items wird bei Berührung angezeigt; klingelt es, erscheint es automatisch unabhängig von der aktuellen Seite
 - Uhranzeige bei Inaktivität: die Uhrzeit und drei Items nach Wahl in eigenen Tag- und Nachtfarben, mit Schwarzblende ein- und ausgeblendet
@@ -83,7 +86,9 @@ Details finden Sie unter [doc/building_de.md](doc/building_de.md).
 Ein neues Gerät öffnet einen Access Point und zeigt seinen Namen und seine
 Adresse auf dem Bildschirm an. Verbinden Sie sich damit, geben Sie Ihre
 WLAN-Zugangsdaten ein und wählen Sie Ihren openHAB-Server aus. Siehe
-[doc/configuration_de.md](doc/configuration_de.md).
+[doc/configuration_de.md](doc/configuration_de.md). In einem
+Home-Assistant-Build geben Sie stattdessen den Server, ein Zugriffstoken und
+das Dashboard ein; siehe [doc/homeassistant_de.md](doc/homeassistant_de.md).
 
 ## Dokumentation
 
@@ -93,6 +98,7 @@ WLAN-Zugangsdaten ein und wählen Sie Ihren openHAB-Server aus. Siehe
 | [doc/configuration_de.md](doc/configuration_de.md) | WLAN-Einrichtung, Einstellungen, Weboberfläche, REST-API |
 | [doc/sitemap_de.md](doc/sitemap_de.md) | Unterstützte Sitemap-Elemente und Beispiele |
 | [doc/openHAB/README_de.md](doc/openHAB/README_de.md) | Eine openHAB-Demokonfiguration, die alle Funktionen anhand von Bildern zeigt |
+| [doc/homeassistant_de.md](doc/homeassistant_de.md) | Der Home-Assistant-Build: Einrichtung, Dashboard zu Kacheln, Grenzen |
 | [doc/mqtt_de.md](doc/mqtt_de.md) | MQTT-Topics, Fernkonfiguration, Töne, Relais und LEDs |
 | [doc/ble_de.md](doc/ble_de.md) | Bluetooth-LE-Beaconscanner |
 | [doc/update_de.md](doc/update_de.md) | Over-the-Air-Updates, Geräteflotten-Rollout, Wiederherstellungs-Firmware |

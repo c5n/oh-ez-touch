@@ -47,7 +47,8 @@ main/openhab/         the openHAB connector: the task every request waits on,
                       the sitemap parser it feeds, and the caches of which
                       servers are on the network and which sitemaps they
                       offer
-main/homeassistant/   the Home Assistant connector (a placeholder so far)
+main/homeassistant/   the Home Assistant connector: the WebSocket client,
+                      the dashboard and entity model, the task
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -104,6 +105,33 @@ is used: the server scan and the sitemap list in the settings screen and the
 web form, and the doorbell. In a Home Assistant build the server's settings
 section is a section of plain fields, and `config.json` has a
 `homeassistant` section instead of `openhab`.
+
+### The Home Assistant connector
+
+`main/homeassistant/connector_ha.cpp` runs one task with one WebSocket
+connection to `/api/websocket` (`ha_ws.c`, a small RFC 6455 client over
+non-blocking sockets, for the reason `openhab_discover.cpp` gives). The UI's
+requests and the task's results travel on queues, as with the openHAB client.
+
+- **A page** is one view of the dashboard. `lovelace/config` sends the whole
+  dashboard in one message; a dashboard of five views with 120 tiles was
+  16.5 KB, more than the work buffer. So the task walks the `views` array
+  while the message arrives and deserializes one view at a time through an
+  ArduinoJson filter: the wanted view with its cards, every other view with
+  its title and path only. The page is built in the work buffer, the JSON
+  pool behind it, and handed to the UI like an openHAB page body.
+- **States** come from `subscribe_entities` for the page's entities. Its
+  first message (2.2 KB for six entities, a media player alone about 900
+  bytes) decides the tile types; the page goes to the UI after it. Later
+  messages are changes and become item events. Home Assistant puts the
+  message `id` first in results and last in changes, so the id of an event is
+  read from the parsed document, not from the first bytes.
+- **Commands** become `call_service` messages; a state poll is answered from
+  the task's copy of the states.
+
+`ha_model.cpp` holds what has no socket in it -- view to tiles, state to tile
+type and panel state, command to service call -- and the host tests cover it
+with real answers of Home Assistant 2026.11.1 (`test/host/fixtures/ha_*.json`).
 
 ## The settings table
 

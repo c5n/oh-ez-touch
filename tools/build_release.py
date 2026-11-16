@@ -82,9 +82,9 @@ ALL_TARGETS = sorted(TARGETS) + [MINIMAL]
 # defaults file plus sdkconfig.defaults.homeassistant (CONFIG_OHEZ_CONNECTOR).
 HA_SUFFIX = "_ha"
 
-# The Home Assistant connector is a placeholder so far, so its images are
-# built only when -t names them -- not by a default run and not by --full,
-# which would put a panel that shows nothing into a release.
+# The Home Assistant connector has run in the simulator only, not yet on a
+# panel, so its images are built only when -t names them -- not by a default
+# run and not by --full, which would put an untested image into a release.
 EXPERIMENTAL_TARGETS = {t for t in TARGETS if t.endswith(HA_SUFFIX)}
 
 # What a full run (--full) adds; without it these need -t to be built.

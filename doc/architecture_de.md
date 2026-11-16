@@ -42,7 +42,8 @@ main/openhab/         the openHAB connector: the task every request waits on,
                       the sitemap parser it feeds, and the caches of which
                       servers are on the network and which sitemaps they
                       offer
-main/homeassistant/   the Home Assistant connector (a placeholder so far)
+main/homeassistant/   the Home Assistant connector: the WebSocket client,
+                      the dashboard and entity model, the task
 main/mqtt/            the MQTT client: what the panel tells a broker, and the
                       one way the broker can talk back
 main/ble/             the BLE beacon scanner: the advertisement parsers, and
@@ -104,6 +105,37 @@ Sitemap-Liste im Einstellungsbildschirm und im Webformular sowie die
 Türklingel. In einem Home-Assistant-Build besteht der Einstellungsabschnitt
 des Servers aus einfachen Feldern, und `config.json` hat einen Abschnitt
 `homeassistant` statt `openhab`.
+
+### Der Home-Assistant-Connector
+
+`main/homeassistant/connector_ha.cpp` betreibt einen Task mit einer
+WebSocket-Verbindung zu `/api/websocket` (`ha_ws.c`, ein kleiner
+RFC-6455-Client über nicht blockierende Sockets, aus dem Grund, den
+`openhab_discover.cpp` nennt). Anfragen der UI und Ergebnisse des Tasks laufen
+über Queues, wie beim openHAB-Client.
+
+- **Eine Seite** ist eine Ansicht des Dashboards. `lovelace/config` sendet das
+  ganze Dashboard in einer Nachricht; ein Dashboard mit fünf Ansichten und 120
+  Kacheln hatte 16,5 KB, mehr als der Arbeitspuffer. Der Task geht deshalb
+  das Array `views` durch, während die Nachricht ankommt, und deserialisiert
+  jeweils eine Ansicht über einen ArduinoJson-Filter: die gewünschte mit ihren
+  Karten, jede andere nur mit Titel und Pfad. Die Seite entsteht im
+  Arbeitspuffer, der JSON-Pool dahinter, und geht wie ein openHAB-Seitenbody
+  an die UI.
+- **Zustände** kommen über `subscribe_entities` für die Entitäten der Seite.
+  Die erste Nachricht (2,2 KB für sechs Entitäten, ein Media-Player allein
+  etwa 900 Byte) bestimmt die Kacheltypen; danach geht die Seite an die UI.
+  Spätere Nachrichten sind Änderungen und werden zu Element-Ereignissen. Home
+  Assistant setzt die `id` einer Nachricht in Ergebnissen an den Anfang und in
+  Änderungen ans Ende; die id eines Ereignisses wird deshalb aus dem geparsten
+  Dokument gelesen, nicht aus den ersten Bytes.
+- **Befehle** werden zu `call_service`-Nachrichten; eine Statusabfrage
+  beantwortet der Task aus seiner Kopie der Zustände.
+
+`ha_model.cpp` enthält, was keinen Socket braucht – Ansicht zu Kacheln, Zustand
+zu Kacheltyp und Panel-Zustand, Befehl zu Service-Aufruf –, und die Host-Tests
+decken es mit echten Antworten von Home Assistant 2026.11.1 ab
+(`test/host/fixtures/ha_*.json`).
 
 ## Die Einstellungstabelle
 

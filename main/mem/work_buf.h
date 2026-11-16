@@ -35,6 +35,10 @@
  *   openhab_client_result_release().
  * - WORK_BUF_GLYPH: LVGL's glyph buffers, for one label draw (see
  *   ui/ui_glyph_buf.h).
+ * - WORK_BUF_HA_READ: the Home Assistant connector builds a page in it and
+ *   parses the server's JSON behind the page, and hands it over to
+ *   WORK_BUF_HA_RESULT, which connector_result_release() releases. Between
+ *   pages it borrows the block to parse one state change.
  *
  * Pure -- libc and C11 atomics only -- so the host tests can reach it.
  */
@@ -55,6 +59,8 @@ enum work_buf_owner_e
     WORK_BUF_OPENHAB_READ,
     WORK_BUF_OPENHAB_RESULT,
     WORK_BUF_GLYPH,
+    WORK_BUF_HA_READ,
+    WORK_BUF_HA_RESULT,
     WORK_BUF_OWNER_COUNT
 };
 

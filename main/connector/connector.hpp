@@ -63,6 +63,15 @@ const char *connector_name(void);
 /* -------------------------------------------------------------- lifetime */
 
 /**
+ * Hand the connector the settings its own task reads: for Home Assistant the
+ * server, the access token, the dashboard and the clock frame's card title.
+ * The connector copies what it needs; a change takes effect with the next
+ * connection. Called from main.cpp at setup, before connector_setup(), and
+ * whenever settings are applied. May be called from any task.
+ */
+void connector_configure(const Config *config);
+
+/**
  * Start the connector's tasks and queues. Called once from main.cpp, after
  * the work buffer exists and before the first request.
  *

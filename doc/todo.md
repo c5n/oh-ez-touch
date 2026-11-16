@@ -62,12 +62,15 @@
       connector, openHAB or Home Assistant, behind `connector/connector.hpp`.
       See [Home Assistant builds](building.md#home-assistant-builds) and
       [The connector boundary](architecture.md#the-connector-boundary).
-- [ ] homeassistant: Implement the connector; it is a placeholder now. Pages
-      from a Lovelace dashboard (`lovelace/config` over the WebSocket API),
-      item states through `subscribe_entities`, commands through
-      `call_service`, with the access token. To be measured first: the size
-      of a dashboard against the 12 KB receive buffer, the size of the state
-      messages, and the heap of a WebSocket client on both targets. No TLS.
+- [x] homeassistant: Implement the connector. Pages from a Lovelace
+      dashboard over the WebSocket API, states through `subscribe_entities`,
+      commands through `call_service`. See [Home Assistant](homeassistant.md).
+- [ ] homeassistant: Run it on a panel. Measure the task's stack (the log
+      line "stack low water" after a page load), the heap during a page
+      load, and a dashboard larger than the 12 KB work buffer over WLAN.
+- [ ] homeassistant: Show a camera's picture, and a doorbell, as the openHAB
+      build does with an Image item.
+- [ ] homeassistant: Follow the visibility conditions of cards.
 - [x] openhab: Follow sitemap changes as well. `/rest/sitemaps/events` pushes
       formatted labels, colours and visibility, which `/rest/events` does not.
       See [The event stream](architecture.md#the-event-stream).

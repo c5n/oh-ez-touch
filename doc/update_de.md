@@ -36,6 +36,12 @@ Beispiel `myOhEzTouchDevices.json` (siehe `tools/devices.example.json`):
 Die früheren PlatformIO-Zielnamen (`ArduiTouch`, `ArduiTouch28`, `Lanbon`) aus
 Listendateien vor Version 0.90 werden als Aliase akzeptiert.
 
+Ein Panel mit dem Home-Assistant-Connector hat ein eigenes Target: den
+Board-Namen mit der Endung `_ha` (`arduitouch_ha`, `arduitouch28_ha`,
+`lanbon_ha`, `cyd_ha`). Seine Firmware meldet den Target-Namen mit der Endung
+`-HA`, und das Update-Tool und der Gerätemanager spielen kein Image des
+anderen Connectors darauf. Siehe [Bauen](building_de.md#builds-für-home-assistant).
+
 ### Geräte erkennen
 
 `tools/discover.py` durchsucht ein Subnetz nach Geräten und gibt die
@@ -112,7 +118,8 @@ gekennzeichneten Images unter `release/<version>/`:
 ```
 
 Mit `--dirty` bleibt der Build inkrementell und am bisherigen Ort. `-t` baut
-eine Teilmenge.
+eine Teilmenge. Die Home-Assistant-Targets entstehen nur, wenn `-t` sie nennt
+(`-t arduitouch_ha`), bis der Connector auf einem Panel getestet ist.
 
 Das Update-Tool verwendet standardmäßig Images aus dem neuesten Release. Mit
 `--release X.Y` wird eine ältere Version ausgewählt. Für ein Ziel, das im

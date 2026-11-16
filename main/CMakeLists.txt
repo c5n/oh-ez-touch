@@ -160,7 +160,9 @@ set(OHEZ_APP_SRCS
 # sitemaps and openHAB icons, so they belong to that connector.
 if(CONFIG_OHEZ_CONNECTOR_HOMEASSISTANT)
     set(OHEZ_CONNECTOR_SRCS
-        "homeassistant/connector_ha.cpp")
+        "homeassistant/connector_ha.cpp"
+        "homeassistant/ha_model.cpp"
+        "homeassistant/ha_ws.c")
 else()
     set(OHEZ_CONNECTOR_SRCS
         "openhab/connector_openhab.cpp"

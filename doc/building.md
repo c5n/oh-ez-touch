@@ -167,9 +167,9 @@ example `ArduiTouch-HA`. `tools/batchupdate.py` and the device manager
 compare this name before an update. They do not put a Home Assistant image
 on a panel that runs openHAB, or the reverse.
 
-The Home Assistant connector is a placeholder at the moment. The build, the
-settings and the target name are in place. The panel does not load a page
-yet: it shows "SITEMAP ACCESS FAILED" and retries.
+How to set up Home Assistant for the panel is in
+[Home Assistant](homeassistant.md). The connector has been tested against
+Home Assistant 2026.11.1 in the simulator, not yet on a panel. Until then,
 `tools/build_release.py` builds the `_ha` targets only when `-t` names
 them.
 

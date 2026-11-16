@@ -46,6 +46,13 @@ const char *connector_name(void)
     return "openHAB";
 }
 
+void connector_configure(const Config *config)
+{
+    /* Nothing to copy: the openHAB client is handed its URLs by the UI, and
+     * the UI reads the doorbell settings itself. */
+    (void)config;
+}
+
 bool connector_setup(void)
 {
     bool ok = true;

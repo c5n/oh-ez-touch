@@ -5,11 +5,13 @@
 OhEzTouch is an always-on touch control panel for home automation systems
 driven by [openHAB](https://www.openhab.org/). The panel runs on an ESP32.
 It builds its touch buttons and graphics dynamically from an openHAB sitemap
-on the server.
+on the server. A separate build shows a [Home Assistant](https://www.home-assistant.io/)
+dashboard instead (see [doc/homeassistant.md](doc/homeassistant.md)).
 
 ## Features
 
-- Dynamic user interface from an openHAB sitemap
+- Dynamic user interface from an openHAB sitemap, or in a Home Assistant
+  build from a Lovelace dashboard
 - Item states pushed by openHAB as they change, with polling as the fallback
 - Doorbell and camera snapshots: an Image item's picture on a tap, and on its
   own from any page when the bell rings
@@ -82,7 +84,9 @@ For the details, see [doc/building.md](doc/building.md).
 
 A new device opens an access point and shows its name and address on the
 screen. Connect, enter your WLAN credentials, and select your openHAB server.
-See [doc/configuration.md](doc/configuration.md).
+See [doc/configuration.md](doc/configuration.md). For a Home Assistant build,
+enter the server, an access token and the dashboard instead; see
+[doc/homeassistant.md](doc/homeassistant.md).
 
 ## Documentation
 
@@ -92,6 +96,7 @@ See [doc/configuration.md](doc/configuration.md).
 | [doc/configuration.md](doc/configuration.md) | WLAN setup, settings, web interface, REST API |
 | [doc/sitemap.md](doc/sitemap.md) | Supported sitemap elements and examples |
 | [doc/openHAB/](doc/openHAB/README.md) | A demo openHAB setup that shows every feature, with pictures |
+| [doc/homeassistant.md](doc/homeassistant.md) | The Home Assistant build: setup, dashboard to tiles, limits |
 | [doc/mqtt.md](doc/mqtt.md) | MQTT topics, remote configuration, sounds, relays and LEDs |
 | [doc/ble.md](doc/ble.md) | Bluetooth LE beacon scanner |
 | [doc/update.md](doc/update.md) | Over-the-air updates, fleet rollout, recovery firmware |

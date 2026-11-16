@@ -449,8 +449,8 @@ Only in a Home Assistant build (see
 | Access token | (empty) | A long-lived access token. Create it on your user profile page in Home Assistant. |
 | Dashboard | (empty) | The `url_path` of the dashboard the panel shows. Empty: the default dashboard. |
 
-The Home Assistant connector is a placeholder at the moment. The panel stores
-these settings, but it does not load a page yet.
+How the panel turns a dashboard into tiles is in
+[Home Assistant](homeassistant.md).
 
 ### Doorbell
 

@@ -35,6 +35,12 @@ Example `myOhEzTouchDevices.json` (see `tools/devices.example.json`):
 The old PlatformIO target names (`ArduiTouch`, `ArduiTouch28`, `Lanbon`) from
 pre-0.90 list files are accepted as aliases.
 
+A panel with the Home Assistant connector has a target of its own: the board
+name with `_ha` appended (`arduitouch_ha`, `arduitouch28_ha`, `lanbon_ha`,
+`cyd_ha`). Its firmware reports the target name with `-HA` appended, and the
+update tool and the device manager refuse to put an image of the other
+connector on it. See [Building](building.md#home-assistant-builds).
+
 ### Discovering devices
 
 `tools/discover.py` scans a subnet for devices and prints what it finds as a
@@ -105,7 +111,8 @@ version-labelled, under `release/<version>/`:
 ```
 
 The build stays incremental and in place with `--dirty`. `-t` builds a
-subset.
+subset. The Home Assistant targets are built only when `-t` names them
+(`-t arduitouch_ha`), until the connector has been tested on a panel.
 
 The update tool takes images from the latest release by default. `--release
 X.Y` pins an older one. A target missing from the release falls back to its

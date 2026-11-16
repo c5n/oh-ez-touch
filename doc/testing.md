@@ -108,6 +108,16 @@ sink, so both can be tested on the host.
   progressive file, a stream cut in half, `UNDEF` and an empty body have to
   fail without leaving anything allocated. The suite also checks the choice
   of descale and pixel step for every size up to 4000x3000.
+- **test_ha_model**: the Home Assistant connector's parts without a socket,
+  in `main/homeassistant/`. The WebSocket frame header of `ha_ws.c`: the
+  three length forms, a fragmented frame, and the headers the client
+  refuses. Of `ha_model.cpp`, against real answers of Home Assistant
+  2026.11.1 in `test/host/fixtures/ha_dashboard.json` and `ha_states.json`:
+  a masonry view, a sections subview, a glance card and a stack become tiles,
+  the clock card becomes the clock items, and the home page links to the
+  other views; sixteen entities become their tile types and panel states;
+  changes as Home Assistant sends them (a light going off, a moving cover);
+  and the panel's commands become `call_service` messages.
 
 ## The visualizer's converter
 

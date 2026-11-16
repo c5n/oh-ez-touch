@@ -284,8 +284,8 @@ Nur in einem Home-Assistant-Build (siehe
 | Access token | (leer) | Ein langlebiges Zugriffstoken. Erstellen Sie es in Home Assistant auf der Seite Ihres Benutzerprofils. |
 | Dashboard | (leer) | Der `url_path` des Dashboards, das das Panel zeigt. Leer: das Standard-Dashboard. |
 
-Der Home-Assistant-Connector ist derzeit ein Platzhalter. Das Panel speichert
-diese Einstellungen, lädt aber noch keine Seite.
+Wie das Panel ein Dashboard in Kacheln umsetzt, steht unter
+[Home Assistant](homeassistant_de.md).
 
 ### Türklingel
 
